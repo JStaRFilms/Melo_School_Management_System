@@ -23,6 +23,26 @@ import {
   siteRevisionContentValidator,
 } from "./functions/foundation/contracts";
 
+const assessmentPolicySnapshotValidator = v.object({
+  source: v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override")),
+  mode: v.union(v.literal("legacy"), v.literal("inherit"), v.literal("override")),
+  groupVersion: v.number(),
+  revision: v.number(),
+  examInputMode: v.union(v.literal("raw40"), v.literal("raw60_scaled_to_40")),
+  ca1Max: v.number(),
+  ca2Max: v.number(),
+  ca3Max: v.number(),
+  examContributionMax: v.number(),
+  examRawMax: v.number(),
+});
+const gradingPolicySnapshotValidator = v.object({
+  version: v.number(),
+  bands: v.array(v.object({
+    gradeLetter: v.string(), minScore: v.number(), maxScore: v.number(), remark: v.string(),
+    gradePoints: v.optional(v.number()), colorHex: v.optional(v.string()),
+  })),
+});
+
 const knowledgeVisibilityValidator = v.union(
   v.literal("private_owner"),
   v.literal("staff_shared"),
@@ -1807,6 +1827,8 @@ export default defineSchema({
     remark: v.string(),
     examInputModeSnapshot: v.string(),
     examRawMaxSnapshot: v.number(),
+    assessmentPolicySnapshot: v.optional(assessmentPolicySnapshotValidator),
+    gradingPolicySnapshot: v.optional(gradingPolicySnapshotValidator),
     status: v.literal("draft"),
     enteredBy: v.id("users"),
     updatedBy: v.id("users"),
@@ -3353,6 +3375,8 @@ export default defineSchema({
     expectedNumberCounterKey: v.optional(v.string()),
     expectedNumberCounterVersion: v.optional(v.number()),
     proposedAdmissionNumber: v.optional(v.string()),
+    reviewedAssessmentPolicySnapshot: v.optional(assessmentPolicySnapshotValidator),
+    reviewedGradingPolicySnapshot: v.optional(gradingPolicySnapshotValidator),
     approvedPlanVersion: v.optional(v.number()),
     isCommitted: v.optional(v.boolean()),
     commitOutcome: v.optional(v.union(v.literal("created"), v.literal("merged"), v.literal("ignored"), v.literal("grade_created"))),

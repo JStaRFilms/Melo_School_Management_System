@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { api } from "../../../_generated/api";
 import schema from "../../../schema";
 import type { Id } from "../../../_generated/dataModel";
+import { FACTORY_DEFAULT_GRADING_BANDS } from "@school/shared/exam-recording";
 
 declare global {
   interface ImportMeta {
@@ -134,6 +135,34 @@ async function fixture() {
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("schoolAssessmentSettings", {
+      schoolId,
+      examInputMode: "raw40",
+      ca1Max: 20,
+      ca2Max: 20,
+      ca3Max: 20,
+      examContributionMax: 40,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+      updatedBy: actorUserId,
+    });
+    for (const band of FACTORY_DEFAULT_GRADING_BANDS) {
+      await ctx.db.insert("gradingBands", {
+        schoolId,
+        gradeLetter: band.gradeLetter,
+        minScore: band.minScore,
+        maxScore: band.maxScore,
+        gradePoints: band.gradePoints,
+        remark: band.remark,
+        colorHex: band.colorHex,
+        isActive: true,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: actorUserId,
+      });
+    }
     const policyId = await ctx.db.insert("admissionNumberPolicies", {
       schoolId,
       version: 1,
@@ -237,6 +266,77 @@ async function stageStudent(
     },
   );
   return records.find((record) => record.rowNumber === rowNumber)!;
+}
+
+async function stageGrade(
+  f: Awaited<ReturnType<typeof fixture>>,
+  workspaceId: Id<"importWorkspaces">,
+  scores: { ca1: number; ca2: number; exam: number },
+) {
+  await f.session.mutation(
+    api.functions.academic.migrationIngest.stageRecordsBatch,
+    {
+      schoolId: f.schoolId,
+      workspaceId,
+      records: [{
+        rowNumber: 1,
+        rawPayload: {},
+        entityType: "grade_record",
+        parsedData: {
+          firstName: "Student",
+          lastName: "Reviewed",
+          gender: "Female",
+          className: "Reviewed class",
+          subjectName: "Mathematics",
+          ...scores,
+        },
+      }],
+    },
+  );
+  return (
+    await f.session.query(api.functions.academic.migrationWorkspace.getWorkspaceRecords, {
+      schoolId: f.schoolId,
+      workspaceId,
+      limit: 10,
+    })
+  )[0];
+}
+
+async function reviewGrade(
+  f: Awaited<ReturnType<typeof fixture>>,
+  recordId: Id<"stagedImportRecords">,
+  overrides: Partial<{
+    selectedStudentId: Id<"students">;
+    selectedClassId: Id<"classes">;
+    selectedSubjectId: Id<"subjects">;
+    selectedSessionId: Id<"academicSessions">;
+    selectedTermId: Id<"academicTerms">;
+  }> = {},
+) {
+  return f.session.mutation(api.functions.academic.migrationAutosave.reviewStagedRecord, {
+    schoolId: f.schoolId,
+    recordId,
+    expectedRowRevision: 1,
+    resolutionAction: "create_new",
+    selectedClassId: f.classId,
+    selectedSubjectId: f.subjectId,
+    selectedSessionId: f.sessionId,
+    selectedTermId: f.termId,
+    ...overrides,
+  });
+}
+
+async function createExistingStudent(f: Awaited<ReturnType<typeof fixture>>) {
+  return f.t.run(ctx => ctx.db.insert("students", {
+    schoolId: f.schoolId,
+    classId: f.classId,
+    userId: f.studentUserIds[0],
+    admissionNumber: `GRADE-${Math.random()}`,
+    gender: "Female",
+    enrollmentStatus: "active",
+    createdAt: 1,
+    updatedAt: 1,
+  }));
 }
 
 async function approveAll(
@@ -1001,7 +1101,7 @@ describe("R1 reviewed import remediation", () => {
     ).rejects.toThrow("disabled until every row");
   });
 
-  it("requires explicit existing grade mappings and creates no class or subject", async () => {
+  it("requires explicit grade mappings and applies reviewed raw40 policy snapshots", async () => {
     const f = await fixture();
     const existingStudentId = await f.t.run((ctx) =>
       ctx.db.insert("students", {
@@ -1034,7 +1134,7 @@ describe("R1 reviewed import remediation", () => {
               subjectName: "Invented subject",
               ca1: 10,
               ca2: 10,
-              exam: 50,
+              exam: 40,
             },
           },
         ],
@@ -1076,14 +1176,22 @@ describe("R1 reviewed import remediation", () => {
     );
     await approveAll(f, workspaceId);
     await commitAll(f, workspaceId);
-    expect(
-      await f.t.run((ctx) =>
-        ctx.db
-          .query("assessmentRecords")
-          .withIndex("by_school", (q) => q.eq("schoolId", f.schoolId))
-          .collect(),
-      ),
-    ).toHaveLength(1);
+    const assessments = await f.t.run((ctx) =>
+      ctx.db
+        .query("assessmentRecords")
+        .withIndex("by_school", (q) => q.eq("schoolId", f.schoolId))
+        .collect(),
+    );
+    expect(assessments).toHaveLength(1);
+    expect(assessments[0]).toMatchObject({
+      examRawScore: 40,
+      examScaledScore: 40,
+      total: 60,
+      examInputModeSnapshot: "raw40",
+      examRawMaxSnapshot: 40,
+      assessmentPolicySnapshot: { examInputMode: "raw40" },
+      gradingPolicySnapshot: { version: 1 },
+    });
     expect(
       await f.t.run((ctx) =>
         ctx.db
@@ -1100,6 +1208,168 @@ describe("R1 reviewed import remediation", () => {
           .collect(),
       ),
     ).toHaveLength(1);
+  });
+
+  it("rejects a same-school grade mapping when the student has no selected-class relationship", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    const otherClassId = await f.t.run(ctx => ctx.db.insert("classes", {
+      schoolId: f.schoolId,
+      name: "JSS 2B",
+      level: "JSS 2",
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 10, exam: 40 });
+    await expect(reviewGrade(f, record._id, {
+      selectedStudentId: studentId,
+      selectedClassId: otherClassId,
+    })).rejects.toThrow("no reviewed student-class relationship");
+  });
+
+  it("scales raw60 reviewed imports with the canonical scoring helper", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    await f.t.run(async ctx => {
+      const settings = await ctx.db.query("schoolAssessmentSettings").withIndex("by_school_active", q => q.eq("schoolId", f.schoolId).eq("isActive", true)).unique();
+      if (!settings) throw new Error("missing settings");
+      await ctx.db.patch(settings._id, { examInputMode: "raw60_scaled_to_40" });
+    });
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 10, exam: 60 });
+    await reviewGrade(f, record._id, { selectedStudentId: studentId });
+    await approveAll(f, workspaceId);
+    await commitAll(f, workspaceId);
+    const assessment = await f.t.run(ctx => ctx.db.query("assessmentRecords").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).unique());
+    expect(assessment).toMatchObject({
+      examRawScore: 60,
+      examScaledScore: 40,
+      total: 60,
+      examInputModeSnapshot: "raw60_scaled_to_40",
+      examRawMaxSnapshot: 60,
+    });
+  });
+
+  it("uses the configured grading band and persists its reviewed snapshot", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    await f.t.run(async ctx => {
+      const bands = await ctx.db.query("gradingBands").withIndex("by_school_active", q => q.eq("schoolId", f.schoolId).eq("isActive", true)).take(100);
+      for (const band of bands) await ctx.db.patch(band._id, { isActive: false });
+      await ctx.db.insert("gradingBands", {
+        schoolId: f.schoolId,
+        minScore: 0,
+        maxScore: 100,
+        gradeLetter: "REVIEWED",
+        remark: "Configured result",
+        isActive: true,
+        version: 2,
+        createdAt: 2,
+        updatedAt: 2,
+        updatedBy: f.actorUserId,
+      });
+    });
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 20, ca2: 20, exam: 40 });
+    await reviewGrade(f, record._id, { selectedStudentId: studentId });
+    await approveAll(f, workspaceId);
+    await commitAll(f, workspaceId);
+    const assessment = await f.t.run(ctx => ctx.db.query("assessmentRecords").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).unique());
+    expect(assessment).toMatchObject({
+      gradeLetter: "REVIEWED",
+      remark: "Configured result",
+      gradingPolicySnapshot: {
+        version: 2,
+        bands: [{ gradeLetter: "REVIEWED", minScore: 0, maxScore: 100 }],
+      },
+    });
+  });
+
+  it("rejects reviewed imports for derived aggregate subjects", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    await f.t.run(ctx => ctx.db.insert("classSubjectAggregations", {
+      schoolId: f.schoolId,
+      classId: f.classId,
+      umbrellaSubjectId: f.subjectId,
+      strategy: "raw_combined_normalized",
+      reportDisplayMode: "umbrella_only",
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+      updatedBy: f.actorUserId,
+    }));
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 10, exam: 40 });
+    await expect(reviewGrade(f, record._id, { selectedStudentId: studentId })).rejects.toThrow("derived aggregate subject");
+  });
+
+  it("rejects an out-of-range imported total through canonical score validation", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 20, ca2: 20, exam: 100 });
+    await expect(reviewGrade(f, record._id, { selectedStudentId: studentId })).rejects.toThrow("Exam score must be between 0 and 40");
+  });
+
+  it("fails closed when reviewed scoring policy changes before commit", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 10, exam: 40 });
+    await reviewGrade(f, record._id, { selectedStudentId: studentId });
+    await approveAll(f, workspaceId);
+    await f.t.run(async ctx => {
+      const settings = await ctx.db.query("schoolAssessmentSettings").withIndex("by_school_active", q => q.eq("schoolId", f.schoolId).eq("isActive", true)).unique();
+      if (!settings) throw new Error("missing settings");
+      await ctx.db.patch(settings._id, { examInputMode: "raw60_scaled_to_40" });
+    });
+    await expect(commitAll(f, workspaceId)).rejects.toThrow("policy evidence changed");
+    expect(await f.t.run(ctx => ctx.db.query("assessmentRecords").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(1))).toEqual([]);
+  });
+
+  it("fails closed when historical relationship exists but historical scoring policy evidence is unavailable", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    const historical = await f.t.run(async ctx => {
+      const sessionId = await ctx.db.insert("academicSessions", {
+        schoolId: f.schoolId,
+        name: "2025/2026",
+        startDate: 1,
+        endDate: 2,
+        isActive: false,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const termId = await ctx.db.insert("academicTerms", {
+        schoolId: f.schoolId,
+        sessionId,
+        name: "Historical term",
+        startDate: 1,
+        endDate: 2,
+        isActive: false,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.insert("studentSubjectSelections", {
+        schoolId: f.schoolId,
+        studentId,
+        classId: f.classId,
+        subjectId: f.subjectId,
+        sessionId,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      return { sessionId, termId };
+    });
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 10, exam: 40 });
+    await expect(reviewGrade(f, record._id, {
+      selectedStudentId: studentId,
+      selectedSessionId: historical.sessionId,
+      selectedTermId: historical.termId,
+    })).rejects.toThrow("historical scoring policy evidence is unavailable");
   });
 
   it("processes more than 1,000 reviewed ignored rows in bounded receipt-backed batches", async () => {

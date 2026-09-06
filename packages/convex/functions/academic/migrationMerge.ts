@@ -10,6 +10,11 @@ import {
   proposeAdmissionNumberHelper,
 } from "./admissionNumbers";
 import { recordAuditEventHelper } from "./audit";
+import {
+  deriveAssessmentFields,
+  validateScoreRanges,
+  type GradingBand,
+} from "@school/shared/exam-recording";
 
 function validateBatchSize(value: number | undefined): number {
   const batchSize = value ?? 25;
@@ -542,10 +547,37 @@ export const commitImportWorkspace = mutation({
           `Grade row #${record.rowNumber} has incomplete reviewed mappings`,
         );
       }
+      const assessmentPolicy = record.reviewedAssessmentPolicySnapshot;
+      const gradingPolicy = record.reviewedGradingPolicySnapshot;
+      if (!assessmentPolicy || !gradingPolicy) {
+        throw new ConvexError(`Grade row #${record.rowNumber} has no reviewed policy snapshot`);
+      }
       const ca1 = record.parsedData.ca1 ?? 0;
       const ca2 = record.parsedData.ca2 ?? 0;
       const exam = record.parsedData.exam ?? 0;
-      const total = ca1 + ca2 + exam;
+      const scoreErrors = validateScoreRanges(ca1, ca2, 0, exam, assessmentPolicy.examInputMode);
+      if (scoreErrors.length) {
+        throw new ConvexError(`Grade row #${record.rowNumber} has invalid canonical scores: ${scoreErrors.map(error => error.message).join("; ")}`);
+      }
+      const gradingBands: GradingBand[] = gradingPolicy.bands.map(band => ({
+        ...band,
+        schoolId: String(args.schoolId),
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: String(auth.userId),
+      }));
+      const derived = deriveAssessmentFields(
+        ca1,
+        ca2,
+        0,
+        exam,
+        assessmentPolicy.examInputMode,
+        gradingBands,
+      );
+      if (derived.total < 0 || derived.total > 100) {
+        throw new ConvexError(`Grade row #${record.rowNumber} total is outside 0–100`);
+      }
       const assessmentRecordId = await ctx.db.insert("assessmentRecords", {
         schoolId: args.schoolId,
         sessionId: record.selectedSessionId,
@@ -557,13 +589,14 @@ export const commitImportWorkspace = mutation({
         ca2,
         ca3: 0,
         examRawScore: exam,
-        examScaledScore: exam,
-        total,
-        gradeLetter:
-          total >= 70 ? "A" : total >= 60 ? "B" : total >= 50 ? "C" : "F",
-        remark: total >= 50 ? "Pass" : "Needs Improvement",
-        examInputModeSnapshot: "raw",
-        examRawMaxSnapshot: 100,
+        examScaledScore: derived.examScaledScore,
+        total: derived.total,
+        gradeLetter: derived.gradeLetter,
+        remark: derived.remark,
+        examInputModeSnapshot: assessmentPolicy.examInputMode,
+        examRawMaxSnapshot: assessmentPolicy.examRawMax,
+        assessmentPolicySnapshot: assessmentPolicy,
+        gradingPolicySnapshot: gradingPolicy,
         status: "draft",
         enteredBy: auth.userId,
         updatedBy: auth.userId,

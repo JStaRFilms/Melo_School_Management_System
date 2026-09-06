@@ -9,6 +9,10 @@ import {
   validateSequence,
 } from "./admissionNumbers";
 import { requireCapability } from "./rbac";
+import { resolveEffectiveAcademicPolicy } from "./settings";
+import { resolveEffectiveGradingBands } from "./gradingBands";
+import { getActiveAggregationByUmbrellaSubject } from "./subjectAggregationHelpers";
+import { validateGradingBands, validateScoreRanges, type GradingBand } from "@school/shared/exam-recording";
 
 const editableStatuses = new Set([
   "draft",
@@ -49,6 +53,139 @@ function assertEditable(workspace: Doc<"importWorkspaces">) {
       `Cannot modify records in a ${workspace.status} workspace`,
     );
   }
+}
+
+type AssessmentPolicySnapshot = NonNullable<Doc<"stagedImportRecords">["reviewedAssessmentPolicySnapshot"]>;
+type GradingPolicySnapshot = NonNullable<Doc<"stagedImportRecords">["reviewedGradingPolicySnapshot"]>;
+type GradeImportEvidence = {
+  assessmentPolicy: AssessmentPolicySnapshot;
+  gradingPolicy: GradingPolicySnapshot;
+};
+
+function canonicalSnapshot(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalSnapshot);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonicalSnapshot(item)]),
+    );
+  }
+  return value;
+}
+
+function sameSnapshot(left: unknown, right: unknown) {
+  return JSON.stringify(canonicalSnapshot(left)) === JSON.stringify(canonicalSnapshot(right));
+}
+
+async function resolveGradeImportEvidence(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  record: Doc<"stagedImportRecords">,
+): Promise<GradeImportEvidence> {
+  if (!record.selectedStudentId || !record.selectedClassId || !record.selectedSubjectId || !record.selectedSessionId || !record.selectedTermId) {
+    throw new ConvexError(`Grade row #${record.rowNumber} requires existing student, class, subject, session, and term selections`);
+  }
+  const selectedStudentId = record.selectedStudentId;
+  const selectedClassId = record.selectedClassId;
+  const selectedSubjectId = record.selectedSubjectId;
+  const selectedSessionId = record.selectedSessionId;
+  const [student, session] = await Promise.all([
+    ctx.db.get(selectedStudentId),
+    ctx.db.get(selectedSessionId),
+  ]);
+  if (!student || student.schoolId !== schoolId || student.isArchived) {
+    throw new ConvexError(`Grade row #${record.rowNumber} student is unavailable in this school`);
+  }
+
+  let relationshipEstablished =
+    !!session?.isActive &&
+    !session.isArchived &&
+    student.classId === selectedClassId &&
+    (!student.enrollmentStatus || student.enrollmentStatus === "active");
+  if (!relationshipEstablished) {
+    const [selection, fromPromotions, toPromotions, graduations] = await Promise.all([
+      ctx.db.query("studentSubjectSelections").withIndex("by_student_and_class_and_session", q =>
+        q.eq("studentId", student._id).eq("classId", selectedClassId).eq("sessionId", selectedSessionId),
+      ).first(),
+      ctx.db.query("studentPromotions").withIndex("by_student_and_from_session", q => q.eq("studentId", student._id).eq("fromSessionId", selectedSessionId)).take(101),
+      ctx.db.query("studentPromotions").withIndex("by_student_and_to_session", q => q.eq("studentId", student._id).eq("toSessionId", selectedSessionId)).take(101),
+      ctx.db.query("studentGraduations").withIndex("by_student_and_session", q => q.eq("studentId", student._id).eq("sessionId", selectedSessionId)).take(101),
+    ]);
+    if (fromPromotions.length > 100 || toPromotions.length > 100 || graduations.length > 100) {
+      throw new ConvexError(`Grade row #${record.rowNumber} historical enrollment evidence exceeds the review bound`);
+    }
+    relationshipEstablished =
+      selection?.schoolId === schoolId ||
+      fromPromotions.some(promotion => promotion.schoolId === schoolId && promotion.fromClassId === selectedClassId) ||
+      toPromotions.some(promotion => promotion.schoolId === schoolId && promotion.toClassId === selectedClassId) ||
+      graduations.some(graduation => graduation.schoolId === schoolId && graduation.classId === selectedClassId);
+  }
+  if (!relationshipEstablished) {
+    throw new ConvexError(`Grade row #${record.rowNumber} has no reviewed student-class relationship for the selected session`);
+  }
+  if (!session || session.schoolId !== schoolId || !session.isActive || session.isArchived) {
+    throw new ConvexError(`Grade row #${record.rowNumber} historical scoring policy evidence is unavailable`);
+  }
+  if (await getActiveAggregationByUmbrellaSubject(ctx, {
+    schoolId,
+    classId: selectedClassId,
+    umbrellaSubjectId: selectedSubjectId,
+  })) {
+    throw new ConvexError(`Grade row #${record.rowNumber} targets a derived aggregate subject`);
+  }
+
+  const [policy, resolvedBands] = await Promise.all([
+    resolveEffectiveAcademicPolicy(ctx, schoolId),
+    resolveEffectiveGradingBands(ctx, schoolId),
+  ]);
+  const bands: GradingBand[] = resolvedBands
+    .map(band => ({
+      schoolId: String(band.schoolId), minScore: band.minScore, maxScore: band.maxScore,
+      gradeLetter: band.gradeLetter, remark: band.remark, isActive: band.isActive,
+      createdAt: band.createdAt, updatedAt: band.updatedAt, updatedBy: String(band.updatedBy),
+      version: band.version,
+      ...((band.colorHex ?? band.color) ? { colorHex: band.colorHex ?? band.color } : {}),
+      ...(band.gradePoints !== undefined ? { gradePoints: band.gradePoints } : {}),
+    }))
+    .sort((a, b) => a.minScore - b.minScore);
+  if (validateGradingBands(bands).length > 0) {
+    throw new ConvexError(`Grade row #${record.rowNumber} grading policy evidence is unavailable or invalid`);
+  }
+  const scoreErrors = validateScoreRanges(
+    record.parsedData.ca1 ?? 0,
+    record.parsedData.ca2 ?? 0,
+    0,
+    record.parsedData.exam ?? 0,
+    policy.examInputMode,
+  );
+  if (scoreErrors.length) {
+    throw new ConvexError(`Grade row #${record.rowNumber} has invalid canonical scores: ${scoreErrors.map(error => error.message).join("; ")}`);
+  }
+  return {
+    assessmentPolicy: {
+      source: policy.governance.source,
+      mode: policy.governance.mode,
+      groupVersion: policy.governance.groupVersion,
+      revision: policy.governance.revision,
+      examInputMode: policy.examInputMode,
+      ca1Max: policy.ca1Max,
+      ca2Max: policy.ca2Max,
+      ca3Max: policy.ca3Max,
+      examContributionMax: policy.examContributionMax,
+      examRawMax: policy.examInputMode === "raw40" ? 40 : 60,
+    },
+    gradingPolicy: {
+      version: Math.max(0, ...resolvedBands.map(band => band.version ?? 0)),
+      bands: bands.map(band => ({
+        gradeLetter: band.gradeLetter, minScore: band.minScore, maxScore: band.maxScore,
+        remark: band.remark,
+        ...(band.gradePoints !== undefined ? { gradePoints: band.gradePoints } : {}),
+        ...(band.colorHex ? { colorHex: band.colorHex } : {}),
+      })),
+    },
+  };
 }
 
 function baseValidationErrors(record: Doc<"stagedImportRecords">): string[] {
@@ -322,6 +459,15 @@ export async function validateReviewedRecord(
     throw new ConvexError(
       `Grade row #${record.rowNumber} term does not belong to the selected session`,
     );
+  const gradeEvidence = await resolveGradeImportEvidence(ctx, schoolId, record);
+  if (
+    !record.reviewedAssessmentPolicySnapshot ||
+    !record.reviewedGradingPolicySnapshot ||
+    !sameSnapshot(record.reviewedAssessmentPolicySnapshot, gradeEvidence.assessmentPolicy) ||
+    !sameSnapshot(record.reviewedGradingPolicySnapshot, gradeEvidence.gradingPolicy)
+  ) {
+    throw new ConvexError(`Grade row #${record.rowNumber} policy evidence changed or was not reviewed`);
+  }
   if (!record.reviewUniquenessKey)
     throw new ConvexError(
       `Grade row #${record.rowNumber} has no reviewed uniqueness key`,
@@ -436,6 +582,8 @@ export const patchStagedRecord = mutation({
       expectedNumberCounterKey: undefined,
       expectedNumberCounterVersion: undefined,
       proposedAdmissionNumber: undefined,
+      reviewedAssessmentPolicySnapshot: undefined,
+      reviewedGradingPolicySnapshot: undefined,
       approvedPlanVersion: undefined,
       isResolved: false,
       updatedAt: Date.now(),
@@ -514,6 +662,17 @@ export const reviewStagedRecord = mutation({
             args.selectedTermId,
           ].join(":")
         : undefined;
+    const gradeEvidence =
+      record.entityType === "grade_record" && args.resolutionAction === "create_new"
+        ? await resolveGradeImportEvidence(ctx, args.schoolId, {
+            ...record,
+            selectedClassId: args.selectedClassId,
+            selectedSubjectId: args.selectedSubjectId,
+            selectedStudentId: args.selectedStudentId,
+            selectedSessionId: args.selectedSessionId,
+            selectedTermId: args.selectedTermId,
+          })
+        : undefined;
     const candidate: Doc<"stagedImportRecords"> = {
       ...record,
       resolutionAction: args.resolutionAction,
@@ -535,6 +694,8 @@ export const reviewStagedRecord = mutation({
       expectedNumberFormatVersion: args.expectedNumberFormatVersion,
       expectedNumberCounterKey: args.expectedNumberCounterKey,
       expectedNumberCounterVersion: args.expectedNumberCounterVersion,
+      reviewedAssessmentPolicySnapshot: gradeEvidence?.assessmentPolicy,
+      reviewedGradingPolicySnapshot: gradeEvidence?.gradingPolicy,
       isResolved: true,
       validationStatus: "valid",
       validationErrors: [],
@@ -616,6 +777,8 @@ export const reviewStagedRecord = mutation({
       expectedNumberCounterKey: candidate.expectedNumberCounterKey,
       expectedNumberCounterVersion: candidate.expectedNumberCounterVersion,
       proposedAdmissionNumber: undefined,
+      reviewedAssessmentPolicySnapshot: candidate.reviewedAssessmentPolicySnapshot,
+      reviewedGradingPolicySnapshot: candidate.reviewedGradingPolicySnapshot,
       approvedPlanVersion: undefined,
       isResolved: true,
       validationStatus: "valid",

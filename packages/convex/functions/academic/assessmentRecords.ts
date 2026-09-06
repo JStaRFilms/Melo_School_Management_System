@@ -2,7 +2,7 @@ import { resolveEffectiveGradingBands } from "./gradingBands";
 import { query, mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
-import { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import {
   getAuthenticatedSchoolMembership,
   assertTeacherAssignment,
@@ -22,6 +22,13 @@ import {
   getAssessmentEditingPolicy,
   getAssessmentEditingState,
 } from "./assessmentEditingPolicyHelpers";
+
+function withoutImportPolicySnapshots(record: NonNullable<Doc<"assessmentRecords">>) {
+  const result = { ...record };
+  delete result.assessmentPolicySnapshot;
+  delete result.gradingPolicySnapshot;
+  return result;
+}
 
 function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>(
   docs: T[]
@@ -272,10 +279,14 @@ export const getExamEntrySheet = query({
           const user = await ctx.db.get(student.userId);
           const studentName = normalizePersonName(user?.name ?? "Unknown");
 
+          const storedRecord = recordMap.get(String(student._id));
+          const assessmentRecord = storedRecord
+            ? withoutImportPolicySnapshots(storedRecord)
+            : null;
           return {
             studentId: student._id,
             studentName,
-            assessmentRecord: recordMap.get(String(student._id)) ?? null,
+            assessmentRecord,
           };
         })
     );
