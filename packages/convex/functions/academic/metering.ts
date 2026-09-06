@@ -3,6 +3,7 @@ import { internalMutation, query } from "../../_generated/server";
 import type { Doc } from "../../_generated/dataModel";
 import { isGroupPlatformOperator } from "./groups";
 import { requireCapability } from "./rbac";
+import { effectiveAllowance } from "./usageEntitlements";
 
 /**
  * Deterministic Usage Metering & Quota Threshold Protection Engine (H8 / MX-13)
@@ -43,11 +44,12 @@ export interface QuotaReservationResult {
  * Calculates the threshold alert tier based on utilization percentage.
  */
 export function calculateThresholdAlert(
-  utilizationPercent: number
+  utilizationPercent: number,
+  thresholds: { warning: number; critical: number; stop: number } = { warning: 75, critical: 90, stop: 100 }
 ): ThresholdAlertLevel {
-  if (utilizationPercent >= 100) return "hard_stop";
-  if (utilizationPercent >= 90) return "warning_90";
-  if (utilizationPercent >= 75) return "notice_75";
+  if (utilizationPercent >= thresholds.stop) return "hard_stop";
+  if (utilizationPercent >= thresholds.critical) return "warning_90";
+  if (utilizationPercent >= thresholds.warning) return "notice_75";
   return "normal";
 }
 
@@ -341,21 +343,26 @@ export const getUsageStatus = query({
       if (allocations.length > 3) throw new ConvexError("Duplicate usage allocations require reconciliation");
     }
 
-    const results = allocations.map((alloc) => {
+    const results = await Promise.all(allocations.map(async (alloc) => {
+      const cycle = alloc.cycleId ? await ctx.db.get(alloc.cycleId) : null;
+      const effective = cycle ? await effectiveAllowance(ctx, cycle, alloc.meterType) : null;
+      const allocatedUnits = effective?.allocatedUnits ?? alloc.allocatedUnits;
+      const warning = cycle?.entitlement.warningPercent ?? alloc.warningThresholdPercent ?? 75;
+      const critical = cycle?.entitlement.criticalPercent ?? alloc.criticalThresholdPercent ?? 90;
+      const stop = cycle?.entitlement.hardStopPercent ?? alloc.hardStopThresholdPercent ?? 100;
       const activeUsed = alloc.consumedUnits + alloc.reservedUnits;
-      const utilizationPercent =
-        alloc.allocatedUnits > 0
-          ? Math.min(100, Math.round((activeUsed / alloc.allocatedUnits) * 100))
-          : 100;
-      const thresholdAlert = calculateThresholdAlert(utilizationPercent);
-      const availableUnits = Math.max(
-        0,
-        alloc.allocatedUnits - alloc.consumedUnits - alloc.reservedUnits
-      );
+      const utilizationPercent = allocatedUnits > 0 ? Math.min(100, Math.round((activeUsed / allocatedUnits) * 100)) : 100;
+      const thresholdAlert = calculateThresholdAlert(utilizationPercent, { warning, critical, stop });
+      const availableUnits = Math.max(0, allocatedUnits - alloc.consumedUnits - alloc.reservedUnits);
 
       return {
         meterType: alloc.meterType,
-        allocatedUnits: alloc.allocatedUnits,
+        allocatedUnits,
+        baseUnits: effective?.baseUnits ?? null,
+        graceUnits: effective?.graceUnits ?? null,
+        topUpUnits: effective?.topUpUnits ?? null,
+        exceptionUnits: effective?.exceptionUnits ?? null,
+        poolUnits: effective?.poolUnits ?? null,
         consumedUnits: alloc.consumedUnits,
         activeStorageBytes: alloc.activeStorageBytes ?? null,
         trashStorageBytes: alloc.trashStorageBytes ?? null,
@@ -364,13 +371,13 @@ export const getUsageStatus = query({
         availableUnits,
         utilizationPercent,
         thresholdAlert,
-        isHardStopped: utilizationPercent >= 100,
-        isCritical90: utilizationPercent >= 90 && utilizationPercent < 100,
-        isWarning75: utilizationPercent >= 75 && utilizationPercent < 90,
+        isHardStopped: utilizationPercent >= stop,
+        isCritical90: utilizationPercent >= critical && utilizationPercent < stop,
+        isWarning75: utilizationPercent >= warning && utilizationPercent < critical,
         resetCadence: alloc.resetCadence,
         lastResetAt: alloc.lastResetAt,
       };
-    });
+    }));
 
     return results;
   },

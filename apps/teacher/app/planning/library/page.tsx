@@ -5,6 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { appToast } from "@school/shared/toast";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { UsagePreflight } from "../lesson-plans/components/UsagePreflight";
 import { 
   Plus, 
   Sparkles, 
@@ -27,7 +29,6 @@ import {
   TeacherLibraryResponse, 
   TeacherLibrarySubject, 
   TeacherLibraryClassSummary,
-  UploadNotice,
   MaterialDraft,
   TeacherKnowledgeTopic,
   TeacherKnowledgeMaterialSourceProofResponse
@@ -44,10 +45,10 @@ import { MaterialPreviewInspector } from "../../../features/planning-library/com
 // UI Components
 import { TeacherSheet } from "@/lib/components/ui/TeacherSheet";
 import { StatGroup } from "@/lib/components/ui/StatGroup";
-import { cn } from "@/lib/utils";
 
 export default function TeacherLibraryPage() {
-  const { session } = useAuth();
+  const { session, workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -447,7 +448,8 @@ export default function TeacherLibraryPage() {
                 <h1 className="font-display text-2xl lg:text-3xl font-black tracking-tighter text-slate-950 uppercase">
                   Planning Library
                 </h1>
-                <p role="status" className="text-sm">Provider OCR is unavailable pending confirmed plan estimates and reservation reconciliation. Upload limits remain technical limits, not purchased plan allowances. No OCR charge is initiated.</p>
+                <p role="status" className="text-sm">Provider OCR dispatch remains unavailable. Upload limits are enforced separately. No OCR charge is initiated.</p>
+                {schoolId && activeMaterial && (activeMaterial.processingStatus === "ocr_needed" || activeMaterial.processingStatus === "failed") && <UsagePreflight schoolId={schoolId} task="provider_ocr" label="provider OCR" itemCount={activeMaterial.selectedPageNumbers?.length || 1} />}
               </div>
 
               <StatGroup

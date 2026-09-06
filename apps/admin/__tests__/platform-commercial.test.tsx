@@ -23,7 +23,9 @@ vi.mock("convex/react", () => ({
       ? undefined
       : getFunctionName(reference).endsWith("getPlatformUsageCosts")
         ? { rows: [], truncated: false, providerExecutionAvailable: false }
-        : {
+        : getFunctionName(reference).includes("usageEntitlements")
+          ? { versions: [], cycles: [], requests: [] }
+          : {
           mandates: [],
           choices: [],
           corrections: [],
@@ -62,7 +64,7 @@ it("publishes only a confirmed explicit version and retains values after failure
   expect(
     screen.getByRole("button", { name: /Purchase/ }).hasAttribute("disabled"),
   ).toBe(true);
-  fireEvent.change(screen.getByLabelText("Effective UTC date"), {
+  fireEvent.change(screen.getAllByLabelText("Effective UTC date")[1], {
     target: { value: "2030-01-01" },
   });
   const confirmation = screen.getByLabelText(

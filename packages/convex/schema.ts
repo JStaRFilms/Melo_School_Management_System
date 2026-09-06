@@ -1,4 +1,5 @@
 import { commercialRate } from "./functions/foundation/commercialContract";
+import { heavyUsageTask, usageEntitlement, usageMeterType } from "./functions/foundation/usageContract";
 import { bankMetadata, paymentInstructionsValidator } from "./functions/foundation/bankInstructions";
 import { reportCardResultValidator } from "./functions/foundation/reportCardContract";
 import { defineSchema, defineTable } from "convex/server";
@@ -3647,8 +3648,50 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_and_email", ["schoolId", "customerEmail"]),
 
+  // Versioned plan entitlements and append-only grant/operation evidence.
+  usageEntitlementVersions: defineTable({
+    code: v.string(), name: v.string(), version: v.number(), effectiveFrom: v.number(), entitlement: usageEntitlement, createdAt: v.number(),
+  }).index("by_code_and_version", ["code", "version"]),
+  usageCycles: defineTable({
+    schoolId: v.id("schools"), contractId: v.id("commercialContracts"), entitlementVersionId: v.id("usageEntitlementVersions"),
+    code: v.string(), version: v.number(), entitlement: usageEntitlement,
+    startAt: v.number(), endAt: v.number(), status: v.literal("active"), createdAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+  usageGroupPools: defineTable({
+    groupId: v.id("schoolGroups"), entitlementVersionId: v.id("usageEntitlementVersions"), meterType: usageMeterType,
+    totalUnits: v.number(), startAt: v.number(), endAt: v.number(), reason: v.string(), createdAt: v.number(),
+  }).index("by_group", ["groupId"]),
+  usageBranchPoolAllocations: defineTable({
+    poolId: v.id("usageGroupPools"), schoolId: v.id("schools"), cycleId: v.id("usageCycles"),
+    units: v.number(), reason: v.string(), createdAt: v.number(),
+  }).index("by_pool", ["poolId"]).index("by_cycle", ["cycleId"]),
+  usageAllowanceGrants: defineTable({
+    schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType,
+    kind: v.union(v.literal("top_up"), v.literal("exception")), units: v.number(),
+    evidenceReference: v.string(), reason: v.string(), expiresAt: v.optional(v.number()), createdAt: v.number(),
+  }).index("by_cycle", ["cycleId"]),
+  usageExceptionRequests: defineTable({
+    schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType, units: v.number(),
+    reason: v.string(), requestedByPersonId: v.optional(v.id("persons")), requestedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+  usageExceptionDecisions: defineTable({
+    requestId: v.id("usageExceptionRequests"), outcome: v.union(v.literal("approved"), v.literal("declined")),
+    reason: v.string(), grantId: v.optional(v.id("usageAllowanceGrants")), createdAt: v.number(),
+  }).index("by_request", ["requestId"]),
+  usageOperationAttempts: defineTable({
+    schoolId: v.id("schools"), cycleId: v.id("usageCycles"), idempotencyKey: v.string(), task: heavyUsageTask,
+    meterType: usageMeterType, itemCount: v.number(), estimatedUnits: v.number(), modelProfile: v.string(),
+    status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable")),
+    actorTokenIdentifier: v.string(), createdAt: v.number(), updatedAt: v.number(),
+  }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"]),
+  usageOperationTransitions: defineTable({
+    attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled")), createdAt: v.number(),
+  }).index("by_attempt", ["attemptId"]),
+
   // --- Usage Metering & Threshold Protection (H8 / MX-13) ---
   usageMeterAllocations: defineTable({
+    cycleId: v.optional(v.id("usageCycles")),
+    baseUnits: v.optional(v.number()), graceUnits: v.optional(v.number()), topUpUnits: v.optional(v.number()), exceptionUnits: v.optional(v.number()), poolUnits: v.optional(v.number()),
     schoolId: v.id("schools"),
     meterType: v.union(
       v.literal("ai_tokens"),

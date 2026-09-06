@@ -15,6 +15,8 @@ import { X } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 
 import { LessonPlanWorkspaceScreen } from "./components/LessonPlanWorkspaceScreen";
+import { UsagePreflight } from "./components/UsagePreflight";
+import { useAuth } from "@/lib/AuthProvider";
 import type {
   LessonPlanSaveResult,
   LessonPlanWorkspaceData,
@@ -74,6 +76,8 @@ function getLessonPlanGenerationToast(error: unknown): {
 }
 
 export default function LessonPlansPage() {
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -286,6 +290,7 @@ export default function LessonPlansPage() {
         </div>
       )}
 
+      {schoolId && <UsagePreflight schoolId={schoolId} itemCount={Math.max(1, effectiveSourceIds.length)} />}
       {/* 3-Column Workspace flex container filling remaining height */}
       <div className="flex-1 min-h-0 w-full overflow-hidden">
         <LessonPlanWorkspaceScreen

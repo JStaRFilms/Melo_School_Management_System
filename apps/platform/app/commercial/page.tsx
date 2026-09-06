@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { UsageCosts } from "./UsageCosts";
+import { EntitlementControls } from "./EntitlementControls";
 import { useState } from "react";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../../packages/convex/_generated/api";
@@ -230,6 +231,7 @@ function Workbench() {
               total.
             </p>
           )}
+          <EntitlementControls schoolId={schoolId} contractIds={data.contracts.map(row => row._id)} />
           <section className="space-y-3">
             <h2 className="text-xl font-semibold">Versioned catalog</h2>
             {!data.rates.length && (
