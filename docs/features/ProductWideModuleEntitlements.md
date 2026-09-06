@@ -67,6 +67,14 @@ Each school stores its enabled/disabled module state. This configuration selects
 
 The initial implementation may retain the existing `schools.features` object for compatibility. The registry should centralize its defaults and key type so consumers do not independently repeat fallback values. If module count or module-specific configuration grows substantially, a later migration may introduce a dedicated school-entitlement table without changing the registry contract.
 
+#### Schema-safe add-module rollout
+
+Adding a module key must be additive and backward-compatible with existing school documents. While `schools.features` remains the compatibility representation, add a new key as `v.optional(v.boolean())` (never as a newly required property in the existing `v.object`) so records that predate the module continue to validate. Preserve the existing keys and their meaning; do not replace `schools.features` or require a full-document rewrite just to introduce a module.
+
+Consumers must resolve an omitted key through the registry's default, with one consistent rule for legacy and newly provisioned schools. A separate, reviewed backfill is optional and must be idempotent; it must not be required for reads or deployment. If dynamic keys are eventually needed, assess a `v.record(...)` or dedicated entitlement table as a separately designed schema change rather than silently changing this contract.
+
+The rollout gate for each new key is: (1) land the optional schema change and regenerate Convex code; (2) run type/markdown checks and validate reads and writes against representative legacy and new documents in development; (3) deploy additive schema and compatibility readers to development and rehearse any backfill there; and (4) only after review of those results, schedule a separately approved migration or enforcement change. This architecture note does not authorize production data migration or production authorization changes. Until backend checks are implemented and explicitly approved, the new key must not be treated as a production security boundary.
+
 ### 3. Route enforcement uses registry metadata
 
 A shared route decision should accept a workspace, pathname, and resolved school entitlements. It should use the registry's route prefixes for Admin, Teacher, and Portal surfaces.
