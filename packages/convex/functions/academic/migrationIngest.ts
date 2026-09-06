@@ -113,7 +113,7 @@ export const stageRecordsBatch = mutation({
     // 4. Track feature signals to write
     const existingSignals = await ctx.db
       .query("migrationFeatureSignals")
-      .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
       .take(200);
 
     const registeredHeaders = new Set(existingSignals.map((s) => s.rawHeader.toLowerCase().trim()));

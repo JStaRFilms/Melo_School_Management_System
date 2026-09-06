@@ -80,13 +80,13 @@ export const listWorkspaces = query({
   handler: async (ctx, args) => {
     const auth = await assertMigrationAccess(ctx, args.schoolId);
 
-    const workspaces = await ctx.db
+    return await ctx.db
       .query("importWorkspaces")
-      .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
+      .withIndex("by_schoolId_and_createdBy", (q) =>
+        q.eq("schoolId", args.schoolId).eq("createdBy", auth.callerId)
+      )
       .order("desc")
       .take(50);
-
-    return workspaces.filter((workspace) => workspace.createdBy === auth.callerId);
   },
 });
 
@@ -194,16 +194,15 @@ export const getWorkspaceFeatureSignals = query({
     await assertMigrationAccess(ctx, args.schoolId);
 
     if (!args.workspaceId) return [];
-    await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const workspaceId = args.workspaceId;
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, workspaceId);
 
     const signals = await ctx.db
       .query("migrationFeatureSignals")
-      .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", workspaceId))
       .take(100);
 
-    return signals
-      .filter((signal) => signal.workspaceId === args.workspaceId)
-      .map(({ sampleValue: _sampleValue, ...signal }) => signal);
+    return signals.map(({ sampleValue: _sampleValue, ...signal }) => signal);
   },
 });
 

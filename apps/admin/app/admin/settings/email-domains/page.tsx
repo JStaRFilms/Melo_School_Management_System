@@ -80,7 +80,9 @@ function EmailWorkbench({ schoolId }: { schoolId: Id<"schools"> }) {
   };
   const invalidate = () => { setRequest(null); setManual(null); setConfirmation(null); setAliasOfMailboxId(undefined); };
   if (!data) return <p>Loading institutional email settings…</p>;
-  const defaultDomain = data.domains.find(d => d._id === data.policy?.domainId) ?? data.domains.find(d => d.schoolId === schoolId && d.isDefault);
+  const defaultDomain = data.domains.find(d => d._id === data.policy?.domainId)
+    ?? data.domains.find(d => d.schoolId === schoolId && d.isDefault)
+    ?? data.domains[0];
   const value = policyDraft ?? (defaultDomain ? { domainId: defaultDomain._id, staffTemplate: data.policy?.staffTemplate ?? "firstname.lastname",
     studentTemplate: data.policy?.studentTemplate ?? "firstname.lastname", expectedVersion: data.policy?.version ?? 0 } : null);
   const selected = data.people.find(p => p.personId === personId);

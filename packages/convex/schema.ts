@@ -3209,6 +3209,7 @@ export default defineSchema({
     mergedBy: v.optional(v.union(v.id("users"), v.id("platformAdmins"))),
   })
     .index("by_schoolId", ["schoolId"])
+    .index("by_schoolId_and_createdBy", ["schoolId", "createdBy"])
     .index("by_schoolId_and_status", ["schoolId", "status"]),
 
   stagedImportRecords: defineTable({
@@ -3278,7 +3279,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_rawHeader", ["rawHeader"])
-    .index("by_schoolId", ["schoolId"]),
+    .index("by_schoolId", ["schoolId"])
+    .index("by_workspaceId", ["workspaceId"]),
 
   formDrafts: defineTable({
     schemaVersion: v.optional(v.number()),
