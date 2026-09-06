@@ -89,6 +89,31 @@ async function fixture() {
       capability: "finance.reports.view",
       grantedAt: 1,
     });
+    await ctx.db.insert("membershipDirectRestrictions", {
+      membershipId,
+      capability: "finance.settlements.view",
+      restrictedAt: 1,
+    });
+    const groupId = await ctx.db.insert("schoolGroups", {
+      name: "Synthetic group",
+      slug: "synthetic-commercial-group",
+      proprietorPersonId: personId,
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("schoolGroupBranches", {
+      groupId,
+      schoolId,
+      isHeadquarters: true,
+      linkedAt: 1,
+    });
+    await ctx.db.insert("schoolGroupBranches", {
+      groupId,
+      schoolId: otherSchoolId,
+      isHeadquarters: false,
+      linkedAt: 1,
+    });
     const classId = await ctx.db.insert("classes", {
       schoolId,
       name: "Class",
@@ -139,7 +164,7 @@ async function fixture() {
       admissionNumber: "transferred",
       enrollmentStatus: "transferred_out",
     });
-    return { schoolId, otherSchoolId, membershipId, studentId };
+    return { schoolId, otherSchoolId, membershipId, studentId, groupId };
   });
   const platform = t.withIdentity({
     subject: "platform",
@@ -232,7 +257,7 @@ it("requires Platform-only confirmed writes, delegated school reads and separate
     f.t.query(commercial.getCommercialWorkspace, { schoolId: f.schoolId }),
   ).rejects.toThrow();
   await expect(
-    f.finance.query(commercial.getSettlementLedger, { schoolId: f.schoolId }),
+    f.t.query(commercial.getSettlementLedger, { schoolId: f.schoolId }),
   ).rejects.toThrow();
   await f.t.run((ctx) => ctx.db.patch(f.membershipId, { status: "suspended" }));
   await expect(
@@ -461,6 +486,80 @@ it("keeps evidence-backed refund/dispute/adjustment legs separate and idempotent
     merchantConnection: "unverified",
   });
 });
+it("records proprietor catalog choice, paginates history, aggregates currencies and appends idempotent corrections", async () => {
+  const f = await fixture();
+  const choiceArgs = {
+    schoolId: f.schoolId,
+    rateVersionId: f.rateVersionId,
+    requestedCadence: "termly" as const,
+    requestedStart: today + day,
+    reason: "Preferred configured term option",
+    confirmation: "REQUEST",
+  };
+  const choice = await f.finance.mutation(
+    commercial.requestContractChoice,
+    choiceArgs,
+  );
+  expect(
+    await f.finance.mutation(commercial.requestContractChoice, choiceArgs),
+  ).toBe(choice);
+  await expect(
+    f.platform.mutation(commercial.requestContractChoice, choiceArgs),
+  ).rejects.toThrow("proprietor");
+  const invoiceId = await f.platform.mutation(
+    commercial.issueSubscriptionInvoice,
+    f.invoiceArgs,
+  );
+  const correctionArgs = {
+    schoolId: f.schoolId,
+    invoiceId,
+    idempotencyKey: "credit-1",
+    kind: "credit" as const,
+    amountMinor: -100000,
+    reason: "Reviewed catalog correction",
+    confirmation: "CONFIRM",
+  };
+  const correction = await f.platform.mutation(
+    commercial.appendInvoiceCorrection,
+    correctionArgs,
+  );
+  expect(
+    await f.platform.mutation(
+      commercial.appendInvoiceCorrection,
+      correctionArgs,
+    ),
+  ).toBe(correction);
+  await expect(
+    f.platform.mutation(commercial.appendInvoiceCorrection, {
+      ...correctionArgs,
+      amountMinor: -2,
+    }),
+  ).rejects.toThrow("Conflicting");
+  await expect(
+    f.finance.mutation(commercial.appendInvoiceCorrection, correctionArgs),
+  ).rejects.toThrow("Platform");
+  const page = await f.finance.query(
+    commercial.listSubscriptionInvoiceHistory,
+    { schoolId: f.schoolId, paginationOpts: { numItems: 1, cursor: null } },
+  );
+  expect(page.page).toHaveLength(1);
+  const summary = await f.finance.query(commercial.getGroupCommercialSummary, {
+    groupId: f.groupId,
+  });
+  expect(summary).toMatchObject({
+    scope: "proprietor",
+    currencies: {
+      NGN: {
+        originalMinor: 3100000,
+        correctionsMinor: -100000,
+        effectiveMinor: 3000000,
+        invoiceCount: 1,
+      },
+    },
+  });
+  expect(summary.basis).toContain("no school-fee, usage or settlement rows");
+});
+
 it("validates rates and computes explicit volume/minimum/discount/proration without hidden fees", () => {
   expect(() => validateRate({ ...rate, discountBps: 10001 })).toThrow();
   expect(() => validateRate({ ...rate, setupMinor: NaN })).toThrow();

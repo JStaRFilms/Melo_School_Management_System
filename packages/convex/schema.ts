@@ -3507,8 +3507,14 @@ export default defineSchema({
     effectiveFrom: v.number(), rate: commercialRate,
     createdAt: v.number(),
   }).index("by_code_and_version", ["code", "version"]),
+  commercialContractChoices: defineTable({
+    schoolId: v.id("schools"), groupId: v.id("schoolGroups"),
+    rateVersionId: v.id("commercialRateVersions"), requestedCadence: v.union(v.literal("termly"), v.literal("annually")),
+    requestedStart: v.number(), reason: v.string(), requestedByPersonId: v.id("persons"), createdAt: v.number(),
+  }).index("by_school", ["schoolId"]),
   commercialContracts: defineTable({
     schoolId: v.id("schools"), rateVersionId: v.id("commercialRateVersions"),
+    choiceRequestId: v.optional(v.id("commercialContractChoices")),
     rate: commercialRate, code: v.string(), version: v.number(),
     effectiveFrom: v.number(), effectiveTo: v.number(),
     overrideReason: v.optional(v.string()),
@@ -3529,6 +3535,13 @@ export default defineSchema({
   subscriptionInvoiceStudents: defineTable({
     invoiceId: v.id("subscriptionInvoices"), studentId: v.id("students"),
   }).index("by_invoiceId", ["invoiceId"]),
+  subscriptionInvoiceCorrections: defineTable({
+    schoolId: v.id("schools"), invoiceId: v.id("subscriptionInvoices"),
+    idempotencyKey: v.string(), kind: v.union(v.literal("credit"), v.literal("debit"), v.literal("void"), v.literal("note")),
+    amountMinor: v.number(), reason: v.string(), createdAt: v.number(),
+  }).index("by_school", ["schoolId"])
+    .index("by_invoice", ["invoiceId"])
+    .index("by_invoice_and_idempotency", ["invoiceId", "idempotencyKey"]),
 
   // --- Commercial Catalog & Settlement Ledgers (F7 / MX-12) ---
   subscriptionPlans: defineTable({

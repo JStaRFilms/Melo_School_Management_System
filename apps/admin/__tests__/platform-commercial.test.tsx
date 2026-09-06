@@ -25,6 +25,8 @@ vi.mock("convex/react", () => ({
         ? { rows: [], truncated: false, providerExecutionAvailable: false }
         : {
           mandates: [],
+          choices: [],
+          corrections: [],
           rates: [],
           contracts: [],
           invoices: [],
