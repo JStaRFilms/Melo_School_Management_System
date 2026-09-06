@@ -2,6 +2,8 @@
 
 **Status:** PARTIAL — authenticated implementation evidence is blocked by the technical environment authorization gate. Ten real Sites screenshots were captured from the existing published static configuration. No mock screen or placeholder is counted as screenshot evidence.
 
+**Audited repository head:** `7490460` (`docs(u7): publish productization acceptance evidence`). The local E0 implementation and verification chain is current through this U7 evidence commit; this does not authorize authenticated runtime acceptance.
+
 ## Authorization gate
 
 $HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.
