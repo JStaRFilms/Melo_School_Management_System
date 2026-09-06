@@ -8,6 +8,7 @@ import {
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
 import type { ReportCardCalculationMode } from "@school/shared";
+import { resolveDomainSetting } from "./groupSettings";
 
 type TermSettingGroupDoc = {
   _id: Id<"reportCardTermSettingGroups">;
@@ -164,7 +165,7 @@ export async function resolveEffectiveReportCardTermSettings(
     throw new ConvexError("Term not found");
   }
 
-  const [groupDocs, legacyClassAttendanceDocs, adjacentNextTerm] = await Promise.all([
+  const [groupDocs, legacyClassAttendanceDocs, adjacentNextTerm, sharedTemplate] = await Promise.all([
     ctx.db
       .query("reportCardTermSettingGroups")
       .withIndex("by_term", (q: any) => q.eq("termId", args.termId))
@@ -179,6 +180,7 @@ export async function resolveEffectiveReportCardTermSettings(
       )
       .collect(),
     resolveAdjacentNextTermInSession(ctx, args.schoolId, term.sessionId, args.termId),
+    resolveDomainSetting(ctx, args.schoolId, "report_card_template"),
   ]);
 
   const scopedGroups = groupDocs.filter(
@@ -211,10 +213,14 @@ export async function resolveEffectiveReportCardTermSettings(
       matchingGroup?.timesSchoolOpened ??
       legacyClassAttendance?.timesSchoolOpened ??
       term.defaultTimesSchoolOpened ??
+      sharedTemplate.value?.defaultTimesSchoolOpened ??
       null,
     resultCalculationMode:
-      (term.reportCardCalculationMode ??
-        "standalone") as ReportCardCalculationMode,
+      (sharedTemplate.mode === "legacy"
+        ? (term.reportCardCalculationMode ?? "standalone")
+        : (sharedTemplate.value?.resultCalculationMode ??
+          term.reportCardCalculationMode ??
+          "standalone")) as ReportCardCalculationMode,
     matchedGroup:
       matchingGroup
         ? {

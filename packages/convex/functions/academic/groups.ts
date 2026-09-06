@@ -11,6 +11,11 @@ import { recordAuditEventHelper } from "./audit";
 import { resolveActiveMembership, resolveLegacyViewer } from "./auth";
 
 import { schoolThemeValidator } from "../foundation/brandingContract";
+import {
+  branchSettingChangeValidator,
+  groupDefaultDomainValidator,
+  groupDefaultSettingValidator,
+} from "../foundation/groupDefaultsContract";
 import { getOperationalOverviewHelper } from "./groupOverview";
 import {
   getGroupBrandingHelper,
@@ -18,6 +23,12 @@ import {
   saveGroupBrandingHelper,
   getBranchBrandingHelper,
   saveBranchBrandingHelper,
+  getGroupDomainSettingHelper,
+  saveGroupDomainSettingHelper,
+  previewGroupDomainSettingHelper,
+  getBranchDomainSettingHelper,
+  saveBranchDomainSettingHelper,
+  createGroupRoleTemplateVersionHelper,
 } from "./groupSettings";
 
 type Context = QueryCtx | MutationCtx;
@@ -83,6 +94,63 @@ export const saveBranchBranding = mutation({
   handler: (ctx, args) => saveBranchBrandingHelper(ctx, args),
 });
 
+export const createGroupRoleTemplateVersion = mutation({
+  args: {
+    groupId: v.id("schoolGroups"),
+    name: v.string(),
+    capabilities: v.array(v.string()),
+    confirmation: v.string(),
+  },
+  handler: (ctx, args) => createGroupRoleTemplateVersionHelper(ctx, args),
+});
+
+export const getGroupDomainSetting = query({
+  args: {
+    groupId: v.id("schoolGroups"),
+    domain: groupDefaultDomainValidator,
+  },
+  handler: (ctx, args) =>
+    getGroupDomainSettingHelper(ctx, args.groupId, args.domain),
+});
+export const previewGroupDomainSetting = query({
+  args: {
+    groupId: v.id("schoolGroups"),
+    expectedVersion: v.number(),
+    allowBranchOverride: v.boolean(),
+    setting: groupDefaultSettingValidator,
+  },
+  handler: (ctx, args) => previewGroupDomainSettingHelper(ctx, args),
+});
+export const saveGroupDomainSetting = mutation({
+  args: {
+    groupId: v.id("schoolGroups"),
+    expectedVersion: v.number(),
+    allowBranchOverride: v.boolean(),
+    confirmation: v.string(),
+    setting: groupDefaultSettingValidator,
+  },
+  handler: (ctx, args) => saveGroupDomainSettingHelper(ctx, args),
+});
+export const getBranchDomainSetting = query({
+  args: {
+    groupId: v.id("schoolGroups"),
+    schoolId: v.id("schools"),
+    domain: groupDefaultDomainValidator,
+  },
+  handler: (ctx, args) => getBranchDomainSettingHelper(ctx, args),
+});
+export const saveBranchDomainSetting = mutation({
+  args: {
+    groupId: v.id("schoolGroups"),
+    schoolId: v.id("schools"),
+    expectedGroupVersion: v.number(),
+    expectedRevision: v.number(),
+    confirmation: v.string(),
+    change: branchSettingChangeValidator,
+  },
+  handler: (ctx, args) => saveBranchDomainSettingHelper(ctx, args),
+});
+
 export async function isGroupPlatformOperator(ctx: Context) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return false;
@@ -128,6 +196,7 @@ export interface UserBranchSummary {
   isHeadquarters: boolean;
   status: "active" | "suspended";
   membershipRoleTitle: string | null;
+  groupId: Id<"schoolGroups"> | null;
   groupName: string | null;
   groupSlug: string | null;
 }
@@ -183,6 +252,7 @@ export const listUserBranches = query({
         membershipRoleTitle:
           candidate.displayTitle ??
           (group?.proprietorPersonId === person?._id ? "Proprietor" : "Member"),
+        groupId: group?.status === "active" ? group._id : null,
         groupName: group?.status === "active" ? group.name : null,
         groupSlug: group?.status === "active" ? group.slug : null,
       });

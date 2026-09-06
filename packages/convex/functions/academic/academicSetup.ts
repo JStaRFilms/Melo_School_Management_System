@@ -27,6 +27,7 @@ import {
 } from "./archiveGuardrails";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 import { finishFormDraft } from "./drafts";
+import { resolveDomainSetting } from "./groupSettings";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -717,10 +718,33 @@ export const createSession = mutation({
     });
 
     if (args.autoGenerateTerms) {
-      const dynamicTerms = calculateDynamicTermSchedule(
-        args.startDate,
-        args.endDate
+      const calendar = await resolveDomainSetting(
+        ctx,
+        schoolId,
+        "calendar_template",
       );
+      const dynamicTerms =
+        calendar.mode === "legacy" || !calendar.value
+          ? calculateDynamicTermSchedule(args.startDate, args.endDate)
+          : calendar.value.terms.map((term, index) => ({
+              name: term.name,
+              startDate: args.startDate + term.startOffsetDays * 86_400_000,
+              endDate: args.startDate + term.endOffsetDays * 86_400_000,
+              isActive: index === 0,
+              resultCalculationMode: term.resultCalculationMode,
+            }));
+      if (
+        dynamicTerms.some(
+          (term) =>
+            term.startDate < args.startDate ||
+            term.endDate > args.endDate ||
+            term.endDate < term.startDate,
+        )
+      ) {
+        throw new ConvexError(
+          "The selected calendar template does not fit this branch session date range",
+        );
+      }
 
       // If session is active, deactivate existing active terms in the school
       if (args.isActive) {

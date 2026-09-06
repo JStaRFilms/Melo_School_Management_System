@@ -8,6 +8,7 @@ import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-
 import { getPortalStudentAccess, resolvePortalMemberships, type PortalAuth } from "./academic/portalIdentity";
 import { buildStudentReportCard, reportCardResultValidator } from "./academic/reportCards";
 import { getReadableUserName } from "./academic/studentNameCompat";
+import { resolveDomainSetting } from "./academic/groupSettings";
 
 const portalStudentValidator = v.object({
   studentId: v.id("students"),
@@ -311,7 +312,7 @@ export const getWorkspaceData = query({
       throw new ConvexError("School not found");
     }
 
-    const [sessions, terms, schoolEvents] = await Promise.all([
+    const [sessions, terms, schoolEvents, notificationSetting] = await Promise.all([
       ctx.db
         .query("academicSessions")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
@@ -324,7 +325,14 @@ export const getWorkspaceData = query({
         .query("schoolEvents")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
         .collect(),
+      resolveDomainSetting(ctx, schoolId, "notification_preferences"),
     ]);
+    const notificationPreferences =
+      notificationSetting.value ?? {
+        showReportUpdates: true,
+        showTeacherComments: true,
+        showUpcomingEvents: true,
+      };
 
     const selectedStudent = selectedStudentRow
       ? selectedStudentRow.student
@@ -558,7 +566,10 @@ export const getWorkspaceData = query({
     }> = [];
 
     if (selectedReportCard) {
-      if (selectedReportCard.summary.pendingSubjects > 0) {
+      if (
+        notificationPreferences.showReportUpdates &&
+        selectedReportCard.summary.pendingSubjects > 0
+      ) {
         notifications.push({
           id: `pending-${selectedReportCard.student._id}`,
           title: "Some subjects are still pending",
@@ -572,7 +583,10 @@ export const getWorkspaceData = query({
         });
       }
 
-      if (selectedReportCard.student.nextTermBegins) {
+      if (
+        notificationPreferences.showReportUpdates &&
+        selectedReportCard.student.nextTermBegins
+      ) {
         notifications.push({
           id: `next-term-${selectedReportCard.student._id}`,
           title: "Next term date is available",
@@ -588,7 +602,10 @@ export const getWorkspaceData = query({
         });
       }
 
-      if (selectedReportCard.classTeacherComment || selectedReportCard.headTeacherComment) {
+      if (
+        notificationPreferences.showTeacherComments &&
+        (selectedReportCard.classTeacherComment || selectedReportCard.headTeacherComment)
+      ) {
         notifications.push({
           id: `comment-${selectedReportCard.student._id}`,
           title: "A class comment is attached",
@@ -603,9 +620,13 @@ export const getWorkspaceData = query({
       }
     }
 
-    const upcomingEvents = sortNewestFirst(
-      schoolEvents.filter((event: any) => !event.isArchived && event.startDate >= Date.now())
-    ).slice(0, 3);
+    const upcomingEvents = notificationPreferences.showUpcomingEvents
+      ? sortNewestFirst(
+          schoolEvents.filter(
+            (event: any) => !event.isArchived && event.startDate >= Date.now(),
+          ),
+        ).slice(0, 3)
+      : [];
 
     for (const event of upcomingEvents) {
       notifications.push({

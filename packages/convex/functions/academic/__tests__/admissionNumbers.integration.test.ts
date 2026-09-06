@@ -585,6 +585,73 @@ it("inherits only an explicitly adopted group format while counters stay branch-
   expect(
     (await t.run((ctx) => ctx.db.get(branch.policyId)))?.currentSequence,
   ).toBe(41);
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.setAdmissionNumberFormatInheritance,
+    {
+      schoolId: branch.branchId,
+      groupId,
+      mode: "override",
+      expectedGroupVersion: 1,
+      expectedRevision: 1,
+      confirmation: "branch",
+    },
+  );
+  expect(
+    (await t.run((ctx) =>
+      proposeAdmissionNumberHelper(ctx, { schoolId: branch.branchId }),
+    )).allocatedNumber,
+  ).toBe("LOCAL/0041");
+  await viewer.mutation(
+    api.functions.academic.admissionNumbers.setAdmissionNumberFormatInheritance,
+    {
+      schoolId: branch.branchId,
+      groupId,
+      mode: "inherit",
+      expectedGroupVersion: 1,
+      expectedRevision: 2,
+      confirmation: "branch",
+    },
+  );
+  expect(
+    (await t.run((ctx) =>
+      proposeAdmissionNumberHelper(ctx, { schoolId: branch.branchId }),
+    )).allocatedNumber,
+  ).toBe("BRN-2025-0041");
+  await expect(
+    viewer.mutation(
+      api.functions.academic.admissionNumbers.setAdmissionNumberFormatInheritance,
+      {
+        schoolId: branch.branchId,
+        groupId,
+        mode: "inherit",
+        expectedGroupVersion: 1,
+        expectedRevision: 2,
+        confirmation: "branch",
+      },
+    ),
+  ).rejects.toThrow("changed");
+  const unrelatedSchoolId = await t.run((ctx) =>
+    ctx.db.insert("schools", {
+      name: "Unrelated",
+      slug: "unrelated",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  );
+  await expect(
+    viewer.mutation(
+      api.functions.academic.admissionNumbers.setAdmissionNumberFormatInheritance,
+      {
+        schoolId: unrelatedSchoolId,
+        groupId,
+        mode: "inherit",
+        expectedGroupVersion: 1,
+        expectedRevision: 0,
+        confirmation: "unrelated",
+      },
+    ),
+  ).rejects.toThrow();
   const source = await t.run((ctx) =>
     proposeAdmissionNumberHelper(ctx, { schoolId }),
   );

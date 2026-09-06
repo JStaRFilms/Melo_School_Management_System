@@ -8,6 +8,7 @@ import {
 import type { Doc, Id } from "../../_generated/dataModel";
 import { resolveActiveMembership, type ActiveMembershipContext } from "./auth";
 import { recordAuditEventHelper } from "./audit";
+import { resolveEffectiveGroupSetting } from "./groupDefaultsResolver";
 
 /**
  * Closed, typed canonical catalog of permissions across 8 domains (D-02 §3.3).
@@ -215,6 +216,36 @@ async function templateForSchool(
   )
     throw new ConvexError("Forbidden: template belongs to another scope");
   return template;
+}
+
+async function assertTemplatesAvailableForAssignment(
+  ctx: Context,
+  schoolId: Id<"schools">,
+  templates: Doc<"roleTemplates">[],
+) {
+  const local = await ctx.db
+    .query("roleTemplates")
+    .withIndex("by_scope_and_school", (q) =>
+      q.eq("scope", "branch").eq("schoolId", schoolId),
+    )
+    .take(101);
+  if (local.length > 100)
+    throw new ConvexError("Role template directory requires review");
+  const effective = await resolveEffectiveGroupSetting(
+    ctx,
+    schoolId,
+    "role_templates",
+    {
+      domain: "role_templates",
+      value: { templateIds: local.map((template) => template._id) },
+    },
+  );
+  const available = new Set(effective.value?.templateIds ?? []);
+  if (
+    templates.some(
+      (template) => template.scope !== "global" && !available.has(template._id),
+    )
+  ) throw new ConvexError("Role template is not available under the branch setting");
 }
 
 async function permissionRows(
@@ -577,13 +608,19 @@ export const getPermissionWorkspace = query({
       .query("schoolGroupBranches")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
       .unique();
-    const group = link
-      ? await ctx.db
-          .query("roleTemplates")
-          .withIndex("by_group", (q) => q.eq("groupId", link.groupId))
-          .take(101)
-      : [];
-    if ([members, global, branch, group].some((rows) => rows.length > 100))
+    const effectiveRoleTemplates = await resolveEffectiveGroupSetting(
+      ctx,
+      args.schoolId,
+      "role_templates",
+      { domain: "role_templates", value: { templateIds: branch.map((row) => row._id) } },
+    );
+    const effectiveTemplateRows = await Promise.all(
+      (effectiveRoleTemplates.value?.templateIds ?? []).map((id) => ctx.db.get(id)),
+    );
+    const availableTemplates = effectiveTemplateRows.filter(
+      (row): row is Doc<"roleTemplates"> => Boolean(row),
+    );
+    if ([members, global, branch].some((rows) => rows.length > 100))
       throw new ConvexError(
         "Directory exceeds supported size; bounded support review required",
       );
@@ -596,7 +633,13 @@ export const getPermissionWorkspace = query({
           capabilities: canonicalCapabilities(value.capabilities),
         }),
       ),
-      templates: [...global, ...branch, ...group],
+      templates: [...global, ...availableTemplates],
+      templateGovernance: {
+        source: effectiveRoleTemplates.source,
+        mode: effectiveRoleTemplates.mode,
+        groupVersion: effectiveRoleTemplates.groupVersion,
+        revision: effectiveRoleTemplates.revision,
+      },
       canConfigureTemplates: auth.owner,
       ceiling: auth.ceiling,
       members: await Promise.all(
@@ -686,6 +729,7 @@ export const saveMemberPermissions = mutation({
         templateForSchool(ctx, id, args.schoolId),
       ),
     );
+    await assertTemplatesAvailableForAssignment(ctx, args.schoolId, templates);
     if (templates.some((t) => t.code === "proprietor"))
       throw new ConvexError(
         "Ownership assignment requires separate reviewed recovery",
@@ -829,6 +873,7 @@ export const assignRoleToMembership = mutation({
       args.roleTemplateId,
       args.schoolId,
     );
+    await assertTemplatesAvailableForAssignment(ctx, args.schoolId, [template]);
     if (template.code === "proprietor")
       throw new ConvexError(
         "Ownership assignment requires separate reviewed recovery",

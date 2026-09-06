@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import GroupBranding from "./GroupBranding";
+import GroupDomainDefaults from "./GroupDomainDefaults";
 import OperationalOverview from "./OperationalOverview";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -132,6 +133,11 @@ export default function GroupPage() {
         <>
           <GroupBranding
             key={`branding:${groupId}`}
+            groupId={groupId}
+            branches={overview.branches}
+          />
+          <GroupDomainDefaults
+            key={`domains:${groupId}`}
             groupId={groupId}
             branches={overview.branches}
           />

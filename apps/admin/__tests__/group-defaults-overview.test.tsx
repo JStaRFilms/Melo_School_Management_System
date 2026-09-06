@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { getFunctionName } from "convex/server";
 import type { Id } from "../../../packages/convex/_generated/dataModel";
 import GroupBranding from "../app/admin/group/GroupBranding";
+import GroupDomainDefaults from "../app/admin/group/GroupDomainDefaults";
 import OperationalOverview from "../app/admin/group/OperationalOverview";
 
 const mocks = vi.hoisted(() => ({
@@ -144,6 +145,74 @@ it("reviews a versioned branch reset before saving and does not activate a works
     change: { mode: "inherit" },
   });
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
+it("uses one typed defaults editor with review, origin and explicit branch reset controls", async () => {
+  mocks.query.mockImplementation((ref) => {
+    const name = getFunctionName(ref);
+    if (name.endsWith(":listUserBranches")) return [{ schoolId }];
+    if (name.endsWith(":getGroupDomainSetting")) return {
+      groupId,
+      slug: "group",
+      domain: "notification_preferences",
+      version: 2,
+      defaults: {
+        domain: "notification_preferences",
+        version: 2,
+        allowBranchOverride: true,
+        value: {
+          showReportUpdates: true,
+          showTeacherComments: true,
+          showUpcomingEvents: false,
+        },
+      },
+      roleCandidates: [],
+    };
+    if (name.endsWith(":getBranchDomainSetting")) return {
+      domain: "notification_preferences",
+      value: {
+        showReportUpdates: true,
+        showTeacherComments: true,
+        showUpcomingEvents: false,
+      },
+      source: "group",
+      mode: "inherit",
+      groupId,
+      groupVersion: 2,
+      revision: 3,
+      allowBranchOverride: true,
+      slug: "hq",
+      roleCandidates: [],
+    };
+    return undefined;
+  });
+  mocks.preview.mockResolvedValue({
+    warning: "Existing assignments, counters, dates and issued reports will not be rewritten.",
+  });
+  mocks.save.mockResolvedValue(3);
+  render(<GroupDomainDefaults groupId={groupId} branches={branches} />);
+  fireEvent.change(screen.getByLabelText("Settings domain"), {
+    target: { value: "notification_preferences" },
+  });
+  expect(screen.getByText(/in-app Portal academic updates only/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Review default" }));
+  expect(await screen.findByText(/will not be rewritten/)).toBeInTheDocument();
+  const confirm = screen.getByRole("button", { name: "Confirm default" });
+  expect(confirm).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Confirm group slug: group"), {
+    target: { value: "group" },
+  });
+  fireEvent.click(confirm);
+  await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({
+    expectedVersion: 2,
+    setting: expect.objectContaining({ domain: "notification_preferences" }),
+  })));
+  fireEvent.change(screen.getByLabelText("Authorized branch override"), {
+    target: { value: schoolId },
+  });
+  expect(await screen.findByText(/Effective origin: group/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Inherit / reset to group")).toBeChecked();
+  expect(screen.getByText(/Counters and claims always remain branch-owned/)).toBeInTheDocument();
 });
 
 it("operations shows denied vs unavailable, validates dates, and never enables a fake drilldown", async () => {

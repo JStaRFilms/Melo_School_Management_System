@@ -6,6 +6,10 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { schoolThemeValidator } from "./functions/foundation/brandingContract";
 import {
+  branchSettingChoiceValidator,
+  groupDefaultVersionValidator,
+} from "./functions/foundation/groupDefaultsContract";
+import {
   admissionsDataClassValidator,
   admissionsDecisionStateValidator,
   admissionsDocumentStateValidator,
@@ -1038,6 +1042,19 @@ export default defineSchema({
     .index("by_group_and_school", ["groupId", "schoolId"])
     .index("by_school", ["schoolId"])
     .index("by_group", ["groupId"]),
+
+  // Immutable, typed shared defaults and explicit branch choices. Admission
+  // formats retain their existing dedicated contract; counters remain branch-owned.
+  groupSettingVersions: defineTable(groupDefaultVersionValidator)
+    .index("by_group_and_domain_and_version", ["groupId", "domain", "version"]),
+
+  branchSettingOverrides: defineTable(branchSettingChoiceValidator)
+    .index("by_group_and_school_and_domain_and_revision", [
+      "groupId",
+      "schoolId",
+      "domain",
+      "revision",
+    ]),
 
   migrationRuns: defineTable({
     sliceId: v.string(),
