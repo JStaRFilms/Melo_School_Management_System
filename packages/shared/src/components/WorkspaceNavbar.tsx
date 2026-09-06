@@ -290,7 +290,7 @@ export function WorkspaceNavbar({
               label: "Governance",
               icon: <ShieldCheck className="h-4 w-4" />,
               links: sections.filter((s) =>
-                ["/admin/audit", "/admin/permissions"].includes(s.href)
+                ["/admin/group", "/admin/audit", "/admin/permissions"].includes(s.href)
               ),
             },
             settings: {

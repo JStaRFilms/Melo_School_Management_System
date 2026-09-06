@@ -99,6 +99,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
 
       // 4. Finance & Invoicing
       { href: "/billing", label: "Billing & Invoices", matchers: ["/billing$"] },
+      { href: "/admin/group", label: "School group", matchers: ["/admin/group"] },
       { href: "/admin/audit", label: "Audit", matchers: ["/admin/audit"] },
       { href: "/admin/permissions", label: "Permissions", matchers: ["/admin/permissions"] },
 

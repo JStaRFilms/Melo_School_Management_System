@@ -70,6 +70,7 @@ describe("default-school shell", () => {
     expect(access.effectiveCapabilities).not.toContain(capability);
   });
   it.each([
+    ["audit.group.view", "School group"],
     ["audit.branch.view", "Audit"],
     ["staff.permissions.manage", "Permissions"],
   ])("renders the governance destination for managed capability %s", (capability, label) => {
