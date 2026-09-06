@@ -349,18 +349,23 @@ export async function getContextCapabilities(
 export async function requireCapability(
   ctx: Context,
   schoolId: Id<"schools">,
-  capability: string,
+  capability: string | readonly string[],
 ) {
   const authContext = await resolveActiveMembership(ctx, schoolId);
   const effectiveCapabilities = await getContextCapabilities(ctx, authContext);
+  const required = typeof capability === "string" ? [capability] : capability;
   if (
-    !effectiveCapabilities.some(
-      (c) => normalizeCapability(c) === normalizeCapability(capability),
+    !required.some((candidate) =>
+      effectiveCapabilities.some(
+        (value) => normalizeCapability(value) === normalizeCapability(candidate),
+      ),
     )
   )
     throw new ConvexError({
       code: "FORBIDDEN",
-      message: `Forbidden: User does not hold required capability '${capability}'`,
+      message: typeof capability === "string"
+        ? `Forbidden: User does not hold required capability '${capability}'`
+        : `Forbidden: User does not hold any required capability (${required.join(", ")})`,
     });
   return { ...authContext, effectiveCapabilities };
 }

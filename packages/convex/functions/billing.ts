@@ -2176,7 +2176,9 @@ export const verifyOnlinePaymentByReference = action({
     invoice: any;
     payment: any;
   }> => {
-    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {
+      capability: "finance.payments.record_manual",
+    });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
@@ -2259,7 +2261,9 @@ export const reconcilePendingOnlinePayments = action({
     pendingCount: number;
     manualAttentionCount: number;
   }> => {
-    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {
+      capability: "finance.payments.record_manual",
+    });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }

@@ -5,6 +5,7 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
+import { assertLegacyThemeWriteAllowed, resolveEffectiveTheme } from "./groupSettings";
 
 const schoolBrandingThemeValidator = v.object({
   primaryColor: v.string(),
@@ -66,6 +67,7 @@ export const getCurrentSchoolBranding = query({
         return null;
       }
 
+      const effectiveTheme = await resolveEffectiveTheme(ctx, school);
       return {
         schoolId,
         name: normalizeHumanName(school.name),
@@ -73,7 +75,7 @@ export const getCurrentSchoolBranding = query({
         status: school.status ?? "active",
         logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
         motto: school.motto,
-        theme: fallbackTheme(school.theme),
+        theme: fallbackTheme(effectiveTheme.theme),
         contactEmail: school.contactEmail,
         contactPhone: school.contactPhone,
         address: school.address,
@@ -103,6 +105,9 @@ export const updateSchoolProfile = mutation({
     const trimmedName = args.name.trim();
     if (!trimmedName) {
       throw new ConvexError("School name is required");
+    }
+    if (args.theme) {
+      await assertLegacyThemeWriteAllowed(ctx, schoolId);
     }
 
     await ctx.db.patch(schoolId, {

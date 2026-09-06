@@ -16,11 +16,13 @@ export const ACADEMIC_CONTEXT_CAPABILITIES = [
 export const WORKSPACE_CAPABILITY_MATRIX: readonly {
   workspace: "admin" | "teacher";
   path: string;
+  exact?: boolean;
   required: readonly PermissionCapability[];
   requiredAny?: readonly PermissionCapability[];
 }[] = [
   // The post-sign-in landing is a shell, while each dashboard query remains server-authorized.
   { workspace: "admin", path: "/admin/dashboard", required: [] },
+  { workspace: "admin", path: "/admin", exact: true, required: ["staff.list.view"] },
   { workspace: "admin", path: "/academic/students", required: ["enrollment.intakes.manage"] },
   { workspace: "admin", path: "/academic/students/import", required: ["system.migration.execute"] },
   { workspace: "admin", path: "/students/import", required: ["system.migration.execute"] },

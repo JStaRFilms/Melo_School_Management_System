@@ -737,10 +737,10 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       guardianConsentMethod: "signed_form",
     });
 
-    await expect(t.query(getTransferRef, { transferId })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(t.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(t.query(listTransfersByGroupRef, { groupId: harness.groupA })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(t.query(getStudentTransferHistoryRef, { studentId: harness.studentId })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(t.query(getTransferRef, { transferId })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
+    await expect(t.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
+    await expect(t.query(listTransfersByGroupRef, { groupId: harness.groupA })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
+    await expect(t.query(getStudentTransferHistoryRef, { studentId: harness.studentId })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
     await expect(outsider.query(getTransferRef, { transferId })).rejects.toThrow(/Not authorized|Forbidden/);
     await expect(outsider.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/Not authorized|Forbidden/);
 

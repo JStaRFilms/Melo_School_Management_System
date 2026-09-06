@@ -62,6 +62,22 @@ export async function requireBrandingBranch(
   return { auth, link, group };
 }
 
+export async function assertLegacyThemeWriteAllowed(
+  ctx: Context,
+  schoolId: Id<"schools">,
+) {
+  const link = await ctx.db
+    .query("schoolGroupBranches")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .unique();
+  const group = link ? await ctx.db.get(link.groupId) : null;
+  if (group?.status === "active" && group.brandingDefault) {
+    throw new ConvexError(
+      "School group branding must be changed through the branch branding controls",
+    );
+  }
+}
+
 export function validateTheme(theme: Theme): Theme {
   if (
     ![theme.primaryColor, theme.accentColor].every((value) =>

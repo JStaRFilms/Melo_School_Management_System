@@ -48,7 +48,9 @@ export function getWorkspaceCapabilityDenial(workspace: WorkspaceKey, path: stri
   const untouched = access.compatibility.permissionManaged === false;
   // Historical shell compatibility applies only with positive server evidence of no RBAC cutover.
   if (untouched) return null;
-  const rule = WORKSPACE_CAPABILITY_MATRIX.filter(row => row.workspace === workspace && within(path, row.path)).sort((a, b) => b.path.length - a.path.length)[0];
+  const rule = WORKSPACE_CAPABILITY_MATRIX.filter(row =>
+    row.workspace === workspace && (row.exact ? path === row.path : within(path, row.path))
+  ).sort((a, b) => b.path.length - a.path.length)[0];
   if (!rule) return untouched ? null : { state: "forbidden", message: "This legacy route has no reviewed capability contract for managed accounts." };
   const caps = new Set(access.effectiveCapabilities.map(normalizeCapability));
   const hasAllRequired = rule.required.every(cap => caps.has(normalizeCapability(cap)));

@@ -608,10 +608,22 @@ export const getSchoolEmailDomains = query({
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, args.schoolId, "settings.domains.request");
-    return await ctx.db
+    const auth = await requireCapability(ctx, args.schoolId, [
+      "staff.onboard",
+      "settings.domains.request",
+      "settings.domains.manage",
+    ]);
+    const domains = await ctx.db
       .query("schoolEmailDomains")
       .withIndex("by_school_and_domain", (q) => q.eq("schoolId", args.schoolId))
       .take(50);
+    const canManage = auth.effectiveCapabilities.some(
+      (capability) => capability === "settings.domains.manage",
+    );
+    if (canManage) return domains;
+    return domains.map(({ dnsTxtRecord, ...domain }) => {
+      void dnsTxtRecord;
+      return domain;
+    });
   },
 });

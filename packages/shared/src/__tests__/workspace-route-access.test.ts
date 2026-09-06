@@ -50,6 +50,12 @@ describe("managed capability navigation and deep links", () => {
     expect(getAccessibleWorkspaceSections("admin", { access }).map(section => section.href)).toEqual(["/admin/dashboard"]);
     expect(getWorkspaceCapabilityDenial("admin", "/unknown", access)?.state).toBe("forbidden");
   });
+  it("admits only the exact Admin Users route for directory viewers", () => {
+    const access = { ...ready, compatibility: { ...ready.compatibility, permissionManaged: true }, effectiveCapabilities: ["staff.list.view"] };
+    expect(getWorkspaceCapabilityDenial("admin", "/admin", access)).toBeNull();
+    expect(getAccessibleWorkspaceSections("admin", { access }).map(section => section.href)).toContain("/admin");
+    expect(getWorkspaceCapabilityDenial("admin", "/admin/unreviewed", access)?.state).toBe("forbidden");
+  });
   it.each([
     ["/academic/students", "enrollment.intakes.manage"],
     ["/billing", "finance.reports.view"],

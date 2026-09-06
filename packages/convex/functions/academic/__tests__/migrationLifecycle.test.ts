@@ -54,6 +54,16 @@ async function setupTestFixture() {
       updatedAt: now,
     });
 
+    const adminB = await ctx.db.insert("users", {
+      schoolId: schoolB,
+      authId: "auth-admin-b",
+      name: "Admin Ben",
+      email: "ben@starlight.test",
+      role: "admin",
+      createdAt: now,
+      updatedAt: now,
+    });
+
     const teacherA = await ctx.db.insert("users", {
       schoolId: schoolA,
       authId: "auth-teacher-a",
@@ -81,14 +91,14 @@ async function setupTestFixture() {
       updatedAt: now,
     });
 
-    return { schoolA, schoolB, adminA, teacherA, superAdmin, jss1Class };
+    return { schoolA, schoolB, adminA, adminB, teacherA, superAdmin, jss1Class };
   });
 
   return { t, ...data };
 }
 
 describe("Migration Lifecycle Engine", () => {
-  it("Authentication Guard: rejects non-admins and allows schoolAdmin & platformSuperAdmin", async () => {
+  it("Authentication Guard: rejects non-admins and Platform while allowing each school's admin", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
 
     // 1. Unauthenticated -> fails
@@ -128,7 +138,7 @@ describe("Migration Lifecycle Engine", () => {
         name: "Cross School Import",
         mode: "school_admin",
       })
-    ).rejects.toThrow("Cross-school access denied");
+    ).rejects.toThrow(/active membership|Forbidden/);
 
     // 5. School Admin on own school -> succeeds
     const workspaceId = await adminSession.mutation(createWorkspace, {
@@ -138,14 +148,20 @@ describe("Migration Lifecycle Engine", () => {
     });
     expect(workspaceId).toBeDefined();
 
-    // 6. Platform Super Admin on any school -> succeeds
+    // 6. Platform governance cannot execute tenant migration operations.
     const superSession = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
-    const superWorkspaceId = await superSession.mutation(createWorkspace, {
+    await expect(superSession.mutation(createWorkspace, {
       schoolId: schoolB,
       name: "Super Admin Import",
       mode: "super_admin",
-    });
-    expect(superWorkspaceId).toBeDefined();
+    })).rejects.toThrow("Platform governance");
+
+    const schoolBAdmin = t.withIdentity({ subject: "auth-admin-b", issuer: "https://legacy-auth.test" });
+    await expect(schoolBAdmin.mutation(createWorkspace, {
+      schoolId: schoolB,
+      name: "School B Import",
+      mode: "school_admin",
+    })).resolves.toBeDefined();
   });
 
   it("Clash Detection: flags warning with >= 80% confidence for similar names in same class", async () => {
@@ -452,13 +468,12 @@ describe("Migration Lifecycle Engine", () => {
   it("Workspace Tenant Ownership: blocks reading, signaling, or cancelling another school's workspace", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
     const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    const adminB = t.withIdentity({ subject: "auth-admin-b", issuer: "https://legacy-auth.test" });
 
-    // Super admin creates workspace for School B
-    const workspaceB = await superAdmin.mutation(createWorkspace, {
+    const workspaceB = await adminB.mutation(createWorkspace, {
       schoolId: schoolB,
       name: "School B Intake",
-      mode: "super_admin",
+      mode: "school_admin",
     });
 
     const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
@@ -823,19 +838,19 @@ describe("Migration Lifecycle Engine", () => {
     });
   });
 
-  it("Platform Super Admin: creates valid user actor provenance without casting platform admin IDs", async () => {
+  it("School admin creates valid user actor provenance", async () => {
     const { t, schoolA } = await setupTestFixture();
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    const admin = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
-    const workspaceId = await superAdmin.mutation(createWorkspace, {
+    const workspaceId = await admin.mutation(createWorkspace, {
       schoolId: schoolA,
-      name: "Super Admin Provenance Intake",
-      mode: "super_admin",
+      name: "Admin Provenance Intake",
+      mode: "school_admin",
       admissionNumberPrefix: "SCH/SA/",
       nextAdmissionSequence: 1,
     });
 
-    await superAdmin.mutation(stageRecordsBatch, {
+    await admin.mutation(stageRecordsBatch, {
       schoolId: schoolA,
       workspaceId,
       records: [
@@ -855,7 +870,7 @@ describe("Migration Lifecycle Engine", () => {
       ],
     });
 
-    const mergeResult = await superAdmin.mutation(commitImportWorkspace, {
+    const mergeResult = await admin.mutation(commitImportWorkspace, {
       schoolId: schoolA,
       workspaceId,
     });

@@ -1147,7 +1147,9 @@ export const saveStudentReportCardComments = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "academic.assessments.enter",
+      });
     const [student, session, term, existingComment, assessmentRecords] =
       await Promise.all([
         ctx.db.get(args.studentId),

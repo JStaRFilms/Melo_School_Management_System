@@ -554,7 +554,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     expect(snapshot1.accountNumber).toBe("0123456789");
     await expect(
       t.query(bankAccountsApi.getInvoicePaymentView, { invoiceId: invoice1Id })
-    ).rejects.toThrow("Not authorized");
+    ).rejects.toThrow(/UNAUTHENTICATED|Sign in required/);
 
     // 4. Later in time, school adds GTBank and switches primary default bank account
     const gtbBankId = await adminSession.mutation(bankAccountsApi.addBankAccount, {
