@@ -11,6 +11,12 @@ import { authClient } from "@/auth-client";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
 
+function withStudentContext(href: string, studentId: Id<"students">) {
+  const url = new URL(href, "http://portal.local");
+  url.searchParams.set("studentId", String(studentId));
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 export default function PortalLayout({ children }: { children: ReactNode }) {
   return (
     <Suspense fallback={<div className="flex min-h-screen w-full items-center justify-center bg-slate-50"><MeloLoader message="Preparing your portal..." /></div>}>
@@ -107,11 +113,16 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
       onSignOut={handleSignOut}
       onNavigate={href => router.push(href)}
       onChangePassword={authClient.changePassword}
-      renderLink={(props) => (
-        <Link key={props.href} href={props.href} className={props.className}>
-          {props.children}
-        </Link>
-      )}
+      renderLink={(props) => {
+        const href = shellContext
+          ? withStudentContext(props.href, shellContext.selectedStudentId)
+          : props.href;
+        return (
+          <Link key={href} href={href} className={props.className}>
+            {props.children}
+          </Link>
+        );
+      }}
     >
       {children}
     </WorkspaceNavbar>
