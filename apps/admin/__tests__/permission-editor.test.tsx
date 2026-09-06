@@ -13,9 +13,11 @@ vi.mock("@/AuthProvider", () => ({
   }),
 }));
 let allowed: boolean | undefined;
+let legacyBaseline: boolean;
 beforeEach(() => {
   vi.clearAllMocks();
   allowed = true;
+  legacyBaseline = false;
   mocks.query.mockImplementation((ref: FunctionReference<"query">) => {
     const name = getFunctionName(ref).split(":")[1];
     if (name === "hasViewerCapability") return allowed;
@@ -37,7 +39,7 @@ beforeEach(() => {
         ceiling: [],
         effective: [],
         editable: true,
-        legacyBaseline: false,
+        legacyBaseline,
       };
     if (name === "previewEffectiveCapabilities") return [];
   });
@@ -86,4 +88,19 @@ it("requires review and reason; native checklist updates the candidate preview w
   expect(
     screen.getByRole("button", { name: "Confirm access changes" }),
   ).toBeEnabled();
+});
+it("warns and requires acknowledgement before retiring legacy access", () => {
+  legacyBaseline = true;
+  render(<PermissionsPage />);
+  fireEvent.change(screen.getByRole("combobox", { name: "Staff member" }), {
+    target: { value: "member" },
+  });
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "retires that baseline permanently",
+  );
+  expect(
+    screen.getByRole("checkbox", {
+      name: /I understand this save permanently retires legacy access/,
+    }),
+  ).toBeInTheDocument();
 });

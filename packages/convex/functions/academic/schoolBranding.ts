@@ -5,7 +5,7 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
-import { assertLegacyThemeWriteAllowed, resolveEffectiveTheme } from "./groupSettings";
+import { hasActiveGroupBranding, resolveEffectiveTheme } from "./groupSettings";
 
 const schoolBrandingThemeValidator = v.object({
   primaryColor: v.string(),
@@ -106,14 +106,27 @@ export const updateSchoolProfile = mutation({
     if (!trimmedName) {
       throw new ConvexError("School name is required");
     }
-    if (args.theme) {
-      await assertLegacyThemeWriteAllowed(ctx, schoolId);
+    const groupBrandingControlled = args.theme
+      ? await hasActiveGroupBranding(ctx, schoolId)
+      : false;
+    if (args.theme && groupBrandingControlled) {
+      const school = await ctx.db.get(schoolId);
+      if (!school) throw new ConvexError("School not found");
+      const effectiveTheme = (await resolveEffectiveTheme(ctx, school)).theme;
+      if (
+        args.theme.primaryColor.toLowerCase() !== effectiveTheme.primaryColor.toLowerCase() ||
+        args.theme.accentColor.toLowerCase() !== effectiveTheme.accentColor.toLowerCase()
+      ) {
+        throw new ConvexError(
+          "School group branding must be changed through the branch branding controls",
+        );
+      }
     }
 
     await ctx.db.patch(schoolId, {
       name: trimmedName,
       motto: args.motto?.trim() || undefined,
-      theme: args.theme,
+      ...(args.theme && !groupBrandingControlled ? { theme: args.theme } : {}),
       contactEmail: args.contactEmail?.trim() || undefined,
       contactPhone: args.contactPhone?.trim() || undefined,
       address: args.address?.trim() || undefined,

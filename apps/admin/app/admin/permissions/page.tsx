@@ -286,10 +286,11 @@ function MemberEditor({
         </p>
       )}
       {initial.legacyBaseline && (
-        <p className="text-sm text-slate-600">
-          Legacy access remains separate. Removing all templates restores the
-          existing principal baseline; this preview includes that behavior and
-          does not retire old admin access.
+        <p role="alert" className="text-sm text-amber-800">
+          This account still uses the legacy principal baseline. Saving this
+          form—even for a display-title-only change or with no templates—retires
+          that baseline permanently. The resulting access is exactly the
+          effective preview; an empty preview means no gated workspace access.
         </p>
       )}
       <label className="block max-w-xl text-sm font-medium">
@@ -464,6 +465,9 @@ function MemberEditor({
           <span>
             I reviewed the target <strong>{name}</strong>, effective preview and
             reason.
+            {initial.legacyBaseline && (
+              <> I understand this save permanently retires legacy access.</>
+            )}
           </span>
         </label>
         <p className="text-xs text-slate-500">

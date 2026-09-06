@@ -9,6 +9,7 @@ import {
 import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
 import { resolveActiveMembership, resolveLegacyViewer } from "./auth";
+import { isTrustedLegacySubjectIssuer } from "./identityResolver";
 
 import { schoolThemeValidator } from "../foundation/brandingContract";
 import { getOperationalOverviewHelper } from "./groupOverview";
@@ -83,16 +84,31 @@ export const saveBranchBranding = mutation({
   handler: (ctx, args) => saveBranchBrandingHelper(ctx, args),
 });
 
-export async function isGroupPlatformOperator(ctx: Context) {
+export async function resolveGroupPlatformOperator(ctx: Context) {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) return false;
-  const rows = await ctx.db
+  if (!identity) return null;
+  let rows = await ctx.db
     .query("platformAdmins")
     .withIndex("by_auth_token_identifier", (q) =>
       q.eq("authTokenIdentifier", identity.tokenIdentifier),
     )
     .take(2);
-  return rows.length === 1 && rows[0].isActive;
+  if (rows.length > 1)
+    throw new ConvexError("Forbidden: ambiguous Platform identity");
+  if (rows.length === 0 && isTrustedLegacySubjectIssuer(identity.issuer)) {
+    const legacyRows = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
+      .take(2);
+    if (legacyRows.length > 1)
+      throw new ConvexError("Forbidden: ambiguous Platform identity");
+    rows = legacyRows.filter((row) => !row.authTokenIdentifier);
+  }
+  return rows[0] ?? null;
+}
+
+export async function isGroupPlatformOperator(ctx: Context) {
+  return (await resolveGroupPlatformOperator(ctx))?.isActive === true;
 }
 
 async function currentPerson(ctx: Context) {

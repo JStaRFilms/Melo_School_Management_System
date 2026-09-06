@@ -62,7 +62,7 @@ export async function requireBrandingBranch(
   return { auth, link, group };
 }
 
-export async function assertLegacyThemeWriteAllowed(
+export async function hasActiveGroupBranding(
   ctx: Context,
   schoolId: Id<"schools">,
 ) {
@@ -71,11 +71,7 @@ export async function assertLegacyThemeWriteAllowed(
     .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
     .unique();
   const group = link ? await ctx.db.get(link.groupId) : null;
-  if (group?.status === "active" && group.brandingDefault) {
-    throw new ConvexError(
-      "School group branding must be changed through the branch branding controls",
-    );
-  }
+  return group?.status === "active" && group.brandingDefault !== undefined;
 }
 
 export function validateTheme(theme: Theme): Theme {

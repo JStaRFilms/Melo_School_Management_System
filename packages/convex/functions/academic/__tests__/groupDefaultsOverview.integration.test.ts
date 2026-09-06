@@ -121,6 +121,14 @@ async function fixture() {
       createdAt: 1,
       updatedAt: 1,
     });
+    await ctx.db.insert("platformAdmins", {
+      authId: "legacy-platform",
+      email: "legacy-platform@example.test",
+      name: "Legacy Platform",
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
     return {
       schoolId,
       branchId,
@@ -138,10 +146,27 @@ async function fixture() {
     owner: t.withIdentity({ tokenIdentifier: "test|owner" }),
     member: t.withIdentity({ tokenIdentifier: "test|member" }),
     platform: t.withIdentity({ tokenIdentifier: "test|platform" }),
+    legacyPlatform: t.withIdentity({
+      subject: "legacy-platform",
+      issuer: "https://legacy-auth.test",
+    }),
   };
 }
 
 describe("U1f versioned branding defaults", () => {
+  it("admits trusted legacy Platform identities to governance APIs", async () => {
+    const f = await fixture();
+    await expect(
+      f.legacyPlatform.query(endpoints.listGroups, {
+        paginationOpts: { numItems: 10, cursor: null },
+      }),
+    ).resolves.toMatchObject({ page: [{ _id: f.groupId }] });
+    await expect(
+      f.legacyPlatform.query(api.functions.academic.audit.getAuditAccess, {
+        scope: { kind: "platform" },
+      }),
+    ).resolves.toMatchObject({ platformOnly: true });
+  });
   it("previews without writes, preserves legacy colors, explicitly inherits/overrides/resets and audits without school rewrites", async () => {
     const f = await fixture();
     const original = await f.t.run((ctx) => ctx.db.get(f.schoolId));
@@ -198,19 +223,31 @@ describe("U1f versioned branding defaults", () => {
       return resolveEffectiveTheme(ctx, school);
     });
     expect(effective).toMatchObject({ source: "group", theme, revision: 3 });
-    expect(
-      await f.owner.query(
-        api.functions.academic.schoolBranding.getCurrentSchoolBranding,
-        {},
-      ),
-    ).toMatchObject({ schoolId: f.schoolId, theme });
+    const currentBranding = await f.owner.query(
+      api.functions.academic.schoolBranding.getCurrentSchoolBranding,
+      {},
+    );
+    expect(currentBranding).toMatchObject({ schoolId: f.schoolId, theme });
+    if (!currentBranding) throw new Error("Missing branding fixture");
+    await f.owner.mutation(
+      api.functions.academic.schoolBranding.updateSchoolProfile,
+      { name: "Renamed Headquarters", theme: currentBranding.theme },
+    );
+    const profileSaved = await f.t.run((ctx) => ctx.db.get(f.schoolId));
+    expect(profileSaved).toMatchObject({
+      name: "Renamed Headquarters",
+      theme: original?.theme,
+    });
     await expect(
       f.owner.mutation(
         api.functions.academic.schoolBranding.updateSchoolProfile,
-        { name: "Headquarters", theme },
+        {
+          name: "Renamed Headquarters",
+          theme: { primaryColor: "#ffffff", accentColor: "#000000" },
+        },
       ),
     ).rejects.toThrow("School group branding");
-    expect(await f.t.run((ctx) => ctx.db.get(f.schoolId))).toEqual(original);
+    expect(await f.t.run((ctx) => ctx.db.get(f.schoolId))).toEqual(profileSaved);
     const events = await f.t.run((ctx) =>
       ctx.db
         .query("auditEvents")

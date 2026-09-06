@@ -8,7 +8,11 @@ import {
 import type { Doc, Id } from "../../_generated/dataModel";
 import { requireCapability, isMembershipProprietor } from "./rbac";
 import { resolveActiveMembership } from "./auth";
-import { getGroupOverviewHelper, isGroupPlatformOperator } from "./groups";
+import {
+  getGroupOverviewHelper,
+  isGroupPlatformOperator,
+  resolveGroupPlatformOperator,
+} from "./groups";
 import { paginationOptsValidator } from "convex/server";
 import type { QueryCtx } from "../../_generated/server";
 
@@ -104,22 +108,11 @@ export async function recordAuditEventHelper(
     ? sanitizeAuditSummary(args.afterSummary)
     : undefined;
 
-  const identity =
+  const operator =
     args.actorKind === "platform_admin"
-      ? await ctx.auth.getUserIdentity()
+      ? await resolveGroupPlatformOperator(ctx)
       : null;
-  const operators = identity
-    ? await ctx.db
-        .query("platformAdmins")
-        .withIndex("by_auth_token_identifier", (q) =>
-          q.eq("authTokenIdentifier", identity.tokenIdentifier),
-        )
-        .take(2)
-    : [];
-  const actorPlatformAdminId =
-    operators.length === 1 && operators[0].isActive
-      ? operators[0]._id
-      : undefined;
+  const actorPlatformAdminId = operator?.isActive ? operator._id : undefined;
   const docId = await ctx.db.insert("auditEvents", {
     eventId,
     actorPlatformAdminId,
