@@ -29,10 +29,12 @@ import {
   humanNameTypingStrict,
 } from "@/human-name";
 
+import { useAuth } from "@/AuthProvider";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { AttestationLetterModal } from "./components/AttestationLetterModal";
+import type { AdmissionCounterDecision } from "./components/AdmissionNumberGovernanceFields";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
 import { GraduationConfirmationModal } from "./components/GraduationConfirmationModal";
@@ -71,6 +73,17 @@ function StudentsPageFallback() {
 }
 
 function StudentsPageContent() {
+  const { workspaceAccess } = useAuth();
+  const schoolId =
+    workspaceAccess?.state === "ready"
+      ? workspaceAccess.branch.schoolId
+      : null;
+  const canOverrideAdmissionNumber = Boolean(
+    workspaceAccess?.state === "ready" &&
+      workspaceAccess.effectiveCapabilities.includes(
+        "enrollment.admissions.override_number",
+      ),
+  );
   const classes = useQuery(
     "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
@@ -110,6 +123,14 @@ function StudentsPageContent() {
   const [studentFirstName, setStudentFirstName] = useState("");
   const [studentLastName, setStudentLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [admissionNumberMode, setAdmissionNumberMode] = useState<
+    "automatic" | "manual"
+  >("automatic");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [overrideCounterDecision, setOverrideCounterDecision] =
+    useState<AdmissionCounterDecision>("");
+  const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [gender, setGender] = useState("");
   const [houseName, setHouseName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -161,6 +182,28 @@ function StudentsPageContent() {
   const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
   const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
   const [isDuplicateParentLinkConfirmOpen, setIsDuplicateParentLinkConfirmOpen] = useState(false);
+
+  const selectedClassLevel = classes?.find(
+    (classDoc) => classDoc._id === selectedClassId,
+  )?.level;
+  const admissionNumbering = useQuery(
+    "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
+    schoolId
+      ? ({
+          schoolId,
+          ...(selectedClassLevel ? { level: selectedClassLevel } : {}),
+        } as never)
+      : ("skip" as never),
+  ) as
+    | {
+        policy: { pattern: string } | null;
+        version: number;
+        preview: string | null;
+      }
+    | undefined;
+  const numberingPolicyConfigured = Boolean(admissionNumbering?.policy);
+  const useAutomaticAdmissionNumber =
+    numberingPolicyConfigured && admissionNumberMode === "automatic";
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
@@ -536,6 +579,11 @@ function StudentsPageContent() {
     setStudentFirstName("");
     setStudentLastName("");
     setAdmissionNumber("");
+    setAdmissionNumberMode("automatic");
+    setOverrideReason("");
+    setOverrideConfirmed(false);
+    setOverrideCounterDecision("");
+    setAdvanceCounterTo("");
     setGender("");
     setHouseName("");
     setDateOfBirth("");
@@ -582,7 +630,8 @@ function StudentsPageContent() {
     if (
       !selectedClassId ||
       !normalizedStudentName ||
-      !admissionNumber.trim() ||
+      admissionNumbering === undefined ||
+      (!useAutomaticAdmissionNumber && !admissionNumber.trim()) ||
       !gender.trim()
     ) {
       return;
@@ -632,7 +681,30 @@ function StudentsPageContent() {
         : null;
       const createdStudentId = (await createStudent({
         name: normalizedStudentName,
-        admissionNumber: admissionNumber.trim(),
+        admissionNumber: useAutomaticAdmissionNumber
+          ? ""
+          : admissionNumber.trim(),
+        numberingVersion: useAutomaticAdmissionNumber
+          ? admissionNumbering.version
+          : undefined,
+        overrideReason:
+          numberingPolicyConfigured && admissionNumberMode === "manual"
+            ? overrideReason.trim()
+            : undefined,
+        overrideConfirmed:
+          numberingPolicyConfigured && admissionNumberMode === "manual"
+            ? overrideConfirmed
+            : undefined,
+        overrideCounterDecision:
+          numberingPolicyConfigured && admissionNumberMode === "manual"
+            ? overrideCounterDecision || undefined
+            : undefined,
+        advanceCounterTo:
+          numberingPolicyConfigured &&
+          admissionNumberMode === "manual" &&
+          overrideCounterDecision === "advance"
+            ? Number(advanceCounterTo)
+            : undefined,
         classId: selectedClassId,
         gender,
         houseName: trimmedHouseName || null,
@@ -1183,6 +1255,20 @@ function StudentsPageContent() {
                     onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
                     onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                     onAdmissionNumberChange={setAdmissionNumber}
+                    admissionNumberMode={admissionNumberMode}
+                    numberingPolicyConfigured={numberingPolicyConfigured}
+                    numberingPolicyLoading={admissionNumbering === undefined}
+                    numberingPreview={admissionNumbering?.preview ?? null}
+                    canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                    overrideReason={overrideReason}
+                    overrideConfirmed={overrideConfirmed}
+                    overrideCounterDecision={overrideCounterDecision}
+                    advanceCounterTo={advanceCounterTo}
+                    onAdmissionNumberModeChange={setAdmissionNumberMode}
+                    onOverrideReasonChange={setOverrideReason}
+                    onOverrideConfirmedChange={setOverrideConfirmed}
+                    onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                    onAdvanceCounterToChange={setAdvanceCounterTo}
                     onGenderChange={setGender}
                     onHouseNameChange={setHouseName}
                     onDateOfBirthChange={setDateOfBirth}
@@ -1211,6 +1297,20 @@ function StudentsPageContent() {
                     onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                     admissionNumber={admissionNumber}
                     onAdmissionNumberChange={setAdmissionNumber}
+                    admissionNumberMode={admissionNumberMode}
+                    numberingPolicyConfigured={numberingPolicyConfigured}
+                    numberingPolicyLoading={admissionNumbering === undefined}
+                    numberingPreview={admissionNumbering?.preview ?? null}
+                    canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                    overrideReason={overrideReason}
+                    overrideConfirmed={overrideConfirmed}
+                    overrideCounterDecision={overrideCounterDecision}
+                    advanceCounterTo={advanceCounterTo}
+                    onAdmissionNumberModeChange={setAdmissionNumberMode}
+                    onOverrideReasonChange={setOverrideReason}
+                    onOverrideConfirmedChange={setOverrideConfirmed}
+                    onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                    onAdvanceCounterToChange={setAdvanceCounterTo}
                     gender={gender}
                     onGenderChange={setGender}
                     parentFirstName={parentFirstName}
@@ -1327,6 +1427,20 @@ function StudentsPageContent() {
                   onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
                   onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                   onAdmissionNumberChange={setAdmissionNumber}
+                  admissionNumberMode={admissionNumberMode}
+                  numberingPolicyConfigured={numberingPolicyConfigured}
+                  numberingPolicyLoading={admissionNumbering === undefined}
+                  numberingPreview={admissionNumbering?.preview ?? null}
+                  canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                  overrideReason={overrideReason}
+                  overrideConfirmed={overrideConfirmed}
+                  overrideCounterDecision={overrideCounterDecision}
+                  advanceCounterTo={advanceCounterTo}
+                  onAdmissionNumberModeChange={setAdmissionNumberMode}
+                  onOverrideReasonChange={setOverrideReason}
+                  onOverrideConfirmedChange={setOverrideConfirmed}
+                  onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                  onAdvanceCounterToChange={setAdvanceCounterTo}
                   onGenderChange={setGender}
                   onHouseNameChange={setHouseName}
                   onDateOfBirthChange={setDateOfBirth}
@@ -1358,6 +1472,20 @@ function StudentsPageContent() {
                   onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                   admissionNumber={admissionNumber}
                   onAdmissionNumberChange={setAdmissionNumber}
+                  admissionNumberMode={admissionNumberMode}
+                  numberingPolicyConfigured={numberingPolicyConfigured}
+                  numberingPolicyLoading={admissionNumbering === undefined}
+                  numberingPreview={admissionNumbering?.preview ?? null}
+                  canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                  overrideReason={overrideReason}
+                  overrideConfirmed={overrideConfirmed}
+                  overrideCounterDecision={overrideCounterDecision}
+                  advanceCounterTo={advanceCounterTo}
+                  onAdmissionNumberModeChange={setAdmissionNumberMode}
+                  onOverrideReasonChange={setOverrideReason}
+                  onOverrideConfirmedChange={setOverrideConfirmed}
+                  onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                  onAdvanceCounterToChange={setAdvanceCounterTo}
                   gender={gender}
                   onGenderChange={setGender}
                   parentFirstName={parentFirstName}

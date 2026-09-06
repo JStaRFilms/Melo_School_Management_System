@@ -1,10 +1,13 @@
 import {
-  assertSecureUploadTransportAvailable,
   getUnboundStorageUrl,
   secureUploadUnavailable,
 } from "./assetStorageBoundary";
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx } from "../../_generated/server";
-import { allocateNextAdmissionNumberHelper, commitManualAdmissionNumberHelper } from "./admissionNumbers";
+import {
+  allocateNextAdmissionNumberHelper,
+  claimAdmissionNumberHelper,
+  commitManualAdmissionNumberHelper,
+} from "./admissionNumbers";
 import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
@@ -399,6 +402,9 @@ export const createStudent = mutation({
     numberingVersion: v.optional(v.number()),
     overrideReason: v.optional(v.string()),
     overrideConfirmed: v.optional(v.boolean()),
+    overrideCounterDecision: v.optional(
+      v.union(v.literal("keep"), v.literal("advance")),
+    ),
     advanceCounterTo: v.optional(v.number()),
     name: v.optional(v.union(v.string(), v.null())),
     firstName: v.optional(v.union(v.string(), v.null())),
@@ -463,9 +469,30 @@ export const createStudent = mutation({
     }
 
     if (admissionNumber) {
-      await commitManualAdmissionNumberHelper(ctx, { schoolId, number: admissionNumber, reason: args.overrideReason, confirmed: args.overrideConfirmed, advanceTo: args.advanceCounterTo });
+      const numberingPolicy = await ctx.db
+        .query("admissionNumberPolicies")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .unique();
+      if (numberingPolicy) {
+        await commitManualAdmissionNumberHelper(ctx, {
+          schoolId,
+          number: admissionNumber,
+          reason: args.overrideReason,
+          confirmed: args.overrideConfirmed,
+          counterDecision: args.overrideCounterDecision,
+          advanceTo: args.advanceCounterTo,
+        });
+      } else {
+        // Until a branch configures governed numbering, retain its existing required
+        // manual-ID creation contract while still claiming identifiers permanently.
+        await claimAdmissionNumberHelper(ctx, schoolId, admissionNumber);
+      }
     } else {
-      const allocation = await allocateNextAdmissionNumberHelper(ctx, { schoolId, level: classDoc.level, expectedVersion: args.numberingVersion });
+      const allocation = await allocateNextAdmissionNumberHelper(ctx, {
+        schoolId,
+        level: classDoc.level,
+        expectedVersion: args.numberingVersion,
+      });
       admissionNumber = allocation.allocatedNumber;
     }
 
@@ -621,6 +648,9 @@ export const updateStudent = mutation({
   args: {
     overrideReason: v.optional(v.string()),
     overrideConfirmed: v.optional(v.boolean()),
+    overrideCounterDecision: v.optional(
+      v.union(v.literal("keep"), v.literal("advance")),
+    ),
     advanceCounterTo: v.optional(v.number()),
     studentId: v.id("students"),
     name: v.optional(v.union(v.string(), v.null())),
@@ -672,7 +702,14 @@ export const updateStudent = mutation({
         : normalizeAdmissionNumber(args.admissionNumber);
 
     if (nextAdmissionNumber !== student.admissionNumber) {
-      await commitManualAdmissionNumberHelper(ctx, { schoolId, number: nextAdmissionNumber, reason: args.overrideReason, confirmed: args.overrideConfirmed, advanceTo: args.advanceCounterTo });
+      await commitManualAdmissionNumberHelper(ctx, {
+        schoolId,
+        number: nextAdmissionNumber,
+        reason: args.overrideReason,
+        confirmed: args.overrideConfirmed,
+        counterDecision: args.overrideCounterDecision,
+        advanceTo: args.advanceCounterTo,
+      });
       // Retain the original legacy identifier as a permanent claim before an explicit correction.
       const previousClaim = await ctx.db.query("admissionNumberClaims").withIndex("by_school_number", q => q.eq("schoolId", schoolId).eq("number", student.admissionNumber)).unique();
       if (!previousClaim) await ctx.db.insert("admissionNumberClaims", { schoolId, number: student.admissionNumber, createdAt: Date.now() });

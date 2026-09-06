@@ -134,12 +134,40 @@ it("creates atomically, replays the same intent, preserves manual identifiers an
     schoolId,
   });
   await expect(
+    viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
+      studentId,
+      admissionNumber: "SYN-CORRECTED-0001",
+      overrideConfirmed: true,
+      overrideReason: "Correct registrar entry",
+    }),
+  ).rejects.toThrow("Choose explicitly");
+  await viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
+    studentId,
+    admissionNumber: "SYN-CORRECTED-0001",
+    overrideConfirmed: true,
+    overrideReason: "Correct registrar entry",
+    overrideCounterDecision: "keep",
+  });
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    admissionNumber: "SYN-CORRECTED-0001",
+  });
+  expect((await t.run((ctx) => ctx.db.get(policyId)))?.currentSequence).toBe(2);
+  await expect(
     viewer.mutation(api.functions.academic.studentEnrollment.createStudent, {
       ...input,
       requestKey: "manual",
       admissionNumber: "HIST/009900",
     }),
   ).rejects.toThrow("reason");
+  await expect(
+    viewer.mutation(api.functions.academic.studentEnrollment.createStudent, {
+      ...input,
+      requestKey: "manual-no-counter-choice",
+      admissionNumber: "HIST/009899",
+      overrideConfirmed: true,
+      overrideReason: "Preserve supplied historical record",
+    }),
+  ).rejects.toThrow("Choose explicitly");
   await viewer.mutation(
     api.functions.academic.studentEnrollment.createStudent,
     {
@@ -148,6 +176,7 @@ it("creates atomically, replays the same intent, preserves manual identifiers an
       admissionNumber: "HIST/009900",
       overrideConfirmed: true,
       overrideReason: "Preserve supplied historical record",
+      overrideCounterDecision: "keep",
     },
   );
   expect((await t.run((ctx) => ctx.db.get(policyId)))?.currentSequence).toBe(2);
@@ -159,6 +188,7 @@ it("creates atomically, replays the same intent, preserves manual identifiers an
       admissionNumber: "HIST/009901",
       overrideConfirmed: true,
       overrideReason: "Explicit reviewed counter advancement",
+      overrideCounterDecision: "advance",
       advanceCounterTo: 20,
     },
   );
@@ -207,8 +237,48 @@ it("does not infer manual override permission from the legacy admin title", asyn
       admissionNumber: "OLD/001",
       overrideConfirmed: true,
       overrideReason: "Preserve a historical identifier",
+      overrideCounterDecision: "keep",
     }),
   ).rejects.toThrow("override_number");
+});
+it("preserves legacy manual student creation until a numbering policy is configured", async () => {
+  const { t, schoolId, policyId, classId } = await fixture();
+  await t.run(async (ctx) => {
+    await ctx.db.delete(policyId);
+    const groupLink = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .unique();
+    if (groupLink) await ctx.db.delete(groupLink._id);
+  });
+  const viewer = t.withIdentity({
+    subject: "owner",
+    issuer: "test",
+    tokenIdentifier: "test|owner",
+  });
+  const studentId = await viewer.mutation(
+    api.functions.academic.studentEnrollment.createStudent,
+    {
+      firstName: "Legacy",
+      lastName: "Student",
+      gender: "female",
+      classId,
+      admissionNumber: "LEGACY/0001",
+    },
+  );
+  expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
+    admissionNumber: "LEGACY/0001",
+  });
+  expect(
+    await t.run((ctx) =>
+      ctx.db
+        .query("admissionNumberClaims")
+        .withIndex("by_school_number", (q) =>
+          q.eq("schoolId", schoolId).eq("number", "LEGACY/0001"),
+        )
+        .unique(),
+    ),
+  ).not.toBeNull();
 });
 it("conflicts on policy versions and rejects counter rewinds; calendar reset keeps YEAR academic", async () => {
   const { t, schoolId, policyId } = await fixture();

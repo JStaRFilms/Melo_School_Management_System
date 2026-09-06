@@ -293,6 +293,7 @@ export async function commitManualAdmissionNumberHelper(
     number: string;
     reason?: string;
     confirmed?: boolean;
+    counterDecision?: "keep" | "advance";
     advanceTo?: number;
   },
 ) {
@@ -310,10 +311,21 @@ export async function commitManualAdmissionNumberHelper(
     throw new ConvexError(
       "Confirm manual override and provide an 8–240 character reason",
     );
+  if (!args.counterDecision)
+    throw new ConvexError(
+      "Choose explicitly whether to keep or advance the automatic counter",
+    );
+  if (
+    (args.counterDecision === "keep" && args.advanceTo !== undefined) ||
+    (args.counterDecision === "advance" && args.advanceTo === undefined)
+  )
+    throw new ConvexError(
+      "The counter decision and next sequence must agree",
+    );
   if (!args.number.trim() || args.number.length > 160)
     throw new ConvexError("Admission number requires 1–160 characters");
   await claimAdmissionNumberHelper(ctx, args.schoolId, args.number);
-  if (args.advanceTo !== undefined) {
+  if (args.counterDecision === "advance" && args.advanceTo !== undefined) {
     validateSequence(args.advanceTo);
     const { policy, sequence, period } = await getContext(ctx, args.schoolId);
     if (!policy || !period || args.advanceTo <= sequence)
@@ -337,7 +349,7 @@ export async function commitManualAdmissionNumberHelper(
     targetType: "admissionNumberClaims",
     targetId: args.number,
     outcome: "success",
-    safeSummary: `Manual admission override. Reason: ${args.reason.trim()}. Counter: ${args.advanceTo === undefined ? "unchanged" : `explicit next ${args.advanceTo}`}`,
+    safeSummary: `Manual admission override. Reason: ${args.reason.trim()}. Counter: ${args.counterDecision === "keep" ? "unchanged" : `explicit next ${args.advanceTo}`}`,
     alertTier: "tier2_warn",
     retentionClass: "permanent_statutory",
   });

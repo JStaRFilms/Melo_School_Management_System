@@ -254,6 +254,28 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>): Promise<TestH
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("academicSessions", {
+      schoolId: schoolB,
+      name: "2025/2026",
+      startDate: now - 100_000,
+      endDate: now + 100_000,
+      isActive: true,
+      isArchived: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("admissionNumberPolicies", {
+      schoolId: schoolB,
+      pattern: "OBC-IKY-{LEVEL}-{YEAR}-{SEQ:4}",
+      schoolCode: "OBC",
+      campusCode: "IKY",
+      resetFrequency: "continuous",
+      currentSequence: 1,
+      resetPeriod: "continuous",
+      version: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // 6. Create Student in School A
     const studentPerson = await ctx.db.insert("persons", {

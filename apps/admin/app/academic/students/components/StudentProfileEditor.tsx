@@ -5,7 +5,13 @@ import { useMutation,useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useEffect,useMemo,useState } from "react";
 
+import { useAuth } from "@/AuthProvider";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
+import {
+  AdmissionNumberGovernanceFields,
+  hasCompleteAdmissionNumberOverride,
+  type AdmissionCounterDecision,
+} from "./AdmissionNumberGovernanceFields";
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
 import { StudentFamilyPanel } from "./StudentFamilyPanel";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
@@ -67,6 +73,17 @@ export function StudentProfileEditor({
   activeTab = "profile",
   onTabChange,
 }: StudentProfileEditorProps) {
+  const { workspaceAccess } = useAuth();
+  const schoolId =
+    workspaceAccess?.state === "ready"
+      ? workspaceAccess.branch.schoolId
+      : null;
+  const canOverrideAdmissionNumber = Boolean(
+    workspaceAccess?.state === "ready" &&
+      workspaceAccess.effectiveCapabilities.includes(
+        "enrollment.admissions.override_number",
+      ),
+  );
   const studentProfile = useQuery(
     "functions/academic/studentEnrollment:getStudentProfile" as never,
     studentId ? ({ studentId } as never) : ("skip" as never)
@@ -84,6 +101,11 @@ export function StudentProfileEditor({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [overrideCounterDecision, setOverrideCounterDecision] =
+    useState<AdmissionCounterDecision>("");
+  const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [classId, setClassId] = useState("");
   const [houseName, setHouseName] = useState("");
   const [gender, setGender] = useState("");
@@ -97,12 +119,20 @@ export function StudentProfileEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+  const admissionNumbering = useQuery(
+    "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
+    schoolId ? ({ schoolId } as never) : ("skip" as never),
+  ) as { policy: { pattern: string } | null } | undefined;
 
   useEffect(() => {
     if (!studentProfile) return;
     setFirstName(studentProfile.firstName ?? "");
     setLastName(studentProfile.lastName ?? "");
     setAdmissionNumber(studentProfile.admissionNumber);
+    setOverrideReason("");
+    setOverrideConfirmed(false);
+    setOverrideCounterDecision("");
+    setAdvanceCounterTo("");
     setClassId(studentProfile.classId);
     setHouseName(studentProfile.houseName ?? "");
     setGender(studentProfile.gender ?? "");
@@ -122,6 +152,19 @@ export function StudentProfileEditor({
   }, [clearPhoto, photoFile, studentProfile?.photoUrl]);
 
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || studentProfile?.displayName || "Unnamed Student";
+  const admissionNumberChanged = Boolean(
+    studentProfile &&
+      admissionNumber.trim() !== studentProfile.admissionNumber,
+  );
+  const admissionNumberOverrideReady =
+    !admissionNumberChanged ||
+    hasCompleteAdmissionNumberOverride({
+      canOverride: canOverrideAdmissionNumber,
+      confirmed: overrideConfirmed,
+      reason: overrideReason,
+      counterDecision: overrideCounterDecision,
+      advanceCounterTo,
+    });
 
   useEffect(() => {
     return () => {
@@ -143,6 +186,15 @@ export function StudentProfileEditor({
   }
 
   const handleSave = async () => {
+    if (!admissionNumberOverrideReady) {
+      onNotice({
+        tone: "error",
+        message:
+          "Admission-number changes require override permission, an audit reason, confirmation, and an explicit counter decision.",
+      });
+      return;
+    }
+
     if (guardianPhone.trim() && !isValidPhoneNumber(guardianPhone)) {
       onNotice({
         tone: "error",
@@ -164,6 +216,19 @@ export function StudentProfileEditor({
         firstName,
         lastName,
         admissionNumber,
+        overrideReason: admissionNumberChanged
+          ? overrideReason.trim()
+          : undefined,
+        overrideConfirmed: admissionNumberChanged
+          ? overrideConfirmed
+          : undefined,
+        overrideCounterDecision: admissionNumberChanged
+          ? overrideCounterDecision || undefined
+          : undefined,
+        advanceCounterTo:
+          admissionNumberChanged && overrideCounterDecision === "advance"
+            ? Number(advanceCounterTo)
+            : undefined,
         classId,
         houseName: houseName || null,
         gender: gender || null,
@@ -339,6 +404,21 @@ export function StudentProfileEditor({
               onAddressChange={setAddress}
             />
 
+            {admissionNumberChanged && (
+              <AdmissionNumberGovernanceFields
+                canOverride={canOverrideAdmissionNumber}
+                confirmed={overrideConfirmed}
+                reason={overrideReason}
+                counterDecision={overrideCounterDecision}
+                advanceCounterTo={advanceCounterTo}
+                policyConfigured={Boolean(admissionNumbering?.policy)}
+                onConfirmedChange={setOverrideConfirmed}
+                onReasonChange={setOverrideReason}
+                onCounterDecisionChange={setOverrideCounterDecision}
+                onAdvanceCounterToChange={setAdvanceCounterTo}
+              />
+            )}
+
             <PortalCredentialPanel
               title="Student Portal Access"
               description="Provision or refresh the portal login used by this student for the parent/student portal test flow."
@@ -354,7 +434,7 @@ export function StudentProfileEditor({
             <button
               type="button"
               onClick={() => void handleSave()}
-              disabled={isSaving || isArchiving || isPhotoProcessing || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId}
+              disabled={isSaving || isArchiving || isPhotoProcessing || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId || !admissionNumberOverrideReady}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
             >
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />

@@ -24,6 +24,11 @@ import Link from "next/link";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
+import {
+  AdmissionNumberGovernanceFields,
+  hasCompleteAdmissionNumberOverride,
+  type AdmissionCounterDecision,
+} from "../components/AdmissionNumberGovernanceFields";
 import { StudentPhotoPanel } from "../components/StudentPhotoPanel";
 import type { ClassSummary } from "../components/types";
 import { cn } from "@/utils";
@@ -45,6 +50,15 @@ type StudentFirstOnboardingFormProps = {
   firstName: string;
   lastName: string;
   admissionNumber: string;
+  admissionNumberMode: "automatic" | "manual";
+  numberingPolicyConfigured: boolean;
+  numberingPolicyLoading: boolean;
+  numberingPreview: string | null;
+  canOverrideAdmissionNumber: boolean;
+  overrideReason: string;
+  overrideConfirmed: boolean;
+  overrideCounterDecision: AdmissionCounterDecision;
+  advanceCounterTo: string;
   gender: string;
   houseName: string;
   dateOfBirth: string;
@@ -71,6 +85,11 @@ type StudentFirstOnboardingFormProps = {
   onLastNameChange: (value: string) => void;
   onLastNameBlur: (value: string) => void;
   onAdmissionNumberChange: (value: string) => void;
+  onAdmissionNumberModeChange: (value: "automatic" | "manual") => void;
+  onOverrideReasonChange: (value: string) => void;
+  onOverrideConfirmedChange: (value: boolean) => void;
+  onOverrideCounterDecisionChange: (value: AdmissionCounterDecision) => void;
+  onAdvanceCounterToChange: (value: string) => void;
   onGenderChange: (value: string) => void;
   onHouseNameChange: (value: string) => void;
   onDateOfBirthChange: (value: string) => void;
@@ -103,6 +122,15 @@ export function StudentFirstOnboardingForm({
   firstName,
   lastName,
   admissionNumber,
+  admissionNumberMode,
+  numberingPolicyConfigured,
+  numberingPolicyLoading,
+  numberingPreview,
+  canOverrideAdmissionNumber,
+  overrideReason,
+  overrideConfirmed,
+  overrideCounterDecision,
+  advanceCounterTo,
   gender,
   houseName,
   dateOfBirth,
@@ -129,6 +157,11 @@ export function StudentFirstOnboardingForm({
   onLastNameChange,
   onLastNameBlur,
   onAdmissionNumberChange,
+  onAdmissionNumberModeChange,
+  onOverrideReasonChange,
+  onOverrideConfirmedChange,
+  onOverrideCounterDecisionChange,
+  onAdvanceCounterToChange,
   onGenderChange,
   onHouseNameChange,
   onDateOfBirthChange,
@@ -190,8 +223,21 @@ export function StudentFirstOnboardingForm({
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
+  const governedManualNumber =
+    numberingPolicyConfigured && admissionNumberMode === "manual";
+  const admissionNumberReady = numberingPolicyConfigured
+    ? admissionNumberMode === "automatic" ||
+      (Boolean(admissionNumber.trim()) &&
+        hasCompleteAdmissionNumberOverride({
+          canOverride: canOverrideAdmissionNumber,
+          confirmed: overrideConfirmed,
+          reason: overrideReason,
+          counterDecision: overrideCounterDecision,
+          advanceCounterTo,
+        }))
+    : Boolean(admissionNumber.trim());
   const hasCoreIdentity = Boolean(
-    firstName.trim() && lastName.trim() && admissionNumber.trim() && gender.trim()
+    firstName.trim() && lastName.trim() && admissionNumberReady && gender.trim()
   );
   const hasClassPlacement = Boolean(selectedClassId);
   const hasParentOrGuardian = Boolean(
@@ -201,7 +247,11 @@ export function StudentFirstOnboardingForm({
     provisionStudentPortalAccess || provisionParentPortalAccess
   );
 
-  const canSubmit = hasClassPlacement && hasCoreIdentity && !isPhotoProcessing;
+  const canSubmit =
+    hasClassPlacement &&
+    hasCoreIdentity &&
+    !numberingPolicyLoading &&
+    !isPhotoProcessing;
 
   const completedStepsCount = [
     hasClassPlacement,
@@ -267,7 +317,9 @@ export function StudentFirstOnboardingForm({
                   </h3>
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-slate-500">
                     <span className="font-mono font-bold text-slate-700">
-                      {admissionNumber.trim() || "ID Pending"}
+                      {numberingPolicyConfigured && admissionNumberMode === "automatic"
+                        ? numberingPreview ?? "Assigned on enrollment"
+                        : admissionNumber.trim() || "ID Pending"}
                     </span>
                     {gender && <span>• {gender}</span>}
                   </div>
@@ -304,7 +356,7 @@ export function StudentFirstOnboardingForm({
                 <ChecklistItem
                   isDone={hasCoreIdentity}
                   label="Student Core Identity"
-                  detail="First name, last name, admission ID, and gender"
+                  detail="First name, last name, governed admission ID, and gender"
                 />
                 <ChecklistItem
                   isDone={hasParentOrGuardian}
@@ -598,13 +650,60 @@ export function StudentFirstOnboardingForm({
                   </Field>
 
                   <Field label="Admission Number *">
-                    <input
-                      value={admissionNumber}
-                      onChange={(e) => onAdmissionNumberChange(e.target.value)}
-                      className={fieldInputClassName}
-                      placeholder="e.g. NUR-0014"
-                      required
-                    />
+                    {numberingPolicyLoading ? (
+                      <p role="status" className="text-xs font-medium text-slate-500">
+                        Loading numbering policy…
+                      </p>
+                    ) : numberingPolicyConfigured ? (
+                      <fieldset className="space-y-2">
+                        <legend className="sr-only">Admission number source</legend>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <input
+                            type="radio"
+                            name="onboarding-admission-number-source"
+                            checked={admissionNumberMode === "automatic"}
+                            onChange={() => onAdmissionNumberModeChange("automatic")}
+                          />
+                          Assign automatically on enrollment
+                        </label>
+                        <p className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs font-bold text-slate-800">
+                          {numberingPreview ?? "Number assigned in the enrollment transaction"}
+                        </p>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <input
+                            type="radio"
+                            name="onboarding-admission-number-source"
+                            checked={admissionNumberMode === "manual"}
+                            disabled={!canOverrideAdmissionNumber}
+                            onChange={() => onAdmissionNumberModeChange("manual")}
+                          />
+                          Supply a historical or manual number
+                        </label>
+                        {admissionNumberMode === "manual" && (
+                          <input
+                            aria-label="Manual admission number"
+                            value={admissionNumber}
+                            onChange={(e) => onAdmissionNumberChange(e.target.value)}
+                            className={fieldInputClassName}
+                            placeholder="Historical admission number"
+                            required
+                          />
+                        )}
+                      </fieldset>
+                    ) : (
+                      <>
+                        <input
+                          value={admissionNumber}
+                          onChange={(e) => onAdmissionNumberChange(e.target.value)}
+                          className={fieldInputClassName}
+                          placeholder="e.g. NUR-0014"
+                          required
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          This branch has not configured automatic numbering, so its existing manual-ID workflow remains active.
+                        </p>
+                      </>
+                    )}
                   </Field>
 
                   <Field label="Gender *">
@@ -640,6 +739,21 @@ export function StudentFirstOnboardingForm({
                   </Field>
                 </div>
               </div>
+
+              {governedManualNumber && (
+                <AdmissionNumberGovernanceFields
+                  canOverride={canOverrideAdmissionNumber}
+                  confirmed={overrideConfirmed}
+                  reason={overrideReason}
+                  counterDecision={overrideCounterDecision}
+                  advanceCounterTo={advanceCounterTo}
+                  policyConfigured={numberingPolicyConfigured}
+                  onConfirmedChange={onOverrideConfirmedChange}
+                  onReasonChange={onOverrideReasonChange}
+                  onCounterDecisionChange={onOverrideCounterDecisionChange}
+                  onAdvanceCounterToChange={onAdvanceCounterToChange}
+                />
+              )}
             </AdminSurface>
 
             {/* ── SECTION 3: Household & Primary Guardian ── */}
