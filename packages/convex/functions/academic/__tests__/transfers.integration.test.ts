@@ -360,6 +360,27 @@ async function setupTestHarness(
   });
 }
 
+async function reviewedNumbering(
+  t: ReturnType<typeof convexTest>,
+  identity: TestHarness["adminAIdentity"],
+  schoolId: Id<"schools">,
+  classId: Id<"classes">,
+) {
+  const proposal = await t.withIdentity(identity).query(
+    transfersApi.previewTransferNumber,
+    { schoolId, classId },
+  );
+  if (!proposal.available) throw new Error(proposal.message);
+  return {
+    expectedPolicyVersion: proposal.policyVersion,
+    expectedFormatVersion: proposal.formatVersion,
+    expectedCounterKey: proposal.counterKey,
+    expectedCounterVersion: proposal.counterVersion,
+    expectedAdmissionNumber: proposal.allocatedNumber,
+    expectedSequenceNumber: proposal.sequenceNumber,
+  };
+}
+
 describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX-15)", () => {
   it("1. Positive: Two-phase commit (Initiate -> Release -> Accept) cleanly transfers student to destination branch, assigns class & admission number, preserving historical source tenancy", async () => {
     const t = convexTest(schema, modules);
@@ -565,9 +586,11 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(releaseAudit?.outcome).toBe("success");
 
     // --- Phase 2: Destination Branch Acceptance ---
+    const numbering = await reviewedNumbering(t, harness.adminBIdentity, harness.schoolB, harness.classBId);
     const acceptResult = await adminB.mutation(acceptDestinationTransferRef, {
       transferId,
       destinationClassId: harness.classBId,
+      ...numbering,
     });
 
     expect(acceptResult.status).toBe("completed");
@@ -878,7 +901,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     ).toBeUndefined();
   });
 
-  it("6. Manual destination admission number override requires capability, confirmation, reason, and uniqueness", async () => {
+  it("6. Manual destination admission number supports explicit reviewed counter advance and exact replay", async () => {
     const t = convexTest(schema, modules);
     const harness = await setupTestHarness(t);
     const adminA = t.withIdentity(harness.adminAIdentity);
@@ -927,13 +950,18 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       }),
     ).rejects.toThrow("requires a reason");
 
-    const accepted = await adminB.mutation(acceptDestinationTransferRef, {
+    const numbering = await reviewedNumbering(t, harness.adminBIdentity, harness.schoolB, harness.classBId);
+    const acceptance = {
       transferId,
       destinationClassId: harness.classBId,
       admissionNumberOverride: "IKY-2026-0001",
       admissionNumberOverrideConfirmed: true,
       admissionNumberOverrideReason: "Registrar correction",
-    });
+      advanceCounterTo: 10,
+      ...numbering,
+    };
+    const accepted = await adminB.mutation(acceptDestinationTransferRef, acceptance);
+    expect(await adminB.mutation(acceptDestinationTransferRef, acceptance)).toEqual(accepted);
     expect(accepted.destinationAdmissionNumber).toBe("IKY-2026-0001");
     const manualClaims = await t.run((ctx) =>
       ctx.db.query("admissionNumberClaims").collect(),
@@ -942,7 +970,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     expect(
       (await t.run((ctx) => ctx.db.query("admissionNumberPolicies").first()))
         ?.currentSequence,
-    ).toBe(1);
+    ).toBe(10);
     const audit = await t.run(async (ctx) =>
       ctx.db
         .query("auditEvents")
@@ -1064,7 +1092,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
 });
 
 describe("U6 routed workflow contracts", () => {
-  it("replays initiation/release/accept atomically, rejects altered intent and keeps claims", async () => {
+  it("rejects stale format/counter intent and replays exact reviewed acceptance atomically", async () => {
     const t = convexTest(schema, modules);
     const h = await setupTestHarness(t);
     const source = t.withIdentity(h.adminAIdentity);
@@ -1122,7 +1150,7 @@ describe("U6 routed workflow contracts", () => {
     const args = {
       transferId: first.transferId,
       destinationClassId: h.classBId,
-      expectedPolicyVersion: 1,
+      ...(await reviewedNumbering(t, h.adminBIdentity, h.schoolB, h.classBId)),
     };
     await expect(
       destination.mutation(acceptDestinationTransferRef, {
@@ -1130,6 +1158,18 @@ describe("U6 routed workflow contracts", () => {
         expectedPolicyVersion: 9,
       }),
     ).rejects.toThrow();
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        ...args,
+        expectedFormatVersion: "stale-format",
+      }),
+    ).rejects.toThrow("changed");
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        ...args,
+        expectedCounterVersion: 9,
+      }),
+    ).rejects.toThrow("changed");
     const [accepted, replay] = await Promise.all([
       destination.mutation(acceptDestinationTransferRef, args),
       destination.mutation(acceptDestinationTransferRef, args),
@@ -1232,6 +1272,7 @@ describe("U6 routed workflow contracts", () => {
         destinationSessionId: session,
       }),
     ).rejects.toThrow("active academic session");
+    const numbering = await reviewedNumbering(t, h.adminBIdentity, h.schoolB, h.classBId);
     await t.run(async (ctx) =>
       ctx.db.patch(h.studentId, { enrollmentStatus: "withdrawn" }),
     );
@@ -1239,6 +1280,7 @@ describe("U6 routed workflow contracts", () => {
       destination.mutation(acceptDestinationTransferRef, {
         transferId,
         destinationClassId: h.classBId,
+        ...numbering,
       }),
     ).rejects.toThrow("Source student record");
     const reason = {
@@ -1364,6 +1406,7 @@ describe("U6 continuous history and current branch authority", () => {
     const arrived = await destination.mutation(acceptDestinationTransferRef, {
       transferId: first.transferId,
       destinationClassId: h.classBId,
+      ...(await reviewedNumbering(t, h.adminBIdentity, h.schoolB, h.classBId)),
     });
     const second = await destination.mutation(initiateStudentTransferRef, {
       sourceSchoolId: h.schoolB,
@@ -1379,6 +1422,7 @@ describe("U6 continuous history and current branch authority", () => {
     const returned = await source.mutation(acceptDestinationTransferRef, {
       transferId: second.transferId,
       destinationClassId: h.classAId,
+      ...(await reviewedNumbering(t, h.adminAIdentity, h.schoolA, h.classAId)),
     });
     const history = await source.query(getStudentTransferHistoryRef, {
       studentId: returned.destinationStudentId,
@@ -1440,7 +1484,11 @@ describe("U6 continuous history and current branch authority", () => {
       guardianConsentMethod: "Written consent",
     });
     await source.mutation(authorizeSourceReleaseRef, { transferId });
-    const acceptance = { transferId, destinationClassId: h.classBId };
+    const acceptance = {
+      transferId,
+      destinationClassId: h.classBId,
+      ...(await reviewedNumbering(t, h.adminBIdentity, h.schoolB, h.classBId)),
+    };
     await destination.mutation(acceptDestinationTransferRef, acceptance);
     await t.run(async (ctx) => {
       await ctx.db.delete(grantId);
@@ -1472,6 +1520,7 @@ describe("U6 Portal canonical identity continuity", () => {
     const acceptanceArgs = {
       transferId: initiated.transferId,
       destinationClassId: h.classBId,
+      ...(await reviewedNumbering(t, h.adminBIdentity, h.schoolB, h.classBId)),
     };
     const accepted = await destination.mutation(
       acceptDestinationTransferRef,
@@ -1778,6 +1827,7 @@ describe("U6 Portal canonical identity continuity", () => {
       guardianConsentMethod: "Reviewed written guardian consent",
     });
     await source.mutation(authorizeSourceReleaseRef, { transferId });
+    const numbering = await reviewedNumbering(t, h.adminBIdentity, h.schoolB, h.classBId);
     await t.run((ctx) =>
       ctx.db.patch(h.studentUserId, { personId: undefined }),
     );
@@ -1785,6 +1835,7 @@ describe("U6 Portal canonical identity continuity", () => {
       destination.mutation(acceptDestinationTransferRef, {
         transferId,
         destinationClassId: h.classBId,
+        ...numbering,
       }),
     ).rejects.toThrow("reviewed canonical person");
     const state = await t.run(async (ctx) => ({

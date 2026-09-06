@@ -475,6 +475,11 @@ export const acceptDestinationTransfer = mutation({
     destinationClassId: v.id("classes"),
     destinationSessionId: v.optional(v.id("academicSessions")),
     expectedPolicyVersion: v.optional(v.number()),
+    expectedFormatVersion: v.optional(v.string()),
+    expectedCounterKey: v.optional(v.string()),
+    expectedCounterVersion: v.optional(v.number()),
+    expectedAdmissionNumber: v.optional(v.string()),
+    expectedSequenceNumber: v.optional(v.number()),
     advanceCounterTo: v.optional(v.number()),
     admissionNumberOverride: v.optional(v.string()),
     admissionNumberOverrideReason: v.optional(v.string()),
@@ -494,6 +499,11 @@ export const acceptDestinationTransfer = mutation({
       args.destinationClassId,
       args.destinationSessionId,
       args.expectedPolicyVersion,
+      args.expectedFormatVersion,
+      args.expectedCounterKey,
+      args.expectedCounterVersion,
+      args.expectedAdmissionNumber,
+      args.expectedSequenceNumber,
       args.admissionNumberOverride?.trim(),
       args.admissionNumberOverrideReason,
       args.admissionNumberOverrideConfirmed,
@@ -583,15 +593,37 @@ export const acceptDestinationTransfer = mutation({
         confirmed: args.admissionNumberOverrideConfirmed,
         advanceTo: args.advanceCounterTo,
         expectedVersion: args.expectedPolicyVersion,
+        expectedFormatVersion: args.expectedFormatVersion,
+        expectedCounterKey: args.expectedCounterKey,
+        expectedCounterVersion: args.expectedCounterVersion,
       });
       destinationAdmissionNumber = manualAdmissionNumber;
     } else {
-      const { allocatedNumber } = await allocateNextAdmissionNumberHelper(ctx, {
+      if (
+        args.expectedPolicyVersion === undefined ||
+        !args.expectedFormatVersion ||
+        !args.expectedCounterKey ||
+        args.expectedCounterVersion === undefined ||
+        !args.expectedAdmissionNumber ||
+        args.expectedSequenceNumber === undefined
+      ) {
+        throw new ConvexError("Automatic acceptance requires the complete reviewed numbering proposal");
+      }
+      const allocation = await allocateNextAdmissionNumberHelper(ctx, {
         schoolId: transfer.destinationSchoolId,
         level: destClass.level,
         expectedVersion: args.expectedPolicyVersion,
+        expectedFormatVersion: args.expectedFormatVersion,
+        expectedCounterKey: args.expectedCounterKey,
+        expectedCounterVersion: args.expectedCounterVersion,
       });
-      destinationAdmissionNumber = allocatedNumber;
+      if (
+        allocation.allocatedNumber !== args.expectedAdmissionNumber ||
+        allocation.sequenceNumber !== args.expectedSequenceNumber
+      ) {
+        throw new ConvexError("Admission number proposal changed; refresh and review again");
+      }
+      destinationAdmissionNumber = allocation.allocatedNumber;
     }
 
     const sourceStudent = await ctx.db.get(transfer.studentId);
