@@ -332,6 +332,7 @@ type LessonPlanWorkspace = {
   canAutosave: boolean;
   draft: {
     artifactId: Id<"instructionArtifacts"> | null;
+    revisionNumber: number;
   };
   selectedSources: Array<{
     _id: string;
@@ -1501,6 +1502,7 @@ export const generateTeacherLessonPlanDraft = action({
         api.functions.academic.lessonKnowledgeLessonPlans.saveTeacherInstructionArtifactDraft,
         {
           artifactId: workspace.draft.artifactId ?? null,
+          expectedRevisionNumber: workspace.draft.revisionNumber,
           outputType: args.outputType,
           title: generatedObject.title,
           documentState,

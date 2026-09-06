@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { MobileProgressIndicator } from "@school/shared";
+import type { DraftStatus } from "@school/shared/drafts";
 import { feePlanValidation } from "../../fee-plan-validation";
 import { BankAccountSelection } from "../BankAccountSelection";
 import { cn } from "@/utils";
@@ -17,12 +18,14 @@ interface FeePlanFormProps {
   onChange: (draft: FeePlanDraft) => void;
   onSubmit: (e: React.FormEvent) => void;
   classes: ClassOption[];
+  draftStatus?: DraftStatus;
+  draftLastSavedAt?: number | null;
 }
 
 const labelCx = "text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 font-display flex items-center gap-1.5";
 const inputCx = "w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 outline-none transition-all placeholder:text-slate-400";
 
-export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormProps) {
+export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, draftLastSavedAt }: FeePlanFormProps) {
   const [showMultiClass, setShowMultiClass] = useState(() => draft.targetClassIds.length > 1);
 
   const addLineItem = (defaultLabel = "", isOptional = false) => {
@@ -98,7 +101,7 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
       <MobileProgressIndicator mode="sections" topOffset="top-0" sections={[
         { id: "plan", title: "Plan name", isValid: Boolean(draft.name.trim()) },
         { id: "fees", title: "Fees and schedule", isValid: feePlanValidation({ ...draft, name: "validation" }) === null },
-      ]} saveStatusText="Unsaved form · no recovery draft" />
+      ]} draftStatus={draftStatus} lastSavedAt={draftLastSavedAt} saveStatusText={draftStatus ? undefined : "Draft recovery unavailable"} />
       <BankAccountSelection value={draft.bankAccountId ?? ""} onChange={bankAccountId => onChange({ ...draft, bankAccountId })} />
       {/* Scrollable Form Body */}
       <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar">

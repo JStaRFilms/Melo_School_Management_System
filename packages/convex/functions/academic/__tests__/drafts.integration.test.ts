@@ -81,6 +81,59 @@ describe("Private registered draft lifecycle", () => {
     expect(await h.t.run(ctx => ctx.db.get(instance.draftId))).toMatchObject({ status: "committed", payload: {} });
   }, 10000);
 
+  it("atomically closes an academic-session draft and rejects delayed resurrection", async () => {
+    const h = await setup();
+    const scope = { schoolId: h.schoolId, formKey: "academic_setup" };
+    const instance = await h.user.mutation(drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+    const saved = await h.user.mutation(drafts.saveFormDraft, {
+      schoolId: h.schoolId,
+      draftId: instance.draftId,
+      expectedRevision: 0,
+      schemaVersion: 1,
+      payload: { name: "2030/2031", startDate: "2030-09-01", endDate: "2031-07-01", isActive: false, autoGenerateTerms: false },
+    });
+    const sessionId = await h.user.mutation(api.functions.academic.academicSetup.createSession, {
+      name: "2030/2031",
+      startDate: Date.UTC(2030, 8, 1),
+      endDate: Date.UTC(2031, 6, 1),
+      isActive: false,
+      autoGenerateTerms: false,
+      draftId: instance.draftId,
+      expectedDraftRevision: saved.revision,
+    });
+    expect(await h.t.run(ctx => ctx.db.get(sessionId))).toMatchObject({ name: "2030/2031" });
+    expect(await h.user.query(drafts.getFormDraft, scope)).toBeNull();
+    expect(await h.t.run(ctx => ctx.db.get(instance.draftId))).toMatchObject({ status: "committed", payload: {} });
+    await expect(h.user.mutation(drafts.saveFormDraft, {
+      schoolId: h.schoolId,
+      draftId: instance.draftId,
+      expectedRevision: saved.revision,
+      schemaVersion: 1,
+      payload: { name: "resurrect", startDate: "", endDate: "", isActive: false, autoGenerateTerms: false },
+    })).rejects.toThrow(/already/);
+
+    const stale = await h.user.mutation(drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+    await h.user.mutation(drafts.saveFormDraft, {
+      schoolId: h.schoolId,
+      draftId: stale.draftId,
+      expectedRevision: 0,
+      schemaVersion: 1,
+      payload: { name: "Must roll back", startDate: "2032-09-01", endDate: "2033-07-01", isActive: false, autoGenerateTerms: false },
+    });
+    await expect(h.user.mutation(api.functions.academic.academicSetup.createSession, {
+      name: "Must roll back",
+      startDate: Date.UTC(2032, 8, 1),
+      endDate: Date.UTC(2033, 6, 1),
+      isActive: false,
+      autoGenerateTerms: false,
+      draftId: stale.draftId,
+      expectedDraftRevision: 0,
+    })).rejects.toThrow(/Conflict/);
+    const sessions = await h.t.run(ctx => ctx.db.query("academicSessions").withIndex("by_school", q => q.eq("schoolId", h.schoolId)).collect());
+    expect(sessions.map(row => row.name)).not.toContain("Must roll back");
+    expect(await h.user.query(drafts.getFormDraft, scope)).toMatchObject({ draftId: stale.draftId, revision: 1 });
+  });
+
   it("denies cross-user, branch, suspended, revoked and unauthenticated access", async () => {
     const h = await setup(); const instance = await h.begin();
     const args = { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0 };

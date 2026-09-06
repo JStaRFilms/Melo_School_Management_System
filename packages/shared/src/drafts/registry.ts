@@ -34,6 +34,32 @@ const studentOnboarding = z.object({
   provisionParentPortalAccess: z.boolean().default(false),
   enrollmentRequestKey: z.string().uuid().optional(),
 }).strict();
+const feeCategory = z.enum(["tuition", "boarding", "transport", "exam", "activity", "other"]);
+const feePlan = z.object({
+  bankAccountId: identifier.default(""),
+  name: text.default(""),
+  description: notes.default(""),
+  currency: identifier.default("NGN"),
+  billingMode: z.enum(["class_default", "manual_extra"]).default("class_default"),
+  targetClassIds: z.array(identifier).max(200).default([]),
+  installmentEnabled: z.boolean().default(false),
+  installmentCount: identifier.default("2"),
+  intervalDays: identifier.default("30"),
+  firstDueDays: identifier.default("14"),
+  lineItems: z.array(z.object({
+    label: text.default(""),
+    amount: identifier.default(""),
+    category: feeCategory.default("tuition"),
+    isOptional: z.boolean().default(false),
+  }).strict()).min(1).max(100),
+}).strict();
+const academicSession = z.object({
+  name: text.default(""),
+  startDate: identifier.default(""),
+  endDate: identifier.default(""),
+  isActive: z.boolean().default(true),
+  autoGenerateTerms: z.boolean().default(true),
+}).strict();
 const familyOnboarding = z.object({
   studentFirstName: text.default(""),
   studentLastName: text.default(""),
@@ -64,8 +90,8 @@ export const draftRegistry = {
   student_onboarding: definition(studentOnboarding, "personal", 90, "admin"),
   family_onboarding: definition(familyOnboarding, "personal", 90, "admin"),
   staff_onboarding: definition(z.object({ name: text, email: text }).strict(), "personal", 30, "admin"),
-  fee_plan_builder: definition(z.object({ planName: text.optional(), amount: z.number().finite().min(0).optional(), discount: z.number().finite().min(0).optional(), description: notes.optional() }).strict(), "operational", 30, "admin"),
-  academic_setup: definition(z.object({ name: text.optional(), startDate: text.optional(), endDate: text.optional() }).strict(), "operational", 30, "admin"),
+  fee_plan_builder: definition(feePlan, "operational", 30, "admin"),
+  academic_setup: definition(academicSession, "operational", 30, "admin"),
   report_card_configuration: definition(z.object({ name: text.optional(), description: notes.optional() }).strict(), "operational", 30, "admin"),
   curriculum_plan: definition(z.object({ week: z.number().int().min(1).max(53).optional(), topic: text.optional(), objectives: notes.optional(), activities: notes.optional() }).strict(), "operational", 90, "staff"),
   import_review: definition(z.object({ mappings: z.array(z.object({ column: text, target: text }).strict()).max(200).optional() }).strict(), "operational", 90, "admin"),

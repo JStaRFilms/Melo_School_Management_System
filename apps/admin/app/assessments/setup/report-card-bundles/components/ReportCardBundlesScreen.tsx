@@ -50,6 +50,8 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
   const loadedBundleSerializedRef = useRef<string>("");
   const [scaleDirty, setScaleDirty] = useState(false);
   const [bundleDirty, setBundleDirty] = useState(false);
+  const scaleSavePromiseRef = useRef<Promise<void> | null>(null);
+  const bundleSavePromiseRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -174,35 +176,60 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     []
   );
 
-  const handleSaveScale = useCallback(async () => {
-    const issue = validateScaleDraft(scaleDraft);
-    if (issue) {
-      throw new Error(issue);
-    }
-
-    const nextId = await onSaveScaleTemplate(scaleDraft);
-    loadedScaleIdRef.current = nextId;
-    loadedScaleSerializedRef.current = serializeScaleDraft(scaleDraft);
-    setScaleDirty(false);
-    setSelectedScaleId(nextId);
-    setScaleDraft((current) => ({ ...current, templateId: nextId }));
+  const handleSaveScale = useCallback(() => {
+    if (scaleSavePromiseRef.current) return scaleSavePromiseRef.current;
+    const savedDraft = scaleDraft;
+    const operation = (async () => {
+      await Promise.resolve();
+      try {
+        const issue = validateScaleDraft(savedDraft);
+        if (issue) throw new Error(issue);
+        const nextId = await onSaveScaleTemplate(savedDraft);
+        const savedSerialized = serializeScaleDraft({ ...savedDraft, templateId: nextId });
+        loadedScaleIdRef.current = nextId;
+        loadedScaleSerializedRef.current = savedSerialized;
+        setSelectedScaleId(nextId);
+        setScaleDraft((current) => {
+          const next = { ...current, templateId: nextId };
+          setScaleDirty(serializeScaleDraft(next) !== savedSerialized);
+          return next;
+        });
+      } finally {
+        scaleSavePromiseRef.current = null;
+      }
+    })();
+    scaleSavePromiseRef.current = operation;
+    return operation;
   }, [onSaveScaleTemplate, scaleDraft]);
 
-  const handleSaveBundle = useCallback(async () => {
-    const issue = validateBundleDraft(bundleDraft, scaleTemplates);
-    if (issue) {
-      throw new Error(issue);
-    }
-
-    const nextId = await onSaveBundle(bundleDraft);
-    loadedBundleIdRef.current = nextId;
-    loadedBundleSerializedRef.current = serializeBundleDraft(bundleDraft);
-    setBundleDirty(false);
-    setSelectedBundleId(nextId);
-    setBundleDraft((current) => ({ ...current, bundleId: nextId }));
+  const handleSaveBundle = useCallback(() => {
+    if (bundleSavePromiseRef.current) return bundleSavePromiseRef.current;
+    const savedDraft = bundleDraft;
+    const operation = (async () => {
+      await Promise.resolve();
+      try {
+        const issue = validateBundleDraft(savedDraft, scaleTemplates);
+        if (issue) throw new Error(issue);
+        const nextId = await onSaveBundle(savedDraft);
+        const savedSerialized = serializeBundleDraft({ ...savedDraft, bundleId: nextId });
+        loadedBundleIdRef.current = nextId;
+        loadedBundleSerializedRef.current = savedSerialized;
+        setSelectedBundleId(nextId);
+        setBundleDraft((current) => {
+          const next = { ...current, bundleId: nextId };
+          setBundleDirty(serializeBundleDraft(next) !== savedSerialized);
+          return next;
+        });
+      } finally {
+        bundleSavePromiseRef.current = null;
+      }
+    })();
+    bundleSavePromiseRef.current = operation;
+    return operation;
   }, [bundleDraft, onSaveBundle, scaleTemplates]);
 
   const handleDiscardScale = useCallback(() => {
+    if (scaleSavePromiseRef.current) throw new Error("Wait for the scale save to finish before discarding.");
     const nextDraft = selectedScaleId && selectedScaleId !== "new"
       ? createScaleDraft(scaleTemplates.find((template) => template._id === selectedScaleId) ?? null)
       : createEmptyScaleDraft();
@@ -212,6 +239,7 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
   }, [scaleTemplates, selectedScaleId]);
 
   const handleDiscardBundle = useCallback(() => {
+    if (bundleSavePromiseRef.current) throw new Error("Wait for the add-on save to finish before discarding.");
     const nextDraft = selectedBundleId && selectedBundleId !== "new"
       ? createBundleDraft(bundles.find((bundle) => bundle._id === selectedBundleId) ?? null)
       : createEmptyBundleDraft();
@@ -220,8 +248,8 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     setBundleDirty(false);
   }, [bundles, selectedBundleId]);
 
-  useDirtyForm({ name: "Report scale (unpublished edits)", isDirty: scaleDirty, discard: handleDiscardScale });
-  useDirtyForm({ name: "Report bundle (unpublished edits)", isDirty: bundleDirty, discard: handleDiscardBundle });
+  useDirtyForm({ name: "Report scale configuration", isDirty: scaleDirty, save: handleSaveScale, discard: handleDiscardScale });
+  useDirtyForm({ name: "Report bundle configuration", isDirty: bundleDirty, save: handleSaveBundle, discard: handleDiscardBundle });
 
   const handleSaveScaleAndNext = useCallback(async () => {
     if (scaleDirty) {
@@ -235,7 +263,7 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
     if (scaleDirty) {
       await handleSaveScale();
     }
-    handleSelectScale("new");
+    await handleSelectScale("new");
   }, [handleSaveScale, handleSelectScale, scaleDirty]);
 
   const handleSaveBundleAndNext = useCallback(async () => {

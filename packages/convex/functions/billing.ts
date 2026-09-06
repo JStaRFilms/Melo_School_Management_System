@@ -7,6 +7,7 @@ import { formatClassDisplayName } from "@school/shared/name-format";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { getAuthenticatedSchoolMembership } from "./academic/auth";
 import { snapshotInvoicePaymentInstructionsHelper } from "./academic/bankAccounts";
+import { finishFormDraft } from "./academic/drafts";
 import {
   billingFeePlanApplicationValidator,
   billingFeePlanBillingModeValidator,
@@ -140,6 +141,8 @@ const billingSettingsUpdateValidator = v.object({
 });
 
 const createFeePlanValidator = v.object({
+  draftId: v.optional(v.id("formDrafts")),
+  expectedDraftRevision: v.optional(v.number()),
   bankAccountId: v.optional(v.id("schoolBankAccounts")),
   name: v.string(),
   description: v.optional(v.string()),
@@ -1651,6 +1654,17 @@ export const createFeePlan = mutation({
     const feePlan = await ctx.db.get(feePlanId);
     if (!feePlan) {
       throw new ConvexError("Fee plan not found after creation");
+    }
+
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft identity and revision must be supplied together");
+    }
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+      await finishFormDraft(ctx, {
+        schoolId: viewer.schoolId,
+        draftId: args.draftId,
+        expectedRevision: args.expectedDraftRevision,
+      }, "committed");
     }
 
     return feePlanDocToReturn(feePlan);

@@ -173,6 +173,7 @@ export default function LessonPlansPage() {
     title: string;
     documentState: string;
     plainText: string;
+    expectedRevisionNumber: number;
   }) => {
     if (!workspace) {
       throw new Error("Workspace is still loading.");
@@ -192,6 +193,7 @@ export default function LessonPlansPage() {
     try {
       const result = (await saveDraft({
         artifactId: workspace.draft.artifactId ?? null,
+        expectedRevisionNumber: draft.expectedRevisionNumber,
         outputType,
         title: draft.title,
         documentState: draft.documentState,
@@ -211,7 +213,7 @@ export default function LessonPlansPage() {
         id: "teacher-lesson-plans-save-error",
         description: message,
       });
-      throw new Error(message);
+      throw error;
     }
   };
 

@@ -19,7 +19,7 @@ Inventory basis: `03-stabilization.task.md`, `implementation-plan.md`, all packe
 | U2d banks | **Implemented locally** | **Not runtime-verified (E0)** | Authorized rollout plus browser/print evidence; no provider verification or live finance operation. |
 | U3a draft core | **Partial** | **Not runtime-verified (E0)** | Operational expiry scheduling/retry and active-instance index/claim; actual form adoption, durable recovery and browser history/reload acceptance. |
 | U3b people forms | **Partial** | **Not runtime-verified (E0)** | Server draft adapters/recovery Preview/Resume/Discard, validated progress, durable follow-up identity/context reconciliation, and no-duplicate partial-failure handling. |
-| U3c long forms | **Partial** | **Not runtime-verified (E0)** | Persistent recovery/tombstones for fee/academic/report forms, Teacher planning adoption/conflict/reauth, and U4b import handoff. |
+| U3c long forms | **Implemented locally** | **Not runtime-verified (E0)** | Authorized rollout plus authenticated reload/history/modal/320px, report revision-failure and Teacher two-tab/context/account/reauth evidence; see `U3c-completion.md`. |
 | U3d theme | **Implemented locally** | **Not runtime-verified (E0)** | Authorized rollout, branch switching/runtime token update, Sites published synchronization seam, and 320px/keyboard/print evidence. |
 | U4a email | **Implemented locally** | **Not runtime-verified (E0)** | Provider outbox/provisioning/verification remains intentionally unavailable; persistent review recovery, pagination, and authenticated runtime evidence are missing. |
 | U4b import review | **Partial** | **Not runtime-verified (E0)** | Public commit must be disabled or replaced by immutable reviewed per-row plan; explicit create/merge/ignore and class/subject/family decisions, H4 missing-only allocation, audit/reconciliation receipts, bounded retry, and identity/privacy-safe outcomes. |
@@ -32,8 +32,8 @@ Inventory basis: `03-stabilization.task.md`, `implementation-plan.md`, all packe
 
 ### Counts and release conclusion
 
-- **Implemented locally:** 10 (U1a, U1c, U1d, U1e, U2a, U2b, U2d, U3d, U4a, U6a).
-- **Partial:** 12 (U1b, U1f, U1g, U2c, U3a, U3b, U3c, U4b, U5a, U5b, U5c, U5d).
+- **Implemented locally:** 11 (U1a, U1c, U1d, U1e, U2a, U2b, U2d, U3c, U3d, U4a, U6a).
+- **Partial:** 11 (U1b, U1f, U1g, U2c, U3a, U3b, U4b, U5a, U5b, U5c, U5d).
 - **Not implemented:** 1 (U7a).
 - Runtime verification: **0/23** packets verified; **23/23 E0**.
 - Release status: **not complete / NEEDS CHANGES**. R1 Critical 4 is locally contained by fail-closed server upload issuance/finalization, but upload remains unavailable and its authoritative transport/reservation/cleanup implementation is not complete. Critical 1 (import commit) and warnings on Portal transfer identity, draft retention/indexing, cleanup fairness, and group audit scalability remain outside this storage-only task.

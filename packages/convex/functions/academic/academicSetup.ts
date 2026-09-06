@@ -673,6 +673,8 @@ export const createSession = mutation({
     endDate: v.number(),
     isActive: v.boolean(),
     autoGenerateTerms: v.optional(v.boolean()),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.id("academicSessions"),
   handler: async (ctx, args) => {
@@ -751,6 +753,17 @@ export const createSession = mutation({
           updatedAt: now,
         });
       }
+    }
+
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft identity and revision must be supplied together");
+    }
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+      await finishFormDraft(ctx, {
+        schoolId,
+        draftId: args.draftId,
+        expectedRevision: args.expectedDraftRevision,
+      }, "committed");
     }
 
     return sessionId;

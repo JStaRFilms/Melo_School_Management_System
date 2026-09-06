@@ -3,11 +3,18 @@ import { afterEach, expect, it, vi } from "vitest";
 import { DepartureGuardProvider, useDepartureGuard } from "@school/shared/drafts";
 import { TeacherCreationForm } from "../app/academic/teachers/components/TeacherCreationForm";
 import { SessionCreationModal } from "../app/academic/sessions/components/SessionCreationModal";
+import { TermCard } from "../app/academic/sessions/components/TermCard";
 import { feePlanValidation } from "../app/billing/fee-plan-validation";
 import { initialFeePlanDraft } from "../app/billing/utils";
 
 const mocks = vi.hoisted(() => ({ mutate: vi.fn() }));
-vi.mock("convex/react", () => ({ useQuery: () => undefined, useMutation: () => mocks.mutate }));
+vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ session: undefined, workspaceAccess: undefined }) }));
+vi.mock("convex/react", () => ({
+  useQuery: () => undefined,
+  useMutation: () => mocks.mutate,
+  useConvexAuth: () => ({ isAuthenticated: false, isLoading: false }),
+  useConvexConnectionState: () => ({ isWebSocketConnected: false }),
+}));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 function Leave({ onLeave }: { onLeave: () => void }) {
@@ -65,6 +72,26 @@ it("protects session modal close and retains invalid dates without a mutation", 
   fireEvent.click(screen.getByText("Stay here"));
   expect(dates[0]).toHaveValue("2030-09-01");
   expect(close).not.toHaveBeenCalled();
+});
+
+it("protects inline term date edits through the common departure guard", async () => {
+  const leave = vi.fn();
+  const start = new Date(2030, 8, 1, 12).getTime();
+  const end = new Date(2030, 11, 1, 12).getTime();
+  render(
+    <DepartureGuardProvider>
+      <TermCard term={{ _id: "term-one", sessionId: "session-one", name: "First Term", startDate: start, endDate: end, isActive: false, reportCardCalculationMode: "standalone", updatedAt: 1 }} sessionName="2030/2031" />
+      <Leave onLeave={leave} />
+    </DepartureGuardProvider>,
+  );
+  fireEvent.click(screen.getByTitle("Edit term dates"));
+  const dates = document.querySelectorAll('input[type="date"]');
+  fireEvent.change(dates[0], { target: { value: "2030-09-02" } });
+  fireEvent.click(screen.getByText("Leave account"));
+  await screen.findByRole("dialog");
+  fireEvent.click(screen.getByText("Stay here"));
+  expect(dates[0]).toHaveValue("2030-09-02");
+  expect(leave).not.toHaveBeenCalled();
 });
 
 it("rejects an invalid optional fee instead of silently dropping it", () => {
