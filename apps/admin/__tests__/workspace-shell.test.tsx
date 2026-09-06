@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render as renderView, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { DepartureGuardProvider } from "@school/shared/drafts";
-const render = (ui: ReactNode) => renderView(ui, { wrapper: DepartureGuardProvider });
+const render = (ui: ReactNode) => renderView(ui);
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 import { StaffWorkspace } from "../lib/StaffWorkspace";
 import { BranchSwitcher, type BranchSummary } from "../../../packages/shared/src/components/BranchSwitcher";
@@ -45,6 +44,13 @@ beforeEach(() => {
 });
 
 describe("default-school shell", () => {
+  it("mounts the managed-account dashboard landing with no implicit module capability", () => {
+    access = { ...ready, compatibility: { ...ready.compatibility, mode: "canonical", permissionManaged: true }, effectiveCapabilities: [] };
+    render(<StaffWorkspace><p>Dashboard overview</p></StaffWorkspace>);
+    expect(screen.getByText("Dashboard overview")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/admin/dashboard");
+    expect(screen.queryByRole("link", { name: "Students" })).not.toBeInTheDocument();
+  });
   it.each([
     ["/academic/students/onboarding", "enrollment.intakes.manage"],
     ["/billing/bank-accounts", "finance.bank_details.manage"],

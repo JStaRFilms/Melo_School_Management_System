@@ -1,4 +1,3 @@
-import { resolveEffectiveGradingBands } from "./gradingBands";
 import { query, mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -115,11 +114,6 @@ export const getExamEntrySheet = query({
         maxScore: v.number(),
         gradeLetter: v.string(),
         remark: v.string(),
-        colorHex: v.optional(v.string()),
-        color: v.optional(v.string()),
-        gradePoints: v.optional(v.number()),
-        version: v.optional(v.number()),
-        luminanceContrast: v.optional(v.number()),
         isActive: v.boolean(),
         createdAt: v.number(),
         updatedAt: v.number(),
@@ -189,7 +183,12 @@ export const getExamEntrySheet = query({
     const editingState = getAssessmentEditingState(editingPolicy, Date.now());
 
     // Fetch active grading bands
-    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
+    const gradingBandsResult = await ctx.db
+      .query("gradingBands")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .collect();
 
     // Sort grading bands by minScore
     const sortedBands = [...gradingBandsResult].sort((a, b) => a.minScore - b.minScore);
@@ -399,7 +398,12 @@ export const upsertAssessmentRecordsBulk = mutation({
     }
 
     // Fetch active grading bands
-    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
+    const gradingBandsResult = await ctx.db
+      .query("gradingBands")
+      .withIndex("by_school_active", (q: any) =>
+        q.eq("schoolId", schoolId).eq("isActive", true)
+      )
+      .collect();
 
     if (gradingBandsResult.length === 0) {
       throw new ConvexError("Grading bands not configured");
@@ -413,7 +417,6 @@ export const upsertAssessmentRecordsBulk = mutation({
         minScore: band.minScore,
         maxScore: band.maxScore,
         gradeLetter: band.gradeLetter,
-        colorHex: band.colorHex ?? band.color,
         remark: band.remark,
         isActive: band.isActive,
         createdAt: band.createdAt,

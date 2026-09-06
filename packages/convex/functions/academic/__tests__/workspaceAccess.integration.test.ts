@@ -42,6 +42,21 @@ describe("U1a selected workspace contract", () => {
     expect(await f.viewer.query(accessQuery, { schoolId: f.schoolB })).toMatchObject({ state: "forbidden" });
   });
 
+  it("keeps legacy callers usable during managed-account cutover while enforcing migrated contracts", async () => {
+    const f = await fixture();
+    const membershipId = f.membershipId;
+    if (!membershipId) throw new Error("Missing fixture membership");
+    await f.t.run((ctx) => ctx.db.patch(membershipId, { permissionsManagedAt: 1 }));
+
+    await expect(f.viewer.run((ctx) => getAuthenticatedSchoolMembership(ctx))).resolves.toMatchObject({
+      schoolId: f.schoolA,
+      role: "admin",
+    });
+    await expect(f.viewer.run((ctx) => getAuthenticatedSchoolMembership(ctx, {
+      capability: "finance.reports.view",
+    }))).rejects.toThrow("Required operation capability is missing");
+  });
+
   it("preserves a reviewed canonical membership linked to an exact trusted-subject default", async () => {
     const f = await fixture();
     await f.t.run((ctx) => ctx.db.patch(f.userId, { authTokenIdentifier: undefined }));

@@ -13,7 +13,7 @@ import { getContextCapabilities, isPermissionManaged, normalizeCapability, type 
  */
 export async function getAuthenticatedSchoolMembership(
   ctx: QueryCtx | MutationCtx,
-  options?: { allowSuspended?: boolean; schoolId?: Id<"schools">; capability?: PermissionCapability | readonly PermissionCapability[]; membershipOnly?: boolean }
+  options?: { allowSuspended?: boolean; schoolId?: Id<"schools">; capability?: PermissionCapability | readonly PermissionCapability[] }
 ): Promise<{
   userId: Id<"users">;
   schoolId: Id<"schools">;
@@ -32,18 +32,13 @@ export async function getAuthenticatedSchoolMembership(
     allowSuspended: options?.allowSuspended === true && !options.schoolId,
   });
   if (context.isPlatformAdmin) throw new ConvexError("Forbidden: Platform governance does not authorize tenant operations");
-  const managed = await isPermissionManaged(ctx, context);
-  if (options?.capability) {
-    // Only untouched accounts keep role/assignment-scoped legacy API compatibility.
-    // New RBAC-only APIs never infer sensitive capabilities from that legacy role.
-    if (managed) {
-      const required = typeof options.capability === "string" ? [options.capability] : options.capability;
-      const effective = await getContextCapabilities(ctx, context);
-      if (!required.some(cap => effective.some(value => normalizeCapability(value) === normalizeCapability(cap))))
-        throw new ConvexError("Forbidden: Required operation capability is missing");
-    }
-  } else if (managed && !options?.membershipOnly) {
-    throw new ConvexError("Forbidden: This legacy API has no reviewed capability contract");
+  if (options?.capability && await isPermissionManaged(ctx, context)) {
+    // Capability contracts become authoritative per migrated caller. Uncontracted
+    // callers retain their existing domain checks until their migration is reviewed.
+    const required = typeof options.capability === "string" ? [options.capability] : options.capability;
+    const effective = await getContextCapabilities(ctx, context);
+    if (!required.some(cap => effective.some(value => normalizeCapability(value) === normalizeCapability(cap))))
+      throw new ConvexError("Forbidden: Required operation capability is missing");
   }
   const user = context.userId ? await ctx.db.get(context.userId) : null;
   if (!user) throw new ConvexError({ code: "RECONCILIATION_REQUIRED", message: "Reviewed legacy user mapping required" });

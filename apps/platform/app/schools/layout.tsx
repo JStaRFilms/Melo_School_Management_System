@@ -15,9 +15,6 @@ export default function SchoolsLayout({ children }: { children: ReactNode }) {
         <Link className="underline" href="/audit">
           Audit explorer
         </Link>
-        <Link className="underline" href="/commercial">
-          Commercial
-        </Link>
       </nav>
       {children}
     </SchoolsLayoutClient>

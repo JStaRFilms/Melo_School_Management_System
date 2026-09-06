@@ -41,7 +41,6 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
 
       // 2. People & Operations
       { href: "/academic/students", label: "Students", matchers: ["/academic/students$"] },
-      { href: "/academic/students/transfers", label: "Transfers", matchers: ["/academic/students/transfers"] },
       { href: "/academic/teachers", label: "Teachers", matchers: ["/academic/teachers"] },
       { href: "/academic/events", label: "Events & Calendar", matchers: ["/academic/events"] },
 
@@ -100,7 +99,6 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
 
       // 4. Finance & Invoicing
       { href: "/billing", label: "Billing & Invoices", matchers: ["/billing$"] },
-      { href: "/billing/bank-accounts", label: "Bank Accounts", matchers: ["/billing/bank-accounts"] },
       { href: "/admin/audit", label: "Audit", matchers: ["/admin/audit"] },
       { href: "/admin/permissions", label: "Permissions", matchers: ["/admin/permissions"] },
 
@@ -109,7 +107,6 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
       { href: "/students/import", label: "Import Students", matchers: ["/students/import", "/academic/students/import"] },
-      { href: "/admin/assets", label: "School Assets", matchers: ["/admin/assets"] },
       { href: "/admin/settings", label: "School Settings", matchers: ["/admin/settings"] },
       { href: "/admin", label: "Admin Users", matchers: ["/admin"] },
       {

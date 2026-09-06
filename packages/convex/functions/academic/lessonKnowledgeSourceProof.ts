@@ -1,4 +1,3 @@
-import { getUnboundStorageUrl } from "./assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
@@ -55,7 +54,7 @@ export async function readKnowledgeMaterialOriginalFileAccess(
     throw new ConvexError("The original file is missing from storage");
   }
 
-  const downloadUrl = await getUnboundStorageUrl(ctx, args.storageId);
+  const downloadUrl = await ctx.storage.getUrl(args.storageId);
   if (!downloadUrl) {
     throw new ConvexError("The original file could not be signed for access right now");
   }
@@ -94,7 +93,7 @@ export async function readKnowledgeMaterialSourceProof(
     } else {
       originalFileContentType = storageMeta.contentType ?? null;
       originalFileSize = storageMeta.size;
-      const signedUrl = await getUnboundStorageUrl(ctx, args.storageId);
+      const signedUrl = await ctx.storage.getUrl(args.storageId);
       if (signedUrl) {
         originalFileState = "available";
         originalFileUrl = `/api/knowledge/materials/${String(args.materialId)}/original`;

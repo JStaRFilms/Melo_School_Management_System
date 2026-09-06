@@ -10,7 +10,6 @@ import {
   AuthoritativeForbiddenView, BranchSwitcher, MeloLoader, WorkspaceNavbar,
   getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, LEGACY_BRANCH_SWITCH_REASON,
 } from "@school/shared";
-import { useDepartureGuard } from "@school/shared/drafts";
 import { useAuth } from "@/AuthProvider";
 import { authClient } from "@/auth-client";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -18,7 +17,6 @@ import { isConvexConfigured } from "@/convex-runtime";
 /** Default-school shell. No selected header is ever installed over legacy callers. */
 export function StaffWorkspace({ children, fullBleed = false }: { children: ReactNode; fullBleed?: boolean }) {
   const { session, workspaceAccess, isAuthenticated, isLoading, signOut } = useAuth();
-  const { requestDeparture } = useDepartureGuard();
   const pathname = usePathname();
   const router = useRouter();
   const configured = isConvexConfigured();
@@ -61,7 +59,6 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       userRole={session?.user.role}
       workspaceAccess={access}
       schoolBranding={schoolBranding ?? null}
-      requestDeparture={requestDeparture}
       onSignOut={handleSignOut}
       onNavigate={href => router.push(href)}
       onChangePassword={authClient.changePassword}

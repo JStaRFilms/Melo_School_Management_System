@@ -44,12 +44,18 @@ describe("legacy workspace authority", () => {
 });
 
 describe("managed capability navigation and deep links", () => {
+  it("admits the managed-account landing shell without granting unreviewed routes", () => {
+    const access = { ...ready, compatibility: { ...ready.compatibility, permissionManaged: true } };
+    expect(getWorkspaceCapabilityDenial("admin", "/admin/dashboard", access)).toBeNull();
+    expect(getAccessibleWorkspaceSections("admin", { access }).map(section => section.href)).toEqual(["/admin/dashboard"]);
+    expect(getWorkspaceCapabilityDenial("admin", "/unknown", access)?.state).toBe("forbidden");
+  });
   it.each([
     ["/academic/students", "enrollment.intakes.manage"],
-    ["/billing/bank-accounts", "finance.bank_details.manage"],
+    ["/billing", "finance.reports.view"],
     ["/admin/audit", "audit.branch.view"],
     ["/admin/permissions", "staff.permissions.manage"],
-    ["/admin/assets", "assets.library.view"],
+    ["/admin/settings", "settings.branding.manage"],
     ["/assessments/report-cards", "academic.report_cards.preview"],
   ])("uses the same effective permission for %s navigation and nested URLs", (path, capability) => {
     const access = { ...ready, compatibility: { ...ready.compatibility, permissionManaged: true }, effectiveCapabilities: [capability] };
