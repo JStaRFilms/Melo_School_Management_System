@@ -32,6 +32,8 @@ async function fixture() {
     const historicalPhotoStorageId = await ctx.storage.store(new Blob(["photo"], { type: "image/png" }));
     await ctx.db.patch(schoolId, { logoStorageId: historicalLogoStorageId, logoFileName: "logo.png", logoContentType: "image/png" });
     const studentId = await ctx.db.insert("students", { schoolId, classId, userId: studentUserId, admissionNumber: "SAFE-1", photoStorageId: historicalPhotoStorageId, photoFileName: "photo.png", photoContentType: "image/png", createdAt: now, updatedAt: now });
+    await ctx.db.insert("classSubjects", { schoolId, classId, subjectId, createdAt: now, updatedAt: now });
+    await ctx.db.insert("studentSubjectSelections", { schoolId, studentId, classId, subjectId, sessionId, createdAt: now, updatedAt: now });
     const genericStorageId = await ctx.storage.store(new Blob(["generic"], { type: "image/png" }));
     const historicalKnowledgeStorageId = await ctx.storage.store(new Blob(["historical material"], { type: "application/pdf" }));
     const historicalMaterialId = await ctx.db.insert("knowledgeMaterials", {
@@ -119,7 +121,7 @@ async function fixture() {
       });
     }
     const uploadIntentId = await ctx.db.insert("assetUploadIntents", { schoolId, requestedByTokenIdentifier: "test|storage-operator", requestedByUserId: operatorUserId, status: "pending", createdAt: now, updatedAt: now });
-    return { schoolId, otherSchoolId, membershipId, operatorUserId, classId, topicId, studentId, historicalLogoStorageId, historicalPhotoStorageId, historicalKnowledgeStorageId, historicalMaterialId, genericStorageId, materialId, portalMaterialId, uploadIntentId };
+    return { schoolId, otherSchoolId, membershipId, operatorUserId, classId, subjectId, sessionId, termId, topicId, studentId, historicalLogoStorageId, historicalPhotoStorageId, historicalKnowledgeStorageId, historicalMaterialId, genericStorageId, materialId, portalMaterialId, uploadIntentId };
   });
   return {
     t,
@@ -142,6 +144,37 @@ it("keeps authorized historical logo and student-photo reads while rejecting con
   await expect(f.operator.mutation(a.schoolBranding.removeSchoolLogo, {})).rejects.toThrow("conflicting ownership");
   expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.historicalLogoStorageId)))).toBe(true);
   expect(await f.t.run((ctx) => ctx.db.get(f.schoolId))).toMatchObject({ logoStorageId: f.historicalLogoStorageId });
+});
+
+it("preserves logo storage referenced by an immutable issued report", async () => {
+  const f = await fixture();
+  const report = await f.operator.query(a.reportCards.getStudentReportCard, {
+    studentId: f.studentId,
+    classId: f.classId,
+    sessionId: f.sessionId,
+    termId: f.termId,
+  });
+  await f.t.run((ctx) => ctx.db.insert("issuedReportCards", {
+    schoolId: f.schoolId,
+    studentId: f.studentId,
+    sessionId: f.sessionId,
+    termId: f.termId,
+    classId: f.classId,
+    issuedAt: Date.now(),
+    issuedBy: f.operatorUserId,
+    schoolLogoStorageId: f.historicalLogoStorageId,
+    studentPhotoStorageId: f.historicalPhotoStorageId,
+    report,
+  }));
+
+  await expect(f.operator.mutation(a.schoolBranding.removeSchoolLogo, {})).rejects.toThrow("conflicting ownership");
+  expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.historicalLogoStorageId)))).toBe(true);
+  expect(await f.operator.query(a.reportCards.getStudentReportCard, {
+    studentId: f.studentId,
+    classId: f.classId,
+    sessionId: f.sessionId,
+    termId: f.termId,
+  })).toMatchObject({ schoolLogoUrl: expect.stringMatching(/^https?:/) });
 });
 
 it("fails closed before URL issuance, intent or shell creation even when quota exists", async () => {

@@ -1694,7 +1694,10 @@ export default defineSchema({
     report: reportCardResultValidator,
   })
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
-    .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"]),
+    .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
+    .index("by_school_logo_storage", ["schoolLogoStorageId"])
+    .index("by_student_photo_storage", ["studentPhotoStorageId"])
+    .index("by_school", ["schoolId"]),
 
   gradingBands: defineTable({
     schoolId: v.id("schools"),
@@ -3700,6 +3703,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school_and_trashed", ["schoolId", "isTrashed"])
+    .index("by_school_and_trashed_and_archived_at", ["schoolId", "isTrashed", "archivedAt"])
     .index("by_school_and_scan", ["schoolId", "scanStatus"])
     .index("by_purge_schedule", ["isTrashed", "purgeScheduledAt"])
     .index("by_rollback_expiry", ["rollbackExpiryAt"])

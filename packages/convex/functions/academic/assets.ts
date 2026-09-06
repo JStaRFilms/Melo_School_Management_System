@@ -873,87 +873,114 @@ export const rollbackOptimizedPdfAsset = internalMutation({
  * batches. Any active retention hold wins over both cleanup paths.
  */
 export const cleanupExpiredAssetStorage = internalMutation({
-  args: { limit: v.optional(v.number()) },
+  args: {
+    limit: v.optional(v.number()),
+    sweep: v.optional(v.union(v.literal("trash"), v.literal("rollback"), v.literal("candidate"))),
+    cursor: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
     const now = Date.now();
-    const trashed = await ctx.db
-      .query("schoolAssets")
-      .withIndex("by_purge_schedule", (q) => q.eq("isTrashed", true).lt("purgeScheduledAt", now))
-      .take(limit);
     let cleaned = 0;
-    for (const asset of trashed) {
-      assertAssetAccountingInitialized(asset);
-      const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
-      if (hold.length > 0) continue;
-      await assertStorageClaimedOnlyBy(ctx, asset.storageId, {
-        purpose: "schoolAsset",
-        ownerId: String(asset._id),
-      });
-      await ctx.storage.delete(asset.storageId);
-      let rollbackByteSize = 0;
-      if (asset.rollbackStorageId && asset.rollbackStorageId !== asset.storageId) {
+    const sweep = args.sweep ?? "trash";
+    let continuation: {
+      sweep: "trash" | "rollback" | "candidate";
+      cursor?: string;
+    } | null = null;
+
+    if (sweep === "trash") {
+      const trashed = await ctx.db
+        .query("schoolAssets")
+        .withIndex("by_purge_schedule", (q) => q.eq("isTrashed", true).lt("purgeScheduledAt", now))
+        .paginate({ numItems: limit, cursor: args.cursor ?? null });
+      for (const asset of trashed.page) {
+        assertAssetAccountingInitialized(asset);
+        const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
+        if (hold.length > 0) continue;
+        await assertStorageClaimedOnlyBy(ctx, asset.storageId, {
+          purpose: "schoolAsset",
+          ownerId: String(asset._id),
+        });
+        await ctx.storage.delete(asset.storageId);
+        let rollbackByteSize = 0;
+        if (asset.rollbackStorageId && asset.rollbackStorageId !== asset.storageId) {
+          await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
+            purpose: "schoolAssetRollback",
+            ownerId: String(asset._id),
+          });
+          const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
+          rollbackByteSize = rollbackMetadata?.size ?? 0;
+          await ctx.storage.delete(asset.rollbackStorageId);
+        }
+        await applyStorageAccounting(ctx, asset.schoolId, {
+          trash: -asset.byteSize,
+          temp: -rollbackByteSize,
+        });
+        const shares = await ctx.db.query("assetBranchShares").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51);
+        for (const share of shares) await ctx.db.delete(share._id);
+        await recordAuditEventHelper(ctx, { schoolId: asset.schoolId, actorKind: "system", actorEmailSnapshot: "asset retention cleanup", module: "assets", action: "asset.expired_purged", targetType: "schoolAsset", targetId: asset._id, outcome: "success", safeSummary: "Expired asset storage deletion succeeded; charged bytes released.", retentionClass: "permanent_statutory" });
+        await ctx.db.insert("assetPurgeReceipts", { schoolId: asset.schoolId, assetId: asset._id, fileName: asset.fileName, purgedAt: now });
+        await ctx.db.delete(asset._id);
+        cleaned++;
+      }
+      continuation = trashed.isDone
+        ? { sweep: "rollback" }
+        : { sweep: "trash", cursor: trashed.continueCursor };
+    }
+
+    if (sweep === "rollback") {
+      const rollbackCandidates = await ctx.db
+        .query("schoolAssets")
+        .withIndex("by_rollback_expiry", (q) => q.lt("rollbackExpiryAt", now))
+        .paginate({ numItems: limit, cursor: args.cursor ?? null });
+      for (const asset of rollbackCandidates.page) {
+        if (!asset.rollbackStorageId || asset.isTrashed) continue;
+        assertAssetAccountingInitialized(asset);
+        const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
+        if (hold.length > 0) continue;
         await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
           purpose: "schoolAssetRollback",
           ownerId: String(asset._id),
         });
         const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
-        rollbackByteSize = rollbackMetadata?.size ?? 0;
         await ctx.storage.delete(asset.rollbackStorageId);
+        await applyStorageAccounting(ctx, asset.schoolId, { temp: -(rollbackMetadata?.size ?? 0) });
+        await ctx.db.patch(asset._id, { rollbackStorageId: undefined, rollbackExpiryAt: undefined, updatedAt: now });
+        cleaned++;
       }
-      await applyStorageAccounting(ctx, asset.schoolId, {
-        trash: -asset.byteSize,
-        temp: -rollbackByteSize,
-      });
-      const shares = await ctx.db.query("assetBranchShares").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51);
-      for (const share of shares) await ctx.db.delete(share._id);
-      await recordAuditEventHelper(ctx, { schoolId: asset.schoolId, actorKind: "system", actorEmailSnapshot: "asset retention cleanup", module: "assets", action: "asset.expired_purged", targetType: "schoolAsset", targetId: asset._id, outcome: "success", safeSummary: "Expired asset storage deletion succeeded; charged bytes released.", retentionClass: "permanent_statutory" });
-      await ctx.db.insert("assetPurgeReceipts", { schoolId: asset.schoolId, assetId: asset._id, fileName: asset.fileName, purgedAt: now });
-      await ctx.db.delete(asset._id);
-      cleaned++;
+      continuation = rollbackCandidates.isDone
+        ? { sweep: "candidate" }
+        : { sweep: "rollback", cursor: rollbackCandidates.continueCursor };
     }
 
-    const rollbackCandidates = await ctx.db
-      .query("schoolAssets")
-      .withIndex("by_rollback_expiry", (q) => q.lt("rollbackExpiryAt", now))
-      .take(limit);
-    for (const asset of rollbackCandidates) {
-      if (!asset.rollbackStorageId || asset.isTrashed) continue;
-      assertAssetAccountingInitialized(asset);
-      const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
-      if (hold.length > 0) continue;
-      await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
-        purpose: "schoolAssetRollback",
-        ownerId: String(asset._id),
-      });
-      const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
-      await ctx.storage.delete(asset.rollbackStorageId);
-      await applyStorageAccounting(ctx, asset.schoolId, { temp: -(rollbackMetadata?.size ?? 0) });
-      await ctx.db.patch(asset._id, { rollbackStorageId: undefined, rollbackExpiryAt: undefined, updatedAt: now });
-      cleaned++;
+    if (sweep === "candidate") {
+      const staleCandidates = await ctx.db
+        .query("pdfCompressionCandidates")
+        .withIndex("by_cleanup_schedule", (q) => q.lt("cleanupScheduledAt", now))
+        .paginate({ numItems: limit, cursor: args.cursor ?? null });
+      for (const candidate of staleCandidates.page) {
+        await assertStorageClaimedOnlyBy(ctx, candidate.candidateStorageId, {
+          purpose: "pdfCompressionCandidate",
+          ownerId: String(candidate._id),
+        });
+        const metadata = await ctx.db.system.get("_storage", candidate.candidateStorageId);
+        if (metadata) await ctx.storage.delete(candidate.candidateStorageId);
+        if (candidate.status === "verified") {
+          await applyStorageAccounting(ctx, candidate.schoolId, { temp: -candidate.byteSize });
+        }
+        await ctx.db.delete(candidate._id);
+        cleaned++;
+      }
+      if (!staleCandidates.isDone) {
+        continuation = { sweep: "candidate", cursor: staleCandidates.continueCursor };
+      }
     }
 
-    const staleCandidates = await ctx.db
-      .query("pdfCompressionCandidates")
-      .withIndex("by_cleanup_schedule", (q) => q.lt("cleanupScheduledAt", now))
-      .take(limit);
-    for (const candidate of staleCandidates) {
-      await assertStorageClaimedOnlyBy(ctx, candidate.candidateStorageId, {
-        purpose: "pdfCompressionCandidate",
-        ownerId: String(candidate._id),
+    if (continuation) {
+      await ctx.scheduler.runAfter(0, internal.functions.academic.assets.cleanupExpiredAssetStorage, {
+        limit,
+        ...continuation,
       });
-      const metadata = await ctx.db.system.get("_storage", candidate.candidateStorageId);
-      if (metadata) await ctx.storage.delete(candidate.candidateStorageId);
-      if (candidate.status === "verified") {
-        await applyStorageAccounting(ctx, candidate.schoolId, { temp: -candidate.byteSize });
-      }
-      await ctx.db.delete(candidate._id);
-      cleaned++;
-    }
-    // Do not hot-loop forever on a full batch of retained/held rows.
-    // A cursor-based maintenance sweep is still needed to reach rows behind holds.
-    if (cleaned > 0 && (trashed.length === limit || rollbackCandidates.length === limit || staleCandidates.length === limit)) {
-      await ctx.scheduler.runAfter(0, internal.functions.academic.assets.cleanupExpiredAssetStorage, { limit });
     }
     return { cleaned };
   },
