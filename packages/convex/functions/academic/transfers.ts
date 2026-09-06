@@ -588,6 +588,7 @@ export const acceptDestinationTransfer = mutation({
       }
       await commitManualAdmissionNumberHelper(ctx, {
         schoolId: transfer.destinationSchoolId,
+        level: destClass.level,
         number: manualAdmissionNumber,
         reason: args.admissionNumberOverrideReason,
         confirmed: args.admissionNumberOverrideConfirmed,

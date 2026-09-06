@@ -105,6 +105,92 @@ it("creates a bounded group pool and only the proprietor can allocate matching-c
   }
 });
 
+it("closes with provenance-validated effective-at-end totals while preserving cumulative expired source history", async () => {
+  const f = await setup();
+  await f.platform.mutation(fn.topUp, {
+    schoolId: f.schoolId,
+    cycleId: f.cycleId,
+    meterType: "ocr_pages",
+    units: 5,
+    evidenceReference: "expiring-close-topup",
+    reason: "Expires before closing boundary",
+    expiresAt: today + 10 * day,
+    confirmation: "CONFIRM",
+  });
+  const requestId = await f.owner.mutation(fn.request, {
+    schoolId: f.schoolId,
+    cycleId: f.cycleId,
+    meterType: "ocr_pages",
+    units: 7,
+    reason: "Temporary allowance before close",
+    confirmation: "REQUEST",
+  }) as Id<"usageExceptionRequests">;
+  await f.platform.mutation(fn.decide, {
+    schoolId: f.schoolId,
+    requestId,
+    outcome: "approved",
+    reason: "Approved only until mid-cycle",
+    expiresAt: today + 15 * day,
+    confirmation: "CONFIRM",
+  });
+  const poolId = await f.platform.mutation(fn.pool, {
+    journalSchoolId: f.schoolId,
+    groupId: f.groupId,
+    entitlementVersionId: f.versionId,
+    meterType: "ai_tokens",
+    totalUnits: 40,
+    startAt: today - day,
+    endAt: today + 20 * day,
+    reason: "Pool expires before cycle closes",
+    confirmation: "CONFIRM",
+  }) as Id<"usageGroupPools">;
+  await f.owner.mutation(fn.allocatePool, {
+    poolId,
+    schoolId: f.schoolId,
+    cycleId: f.cycleId,
+    units: 40,
+    reason: "Temporary reviewed pool allocation",
+    confirmation: "ALLOCATE",
+  });
+
+  const staleCumulativeReview = {
+    schoolId: f.schoolId,
+    cycleId: f.cycleId,
+    expectedMeters: [
+      { meterType: "ai_tokens" as const, allocatedUnits: 160, consumedUnits: 0 },
+      { meterType: "ocr_pages" as const, allocatedUnits: 22, consumedUnits: 0 },
+      { meterType: "storage_bytes" as const, allocatedUnits: 1100, consumedUnits: 0 },
+    ],
+    reconciliationNote: "Reviewed cumulative source totals",
+    confirmation: "CLOSE",
+  };
+  const clock = vi.spyOn(Date, "now").mockReturnValue(today + 30 * day);
+  try {
+    await expect(f.platform.mutation(fn.closeCycle, staleCumulativeReview)).rejects.toThrow("balances changed");
+    await f.platform.mutation(fn.closeCycle, {
+      ...staleCumulativeReview,
+      expectedMeters: [
+        { meterType: "ai_tokens", allocatedUnits: 120, consumedUnits: 0 },
+        { meterType: "ocr_pages", allocatedUnits: 10, consumedUnits: 0 },
+        { meterType: "storage_bytes", allocatedUnits: 1100, consumedUnits: 0 },
+      ],
+      reconciliationNote: "Reviewed effective totals at cycle end",
+    });
+    const state = await f.t.run(async ctx => ({
+      aiSnapshot: await ctx.db.query("usageCycleMeterSnapshots").withIndex("by_cycle_and_meter", q => q.eq("cycleId", f.cycleId).eq("meterType", "ai_tokens")).unique(),
+      ocrSnapshot: await ctx.db.query("usageCycleMeterSnapshots").withIndex("by_cycle_and_meter", q => q.eq("cycleId", f.cycleId).eq("meterType", "ocr_pages")).unique(),
+      grants: await ctx.db.query("usageAllowanceGrants").withIndex("by_cycle", q => q.eq("cycleId", f.cycleId)).take(10),
+      poolAllocations: await ctx.db.query("usageBranchPoolAllocations").withIndex("by_cycle", q => q.eq("cycleId", f.cycleId)).take(10),
+    }));
+    expect(state.aiSnapshot).toMatchObject({ allocatedUnits: 120, poolUnits: 0 });
+    expect(state.ocrSnapshot).toMatchObject({ allocatedUnits: 10, topUpUnits: 0, exceptionUnits: 0 });
+    expect(state.grants.reduce((sum, grant) => sum + grant.units, 0)).toBe(12);
+    expect(state.poolAllocations.reduce((sum, allocation) => sum + allocation.units, 0)).toBe(40);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
 it("closes an ended cycle with no active reservations, preserves its balances, and starts a clean next cycle", async () => {
   const f = await setup();
   await f.t.run(async ctx => {

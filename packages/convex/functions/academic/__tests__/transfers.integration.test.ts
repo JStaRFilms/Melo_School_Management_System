@@ -925,7 +925,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       }),
     ).rejects.toThrow("enrollment.admissions.override_number");
 
-    await t.run(async (ctx) => {
+    const levelCounterId = await t.run(async (ctx) => {
       await ctx.db.insert("membershipDirectGrants", {
         membershipId: harness.adminBMembershipId,
         capability: "enrollment.admissions.override_number",
@@ -939,6 +939,19 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         reason:
           "Managed transfer authority is explicit, not the legacy admin role",
       });
+      return await ctx.db.insert("admissionNumberSequences", {
+        schoolId: harness.schoolB,
+        key: "jss1",
+        name: "JSS 1 admissions",
+        level: "jss1",
+        currentSequence: 7,
+        resetFrequency: "continuous",
+        resetPeriod: "continuous",
+        status: "active",
+        configVersion: 1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
     });
 
     await expect(
@@ -951,6 +964,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     ).rejects.toThrow("requires a reason");
 
     const numbering = await reviewedNumbering(t, harness.adminBIdentity, harness.schoolB, harness.classBId);
+    expect(numbering.expectedCounterKey).toBe("jss1");
     const acceptance = {
       transferId,
       destinationClassId: harness.classBId,
@@ -967,10 +981,12 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       ctx.db.query("admissionNumberClaims").collect(),
     );
     expect(manualClaims).toHaveLength(1);
-    expect(
-      (await t.run((ctx) => ctx.db.query("admissionNumberPolicies").first()))
-        ?.currentSequence,
-    ).toBe(10);
+    const counters = await t.run(async (ctx) => ({
+      reviewedLevel: await ctx.db.get(levelCounterId),
+      defaultPolicy: await ctx.db.query("admissionNumberPolicies").first(),
+    }));
+    expect(counters.reviewedLevel?.currentSequence).toBe(10);
+    expect(counters.defaultPolicy?.currentSequence).toBe(1);
     const audit = await t.run(async (ctx) =>
       ctx.db
         .query("auditEvents")

@@ -43,6 +43,7 @@ export async function effectiveAllowance(ctx: Context, cycle: Doc<"usageCycles">
   const grants = await ctx.db.query("usageAllowanceGrants").withIndex("by_cycle", q => q.eq("cycleId", cycle._id)).take(101);
   const allocations = await ctx.db.query("usageBranchPoolAllocations").withIndex("by_cycle", q => q.eq("cycleId", cycle._id)).take(101);
   if (grants.length > 100 || allocations.length > 100) throw new ConvexError("Allowance grant history exceeds review bound");
+  if (grants.some(row => row.schoolId !== cycle.schoolId)) throw new ConvexError("Allowance grant provenance requires reconciliation");
   const activeGrants = grants.filter(row => row.meterType === meterType && (row.expiresAt === undefined || row.expiresAt > now));
   const topUpUnits = activeGrants.filter(row => row.kind === "top_up").reduce((sum, row) => sum + row.units, 0);
   const exceptionUnits = activeGrants.filter(row => row.kind === "exception").reduce((sum, row) => sum + row.units, 0);
@@ -130,19 +131,22 @@ export const closeUsageCycle = mutation({
     for (const allowance of cycle.entitlement.allowances) {
       const meter = await allocation(ctx, args.schoolId, allowance.meterType);
       const reviewed = expected.get(allowance.meterType);
-      if (meter.cycleId !== cycle._id || !reviewed || meter.allocatedUnits !== reviewed.allocatedUnits || meter.consumedUnits !== reviewed.consumedUnits) throw new ConvexError("Usage closing balances changed; reload and reconcile");
+      // Grant/allocation rows remain the cumulative provenance ledger. Closing source totals
+      // instead mean effective at the cycle's exclusive end boundary, never cumulative issued.
+      const effectiveAtClose = await effectiveAllowance(ctx, cycle, allowance.meterType, cycle.endAt);
+      if (meter.cycleId !== cycle._id || !reviewed || !effectiveAtClose || effectiveAtClose.allocatedUnits !== reviewed.allocatedUnits || meter.consumedUnits !== reviewed.consumedUnits) throw new ConvexError("Effective-at-close usage balances changed; reload and reconcile");
       if (meter.reservedUnits !== 0) throw new ConvexError("Usage cycle has active reservations");
       await ctx.db.insert("usageCycleMeterSnapshots", {
         schoolId: args.schoolId, cycleId: cycle._id, meterType: meter.meterType,
-        allocatedUnits: meter.allocatedUnits, baseUnits: meter.baseUnits ?? 0, graceUnits: meter.graceUnits ?? 0,
-        topUpUnits: meter.topUpUnits ?? 0, exceptionUnits: meter.exceptionUnits ?? 0, poolUnits: meter.poolUnits ?? 0,
+        allocatedUnits: effectiveAtClose.allocatedUnits, baseUnits: effectiveAtClose.baseUnits, graceUnits: effectiveAtClose.graceUnits,
+        topUpUnits: effectiveAtClose.topUpUnits, exceptionUnits: effectiveAtClose.exceptionUnits, poolUnits: effectiveAtClose.poolUnits,
         consumedUnits: meter.consumedUnits, reservedUnits: meter.reservedUnits,
         activeStorageBytes: meter.activeStorageBytes ?? 0, trashStorageBytes: meter.trashStorageBytes ?? 0, tempStorageBytes: meter.tempStorageBytes ?? 0,
         reconciledAt: Date.now(),
       });
     }
     await ctx.db.patch(cycle._id, { status: "closed", closedAt: Date.now(), reconciliationNote: note });
-    await audit(ctx, args.schoolId, "usage.cycle_closed", cycle._id, "Closed and snapshotted reviewed usage balances with no active reservations");
+    await audit(ctx, args.schoolId, "usage.cycle_closed", cycle._id, "Closed and snapshotted effective-at-end allowance with reviewed consumption and no active reservations");
     return cycle._id;
   },
 });

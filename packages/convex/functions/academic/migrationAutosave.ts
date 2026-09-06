@@ -91,9 +91,11 @@ async function resolveGradeImportEvidence(
   const selectedClassId = record.selectedClassId;
   const selectedSubjectId = record.selectedSubjectId;
   const selectedSessionId = record.selectedSessionId;
-  const [student, session] = await Promise.all([
+  const selectedTermId = record.selectedTermId;
+  const [student, session, term] = await Promise.all([
     ctx.db.get(selectedStudentId),
     ctx.db.get(selectedSessionId),
+    ctx.db.get(selectedTermId),
   ]);
   if (!student || student.schoolId !== schoolId || student.isArchived) {
     throw new ConvexError(`Grade row #${record.rowNumber} student is unavailable in this school`);
@@ -125,7 +127,17 @@ async function resolveGradeImportEvidence(
   if (!relationshipEstablished) {
     throw new ConvexError(`Grade row #${record.rowNumber} has no reviewed student-class relationship for the selected session`);
   }
-  if (!session || session.schoolId !== schoolId || !session.isActive || session.isArchived) {
+  if (
+    !session ||
+    session.schoolId !== schoolId ||
+    !session.isActive ||
+    session.isArchived ||
+    !term ||
+    term.schoolId !== schoolId ||
+    term.sessionId !== session._id ||
+    !term.isActive ||
+    term.isArchived
+  ) {
     throw new ConvexError(`Grade row #${record.rowNumber} historical scoring policy evidence is unavailable`);
   }
   if (await getActiveAggregationByUmbrellaSubject(ctx, {

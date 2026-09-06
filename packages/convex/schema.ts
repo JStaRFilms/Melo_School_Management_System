@@ -1666,6 +1666,7 @@ export default defineSchema({
       v.union(v.literal("standalone"), v.literal("cumulative_annual"))
     ),
     isActive: v.boolean(),
+    isArchived: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
