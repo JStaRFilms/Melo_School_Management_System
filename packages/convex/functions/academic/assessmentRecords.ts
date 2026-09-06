@@ -46,6 +46,7 @@ function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>
  */
 export const getExamEntrySheet = query({
   args: {
+    schoolId: v.optional(v.id("schools")),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
     classId: v.id("classes"),
@@ -129,7 +130,7 @@ export const getExamEntrySheet = query({
     editingState: assessmentEditingStateReturnValidator,
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.enter" });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
@@ -300,6 +301,7 @@ export const getExamEntrySheet = query({
  */
 export const upsertAssessmentRecordsBulk = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
     classId: v.id("classes"),
@@ -331,8 +333,8 @@ export const upsertAssessmentRecordsBulk = mutation({
       })
     ),
   }),
-  handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.enter" });
+  handler: async (ctx: any, args: { schoolId?: Id<"schools">; sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);

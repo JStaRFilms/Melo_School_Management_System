@@ -1765,6 +1765,7 @@ export const cancelStudentGraduation = mutation({
 
 export const setStudentSubjectSelections = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     studentId: v.id("students"),
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
@@ -1774,6 +1775,7 @@ export const setStudentSubjectSelections = mutation({
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
         capability: "enrollment.intakes.manage",
       });
 
@@ -2013,6 +2015,7 @@ export const getStudentSubjectSelections = query({
 
 export const getClassStudentSubjectMatrix = query({
   args: {
+    schoolId: v.optional(v.id("schools")),
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
   },
@@ -2057,6 +2060,7 @@ export const getClassStudentSubjectMatrix = query({
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
         capability: "enrollment.intakes.manage",
       });
 

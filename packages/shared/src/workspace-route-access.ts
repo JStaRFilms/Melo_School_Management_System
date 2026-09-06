@@ -49,7 +49,10 @@ const BRANCH_SCOPED_ROUTES = {
     "/admin/settings/email-domains",
     "/assessments/setup/grading-bands",
   ],
-  teacher: [],
+  teacher: [
+    "/assessments/exams/entry",
+    "/enrollment/subjects",
+  ],
   portal: [],
 } as const satisfies Record<WorkspaceKey, readonly string[]>;
 

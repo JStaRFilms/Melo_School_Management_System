@@ -12,6 +12,7 @@ import {
   mockSubjectsByClass,
   mockTermsBySession,
 } from "@/lib/mock-exam-data";
+import { useAuth } from "@/lib/AuthProvider";
 import type {
   ExamEntrySheetResponse,
   Id,
@@ -35,6 +36,7 @@ function normalizeSelectorOptions(
 }
 
 export default function ExamEntryPage() {
+  const { workspaceAccess } = useAuth();
   const searchParams = useSearchParams();
   const selection = useMemo(
     () => ({
@@ -51,26 +53,30 @@ export default function ExamEntryPage() {
     return <MockExamEntryPage selection={selection} />;
   }
 
-  return <LiveExamEntryPage selection={selection} />;
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
+  if (!schoolId) return <p role="status">Checking branch context…</p>;
+  return <LiveExamEntryPage key={schoolId} schoolId={schoolId} selection={selection} />;
 }
 
-function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
+function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; selection: SelectionState }) {
   const sessions = useQuery(
-    "functions/academic/teacherSelectors:getTeacherSessions" as never
+    "functions/academic/teacherSelectors:getTeacherSessions" as never,
+    { schoolId } as never,
   ) as LegacySelectorOption[] | undefined;
   const terms = useQuery(
     "functions/academic/teacherSelectors:getTermsBySession" as never,
     selection.sessionId
-      ? ({ sessionId: selection.sessionId } as never)
+      ? ({ schoolId, sessionId: selection.sessionId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const classes = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
+    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never,
+    { schoolId } as never,
   ) as LegacySelectorOption[] | undefined;
   const subjects = useQuery(
     "functions/academic/teacherSelectors:getTeacherAssignableSubjectsByClass" as never,
     selection.classId
-      ? ({ classId: selection.classId } as never)
+      ? ({ schoolId, classId: selection.classId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const isSelectedSubjectAvailable =
@@ -88,6 +94,7 @@ function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
     isSheetReady
       ? ({
+          schoolId,
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
@@ -112,8 +119,8 @@ function LiveExamEntryPage({ selection }: { selection: SelectionState }) {
         ca3: number;
         examRawScore: number;
       }>;
-    }) => (await upsertAssessmentRecordsBulk(args as never)) as UpsertResponse,
-    [upsertAssessmentRecordsBulk]
+    }) => (await upsertAssessmentRecordsBulk({ schoolId, ...args } as never)) as UpsertResponse,
+    [schoolId, upsertAssessmentRecordsBulk]
   );
 
   const normalizedSessions = useMemo(

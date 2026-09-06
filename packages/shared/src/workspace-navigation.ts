@@ -215,10 +215,11 @@ export function getWorkspaceSections(workspace: WorkspaceKey) {
 /** Navigation uses the same legacy/module decision as the owning layout, not guessed RBAC mappings. */
 export function getAccessibleWorkspaceSections(
   workspace: WorkspaceKey,
-  options: { access?: WorkspaceAccessSummary; features?: WorkspaceFeatures | null; userRole?: string | null; branchScopedOnly?: boolean } = {},
+  options: { access?: WorkspaceAccessSummary; features?: WorkspaceFeatures | null; userRole?: string | null; branchScopedOnly?: boolean; teacherHasAssignments?: boolean } = {},
 ) {
   if (workspace !== "portal" && options.access && !options.branchScopedOnly && getLegacyWorkspaceAccess(workspace, options.access).state !== "allowed") return [];
   return getWorkspaceSections(workspace).filter(section =>
+    !(workspace === "teacher" && options.teacherHasAssignments === false) &&
     (!options.branchScopedOnly || isWorkspaceBranchScopedRoute(workspace, section.href)) &&
     !getWorkspaceModuleDenial(workspace, section.href, options.features) &&
     (!options.access || (options.branchScopedOnly

@@ -109,6 +109,22 @@ describe("selected branch route adapters", () => {
     expect(sections.map(section => section.href)).not.toContain("/academic/students");
     expect(getBranchScopedWorkspaceAccess("admin", "/admin/assets", selected).state).toBe("forbidden");
   });
+
+  it("allows only the fully scoped teacher assessment and enrollment chains", () => {
+    const teacher = {
+      ...selected,
+      effectiveCapabilities: ["academic.assessments.enter", "enrollment.intakes.manage"],
+      compatibility: { ...selected.compatibility, legacyRole: "teacher" },
+      teacherAssignments: { source: "domain_checks_required" as const, legacyTeacherId: "teacher-two" },
+    };
+    expect(isWorkspaceBranchScopedRoute("teacher", "/assessments/exams/entry")).toBe(true);
+    expect(isWorkspaceBranchScopedRoute("teacher", "/enrollment/subjects")).toBe(true);
+    expect(isWorkspaceBranchScopedRoute("teacher", "/planning")).toBe(false);
+    expect(getAccessibleWorkspaceSections("teacher", { access: teacher, branchScopedOnly: true }).map(section => section.href))
+      .toEqual(["/assessments/exams/entry", "/enrollment/subjects"]);
+    expect(getAccessibleWorkspaceSections("teacher", { access: teacher, branchScopedOnly: true, teacherHasAssignments: false })).toEqual([]);
+    expect(getBranchScopedWorkspaceAccess("teacher", "/planning/lesson-plans", teacher).state).toBe("reconciliation_required");
+  });
 });
 
 describe("module navigation and deep links", () => {
