@@ -21,6 +21,7 @@ export default function AssetsWorkspace({ area }: { area: Area }) {
   if (allowed === false) return <p role="alert">Asset library access denied.</p>;
   if (!schoolId || !workspace) return <p role="status">Loading asset workspace…</p>;
   if (area === "trash" && !workspace.capabilities.includes("assets.trash.manage")) return <p role="alert">Trash access denied. <Link href="/admin/assets">Return to library</Link></p>;
+  if (area === "archive" && !workspace.capabilities.includes("assets.archive.manage")) return <p role="alert">Archive access denied. <Link href="/admin/assets">Return to library</Link></p>;
   return <Library key={`${schoolId}:${area}`} schoolId={schoolId} workspace={workspace} area={area} />;
 }
 
@@ -39,7 +40,7 @@ function Library({ schoolId, workspace, area }: { schoolId: Id<"schools">; works
     <h1 className="text-xl font-semibold">School Assets {area === "library" ? "library" : area === "archive" ? "Archive" : "Trash"}</h1>
     <nav aria-label="Asset workspaces" className="flex flex-wrap gap-4">
       <Link aria-current={area === "library" ? "page" : undefined} href="/admin/assets">Library</Link>
-      <Link aria-current={area === "archive" ? "page" : undefined} href="/admin/assets/archive">Asset Archive</Link>
+      {workspace.capabilities.includes("assets.archive.manage") && <Link aria-current={area === "archive" ? "page" : undefined} href="/admin/assets/archive">Asset Archive</Link>}
       {workspace.capabilities.includes("assets.trash.manage") && <Link aria-current={area === "trash" ? "page" : undefined} href="/admin/assets/trash">Trash</Link>}
       <Link href="/academic/archived-records">Academic Archive (separate)</Link>
     </nav>
