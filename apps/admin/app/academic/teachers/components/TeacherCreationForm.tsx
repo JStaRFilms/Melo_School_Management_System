@@ -117,7 +117,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
       <div className="space-y-0.5">
         <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
         <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
-        <a className="text-xs underline" href="/admin/settings/email-domains">Institutional address review after onboarding — no inbox is created here</a>
+        <p className="text-xs text-slate-500">Institutional address review remains separate; onboarding does not create an inbox.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">

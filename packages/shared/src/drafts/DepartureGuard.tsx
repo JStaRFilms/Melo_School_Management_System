@@ -18,8 +18,11 @@ interface Guard {
   requestDeparture: (departure: FormDeparture) => Promise<boolean>;
 }
 const Context = createContext<Guard | null>(null);
+export function useOptionalDepartureGuard() {
+  return useContext(Context);
+}
 export function useDepartureGuard() {
-  const guard = useContext(Context);
+  const guard = useOptionalDepartureGuard();
   if (!guard) throw new Error("Mount DepartureGuardProvider above the route tree.");
   return guard;
 }

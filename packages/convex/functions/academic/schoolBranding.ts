@@ -110,7 +110,7 @@ export const updateSchoolProfile = mutation({
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx, {
-        capability: "settings.branding.manage",
+        capability: ["settings.general.edit", "settings.branding.manage"],
       });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 

@@ -12,10 +12,12 @@ import {
 import { useAuth } from "@/lib/AuthProvider";
 import { authClient } from "@/lib/auth-client";
 import { isConvexConfigured } from "@/lib/convex-runtime";
+import { useOptionalDepartureGuard } from "@school/shared/drafts";
 
 /** Default-school shell. No selected header is ever installed over legacy callers. */
 export function StaffWorkspace({ children, fullBleed = false }: { children: ReactNode; fullBleed?: boolean }) {
   const { session, workspaceAccess, isAuthenticated, isLoading, signOut } = useAuth();
+  const requestDeparture = useOptionalDepartureGuard()?.requestDeparture;
   const pathname = usePathname();
   const router = useRouter();
   const configured = isConvexConfigured();
@@ -59,6 +61,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       workspaceAccess={access}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
+      requestDeparture={requestDeparture}
       onNavigate={href => router.push(href)}
       onChangePassword={authClient.changePassword}
       branchSwitcher={access?.state === "ready" ? <BranchSwitcher currentBranch={{ ...access.branch, status: "active", isHeadquarters: false }} availableBranches={[]} disabled disabledReason={LEGACY_BRANCH_SWITCH_REASON} /> : undefined}

@@ -59,6 +59,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   const savedData = useRef<T | undefined>(undefined);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const pause = useRef(false);
+  const wasAvailable = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; clearTimeout(timer.current); }; }, []);
   useEffect(() => {
@@ -76,11 +77,16 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   const sameContext = options.accountId === initialAccount.current && options.contextKey === initialContext.current && options.connection.accountId === initialAccount.current;
   const available = options.connection.connected && options.connection.authenticated && sameContext;
   useEffect(() => {
-    if (!available) {
+    if (available) {
+      if (!wasAvailable.current) pause.current = false;
+      wasAvailable.current = true;
+      return;
+    }
+    if (wasAvailable.current) {
       pause.current = true;
       updateStatus(options.connection.authenticated ? "connection_lost" : "reauth_required");
     }
-    // A reconnect requires an explicit retry/recovery decision, never an automatic stale write.
+    // A reconnect after real availability requires an explicit retry/recovery decision.
   }, [available, options.connection.authenticated]);
 
   const retrySave = useCallback(async (): Promise<void> => {

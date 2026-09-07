@@ -13,10 +13,12 @@ import {
 import { useAuth } from "@/AuthProvider";
 import { authClient } from "@/auth-client";
 import { isConvexConfigured } from "@/convex-runtime";
+import { useOptionalDepartureGuard } from "@school/shared/drafts";
 
 /** Default-school shell. No selected header is ever installed over legacy callers. */
 export function StaffWorkspace({ children, fullBleed = false }: { children: ReactNode; fullBleed?: boolean }) {
   const { session, workspaceAccess, isAuthenticated, isLoading, signOut } = useAuth();
+  const requestDeparture = useOptionalDepartureGuard()?.requestDeparture;
   const pathname = usePathname();
   const router = useRouter();
   const configured = isConvexConfigured();
@@ -60,6 +62,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       workspaceAccess={access}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
+      requestDeparture={requestDeparture}
       onNavigate={href => router.push(href)}
       onChangePassword={authClient.changePassword}
       leadershipAlerts={configured && schoolBranding && access?.state === "ready" && (access.effectiveCapabilities.includes("audit.branch.view") || access.effectiveCapabilities.includes("audit.view")) ? <LeadershipAlerts schoolId={schoolBranding.schoolId} compact /> : undefined}

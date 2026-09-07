@@ -99,7 +99,6 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
         { id: "plan", title: "Plan name", isValid: Boolean(draft.name.trim()) },
         { id: "fees", title: "Fees and schedule", isValid: feePlanValidation({ ...draft, name: "validation" }) === null },
       ]} saveStatusText="Unsaved form · no recovery draft" />
-      <BankAccountSelection value={draft.bankAccountId ?? ""} onChange={bankAccountId => onChange({ ...draft, bankAccountId })} />
       {/* Scrollable Form Body */}
       <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar">
         {/* Plan Name */}

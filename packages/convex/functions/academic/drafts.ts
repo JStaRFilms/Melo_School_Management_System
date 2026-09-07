@@ -1,6 +1,7 @@
 import { mutation, query, internalMutation, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { v, ConvexError } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { internal } from "../../_generated/api";
 import { draftRegistry, isDraftFormKey, parseDraftPayload } from "../../../shared/src/drafts/registry";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import { recordAuditEventHelper } from "./audit";
@@ -54,6 +55,14 @@ async function owned(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId:
 function activeScopeKey(userId: Id<"users">, schoolId: Id<"schools">, formKey: string) {
   return `${userId}:${schoolId}:${formKey}:new`;
 }
+function isRecoverableDraft(draft: Doc<"formDrafts">, now: number) {
+  if (draft.status !== "active" || !isDraftFormKey(draft.formKey)) return false;
+  const policy = draftRegistry[draft.formKey];
+  if (draft.schemaVersion !== undefined && draft.schemaVersion !== policy.version) return false;
+  if ((draft.expiresAt ?? draft.createdAt + policy.retentionDays * 86400000) <= now) return false;
+  try { parseDraftPayload(draft.formKey, draft.payload); return true; }
+  catch { return false; }
+}
 
 async function audit(ctx: MutationCtx, schoolId: Id<"schools">, userId: Id<"users">, draftId: Id<"formDrafts">, action: string) {
   const user = await ctx.db.get(userId);
@@ -68,8 +77,11 @@ export const beginFormDraft = mutation({
     if (args.schemaVersion !== policy.version) fail("SCHEMA_REJECTED", "Unsupported draft version.");
     const scopeKey = activeScopeKey(auth.userId, args.schoolId, args.formKey);
     const current = await ctx.db.query("formDrafts").withIndex("by_active_scope", q => q.eq("activeScopeKey", scopeKey)).take(2);
-    const legacy = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
-    if ([...current, ...legacy].some(d => d.schoolId === args.schoolId && d.status === "active" && (d.expiresAt ?? d.createdAt + policy.retentionDays * 86400000) > Date.now())) fail("RECOVERY_REQUIRED", "Preview, resume or discard the existing draft first.");
+    const legacy = await ctx.db.query("formDrafts")
+      .withIndex("by_school_and_form", q => q.eq("schoolId", args.schoolId).eq("formKey", args.formKey))
+      .filter(q => q.and(q.eq(q.field("userId"), auth.userId), q.eq(q.field("status"), "active"), q.eq(q.field("activeScopeKey"), undefined)))
+      .take(2);
+    if ([...current, ...legacy].some(draft => isRecoverableDraft(draft, Date.now()))) fail("RECOVERY_REQUIRED", "Preview, resume or discard the existing draft first.");
     const now = Date.now();
     const expiresAt = now + policy.retentionDays * 86400000;
     const draftId = await ctx.db.insert("formDrafts", { schoolId: args.schoolId, userId: auth.userId, formKey: args.formKey, activeScopeKey: scopeKey, payload: {}, schemaVersion: policy.version, expiresAt, status: "active", revision: 0, lastSavedAt: now, createdAt: now, updatedAt: now });
@@ -96,7 +108,12 @@ export const getFormDraft = query({
   args: scope,
   handler: async (ctx, args) => {
     const { auth, policy, formKey } = await authority(ctx, args.schoolId, args.formKey, args.entityId);
-    const rows = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
+    const scopeRows = await ctx.db.query("formDrafts").withIndex("by_active_scope", q => q.eq("activeScopeKey", activeScopeKey(auth.userId, args.schoolId, args.formKey))).take(2);
+    const legacyRows = await ctx.db.query("formDrafts")
+      .withIndex("by_school_and_form", q => q.eq("schoolId", args.schoolId).eq("formKey", args.formKey))
+      .filter(q => q.and(q.eq(q.field("userId"), auth.userId), q.eq(q.field("status"), "active"), q.eq(q.field("activeScopeKey"), undefined)))
+      .take(2);
+    const rows = [...scopeRows, ...legacyRows].sort((a, b) => b.updatedAt - a.updatedAt);
     const now = Date.now();
     for (const draft of rows) {
       if (draft.schoolId !== args.schoolId || draft.status !== "active") continue;
@@ -156,7 +173,10 @@ export const expireFormDrafts = internalMutation({
       await audit(ctx, draft.schoolId, draft.userId, draft._id, "expired");
       processed++;
     }
-    return { processed, mayHaveMore: legacyRows.length + expiredRows.length === 100 };
+    const mayHaveMore = legacyRows.length + expiredRows.length === 100;
+    if (mayHaveMore)
+      await ctx.scheduler.runAfter(0, internal.functions.academic.drafts.expireFormDrafts, {});
+    return { processed, mayHaveMore };
   },
 });
 export const saveDraft = saveFormDraft;

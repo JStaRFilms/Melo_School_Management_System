@@ -464,9 +464,9 @@ export function StudentFirstOnboardingForm({
                 <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-slate-950 font-display">
                   Student Onboarding
                 </h1>
-                <Link className="text-xs underline" href="/admin/settings/email-domains">
-                  Institutional address review after onboarding — login-only is not an inbox
-                </Link>
+                <p className="text-xs text-slate-500">
+                  Institutional address review is separate; login-only is not an inbox.
+                </p>
               </div>
 
               {selectedClassName && (
