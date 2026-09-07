@@ -739,7 +739,7 @@ export default function SchoolSettingsPage() {
         </div>
       </form>
 
-      {branding.groupId && (
+      {branding.groupId && canManageBranding && (
         <BranchBrandingEditor
           groupId={branding.groupId as Id<"schoolGroups">}
           schoolId={branding.schoolId as Id<"schools">}

@@ -14,6 +14,7 @@ import { TeacherCreationForm } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { TeacherRecord } from "@/types";
+import { useAuth } from "@/AuthProvider";
 
 type ProvisionResult = {
   teacherId: string;
@@ -44,6 +45,12 @@ function getTeacherArchiveBlockerMessage(blockers: string[]) {
 }
 
 export default function TeachersPage() {
+  const { workspaceAccess } = useAuth();
+  const capabilities = workspaceAccess?.state === "ready" ? workspaceAccess.effectiveCapabilities : [];
+  const canOnboard = capabilities.includes("staff.onboard");
+  const canEditProfile = capabilities.includes("staff.profiles.edit");
+  const canResetPassword = capabilities.includes("staff.password.reset");
+  const canArchive = capabilities.includes("staff.account.suspend");
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
@@ -79,12 +86,12 @@ export default function TeachersPage() {
   [teachers, selectedTeacherId]);
   const selectedTeacherArchiveBlockers = useQuery(
     "functions/academic/academicSetup:getTeacherArchiveBlockers" as never,
-    selectedTeacherId
+    selectedTeacherId && canArchive
       ? ({ teacherId: selectedTeacherId } as never)
       : ("skip" as never)
   ) as string[] | undefined;
   const isArchiveStatusLoading =
-    Boolean(selectedTeacherId) && selectedTeacherArchiveBlockers === undefined;
+    Boolean(selectedTeacherId && canArchive) && selectedTeacherArchiveBlockers === undefined;
   const selectedTeacherWithArchiveState = useMemo(
     () =>
       selectedTeacher
@@ -274,6 +281,9 @@ export default function TeachersPage() {
              isResetting={isResetting}
              isArchiveStatusLoading={isArchiveStatusLoading}
              variant="sheet"
+             canEditProfile={canEditProfile}
+             canResetPassword={canResetPassword}
+             canArchive={canArchive}
            />
         )}
       </AdminSheet>
@@ -293,17 +303,20 @@ export default function TeachersPage() {
                   isSaving={isSaving}
                   isResetting={isResetting}
                   isArchiveStatusLoading={isArchiveStatusLoading}
+                  canEditProfile={canEditProfile}
+                  canResetPassword={canResetPassword}
+                  canArchive={canArchive}
                 />
               ) : (
-                <TeacherCreationForm
+                canOnboard ? <TeacherCreationForm
                   onProvision={handleProvision}
                   isSubmitting={isSubmitting}
-                />
+                /> : <p className="text-sm text-slate-500">Select a teacher to view authorized controls.</p>
               )}
             </div>
 
             <div className="lg:hidden">
-              {!selectedTeacher && (
+              {!selectedTeacher && canOnboard && (
                  <TeacherCreationForm
                    onProvision={handleProvision}
                    isSubmitting={isSubmitting}

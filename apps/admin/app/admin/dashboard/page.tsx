@@ -147,6 +147,9 @@ export default function AdminDashboardPage() {
     capabilities.includes("staff.list.view") &&
     capabilities.includes("academic.classes.manage");
   const canViewBilling = capabilities.includes("finance.reports.view");
+  const canViewEnrollment = capabilities.includes("enrollment.intakes.manage");
+  const canEnterAssessments = capabilities.includes("academic.assessments.enter");
+  const canOnboardStaff = capabilities.includes("staff.onboard");
   const queryArgs = canViewDashboardDetails ? ({} as never) : ("skip" as never);
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never,
@@ -193,8 +196,10 @@ export default function AdminDashboardPage() {
   const activeSubjects = useMemo(() => subjects?.filter((s) => !s.isArchived) ?? [], [subjects]);
 
   const totalEnrolledStudents = useMemo(
-    () => activeClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0),
-    [activeClasses]
+    () => canViewEnrollment
+      ? activeClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)
+      : null,
+    [activeClasses, canViewEnrollment]
   );
   const unassignedClasses = useMemo(
     () => activeClasses.filter((c) => !c.formTeacherId),
@@ -247,15 +252,15 @@ export default function AdminDashboardPage() {
         id: "students",
         title: "Student Body Enrollment",
         description:
-          totalEnrolledStudents > 0
+          (totalEnrolledStudents ?? 0) > 0
             ? `${totalEnrolledStudents} students enrolled`
             : "0 students enrolled",
-        status: totalEnrolledStudents > 0,
+        status: (totalEnrolledStudents ?? 0) > 0,
         href: "/academic/students",
         actionLabel: "Enroll Students",
       },
-    ];
-  }, [activeSession, activeClasses, activeSubjects, activeTeachers, unassignedClasses, totalEnrolledStudents]);
+    ].filter((milestone) => milestone.id !== "students" || canViewEnrollment);
+  }, [activeSession, activeClasses, activeSubjects, activeTeachers, unassignedClasses, totalEnrolledStudents, canViewEnrollment]);
 
   const completedMilestones = setupMilestones.filter((m) => m.status).length;
   const setupPercentage = Math.round((completedMilestones / setupMilestones.length) * 100);
@@ -605,12 +610,12 @@ export default function AdminDashboardPage() {
           <StatGroup
             variant="scroll"
             stats={[
-              {
+              ...(canViewEnrollment ? [{
                 label: "Student Roll",
-                value: String(totalEnrolledStudents),
+                value: String(totalEnrolledStudents ?? 0),
                 icon: <GraduationCap />,
                 description: `${activeClasses.length} Classes Populated`,
-              },
+              }] : []),
               {
                 label: "Teaching Staff",
                 value: String(activeTeachers.length),
@@ -648,7 +653,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-            <Link
+            {canViewEnrollment && <Link
               href="/academic/students"
               className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
@@ -656,9 +661,9 @@ export default function AdminDashboardPage() {
                 <Plus className="h-3.5 w-3.5" />
               </div>
               <span className="text-xs font-bold text-slate-800 leading-tight">Enroll Student</span>
-            </Link>
+            </Link>}
 
-            <Link
+            {canOnboardStaff && <Link
               href="/academic/teachers"
               className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
@@ -666,9 +671,9 @@ export default function AdminDashboardPage() {
                 <Plus className="h-3.5 w-3.5" />
               </div>
               <span className="text-xs font-bold text-slate-800 leading-tight">Add Teacher</span>
-            </Link>
+            </Link>}
 
-            <Link
+            {canEnterAssessments && <Link
               href="/assessments/results/entry"
               className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
@@ -676,7 +681,7 @@ export default function AdminDashboardPage() {
                 <ClipboardCheck className="h-3.5 w-3.5" />
               </div>
               <span className="text-xs font-bold text-slate-800 leading-tight">Enter Scores</span>
-            </Link>
+            </Link>}
 
             {canViewBilling && (
               <Link
@@ -761,7 +766,7 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
+                    {canViewEnrollment && <div className="flex items-center gap-3 shrink-0">
                       <div className="text-right">
                         <span className="text-xs font-black text-slate-900">{c.studentCount}</span>
                         <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Students</p>
@@ -773,7 +778,7 @@ export default function AdminDashboardPage() {
                       >
                         <ChevronRight className="h-3.5 w-3.5" />
                       </Link>
-                    </div>
+                    </div>}
                   </div>
                 ))}
               </div>

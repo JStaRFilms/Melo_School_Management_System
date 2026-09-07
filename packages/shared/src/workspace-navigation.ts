@@ -126,7 +126,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     key: "teacher",
     label: "Teacher",
     audience: "Classroom tools",
-    switchPath: "/assessments/exams/entry",
+    switchPath: "/",
     appBasePath: "/teacher",
     available: true,
     description: "Open teacher workflows for exam entry, planning, and enrollment edits.",

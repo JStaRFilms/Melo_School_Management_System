@@ -617,22 +617,35 @@ export const listAuditEvents = query({
     });
     if (args.module && auth.modules && !auth.modules.includes(args.module))
       throw new ConvexError("Forbidden: Module outside delegated audit scope");
-    const rows = await ctx.db
+    let auditQuery = ctx.db
       .query("auditEvents")
-      .withIndex("by_school_and_timestamp", (q) =>
-        q.eq("schoolId", args.schoolId),
-      )
+      .withIndex("by_school_and_timestamp", (q) => {
+        const school = q.eq("schoolId", args.schoolId);
+        if (args.startDate !== undefined && args.endDate !== undefined)
+          return school.gte("timestamp", args.startDate).lte("timestamp", args.endDate);
+        if (args.startDate !== undefined) return school.gte("timestamp", args.startDate);
+        if (args.endDate !== undefined) return school.lte("timestamp", args.endDate);
+        return school;
+      });
+    auditQuery = auditQuery.filter((q) => {
+      const filters = [];
+      if (args.module) filters.push(q.eq(q.field("module"), args.module));
+      else if (auth.modules) filters.push(
+        auth.modules.length
+          ? q.or(...auth.modules.map((module) => q.eq(q.field("module"), module)))
+          : q.eq(q.field("module"), "__no_delegated_modules__"),
+      );
+      if (args.action) filters.push(q.eq(q.field("action"), args.action));
+      if (auth.platformOnly) filters.push(q.eq(q.field("actorKind"), "platform_admin"));
+      return filters.length
+        ? q.and(...filters)
+        : q.eq(q.field("schoolId"), args.schoolId);
+    });
+    const rows = await auditQuery
       .order("desc")
       .take(Math.min(Math.max(args.limit ?? 50, 1), 100));
     return rows
-      .filter(
-        (event) =>
-          visibleEvent(event, auth) &&
-          (!args.module || event.module === args.module) &&
-          (!args.action || event.action === args.action) &&
-          (args.startDate === undefined || event.timestamp >= args.startDate) &&
-          (args.endDate === undefined || event.timestamp <= args.endDate),
-      )
+      .filter((event) => visibleEvent(event, auth))
       .map((event) => ({
         ...safeEvent(event),
         _id: event._id,

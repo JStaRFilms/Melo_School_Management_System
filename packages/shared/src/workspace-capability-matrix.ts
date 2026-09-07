@@ -49,6 +49,7 @@ export const WORKSPACE_CAPABILITY_MATRIX: readonly {
   { workspace: "admin", path: "/billing/bank-accounts", required: ["finance.bank_details.manage"] },
   { workspace: "admin", path: "/billing/settlements", required: ["finance.settlements.view"] },
   { workspace: "admin", path: "/academic/knowledge", required: ["academic.curriculum.manage"] },
+  { workspace: "teacher", path: "/", exact: true, required: [] },
   { workspace: "teacher", path: "/planning", required: [], requiredAny: TEACHER_PLANNING_CAPABILITIES },
   { workspace: "teacher", path: "/assessments/exams", required: ["academic.assessments.enter"] },
   { workspace: "teacher", path: "/assessments/report-card-workbench", required: ["academic.report_cards.preview"] },
