@@ -171,17 +171,23 @@ export const listSharedAssets = query({
     await requireCapability(ctx, args.schoolId, "assets.library.view");
     const recipient = await ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
     if (!recipient || (await ctx.db.get(recipient.groupId))?.status !== "active") return { rows: [], truncated: false };
-    const grants = await ctx.db.query("assetBranchShares").withIndex("by_recipient", q => q.eq("recipientSchoolId", args.schoolId)).take(51);
+    const grants = await ctx.db
+      .query("assetBranchShares")
+      .withIndex("by_recipient", q => q.eq("recipientSchoolId", args.schoolId))
+      .take(501);
     const rows = [];
-    for (const grant of grants.slice(0, 50)) {
+    for (const grant of grants.slice(0, 500)) {
       const [asset, owner, school] = await Promise.all([
         ctx.db.get(grant.assetId),
         ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", grant.ownerSchoolId)).unique(),
         ctx.db.get(grant.ownerSchoolId),
       ]);
-      if (asset && asset.schoolId === grant.ownerSchoolId && !asset.isTrashed && asset.archivedAt === undefined && owner?.groupId === recipient.groupId && school?.status === "active") rows.push({ ...sharedAssetMetadata(asset), ownerSchoolName: school.name });
+      if (asset && asset.schoolId === grant.ownerSchoolId && !asset.isTrashed && asset.archivedAt === undefined && owner?.groupId === recipient.groupId && school?.status === "active") {
+        rows.push({ ...sharedAssetMetadata(asset), ownerSchoolName: school.name });
+        if (rows.length === 50) break;
+      }
     }
-    return { rows, truncated: grants.length > 50 };
+    return { rows, truncated: grants.length > 500 || rows.length === 50 };
   },
 });
 

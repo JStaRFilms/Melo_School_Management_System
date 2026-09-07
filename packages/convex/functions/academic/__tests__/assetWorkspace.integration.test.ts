@@ -119,6 +119,50 @@ it("membership alone shares nothing; explicit grants are tenant-bound and revoke
   await p.mutation(a.setBranchShare, { schoolId, assetId, recipientSchoolId: otherId, shared: false });
   expect((await p.query(a.listSharedAssets, { schoolId: otherId })).rows).toHaveLength(0);
 });
+it("scans past inactive grants to return newer valid shared assets", async () => {
+  const { t, p, schoolId, otherId, assetId } = await fixture();
+  await t.run(async (ctx) => {
+    const now = Date.now();
+    const storageId = await ctx.storage.store(new Blob(["archived share"]));
+    const metadata = await ctx.db.system.get("_storage", storageId);
+    if (!metadata) throw new Error("archived share fixture missing");
+    const archivedAssetId = await ctx.db.insert("schoolAssets", {
+      schoolId,
+      storageId,
+      fileName: "Archived share.pdf",
+      category: "Policy",
+      mimeType: "application/pdf",
+      byteSize: metadata.size,
+      sha256: metadata.sha256,
+      archivedAt: now,
+      scanStatus: "quarantined",
+      validationStatus: "pending",
+      isTrashed: false,
+      storageAccountingInitializedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    for (let index = 0; index < 51; index += 1) {
+      await ctx.db.insert("assetBranchShares", {
+        assetId: archivedAssetId,
+        ownerSchoolId: schoolId,
+        recipientSchoolId: otherId,
+        createdAt: now + index,
+      });
+    }
+    await ctx.db.insert("assetBranchShares", {
+      assetId,
+      ownerSchoolId: schoolId,
+      recipientSchoolId: otherId,
+      createdAt: now + 51,
+    });
+  });
+
+  const shared = await p.query(a.listSharedAssets, { schoolId: otherId });
+  expect(shared).toMatchObject({ truncated: false });
+  expect(shared.rows.map((asset) => asset._id)).toEqual([assetId]);
+});
+
 it("lets a source-only operator choose an explicit same-group recipient without receiving recipient access", async () => {
   const { t, schoolId, otherId, outsiderId, assetId } = await fixture();
   const source = t.withIdentity({ tokenIdentifier: "test|source-share", subject: "source-share" });

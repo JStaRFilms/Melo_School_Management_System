@@ -1607,6 +1607,7 @@ export const generateTeacherAssessmentDraft = action({
   returns: assessmentBankGenerationResultValidator,
   handler: async (ctx, args): Promise<AssessmentBankGenerationResultShape> => {
     await requireStaffGenerationContext(ctx);
+    assertPaidUsageAvailable();
 
     const requestedSourceIds = normalizeSourceIds(args.sourceIds.map((id) => String(id)));
     if (requestedSourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
