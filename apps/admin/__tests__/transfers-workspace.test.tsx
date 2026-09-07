@@ -285,6 +285,8 @@ it("governed manual acceptance requires reason/confirmation and sends only expli
     target: { value: "78" },
   });
   fireEvent.click(screen.getByLabelText(/Confirm manual identifier/));
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByLabelText(/I confirm the destination/));
   fireEvent.click(button);
   await waitFor(() =>
     expect(mocks.accept).toHaveBeenCalledWith(

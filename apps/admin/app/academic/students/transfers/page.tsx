@@ -699,7 +699,11 @@ function Review({
                       className={control}
                       maxLength={160}
                       value={manual}
-                      onChange={(e) => setManual(e.target.value)}
+                      onChange={(e) => {
+                        setManual(e.target.value);
+                        setOverrideConfirmed(false);
+                        setConfirmed(false);
+                      }}
                     />
                   </label>
                   <label>
@@ -709,7 +713,11 @@ function Review({
                       minLength={8}
                       maxLength={240}
                       value={overrideReason}
-                      onChange={(e) => setOverrideReason(e.target.value)}
+                      onChange={(e) => {
+                        setOverrideReason(e.target.value);
+                        setOverrideConfirmed(false);
+                        setConfirmed(false);
+                      }}
                     />
                   </label>
                   <label>
@@ -723,6 +731,8 @@ function Review({
                           decision === "keep" || decision === "advance" ? decision : "",
                         );
                         if (decision !== "advance") setAdvance("");
+                        setOverrideConfirmed(false);
+                        setConfirmed(false);
                       }}
                     >
                       <option value="">Choose explicitly</option>
@@ -739,7 +749,11 @@ function Review({
                       step="1"
                       disabled={counterDecision !== "advance"}
                       value={advance}
-                      onChange={(e) => setAdvance(e.target.value)}
+                      onChange={(e) => {
+                        setAdvance(e.target.value);
+                        setOverrideConfirmed(false);
+                        setConfirmed(false);
+                      }}
                     />
                   </label>
                   <label>
