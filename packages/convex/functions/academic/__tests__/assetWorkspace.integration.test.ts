@@ -211,6 +211,65 @@ it("continues expired cleanup past a full page of retention-held assets", async 
   expect((await principal.query(a.getWorkspace, { schoolId })).storage?.consumed).toBe(held.heldBytes);
 });
 
+it("marks conflicting storage for reconciliation and continues the global cleanup sweep", async () => {
+  const { t, principal, schoolId, assetId } = await fixture();
+  await principal.mutation(a.trashAsset, { schoolId, assetId });
+  const conflict = await t.run(async (ctx) => {
+    const now = Date.now();
+    const storageId = await ctx.storage.store(new Blob(["shared legacy storage"]));
+    const metadata = await ctx.db.system.get("_storage", storageId);
+    if (!metadata) throw new Error("conflicting storage fixture missing");
+    const shared = {
+      schoolId,
+      storageId,
+      category: "Policy",
+      mimeType: "application/pdf",
+      byteSize: metadata.size,
+      sha256: metadata.sha256,
+      scanStatus: "quarantined" as const,
+      validationStatus: "pending" as const,
+      storageAccountingInitializedAt: now,
+      createdAt: now - 3_000,
+      updatedAt: now,
+    };
+    const conflictingAssetId = await ctx.db.insert("schoolAssets", {
+      ...shared,
+      fileName: "Conflicting trash.pdf",
+      isTrashed: true,
+      trashedAt: now - 2_000,
+      purgeScheduledAt: now - 2_000,
+    });
+    const otherOwnerId = await ctx.db.insert("schoolAssets", {
+      ...shared,
+      fileName: "Other owner.pdf",
+      isTrashed: false,
+    });
+    const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique();
+    if (!allocation) throw new Error("storage allocation fixture missing");
+    await ctx.db.patch(allocation._id, {
+      consumedUnits: allocation.consumedUnits + metadata.size * 2,
+      activeStorageBytes: (allocation.activeStorageBytes ?? 0) + metadata.size,
+      trashStorageBytes: (allocation.trashStorageBytes ?? 0) + metadata.size,
+      updatedAt: now,
+    });
+    await ctx.db.patch(assetId, { purgeScheduledAt: now - 1 });
+    return { conflictingAssetId, otherOwnerId };
+  });
+
+  expect(await t.mutation(internal.functions.academic.assets.cleanupExpiredAssetStorage, { limit: 1 })).toEqual({ cleaned: 0 });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  expect(await t.run((ctx) => ctx.db.get(assetId))).toBeNull();
+  expect(await t.run((ctx) => ctx.db.get(conflict.conflictingAssetId))).toMatchObject({
+    storageReconciliationState: "reconciliation_required",
+  });
+  expect(await t.run((ctx) => ctx.db.get(conflict.otherOwnerId))).not.toBeNull();
+  expect(await t.run((ctx) => ctx.db.query("assetStorageReconciliationIssues").withIndex("by_asset_and_storage_and_code", q => q.eq("assetId", conflict.conflictingAssetId)).first())).toMatchObject({
+    code: "duplicate_storage_ownership",
+    status: "open",
+  });
+});
+
 it("reports upload intake unavailable before generic transport can create or bind storage", async () => {
   const { t, p, schoolId } = await fixture();
   expect(await p.query(a.getWorkspace, { schoolId })).toMatchObject({ uploadAvailable: false });

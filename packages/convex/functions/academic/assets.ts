@@ -1,4 +1,9 @@
-import { assertStorageClaimedOnlyBy, secureUploadUnavailable } from "./assetStorageBoundary";
+import {
+  assertStorageClaimedOnlyBy,
+  secureUploadUnavailable,
+  storageClaimedOnlyBy,
+} from "./assetStorageBoundary";
+import { recordStorageReconciliationIssue } from "./assetsMigration";
 import { assetMetadata } from "./assetWorkspace";
 import { ConvexError, v } from "convex/values";
 import { internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx } from "../../_generated/server";
@@ -173,6 +178,25 @@ function assertAssetAccountingInitialized(asset: Doc<"schoolAssets">): void {
   if (asset.storageAccountingInitializedAt === undefined || asset.storageReconciliationState) {
     throw new ConvexError("Asset lifecycle is blocked until storage accounting migration completes");
   }
+}
+
+async function markStorageReconciliationRequired(
+  ctx: MutationCtx,
+  asset: Doc<"schoolAssets">,
+  storageId: Id<"_storage">,
+  now: number,
+): Promise<void> {
+  await ctx.db.patch(asset._id, {
+    storageReconciliationState: "reconciliation_required",
+    updatedAt: now,
+  });
+  await recordStorageReconciliationIssue(
+    ctx,
+    asset,
+    storageId,
+    "duplicate_storage_ownership",
+    now,
+  );
 }
 
 async function applyStorageAccounting(
@@ -899,20 +923,29 @@ export const cleanupExpiredAssetStorage = internalMutation({
         .withIndex("by_purge_schedule", (q) => q.eq("isTrashed", true).lt("purgeScheduledAt", now))
         .paginate({ numItems: limit, cursor: args.cursor ?? null });
       for (const asset of trashed.page) {
+        if (asset.storageReconciliationState) continue;
         assertAssetAccountingInitialized(asset);
         const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
         if (hold.length > 0) continue;
-        await assertStorageClaimedOnlyBy(ctx, asset.storageId, {
+        const ownsStorage = await storageClaimedOnlyBy(ctx, asset.storageId, {
           purpose: "schoolAsset",
           ownerId: String(asset._id),
         });
-        await ctx.storage.delete(asset.storageId);
-        let rollbackByteSize = 0;
-        if (asset.rollbackStorageId && asset.rollbackStorageId !== asset.storageId) {
-          await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
+        const ownsRollback = !asset.rollbackStorageId || asset.rollbackStorageId === asset.storageId ||
+          await storageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
             purpose: "schoolAssetRollback",
             ownerId: String(asset._id),
           });
+        if (!ownsStorage || !ownsRollback) {
+          if (!ownsStorage) await markStorageReconciliationRequired(ctx, asset, asset.storageId, now);
+          if (!ownsRollback && asset.rollbackStorageId) {
+            await markStorageReconciliationRequired(ctx, asset, asset.rollbackStorageId, now);
+          }
+          continue;
+        }
+        await ctx.storage.delete(asset.storageId);
+        let rollbackByteSize = 0;
+        if (asset.rollbackStorageId && asset.rollbackStorageId !== asset.storageId) {
           const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
           rollbackByteSize = rollbackMetadata?.size ?? 0;
           await ctx.storage.delete(asset.rollbackStorageId);
@@ -939,14 +972,18 @@ export const cleanupExpiredAssetStorage = internalMutation({
         .withIndex("by_rollback_expiry", (q) => q.lt("rollbackExpiryAt", now))
         .paginate({ numItems: limit, cursor: args.cursor ?? null });
       for (const asset of rollbackCandidates.page) {
-        if (!asset.rollbackStorageId || asset.isTrashed) continue;
+        if (!asset.rollbackStorageId || asset.isTrashed || asset.storageReconciliationState) continue;
         assertAssetAccountingInitialized(asset);
         const hold = await ctx.db.query("assetRetentionHolds").withIndex("by_asset", (q) => q.eq("assetId", asset._id)).take(1);
         if (hold.length > 0) continue;
-        await assertStorageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
+        const ownsRollback = await storageClaimedOnlyBy(ctx, asset.rollbackStorageId, {
           purpose: "schoolAssetRollback",
           ownerId: String(asset._id),
         });
+        if (!ownsRollback) {
+          await markStorageReconciliationRequired(ctx, asset, asset.rollbackStorageId, now);
+          continue;
+        }
         const rollbackMetadata = await ctx.db.system.get("_storage", asset.rollbackStorageId);
         await ctx.storage.delete(asset.rollbackStorageId);
         await applyStorageAccounting(ctx, asset.schoolId, { temp: -(rollbackMetadata?.size ?? 0) });
@@ -964,10 +1001,17 @@ export const cleanupExpiredAssetStorage = internalMutation({
         .withIndex("by_cleanup_schedule", (q) => q.lt("cleanupScheduledAt", now))
         .paginate({ numItems: limit, cursor: args.cursor ?? null });
       for (const candidate of staleCandidates.page) {
-        await assertStorageClaimedOnlyBy(ctx, candidate.candidateStorageId, {
+        const ownsCandidate = await storageClaimedOnlyBy(ctx, candidate.candidateStorageId, {
           purpose: "pdfCompressionCandidate",
           ownerId: String(candidate._id),
         });
+        if (!ownsCandidate) {
+          const asset = await ctx.db.get(candidate.assetId);
+          if (asset) {
+            await markStorageReconciliationRequired(ctx, asset, candidate.candidateStorageId, now);
+          }
+          continue;
+        }
         const metadata = await ctx.db.system.get("_storage", candidate.candidateStorageId);
         if (metadata) await ctx.storage.delete(candidate.candidateStorageId);
         if (candidate.status === "verified") {

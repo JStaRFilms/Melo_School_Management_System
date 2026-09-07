@@ -85,12 +85,12 @@ export async function assertStorageUnclaimed(ctx: Context, storageId: Id<"_stora
   }
 }
 
-/** Destructive operations must prove that no other current or legacy owner exists. */
-export async function assertStorageClaimedOnlyBy(
+/** Reports whether a destructive operation has exactly the expected ownership. */
+export async function storageClaimedOnlyBy(
   ctx: Context,
   storageId: Id<"_storage">,
   expected: ExpectedStorageClaim,
-) {
+): Promise<boolean> {
   const claims = await collectStorageClaims(ctx, storageId);
   const expectedClaims = claims.filter(
     claim => claim.purpose === expected.purpose && claim.ownerId === expected.ownerId,
@@ -100,7 +100,16 @@ export async function assertStorageClaimedOnlyBy(
     (expected.purpose === "schoolAsset" && claim.purpose === "assetUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
     (expected.purpose === "demoSeedCleanup" && claim.purpose === "demoSeedCleanup")
   );
-  if (expectedClaims.length !== 1 || claims.length !== allowedClaims.length) {
+  return expectedClaims.length === 1 && claims.length === allowedClaims.length;
+}
+
+/** Destructive operations must prove that no other current or legacy owner exists. */
+export async function assertStorageClaimedOnlyBy(
+  ctx: Context,
+  storageId: Id<"_storage">,
+  expected: ExpectedStorageClaim,
+) {
+  if (!(await storageClaimedOnlyBy(ctx, storageId, expected))) {
     throw new ConvexError("Storage object has conflicting ownership and cannot be deleted");
   }
 }
