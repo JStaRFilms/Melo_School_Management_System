@@ -301,7 +301,6 @@ export default function BillingPage() {
     e.preventDefault();
     const success = await actions.runAction(async () => {
       await actions.applyFeePlanToClassStudents({
-        bankAccountId: feePlanApplicationDraft.bankAccountId || undefined,
         feePlanId: feePlanApplicationDraft.feePlanId,
         classId: feePlanApplicationDraft.classId,
         sessionId: feePlanApplicationDraft.sessionId,

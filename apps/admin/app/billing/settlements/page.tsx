@@ -10,6 +10,9 @@ export default function SettlementsPage() {
     workspaceAccess?.state === "ready"
       ? (workspaceAccess.branch.schoolId as Id<"schools">)
       : undefined;
+  const canViewBillingReports =
+    workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("finance.reports.view");
   const allowed = useQuery(
     api.functions.academic.rbac.hasViewerCapability,
     schoolId ? { schoolId, capability: "finance.settlements.view" } : "skip",
@@ -22,10 +25,12 @@ export default function SettlementsPage() {
   if (!rows) return <p role="status">Loading collection settlements…</p>;
   return (
     <main className="mx-auto max-w-4xl space-y-4 p-4">
-      <nav className="flex flex-wrap gap-4">
-        <Link href="/billing">School fee invoices</Link>
-        <Link href="/billing/subscription">Melo subscription</Link>
-      </nav>
+      {canViewBillingReports && (
+        <nav className="flex flex-wrap gap-4">
+          <Link href="/billing">School fee invoices</Link>
+          <Link href="/billing/subscription">Melo subscription</Link>
+        </nav>
+      )}
       <h1 className="text-xl font-semibold">School collection settlements</h1>
       <p>
         Read-only recent 100 records, not a complete balance. School-owned

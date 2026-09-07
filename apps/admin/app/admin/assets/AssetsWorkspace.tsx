@@ -42,7 +42,6 @@ function Library({ schoolId, workspace, area }: { schoolId: Id<"schools">; works
       <Link aria-current={area === "library" ? "page" : undefined} href="/admin/assets">Library</Link>
       {workspace.capabilities.includes("assets.archive.manage") && <Link aria-current={area === "archive" ? "page" : undefined} href="/admin/assets/archive">Asset Archive</Link>}
       {workspace.capabilities.includes("assets.trash.manage") && <Link aria-current={area === "trash" ? "page" : undefined} href="/admin/assets/trash">Trash</Link>}
-      <Link href="/academic/archived-records">Academic Archive (separate)</Link>
     </nav>
     <p>Private branch-owned files, separate from lesson knowledge. Antivirus is unconfigured: no file is cleared for download, even with a recorded clean flag. No public links.</p>
     <section aria-label="Storage accounting" className="space-y-1 border-y py-3">
