@@ -853,22 +853,36 @@ export const listTransfersBySchool = query({
     await assertTransferAuthority(ctx, args.schoolId);
 
     const page = args.direction === "source"
-      ? await ctx.db
-          .query("studentTransfers")
-          .withIndex("by_source_school_and_status", (q) => {
-            const school = q.eq("sourceSchoolId", args.schoolId);
-            return args.status ? school.eq("status", args.status) : school;
-          })
-          .order("desc")
-          .paginate(args.paginationOpts)
-      : await ctx.db
-          .query("studentTransfers")
-          .withIndex("by_destination_school_and_status", (q) => {
-            const school = q.eq("destinationSchoolId", args.schoolId);
-            return args.status ? school.eq("status", args.status) : school;
-          })
-          .order("desc")
-          .paginate(args.paginationOpts);
+      ? args.status
+        ? await ctx.db
+            .query("studentTransfers")
+            .withIndex("by_source_school_and_status", (q) =>
+              q.eq("sourceSchoolId", args.schoolId).eq("status", args.status!),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : await ctx.db
+            .query("studentTransfers")
+            .withIndex("by_source_school", (q) =>
+              q.eq("sourceSchoolId", args.schoolId),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+      : args.status
+        ? await ctx.db
+            .query("studentTransfers")
+            .withIndex("by_destination_school_and_status", (q) =>
+              q.eq("destinationSchoolId", args.schoolId).eq("status", args.status!),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : await ctx.db
+            .query("studentTransfers")
+            .withIndex("by_destination_school", (q) =>
+              q.eq("destinationSchoolId", args.schoolId),
+            )
+            .order("desc")
+            .paginate(args.paginationOpts);
 
     return {
       ...page,

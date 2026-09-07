@@ -889,6 +889,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       paginationOpts: { numItems: 500, cursor: null },
     });
     expect(first.page).toHaveLength(500);
+    expect(first.page[0]?.status).toBe("completed");
     expect(first.isDone).toBe(false);
     const second = await adminA.query(listTransfersBySchoolRef, {
       schoolId: harness.schoolA,
