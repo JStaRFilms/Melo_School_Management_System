@@ -17,7 +17,6 @@ interface MaterialEditSheetProps {
   material: TeacherLibraryMaterial | null;
   onSave: (draft: MaterialDraft) => Promise<void>;
   onPublish: (id: string) => Promise<void>;
-  onRetry: (id: string) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
   isSaving: boolean;
   topicCandidates: TeacherKnowledgeTopic[] | undefined;
@@ -30,7 +29,6 @@ export function MaterialEditSheet({
   material,
   onSave,
   onPublish,
-  onRetry,
   onArchive,
   isSaving,
   topicCandidates,
@@ -104,12 +102,13 @@ export function MaterialEditSheet({
                 {renderMaterial.ingestionErrorMessage || "Document has been successfully parsed and contextually indexed."}
               </p>
               {(renderMaterial.processingStatus === "failed" || renderMaterial.processingStatus === "ocr_needed") && (
-                <button 
-                  onClick={() => onRetry(renderMaterial._id)}
-                  className="mt-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-950 hover:bg-white hover:shadow-sm px-3 py-2 rounded-lg border border-slate-200 transition-all"
+                <button
+                  type="button"
+                  disabled
+                  className="mt-4 flex cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 opacity-70"
                 >
                   <AlertCircle className="h-3.5 w-3.5" />
-                  Retry Extraction
+                  OCR retry unavailable
                 </button>
               )}
           </div>

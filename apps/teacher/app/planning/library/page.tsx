@@ -363,10 +363,6 @@ export default function TeacherLibraryPage() {
         material={materials.find(m => m._id === editingMaterialId) ?? null}
         onSave={handleSaveDraft}
         onPublish={async (id) => { await publishMaterial({ materialId: id as never } as never); }}
-        onRetry={async (id) => {
-          const material = materials.find((candidate) => candidate._id === id);
-          if (material) await handleRetryMaterial(material);
-        }}
         onArchive={handleArchive}
         isSaving={isSaving}
         topicCandidates={topicCandidates}

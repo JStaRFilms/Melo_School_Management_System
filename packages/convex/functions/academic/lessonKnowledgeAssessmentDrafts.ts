@@ -245,6 +245,7 @@ const workspaceValidator = v.object({
   draft: bankDraftValidator,
   items: v.array(bankItemValidator),
   canGenerate: v.boolean(),
+  paidGenerationAvailable: v.boolean(),
   canAutosave: v.boolean(),
   selectedSources: v.array(sourceValidator),
 });
@@ -1400,6 +1401,7 @@ export const getTeacherAssessmentBankWorkspace = query({
       },
       items: bankItems,
       canGenerate,
+      paidGenerationAvailable: false,
       canAutosave,
       selectedSources: sourceBundle.selectedSources,
     };

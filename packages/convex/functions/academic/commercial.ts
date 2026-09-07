@@ -810,15 +810,20 @@ export const issueSubscriptionInvoice = mutation({
         "Only a currently effective contract can be invoiced; snapshots are taken now, never retrospectively",
       );
     if (contract.rate.cadence === "termly") {
-      const term = await ctx.db
+      const terms = await ctx.db
         .query("academicTerms")
-        .withIndex("by_school_and_start_date_and_end_date", (q) =>
-          q
-            .eq("schoolId", args.schoolId)
-            .eq("startDate", args.periodStart)
-            .eq("endDate", args.periodEnd),
-        )
-        .unique();
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .take(101);
+      if (terms.length > 100)
+        throw new ConvexError("Academic term history exceeds local review bound");
+      const startDay = Math.floor(args.periodStart / 86400000);
+      const exclusiveEndDay = Math.floor(args.periodEnd / 86400000);
+      const matchingTerms = terms.filter(
+        (term) =>
+          Math.floor(term.startDate / 86400000) === startDay &&
+          Math.floor(term.endDate / 86400000) + 1 === exclusiveEndDay,
+      );
+      const term = matchingTerms.length === 1 ? matchingTerms[0] : null;
       const session = term ? await ctx.db.get(term.sessionId) : null;
       if (!term || !session || session.schoolId !== args.schoolId || session.isArchived)
         throw new ConvexError("Termly invoices require an exact configured academic term period");

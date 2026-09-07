@@ -136,6 +136,7 @@ export interface AssessmentWorkspaceData {
   draft: AssessmentDraftBank;
   items: AssessmentDraftItem[];
   canGenerate: boolean;
+  paidGenerationAvailable: boolean;
   canAutosave: boolean;
   selectedSources: AssessmentSource[];
 }
