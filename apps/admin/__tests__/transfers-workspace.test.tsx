@@ -139,8 +139,16 @@ it("confirms a minimal source proposal and retries an uncertain response using t
   ])
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   fireEvent.click(screen.getByLabelText(/I verified guardian consent/));
-  fireEvent.click(screen.getByLabelText(/I confirm this source student/));
-  fireEvent.click(screen.getByText("Initiate transfer"));
+  const confirmation = screen.getByLabelText(/I confirm this source student/);
+  const submit = screen.getByText("Initiate transfer") as HTMLButtonElement;
+  fireEvent.click(confirmation);
+  expect(submit.disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText("Proposed destination class"), {
+    target: { value: "Year 7" },
+  });
+  expect(submit.disabled).toBe(true);
+  fireEvent.click(confirmation);
+  fireEvent.click(submit);
   await waitFor(() =>
     expect(screen.getByRole("alert").textContent).toContain("not acknowledged"),
   );
@@ -151,7 +159,7 @@ it("confirms a minimal source proposal and retries an uncertain response using t
   );
   expect(mocks.initiate.mock.calls[0][0]).not.toHaveProperty("medicalNotes");
   expect(mocks.initiate.mock.calls[0][0]).toMatchObject({
-    proposalClassName: "Year 6",
+    proposalClassName: "Year 7",
     proposalSessionName: "2026/27",
     guardianConsentRecorded: true,
   });

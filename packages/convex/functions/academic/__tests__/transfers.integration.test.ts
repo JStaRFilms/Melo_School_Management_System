@@ -862,6 +862,34 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     ).toBeUndefined();
   });
 
+  it("5a. treats legacy schools without an explicit status as active", async () => {
+    const t = convexTest(schema, modules);
+    const harness = await setupTestHarness(t);
+    const adminA = t.withIdentity(harness.adminAIdentity);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(harness.schoolA, { status: undefined });
+      await ctx.db.patch(harness.schoolB, { status: undefined });
+    });
+
+    const workspace = await adminA.query(transfersApi.getTransferWorkspace, {
+      schoolId: harness.schoolA,
+    });
+    expect(workspace.allowed).toBe(true);
+    if (!workspace.allowed) throw new Error("Expected allowed workspace");
+    expect(workspace.destinations.map((school) => school._id)).toContain(
+      harness.schoolB,
+    );
+    await expect(
+      adminA.mutation(initiateStudentTransferRef, {
+        sourceSchoolId: harness.schoolA,
+        destinationSchoolId: harness.schoolB,
+        studentId: harness.studentId,
+        guardianConsentRecorded: true,
+        guardianConsentMethod: "signed_form",
+      }),
+    ).resolves.toMatchObject({ status: "initiated" });
+  });
+
   it("5b. paginates established branch history and filters status in the index", async () => {
     const t = convexTest(schema, modules);
     const harness = await setupTestHarness(t);

@@ -326,6 +326,7 @@ function Proposal({
                 workspace.classes.find((c) => c._id === e.target.value)?._id,
               );
               setStudentId(undefined);
+              setConfirmed(false);
             }}
           >
             <option value="">Select source class</option>
@@ -342,11 +343,12 @@ function Proposal({
             required
             className={control}
             value={studentId ?? ""}
-            onChange={(e) =>
+            onChange={(e) => {
               setStudentId(
                 candidates?.find((s) => s._id === e.target.value)?._id,
-              )
-            }
+              );
+              setConfirmed(false);
+            }}
           >
             <option value="">
               {classId && candidates === undefined
@@ -366,12 +368,13 @@ function Proposal({
             required
             className={control}
             value={destination ?? ""}
-            onChange={(e) =>
+            onChange={(e) => {
               setDestination(
                 workspace.destinations.find((d) => d._id === e.target.value)
                   ?._id,
-              )
-            }
+              );
+              setConfirmed(false);
+            }}
           >
             <option value="">Select within-group branch</option>
             {workspace.destinations.map((d) => (
@@ -388,7 +391,10 @@ function Proposal({
             maxLength={500}
             className={control}
             value={className}
-            onChange={(e) => setClassName(e.target.value)}
+            onChange={(e) => {
+              setClassName(e.target.value);
+              setConfirmed(false);
+            }}
           />
         </label>
         <label>
@@ -398,7 +404,10 @@ function Proposal({
             maxLength={500}
             className={control}
             value={sessionName}
-            onChange={(e) => setSessionName(e.target.value)}
+            onChange={(e) => {
+              setSessionName(e.target.value);
+              setConfirmed(false);
+            }}
           />
         </label>
         <p className="text-sm">
@@ -413,7 +422,10 @@ function Proposal({
             maxLength={500}
             className={control}
             value={method}
-            onChange={(e) => setMethod(e.target.value)}
+            onChange={(e) => {
+              setMethod(e.target.value);
+              setConfirmed(false);
+            }}
           />
         </label>
         <label>
@@ -425,7 +437,10 @@ function Proposal({
             step="0.1"
             className={control}
             value={attendance}
-            onChange={(e) => setAttendance(e.target.value)}
+            onChange={(e) => {
+              setAttendance(e.target.value);
+              setConfirmed(false);
+            }}
           />
         </label>
         <label className="sm:col-span-2">
@@ -434,7 +449,10 @@ function Proposal({
             maxLength={500}
             className={control}
             value={summary}
-            onChange={(e) => setSummary(e.target.value)}
+            onChange={(e) => {
+              setSummary(e.target.value);
+              setConfirmed(false);
+            }}
           />
         </label>
         <label>
@@ -442,7 +460,10 @@ function Proposal({
             type="checkbox"
             required
             checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
+            onChange={(e) => {
+              setConsent(e.target.checked);
+              setConfirmed(false);
+            }}
           />{" "}
           I verified guardian consent for this transfer and the minimal shared
           record.

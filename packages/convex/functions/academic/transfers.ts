@@ -1026,8 +1026,10 @@ async function assertActiveTransferGroup(
     ]);
   if (
     sourceSchoolId === destinationSchoolId ||
-    source?.status !== "active" ||
-    destination?.status !== "active" ||
+    !source ||
+    source.status === "suspended" ||
+    !destination ||
+    destination.status === "suspended" ||
     group?.status !== "active" ||
     sourceLink?.groupId !== groupId ||
     destinationLink?.groupId !== groupId
@@ -1068,7 +1070,7 @@ export const getTransferWorkspace = query({
     const destinations: { _id: Id<"schools">; name: string }[] = [];
     for (const branch of branches) {
       const target = await ctx.db.get(branch.schoolId);
-      if (target && target._id !== schoolId && target.status === "active")
+      if (target && target._id !== schoolId && target.status !== "suspended")
         destinations.push({ _id: target._id, name: target.name });
     }
     const classes = await ctx.db
