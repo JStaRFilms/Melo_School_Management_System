@@ -282,16 +282,64 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
   if (scope.kind === "group") {
     const overview = await getGroupOverviewHelper(ctx, scope.groupId);
     const platformOnly = await isGroupPlatformOperator(ctx);
-    return {
-      schoolIds: overview.branches.map((b) => b.schoolId),
-      modules: null,
-      platformOnly,
-      personId: platformOnly ? undefined : overview.group.proprietorPersonId,
-      owner: !platformOnly,
-      leadership: !platformOnly,
-      canCsv: true,
-      canPdf: true,
-    };
+    if (platformOnly) {
+      return {
+        schoolIds: overview.branches.map((b) => b.schoolId),
+        modules: null,
+        platformOnly: true,
+        personId: undefined,
+        owner: false,
+        leadership: false,
+        canCsv: true,
+        canPdf: true,
+      };
+    }
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("Unauthorized: Authentication required");
+    const people = await ctx.db
+      .query("persons")
+      .withIndex("by_token_identifier", (q) =>
+        q.eq("authTokenIdentifier", identity.tokenIdentifier),
+      )
+      .take(2);
+    if (people.length !== 1)
+      throw new ConvexError("Forbidden: Canonical group identity required");
+    const person = people[0];
+    const owner = overview.group.proprietorPersonId === person._id;
+    if (owner) {
+      return {
+        schoolIds: overview.branches.map((b) => b.schoolId),
+        modules: null,
+        platformOnly: false,
+        personId: person._id,
+        owner: true,
+        leadership: true,
+        canCsv: true,
+        canPdf: true,
+      };
+    }
+    for (const branch of overview.branches) {
+      try {
+        const actor = await requireCapability(
+          ctx,
+          branch.schoolId,
+          "audit.group.view",
+        );
+        return {
+          schoolIds: overview.branches.map((b) => b.schoolId),
+          modules: null,
+          platformOnly: false,
+          personId: actor.personId,
+          owner: false,
+          leadership: false,
+          canCsv: actor.effectiveCapabilities.includes("audit.export.csv"),
+          canPdf: actor.effectiveCapabilities.includes("audit.export.pdf"),
+        };
+      } catch {
+        // The delegated capability may be attached to another linked branch.
+      }
+    }
+    throw new ConvexError("Forbidden: Group audit capability required");
   }
   const identity = await ctx.auth.getUserIdentity();
   if (!identity)

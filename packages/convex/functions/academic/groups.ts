@@ -9,6 +9,7 @@ import {
 import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
 import { resolveActiveMembership, resolveLegacyViewer } from "./auth";
+import { requireCapability } from "./rbac";
 import { isTrustedLegacySubjectIssuer } from "./identityResolver";
 
 import { schoolThemeValidator } from "../foundation/brandingContract";
@@ -207,6 +208,37 @@ export const listUserBranches = query({
   },
 });
 
+async function canViewGroup(
+  ctx: Context,
+  group: Doc<"schoolGroups">,
+  person: Doc<"persons"> | null,
+) {
+  if (group.proprietorPersonId === person?._id) return true;
+  if (!person) return false;
+  const memberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_status", (q) =>
+      q.eq("personId", person._id).eq("status", "active"),
+    )
+    .take(101);
+  if (memberships.length > 100)
+    throw new ConvexError("Group access requires a bounded membership review");
+  for (const membership of memberships) {
+    const link = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", membership.schoolId))
+      .unique();
+    if (link?.groupId !== group._id) continue;
+    try {
+      await requireCapability(ctx, membership.schoolId, "audit.group.view");
+      return true;
+    } catch {
+      // Another linked membership may carry the delegated capability.
+    }
+  }
+  return false;
+}
+
 export async function getGroupOverviewHelper(
   ctx: Context,
   groupId: Id<"schoolGroups">,
@@ -214,10 +246,8 @@ export async function getGroupOverviewHelper(
   const platform = await isGroupPlatformOperator(ctx);
   const person = platform ? null : await currentPerson(ctx);
   const group = await ctx.db.get(groupId);
-  if (!group || (!platform && group.proprietorPersonId !== person?._id))
-    throw new ConvexError(
-      "Forbidden: Only authorized group proprietors may view group overview",
-    );
+  if (!group || (!platform && !(await canViewGroup(ctx, group, person))))
+    throw new ConvexError("Forbidden: Group audit authority required");
   if (group.status !== "active") throw new ConvexError("Group is archived");
   const links = await ctx.db
     .query("schoolGroupBranches")
@@ -255,23 +285,64 @@ export const listGroups = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     const platform = await isGroupPlatformOperator(ctx);
-    const person = platform ? null : await currentPerson(ctx);
-    if (!platform && !person)
-      throw new ConvexError(
-        "Forbidden: Canonical proprietor identity required",
-      );
-    const source = platform
-      ? ctx.db.query("schoolGroups")
-      : ctx.db
-          .query("schoolGroups")
-          .withIndex("by_proprietor", (q) =>
-            q.eq("proprietorPersonId", person!._id),
-          );
-    const page = await source.order("desc").paginate({
-      ...args.paginationOpts,
-      numItems: Math.min(args.paginationOpts.numItems, 50),
-    });
-    return { ...page, page: page.page.map(groupMetadata) };
+    if (platform) {
+      const page = await ctx.db.query("schoolGroups").order("desc").paginate({
+        ...args.paginationOpts,
+        numItems: Math.min(args.paginationOpts.numItems, 50),
+      });
+      return { ...page, page: page.page.map(groupMetadata) };
+    }
+
+    const person = await currentPerson(ctx);
+    if (!person)
+      throw new ConvexError("Forbidden: Canonical group identity required");
+    const [ownedGroups, memberships] = await Promise.all([
+      ctx.db
+        .query("schoolGroups")
+        .withIndex("by_proprietor", (q) => q.eq("proprietorPersonId", person._id))
+        .take(101),
+      ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_status", (q) =>
+          q.eq("personId", person._id).eq("status", "active"),
+        )
+        .take(101),
+    ]);
+    if (ownedGroups.length > 100 || memberships.length > 100)
+      throw new ConvexError("Group directory requires a bounded access review");
+    const candidates = new Map(
+      ownedGroups.map((group) => [String(group._id), group]),
+    );
+    for (const membership of memberships) {
+      const link = await ctx.db
+        .query("schoolGroupBranches")
+        .withIndex("by_school", (q) => q.eq("schoolId", membership.schoolId))
+        .unique();
+      if (!link || candidates.has(String(link.groupId))) continue;
+      try {
+        await requireCapability(ctx, membership.schoolId, "audit.group.view");
+      } catch {
+        continue;
+      }
+      const group = await ctx.db.get(link.groupId);
+      if (group) candidates.set(String(group._id), group);
+    }
+    const groups = [...candidates.values()].sort(
+      (left, right) => right._creationTime - left._creationTime,
+    );
+    const offset = args.paginationOpts.cursor
+      ? Number(args.paginationOpts.cursor)
+      : 0;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > groups.length)
+      throw new ConvexError("Invalid group directory cursor");
+    const numItems = Math.min(Math.max(args.paginationOpts.numItems, 1), 50);
+    const page = groups.slice(offset, offset + numItems).map(groupMetadata);
+    const nextOffset = offset + page.length;
+    return {
+      page,
+      isDone: nextOffset >= groups.length,
+      continueCursor: String(nextOffset),
+    };
   },
 });
 

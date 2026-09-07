@@ -69,6 +69,7 @@ async function setup() {
     });
     for (const capability of [
       "audit.branch.view",
+      "audit.group.view",
       "audit.export.csv",
       "audit.export.pdf",
     ])
@@ -260,12 +261,18 @@ it("paginates past recent nonmatches, enforces branch/module boundaries and keep
     paginationOpts: { numItems: 100, cursor: null },
   });
   expect(ownerPage.page.every((row) => row.schoolId === f.schoolId)).toBe(true);
-  await expect(
-    f.reader.query(audit.queryAuditPage, {
-      scope: { kind: "group", groupId: f.groupId },
-      paginationOpts: { numItems: 100, cursor: null },
-    }),
-  ).rejects.toThrow("Forbidden");
+  const delegatedGroups = await f.reader.query(
+    api.functions.academic.groups.listGroups,
+    { paginationOpts: { numItems: 25, cursor: null } },
+  );
+  expect(delegatedGroups.page.map((group) => group._id)).toContain(f.groupId);
+  const delegatedPage = await f.reader.query(audit.queryAuditPage, {
+    scope: { kind: "group", groupId: f.groupId },
+    paginationOpts: { numItems: 100, cursor: null },
+  });
+  expect(delegatedPage.page.every((row) => row.schoolId === f.schoolId)).toBe(
+    true,
+  );
 });
 
 it("keeps leadership alerts reachable and records safe export outcomes", async () => {

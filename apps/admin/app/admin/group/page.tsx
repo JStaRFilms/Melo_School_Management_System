@@ -7,8 +7,17 @@ import { useState } from "react";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
 
 export default function GroupPage() {
+  const { workspaceAccess } = useAuth();
+  const capabilities =
+    workspaceAccess?.state === "ready"
+      ? workspaceAccess.effectiveCapabilities
+      : [];
+  const isProprietor =
+    workspaceAccess?.state === "ready" &&
+    workspaceAccess.membership?.isProprietor === true;
   const groups = usePaginatedQuery(
     api.functions.academic.groups.listGroups,
     {},
@@ -22,40 +31,46 @@ export default function GroupPage() {
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
       <nav className="flex flex-wrap gap-4 text-sm">
-        <Link href="/admin" className="underline">
-          Administration
-        </Link>
-        <Link href="/admin/permissions" className="underline">
-          Permissions
-        </Link>
-        <Link href="/admin/audit" className="underline">
-          Audit
-        </Link>
+        {capabilities.includes("staff.list.view") && (
+          <Link href="/admin" className="underline">
+            Administration
+          </Link>
+        )}
+        {capabilities.includes("staff.permissions.manage") && (
+          <Link href="/admin/permissions" className="underline">
+            Permissions
+          </Link>
+        )}
+        {capabilities.includes("audit.branch.view") && (
+          <Link href="/admin/audit" className="underline">
+            Audit
+          </Link>
+        )}
       </nav>
       <header>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Proprietor workspace
+          Group governance workspace
         </p>
         <h1 className="mt-1 text-2xl font-semibold">School group</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Ownership and branch directory. Group links do not grant operational
-          access to another school.
+          Authorized ownership and branch directory. Group links do not grant
+          operational access to another school.
         </p>
       </header>
       {groups.status === "LoadingFirstPage" ? (
-        <p role="status">Loading owned groups…</p>
+        <p role="status">Loading accessible groups…</p>
       ) : groups.results.length === 0 ? (
         <section className="rounded-xl border bg-white p-6">
-          <h2 className="font-semibold">No owned groups</h2>
+          <h2 className="font-semibold">No accessible groups</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Only the recorded canonical proprietor can view this directory. Ask
-            Platform support to review ownership; job titles do not establish
-            authority.
+            A canonical proprietor link or delegated group-audit capability is
+            required. Ask Platform support to review access; job titles do not
+            establish authority.
           </p>
         </section>
       ) : (
         <label className="block max-w-xl text-sm font-medium">
-          Owned group
+          Accessible group
           <select
             className="mt-2 w-full rounded-lg border bg-white p-3"
             value={groupId ?? ""}
@@ -122,7 +137,7 @@ export default function GroupPage() {
           </ul>
         </section>
       )}
-      {overview && groupId && (
+      {overview && groupId && isProprietor && (
         <>
           <GroupBranding
             key={`branding:${groupId}`}
