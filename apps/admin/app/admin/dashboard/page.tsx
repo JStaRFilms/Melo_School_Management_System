@@ -145,8 +145,8 @@ export default function AdminDashboardPage() {
       : [];
   const canViewDashboardDetails =
     capabilities.includes("staff.list.view") &&
-    capabilities.includes("academic.classes.manage") &&
-    capabilities.includes("finance.reports.view");
+    capabilities.includes("academic.classes.manage");
+  const canViewBilling = capabilities.includes("finance.reports.view");
   const queryArgs = canViewDashboardDetails ? ({} as never) : ("skip" as never);
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never,
@@ -166,7 +166,7 @@ export default function AdminDashboardPage() {
   ) as SessionRecord[] | undefined;
   const billing = useQuery(
     "functions/billing:getBillingDashboard" as never,
-    queryArgs,
+    canViewBilling ? ({} as never) : ("skip" as never),
   ) as BillingDashboard | undefined;
   const [eventsFromTimestamp] = useState(() => Date.now());
   const events = useQuery(
@@ -293,7 +293,7 @@ export default function AdminDashboardPage() {
     classes !== undefined &&
     subjects !== undefined &&
     sessions !== undefined &&
-    billing !== undefined &&
+    (!canViewBilling || billing !== undefined) &&
     events !== undefined;
 
   if (workspaceAccess?.state !== "ready") {
@@ -312,8 +312,8 @@ export default function AdminDashboardPage() {
           </h1>
           <p className="mt-3 text-sm text-slate-600">
             Use the workspace navigation to open the areas assigned to you.
-            Operational dashboard details appear only for staff with academic,
-            directory, and finance reporting access.
+            Operational dashboard details appear only for staff with academic
+            and directory access.
           </p>
         </section>
       </main>
@@ -626,12 +626,14 @@ export default function AdminDashboardPage() {
                 icon: <BookOpenText />,
                 description: "Classes / Subjects",
               },
-              {
-                label: "Fee Balances",
-                value: formatMoney(outstandingBalance, currency),
-                icon: <Banknote />,
-                description: `${overdueInvoices} Overdue Invoices`,
-              },
+              ...(canViewBilling
+                ? [{
+                    label: "Fee Balances",
+                    value: formatMoney(outstandingBalance, currency),
+                    icon: <Banknote />,
+                    description: `${overdueInvoices} Overdue Invoices`,
+                  }]
+                : []),
             ]}
           />
         </section>
@@ -676,15 +678,17 @@ export default function AdminDashboardPage() {
               <span className="text-xs font-bold text-slate-800 leading-tight">Enter Scores</span>
             </Link>
 
-            <Link
-              href="/billing"
-              className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
-            >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                <Banknote className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs font-bold text-slate-800 leading-tight">Billing Hub</span>
-            </Link>
+            {canViewBilling && (
+              <Link
+                href="/billing"
+                className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                  <Banknote className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800 leading-tight">Billing Hub</span>
+              </Link>
+            )}
 
             <Link
               href="/academic/events"

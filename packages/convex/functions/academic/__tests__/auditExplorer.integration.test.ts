@@ -268,9 +268,11 @@ it("paginates past recent nonmatches, enforces branch/module boundaries and keep
   ).rejects.toThrow("Forbidden");
 });
 
-it("restricts Platform views, scopes alert recipients and records safe export outcomes", async () => {
+it("keeps leadership alerts reachable and records safe export outcomes", async () => {
   const f = await setup();
   const alertId = await f.t.run(async (ctx) => {
+    // Linked branches do not require a duplicate proprietor membership.
+    await ctx.db.delete(f.ownerMembershipId);
     await recordAuditEventHelper(ctx, {
       schoolId: f.schoolId,
       actorKind: "user",
@@ -307,6 +309,9 @@ it("restricts Platform views, scopes alert recipients and records safe export ou
   ).rejects.toThrow("not addressed");
   expect(
     await f.owner.query(audit.listAuditAlerts, { schoolId: f.schoolId }),
+  ).toHaveLength(1);
+  expect(
+    await f.legacyAdmin.query(audit.listAuditAlerts, { schoolId: f.schoolId }),
   ).toHaveLength(1);
   await f.owner.mutation(audit.dismissAuditAlert, {
     schoolId: f.schoolId,

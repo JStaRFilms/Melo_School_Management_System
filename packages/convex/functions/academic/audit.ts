@@ -274,6 +274,7 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
       platformOnly: true,
       personId: undefined,
       owner: false,
+      leadership: false,
       canCsv: true,
       canPdf: true,
     };
@@ -287,6 +288,43 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
       platformOnly,
       personId: platformOnly ? undefined : overview.group.proprietorPersonId,
       owner: !platformOnly,
+      leadership: !platformOnly,
+      canCsv: true,
+      canPdf: true,
+    };
+  }
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity)
+    throw new ConvexError("Unauthorized: Authentication required");
+  const people = await ctx.db
+    .query("persons")
+    .withIndex("by_token_identifier", (q) =>
+      q.eq("authTokenIdentifier", identity.tokenIdentifier),
+    )
+    .take(2);
+  if (people.length > 1)
+    throw new ConvexError("Forbidden: ambiguous canonical identity");
+  const person = people[0];
+  const groupLink = person
+    ? await ctx.db
+        .query("schoolGroupBranches")
+        .withIndex("by_school", (q) => q.eq("schoolId", scope.schoolId))
+        .unique()
+    : null;
+  const group = groupLink ? await ctx.db.get(groupLink.groupId) : null;
+  if (
+    person?.status === "active" &&
+    person.identityReconciliationState !== "reconciliation_required" &&
+    group?.status === "active" &&
+    group.proprietorPersonId === person._id
+  ) {
+    return {
+      schoolIds: [scope.schoolId],
+      modules: null,
+      platformOnly: false,
+      personId: person._id,
+      owner: false,
+      leadership: true,
       canCsv: true,
       canPdf: true,
     };
@@ -314,6 +352,7 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
     platformOnly: auth.isPlatformAdmin,
     personId: auth.personId,
     owner,
+    leadership: owner || legacyAdmin,
     canCsv: caps.includes("audit.export.csv"),
     canPdf: caps.includes("audit.export.pdf"),
   };
@@ -561,12 +600,12 @@ function recipientCanRead(alert: Doc<"auditAlerts">, auth: AuditAuthority) {
   // Untargeted critical alerts are leadership-only, never every audit reader.
   return (
     auth.platformOnly ||
-    (alert.targetRecipientPersonIds
-      ? Boolean(
-          auth.personId &&
-          alert.targetRecipientPersonIds.includes(auth.personId),
-        )
-      : auth.owner)
+    auth.leadership ||
+    Boolean(
+      alert.targetRecipientPersonIds &&
+      auth.personId &&
+      alert.targetRecipientPersonIds.includes(auth.personId),
+    )
   );
 }
 export const listAuditAlerts = query({
