@@ -57,6 +57,11 @@ const record = () => ({
   },
 });
 vi.mock("convex/react", () => ({
+  usePaginatedQuery: () => ({
+    results: [record()],
+    status: "Exhausted",
+    loadMore: vi.fn(),
+  }),
   useMutation: (reference: Parameters<typeof getFunctionName>[0]) => {
     const name = getFunctionName(reference);
     if (name.endsWith("initiateStudentTransfer")) return mocks.initiate;
@@ -89,7 +94,6 @@ vi.mock("convex/react", () => ({
           admissionNumber: "SRC-001",
         },
       ];
-    if (name.endsWith("listTransfersBySchool")) return [record()];
     if (name.endsWith("getTransfer")) return record();
     if (name.endsWith("previewTransferNumber"))
       return { available: true, allocatedNumber: "DST-002", policyVersion: 3 };
@@ -266,10 +270,12 @@ it("governed manual acceptance requires reason/confirmation and sends only expli
   fireEvent.change(screen.getByLabelText("Override reason"), {
     target: { value: "Reviewed registrar exception" },
   });
-  fireEvent.change(
-    screen.getByLabelText("Explicit next counter (blank leaves unchanged)"),
-    { target: { value: "78" } },
-  );
+  fireEvent.change(screen.getByLabelText("Automatic counter decision"), {
+    target: { value: "advance" },
+  });
+  fireEvent.change(screen.getByLabelText("Explicit next counter"), {
+    target: { value: "78" },
+  });
   fireEvent.click(screen.getByLabelText(/Confirm manual identifier/));
   fireEvent.click(button);
   await waitFor(() =>
@@ -278,6 +284,7 @@ it("governed manual acceptance requires reason/confirmation and sends only expli
         admissionNumberOverride: "PRESERVED-77",
         admissionNumberOverrideReason: "Reviewed registrar exception",
         admissionNumberOverrideConfirmed: true,
+        admissionNumberCounterDecision: "advance",
         advanceCounterTo: 78,
       }),
     ),

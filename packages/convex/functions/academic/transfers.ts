@@ -4,6 +4,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "../../_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { type ActiveMembershipContext } from "./auth";
@@ -479,6 +480,9 @@ export const acceptDestinationTransfer = mutation({
     admissionNumberOverride: v.optional(v.string()),
     admissionNumberOverrideReason: v.optional(v.string()),
     admissionNumberOverrideConfirmed: v.optional(v.boolean()),
+    admissionNumberCounterDecision: v.optional(
+      v.union(v.literal("keep"), v.literal("advance")),
+    ),
   },
   handler: async (ctx, args) => {
     const transfer = await ctx.db.get(args.transferId);
@@ -497,6 +501,7 @@ export const acceptDestinationTransfer = mutation({
       args.admissionNumberOverride?.trim(),
       args.admissionNumberOverrideReason,
       args.admissionNumberOverrideConfirmed,
+      args.admissionNumberCounterDecision,
       args.advanceCounterTo,
     ]);
     if (
@@ -581,6 +586,7 @@ export const acceptDestinationTransfer = mutation({
         number: manualAdmissionNumber,
         reason: args.admissionNumberOverrideReason,
         confirmed: args.admissionNumberOverrideConfirmed,
+        counterDecision: args.admissionNumberCounterDecision,
         advanceTo: args.advanceCounterTo,
       });
       destinationAdmissionNumber = manualAdmissionNumber;
@@ -831,9 +837,7 @@ export const getTransfer = query({
 export const listTransfersBySchool = query({
   args: {
     schoolId: v.id("schools"),
-    direction: v.optional(
-      v.union(v.literal("source"), v.literal("destination"), v.literal("all")),
-    ),
+    direction: v.union(v.literal("source"), v.literal("destination")),
     status: v.optional(
       v.union(
         v.literal("initiated"),
@@ -843,66 +847,35 @@ export const listTransfersBySchool = query({
         v.literal("rejected"),
       ),
     ),
+    paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
     await assertTransferAuthority(ctx, args.schoolId);
 
-    const direction = args.direction ?? "all";
-    let records: Doc<"studentTransfers">[] = [];
+    const page = args.direction === "source"
+      ? await ctx.db
+          .query("studentTransfers")
+          .withIndex("by_source_school_and_status", (q) => {
+            const school = q.eq("sourceSchoolId", args.schoolId);
+            return args.status ? school.eq("status", args.status) : school;
+          })
+          .order("desc")
+          .paginate(args.paginationOpts)
+      : await ctx.db
+          .query("studentTransfers")
+          .withIndex("by_destination_school_and_status", (q) => {
+            const school = q.eq("destinationSchoolId", args.schoolId);
+            return args.status ? school.eq("status", args.status) : school;
+          })
+          .order("desc")
+          .paginate(args.paginationOpts);
 
-    if (direction === "source" || direction === "all") {
-      const sourceTransfers = await ctx.db
-        .query("studentTransfers")
-        .withIndex("by_source_school", (q) =>
-          q.eq("sourceSchoolId", args.schoolId),
-        )
-        .take(501);
-      if (sourceTransfers.length > 500)
-        throw new ConvexError(
-          "Transfer list exceeds 500 records; use student history",
-        );
-      records.push(...sourceTransfers);
-    }
-
-    if (direction === "destination" || direction === "all") {
-      const destTransfers = await ctx.db
-        .query("studentTransfers")
-        .withIndex("by_destination_school", (q) =>
-          q.eq("destinationSchoolId", args.schoolId),
-        )
-        .take(501);
-      if (destTransfers.length > 500)
-        throw new ConvexError(
-          "Transfer list exceeds 500 records; use student history",
-        );
-      records.push(...destTransfers);
-    }
-
-    // Deduplicate by _id
-    const seen = new Set<string>();
-    records = records.filter((r) => {
-      if (seen.has(r._id)) return false;
-      seen.add(r._id);
-      return true;
-    });
-
-    if (args.status) {
-      records = records.filter((r) => r.status === args.status);
-    }
-
-    return records
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .map((record) =>
-        redactTransferForScope(
-          record,
-          record.sourceSchoolId === args.schoolId &&
-            record.destinationSchoolId === args.schoolId
-            ? "both"
-            : record.sourceSchoolId === args.schoolId
-              ? "source"
-              : "destination",
-        ),
-      );
+    return {
+      ...page,
+      page: page.page.map((record) =>
+        redactTransferForScope(record, args.direction),
+      ),
+    };
   },
 });
 

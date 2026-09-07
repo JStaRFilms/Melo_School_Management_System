@@ -14,16 +14,21 @@ vi.mock("../../platform/lib/AuthProvider", () => ({
 }));
 vi.mock("@/convex-runtime", () => ({ isConvexConfigured: () => true }));
 vi.mock("convex/react", () => ({
-  usePaginatedQuery: () => ({
-    results: [{ schoolId: "school", name: "Synthetic" }],
+  usePaginatedQuery: (reference: Parameters<typeof getFunctionName>[0]) => ({
+    results: getFunctionName(reference).endsWith("listLinkableSchools")
+      ? [{ schoolId: "school", name: "Synthetic" }]
+      : [],
     status: "Exhausted",
+    loadMore: vi.fn(),
   }),
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) =>
     args === "skip"
       ? undefined
       : getFunctionName(reference).endsWith("getPlatformUsageCosts")
         ? { rows: [], truncated: false, providerExecutionAvailable: false }
-        : {
+        : getFunctionName(reference).endsWith("getLatestCommercialRateVersion")
+          ? null
+          : {
           mandates: [],
           rates: [],
           contracts: [],

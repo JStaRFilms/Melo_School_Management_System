@@ -259,29 +259,6 @@ async function setupTestHarness(
       createdAt: now,
       updatedAt: now,
     });
-    await ctx.db.insert("academicSessions", {
-      schoolId: schoolB,
-      name: "2025/2026",
-      startDate: now - 100_000,
-      endDate: now + 100_000,
-      isActive: true,
-      isArchived: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await ctx.db.insert("admissionNumberPolicies", {
-      schoolId: schoolB,
-      pattern: "OBC-IKY-{LEVEL}-{YEAR}-{SEQ:4}",
-      schoolCode: "OBC",
-      campusCode: "IKY",
-      resetFrequency: "continuous",
-      currentSequence: 1,
-      resetPeriod: "continuous",
-      version: 1,
-      createdAt: now,
-      updatedAt: now,
-    });
-
     // 6. Create Student in School A
     const studentPerson = await ctx.db.insert("persons", {
       authTokenIdentifier: "https://auth.melo.test|student-seun",
@@ -863,11 +840,19 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     });
 
     await expect(t.query(getTransferRef, { transferId })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
-    await expect(t.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
+    await expect(t.query(listTransfersBySchoolRef, {
+      schoolId: harness.schoolA,
+      direction: "source",
+      paginationOpts: { numItems: 50, cursor: null },
+    })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
     await expect(t.query(listTransfersByGroupRef, { groupId: harness.groupA })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
     await expect(t.query(getStudentTransferHistoryRef, { studentId: harness.studentId })).rejects.toThrow(/UNAUTHENTICATED|Sign in required|Forbidden/);
     await expect(outsider.query(getTransferRef, { transferId })).rejects.toThrow(/Not authorized|Forbidden/);
-    await expect(outsider.query(listTransfersBySchoolRef, { schoolId: harness.schoolA })).rejects.toThrow(/Not authorized|Forbidden/);
+    await expect(outsider.query(listTransfersBySchoolRef, {
+      schoolId: harness.schoolA,
+      direction: "source",
+      paginationOpts: { numItems: 50, cursor: null },
+    })).rejects.toThrow(/Not authorized|Forbidden/);
 
     const sourceView = await adminA.query(getTransferRef, { transferId });
     expect(
@@ -875,6 +860,52 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         ? sourceView.destinationAdmissionNumber
         : undefined,
     ).toBeUndefined();
+  });
+
+  it("5b. paginates established branch history and filters status in the index", async () => {
+    const t = convexTest(schema, modules);
+    const harness = await setupTestHarness(t);
+    const adminA = t.withIdentity(harness.adminAIdentity);
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 501; index += 1) {
+        await ctx.db.insert("studentTransfers", {
+          groupId: harness.groupA,
+          sourceSchoolId: harness.schoolA,
+          destinationSchoolId: harness.schoolB,
+          studentId: harness.studentId,
+          studentName: `Student ${index}`,
+          guardianConsentRecorded: true,
+          guardianConsentMethod: "signed_form",
+          status: index === 500 ? "completed" : "initiated",
+          createdAt: index,
+          updatedAt: index,
+        });
+      }
+    });
+
+    const first = await adminA.query(listTransfersBySchoolRef, {
+      schoolId: harness.schoolA,
+      direction: "source",
+      paginationOpts: { numItems: 500, cursor: null },
+    });
+    expect(first.page).toHaveLength(500);
+    expect(first.isDone).toBe(false);
+    const second = await adminA.query(listTransfersBySchoolRef, {
+      schoolId: harness.schoolA,
+      direction: "source",
+      paginationOpts: { numItems: 500, cursor: first.continueCursor },
+    });
+    expect(second.page).toHaveLength(1);
+    expect(second.isDone).toBe(true);
+
+    const completed = await adminA.query(listTransfersBySchoolRef, {
+      schoolId: harness.schoolA,
+      direction: "source",
+      status: "completed",
+      paginationOpts: { numItems: 50, cursor: null },
+    });
+    expect(completed.page).toHaveLength(1);
+    expect(completed.page[0]?.status).toBe("completed");
   });
 
   it("6. Manual destination admission number override requires capability, confirmation, reason, and uniqueness", async () => {
@@ -931,6 +962,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       admissionNumberOverride: "IKY-2026-0001",
       admissionNumberOverrideConfirmed: true,
       admissionNumberOverrideReason: "Registrar correction",
+      admissionNumberCounterDecision: "keep",
     });
     expect(accepted.destinationAdmissionNumber).toBe("IKY-2026-0001");
     const manualClaims = await t.run((ctx) =>

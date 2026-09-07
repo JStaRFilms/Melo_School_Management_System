@@ -1381,7 +1381,9 @@ export default defineSchema({
   })
     .index("by_group_and_status", ["groupId", "status"])
     .index("by_source_school", ["sourceSchoolId"])
+    .index("by_source_school_and_status", ["sourceSchoolId", "status"])
     .index("by_destination_school", ["destinationSchoolId"])
+    .index("by_destination_school_and_status", ["destinationSchoolId", "status"])
     .index("by_student", ["studentId"])
     .index("by_destination_student", ["destinationStudentId"])
     .index("by_source_request", ["sourceSchoolId", "requestKey"]),

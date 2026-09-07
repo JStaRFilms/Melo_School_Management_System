@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useDirtyForm, useDepartureGuard } from "@school/shared/drafts";
 import { ConvexError } from "convex/values";
@@ -18,7 +18,7 @@ type Workspace = Extract<
 >;
 type Transfer = FunctionReturnType<
   typeof transfers.listTransfersBySchool
->[number];
+>["page"][number];
 const control =
   "block w-full rounded border border-slate-300 bg-white p-2 text-slate-900";
 
@@ -73,7 +73,21 @@ function TransferWorkspace({
       ? (params.get("student") as Id<"students">)
       : undefined,
   );
-  const records = useQuery(transfers.listTransfersBySchool, { schoolId });
+  const outgoing = usePaginatedQuery(
+    transfers.listTransfersBySchool,
+    { schoolId, direction: "source" },
+    { initialNumItems: 50 },
+  );
+  const incoming = usePaginatedQuery(
+    transfers.listTransfersBySchool,
+    { schoolId, direction: "destination" },
+    { initialNumItems: 50 },
+  );
+  const records = [...outgoing.results, ...incoming.results]
+    .filter((record, index, all) => all.findIndex((item) => item._id === record._id) === index)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const loadingTransfers =
+    outgoing.status === "LoadingFirstPage" || incoming.status === "LoadingFirstPage";
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-4 text-slate-900 sm:p-6">
       <nav className="flex flex-wrap gap-4">
@@ -113,7 +127,7 @@ function TransferWorkspace({
         <h2 className="text-lg font-semibold">
           Incoming, outgoing and finalized transfers
         </h2>
-        {records === undefined ? (
+        {loadingTransfers ? (
           <p role="status">Loading transfers…</p>
         ) : !records.length ? (
           <p>No transfers in this branch.</p>
@@ -142,6 +156,26 @@ function TransferWorkspace({
             ))}
           </ul>
         )}
+        <div className="flex flex-wrap gap-3">
+          {outgoing.status !== "Exhausted" && (
+            <button
+              className="underline disabled:opacity-50"
+              disabled={outgoing.status !== "CanLoadMore"}
+              onClick={() => outgoing.loadMore(50)}
+            >
+              {outgoing.status === "LoadingMore" ? "Loading outgoing…" : "Load more outgoing"}
+            </button>
+          )}
+          {incoming.status !== "Exhausted" && (
+            <button
+              className="underline disabled:opacity-50"
+              disabled={incoming.status !== "CanLoadMore"}
+              onClick={() => incoming.loadMore(50)}
+            >
+              {incoming.status === "LoadingMore" ? "Loading incoming…" : "Load more incoming"}
+            </button>
+          )}
+        </div>
       </section>
       {selected && (
         <Review
@@ -471,6 +505,7 @@ function Review({
   const [reason, setReason] = useState("");
   const [manual, setManual] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
+  const [counterDecision, setCounterDecision] = useState<"" | "keep" | "advance">("");
   const [advance, setAdvance] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
@@ -482,6 +517,7 @@ function Review({
     reason ||
     manual ||
     overrideReason ||
+    counterDecision ||
     advance ||
     classId ||
     sessionId ||
@@ -498,6 +534,7 @@ function Review({
       setReason("");
       setManual("");
       setOverrideReason("");
+      setCounterDecision("");
       setAdvance("");
       setClassId(undefined);
       setSessionId(undefined);
@@ -519,6 +556,7 @@ function Review({
       setReason("");
       setManual("");
       setOverrideReason("");
+      setCounterDecision("");
       setAdvance("");
       setClassId(undefined);
       setSessionId(undefined);
@@ -654,12 +692,31 @@ function Review({
                     />
                   </label>
                   <label>
-                    Explicit next counter (blank leaves unchanged)
+                    Automatic counter decision
+                    <select
+                      className={control}
+                      value={counterDecision}
+                      onChange={(e) => {
+                        const decision = e.target.value;
+                        setCounterDecision(
+                          decision === "keep" || decision === "advance" ? decision : "",
+                        );
+                        if (decision !== "advance") setAdvance("");
+                      }}
+                    >
+                      <option value="">Choose explicitly</option>
+                      <option value="keep">Keep current next counter</option>
+                      <option value="advance">Advance to an explicit next counter</option>
+                    </select>
+                  </label>
+                  <label>
+                    Explicit next counter
                     <input
                       className={control}
                       type="number"
                       min="1"
                       step="1"
+                      disabled={counterDecision !== "advance"}
                       value={advance}
                       onChange={(e) => setAdvance(e.target.value)}
                     />
@@ -724,7 +781,10 @@ function Review({
                   !classId ||
                   !sessionId ||
                   (manual.trim()
-                    ? !overrideConfirmed || overrideReason.trim().length < 8
+                    ? !overrideConfirmed ||
+                      overrideReason.trim().length < 8 ||
+                      !counterDecision ||
+                      (counterDecision === "advance" && !advance)
                     : !number?.available)
                 }
                 onClick={() => {
@@ -742,6 +802,9 @@ function Review({
                       : undefined,
                     admissionNumberOverrideConfirmed: manual.trim()
                       ? overrideConfirmed
+                      : undefined,
+                    admissionNumberCounterDecision: manual.trim()
+                      ? counterDecision || undefined
                       : undefined,
                     advanceCounterTo:
                       manual.trim() && advance ? Number(advance) : undefined,
