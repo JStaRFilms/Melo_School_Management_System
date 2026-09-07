@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
 import { api, internal } from "../../../_generated/api";
 import { assertPaidUsageAvailable } from "../../foundation/paidUsageGate";
+import { seedReviewedTenantOperatorWithCapabilities } from "./securityFixtures";
 const convexRoot = new URL("../../../", import.meta.url).pathname;
 const rawModules = import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"]);
 const modules = Object.fromEntries(Object.entries(rawModules).map(([path, module]) => [
@@ -57,6 +58,36 @@ describe("usage accounting safety", () => {
     await t.run(ctx => ctx.db.insert("users", { schoolId, authId: "finance", authTokenIdentifier: "test|finance", name: "Finance", email: "finance@test.invalid", role: "admin", isSchoolAdmin: true, createdAt: 1, updatedAt: 1 }));
     const finance = t.withIdentity({ subject: "finance", tokenIdentifier: "test|finance" });
     await expect(finance.query(api.functions.academic.metering.getPlatformUsageCosts, { schoolId })).rejects.toThrow("Platform authority");
+  });
+  it("rejects duplicate allocations for both aggregate and single-meter status", async () => {
+    const { t, schoolId } = await setup();
+    await t.run(async (ctx) => {
+      await seedReviewedTenantOperatorWithCapabilities(
+        ctx,
+        [schoolId],
+        "test|usage-viewer",
+        ["finance.reports.view"],
+      );
+      const allocation = {
+        schoolId,
+        meterType: "ai_tokens" as const,
+        allocatedUnits: 100,
+        consumedUnits: 0,
+        reservedUnits: 0,
+        resetCadence: "termly" as const,
+        lastResetAt: 1,
+        updatedAt: 1,
+      };
+      await ctx.db.insert("usageMeterAllocations", allocation);
+      await ctx.db.insert("usageMeterAllocations", allocation);
+    });
+    const viewer = t.withIdentity({
+      subject: "usage-viewer",
+      tokenIdentifier: "test|usage-viewer",
+    });
+
+    await expect(viewer.query(api.functions.academic.metering.getUsageStatus, { schoolId })).rejects.toThrow("Duplicate usage allocations");
+    await expect(viewer.query(api.functions.academic.metering.getUsageStatus, { schoolId, meterType: "ai_tokens" })).rejects.toThrow("Duplicate usage allocations");
   });
   it("does not enable paid execution merely because a provider key might exist", () => {
     expect(() => assertPaidUsageAvailable()).toThrow("unavailable");

@@ -326,19 +326,22 @@ export const getUsageStatus = query({
     let allocations: Doc<"usageMeterAllocations">[] = [];
 
     if (args.meterType) {
-      const single = await ctx.db
+      const matches = await ctx.db
         .query("usageMeterAllocations")
         .withIndex("by_school_and_meter", (q) =>
           q.eq("schoolId", args.schoolId).eq("meterType", args.meterType!)
         )
-        .first();
-      if (single) allocations.push(single);
+        .take(2);
+      if (matches.length > 1) throw new ConvexError("Duplicate usage allocations require reconciliation");
+      if (matches[0]) allocations.push(matches[0]);
     } else {
       allocations = await ctx.db
         .query("usageMeterAllocations")
         .withIndex("by_school_and_meter", (q) => q.eq("schoolId", args.schoolId))
         .take(4);
-      if (allocations.length > 3) throw new ConvexError("Duplicate usage allocations require reconciliation");
+      const meterTypes = new Set(allocations.map((allocation) => allocation.meterType));
+      if (allocations.length > 3 || meterTypes.size !== allocations.length)
+        throw new ConvexError("Duplicate usage allocations require reconciliation");
     }
 
     const results = allocations.map((alloc) => {

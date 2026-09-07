@@ -138,6 +138,11 @@ function Workbench() {
     { initialNumItems: 100 },
   );
   const [schoolId, setSchoolId] = useState<Id<"schools">>();
+  const contractCatalog = usePaginatedQuery(
+    commercial.listCommercialContracts,
+    schoolId ? { schoolId } : "skip",
+    { initialNumItems: 100 },
+  );
   const [catalogCode, setCatalogCode] = useState("core_basic");
   const [rateId, setRateId] = useState<Id<"commercialRateVersions">>();
   const [contractId, setContractId] = useState<Id<"commercialContracts">>();
@@ -172,7 +177,7 @@ function Workbench() {
     }
   }
   const selectedRate = rateCatalog.results.find((r) => r._id === rateId);
-  const selectedContract = data?.contracts.find((c) => c._id === contractId);
+  const selectedContract = contractCatalog.results.find((c) => c._id === contractId);
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-8">
       <nav className="flex gap-4">
@@ -311,19 +316,27 @@ function Workbench() {
           </section>
           <section className="space-y-3">
             <h2 className="text-xl font-semibold">School contracts</h2>
-            {!data.contracts.length && (
+            {!contractCatalog.results.length && (
               <p>
                 No versioned contract.{" "}
                 {data.legacy &&
                   "Legacy subscription exists without an immutable snapshot; review required."}
               </p>
             )}
-            {data.contracts.map((c) => (
+            {contractCatalog.results.map((c) => (
               <p key={c._id}>
                 {c.code} v{c.version} · {c.state} · {c.rate.currency} ·{" "}
                 {c.rate.cadence} · setup {c.setupHandling}
               </p>
             ))}
+            {contractCatalog.status !== "Exhausted" && (
+              <button
+                disabled={contractCatalog.status !== "CanLoadMore"}
+                onClick={() => contractCatalog.loadMore(100)}
+              >
+                {contractCatalog.status === "LoadingMore" ? "Loading contracts…" : "Load more contracts"}
+              </button>
+            )}
             <form
               className="space-y-3"
               onSubmit={(e) => {
@@ -471,13 +484,13 @@ function Workbench() {
                   value={contractId ?? ""}
                   onChange={(e) =>
                     setContractId(
-                      data.contracts.find((c) => c._id === e.target.value)?._id,
+                      contractCatalog.results.find((c) => c._id === e.target.value)?._id,
                     )
                   }
                   required
                 >
                   <option value="">Select current contract</option>
-                  {data.contracts
+                  {contractCatalog.results
                     .filter((c) => c.state === "current")
                     .map((c) => (
                       <option key={c._id} value={c._id}>

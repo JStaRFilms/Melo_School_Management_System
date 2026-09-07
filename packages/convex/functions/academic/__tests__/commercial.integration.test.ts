@@ -260,6 +260,37 @@ it("paginates rate versions and resolves a code outside the recent global slice"
   expect([...first.page, ...second.page].map((version) => version._id)).toContain(f.rateVersionId);
 });
 
+it("keeps valid contracts reachable beyond the recent workspace slice", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    for (let index = 0; index < 101; index += 1) {
+      await ctx.db.insert("commercialContracts", {
+        schoolId: f.schoolId,
+        rateVersionId: f.rateVersionId,
+        rate,
+        code: "future",
+        version: 1,
+        effectiveFrom: today + (index + 500) * day,
+        effectiveTo: today + (index + 501) * day,
+        setupHandling: "waived",
+        setupReason: "Pagination fixture",
+        createdAt: index + 2,
+      });
+    }
+  });
+
+  const first = await f.platform.query(commercial.listCommercialContracts, {
+    schoolId: f.schoolId,
+    paginationOpts: { numItems: 100, cursor: null },
+  });
+  expect(first.page.map((contract) => contract._id)).not.toContain(f.contractId);
+  const second = await f.platform.query(commercial.listCommercialContracts, {
+    schoolId: f.schoolId,
+    paginationOpts: { numItems: 100, cursor: first.continueCursor },
+  });
+  expect(second.page.map((contract) => contract._id)).toContain(f.contractId);
+});
+
 it("requires Platform-only confirmed writes, delegated school reads and separate settlement permission", async () => {
   const f = await fixture();
   await expect(

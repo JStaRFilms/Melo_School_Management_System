@@ -452,6 +452,34 @@ export const getLatestCommercialRateVersion = query({
   },
 });
 
+export const listCommercialContracts = query({
+  args: {
+    schoolId: v.id("schools"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    if (!(await isGroupPlatformOperator(ctx)))
+      throw new ConvexError("Forbidden: active Platform authority required");
+    const page = await ctx.db
+      .query("commercialContracts")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .order("desc")
+      .paginate(args.paginationOpts);
+    const now = Date.now();
+    return {
+      ...page,
+      page: page.page.map((contract) => ({
+        ...contract,
+        state: contract.effectiveFrom > now
+          ? ("future" as const)
+          : contract.effectiveTo <= now
+            ? ("legacy" as const)
+            : ("current" as const),
+      })),
+    };
+  },
+});
+
 async function platformWrite(
   ctx: MutationCtx,
   schoolId: Id<"schools">,
