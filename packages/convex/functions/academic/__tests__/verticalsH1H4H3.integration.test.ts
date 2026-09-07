@@ -469,7 +469,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     expect(maskedList[0].accountNumber).toBe("***-****-6789");
     expect(maskedList[0].isMasked).toBe(true);
 
-    // 3. Even authorized summaries stay masked; full details use the dedicated capability-gated read.
+    // 3. Authorized edit metadata also never reveals the stored account number.
     const adminList = await adminSession.query(bankAccountsApi.listBankAccounts, {
       schoolId,
     });
@@ -480,7 +480,8 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       schoolId,
       bankAccountId: adminList[0]._id,
     });
-    expect(fullAccount.accountNumber).toBe("0123456789");
+    expect(fullAccount.accountNumber).toBe("");
+    expect(fullAccount.maskedAccountNumber).toBe("***-****-6789");
 
     // 4. Verify audit alert was created at tier1_critical level for bank account addition
     const alerts = await t.run(async (ctx) => {

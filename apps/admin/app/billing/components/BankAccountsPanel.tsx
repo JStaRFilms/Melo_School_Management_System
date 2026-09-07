@@ -139,7 +139,7 @@ export function BankAccountsPanel() {
         New account
       </button>
       {selected && !full ? (
-        <p>Loading authorized full details…</p>
+        <p>Loading account metadata…</p>
       ) : (
         <form
           className="space-y-3"
@@ -163,6 +163,13 @@ export function BankAccountsPanel() {
             className="grid gap-3 sm:grid-cols-2"
           >
             <legend>{selected ? "Edit active account" : "Add account"}</legend>
+            {selected && full && (
+              <p className="sm:col-span-2">
+                Stored number: {full.maskedAccountNumber}. Re-enter the complete
+                account number to save any edit; stored bank numbers are never
+                revealed by this screen.
+              </p>
+            )}
             {(Object.keys(empty) as (keyof typeof empty)[]).map((field) => (
               <label key={field}>
                 {field}

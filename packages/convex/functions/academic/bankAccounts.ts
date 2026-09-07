@@ -144,7 +144,24 @@ export const getBankAccount = query({
     const account = await ctx.db.get(args.bankAccountId);
     if (!account || account.schoolId !== args.schoolId)
       throw new ConvexError("Account unavailable");
-    return account;
+    return {
+      _id: account._id,
+      bankName: account.bankName,
+      accountName: account.accountName,
+      accountNumber: "",
+      maskedAccountNumber: maskAccountNumber(account.accountNumber),
+      currency: account.currency,
+      sortCode: account.sortCode,
+      transferNote: account.transferNote,
+      label: account.label,
+      branch: account.branch,
+      iban: account.iban,
+      swift: account.swift,
+      isDefault: account.isDefault,
+      status: account.status,
+      updatedAt: account.updatedAt,
+      isMasked: true,
+    };
   },
 });
 export const addBankAccount = mutation({
@@ -300,12 +317,25 @@ export const archiveBankAccount = mutation({
     const remaining = accounts.filter(
       (a) => a._id !== account._id && a.status === "active",
     );
-    if (account.isDefault && remaining.length) {
-      const replacement = remaining.find((a) => a._id === args.replacementId);
+    const referencedPlans = await ctx.db
+      .query("feePlans")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .filter((q) => q.eq(q.field("bankAccountId"), account._id))
+      .take(101);
+    if (referencedPlans.length > 100)
+      throw new ConvexError("Fee-plan references exceed the review bound");
+    const replacement = remaining.find((a) => a._id === args.replacementId);
+    if ((account.isDefault && remaining.length > 0) || referencedPlans.length > 0) {
       if (!replacement)
         throw new ConvexError(
-          "Select an active replacement default before archiving",
+          "Select an active replacement before archiving this account",
         );
+      if (referencedPlans.some((plan) => plan.currency !== replacement.currency))
+        throw new ConvexError(
+          "Replacement currency must match every referenced fee plan",
+        );
+    }
+    if (account.isDefault && replacement) {
       for (const row of accounts)
         if (row._id !== account._id)
           await ctx.db.patch(row._id, {
@@ -313,6 +343,12 @@ export const archiveBankAccount = mutation({
             updatedAt: Date.now(),
           });
     }
+    if (replacement)
+      for (const plan of referencedPlans)
+        await ctx.db.patch(plan._id, {
+          bankAccountId: replacement._id,
+          updatedAt: Date.now(),
+        });
     await ctx.db.patch(account._id, {
       status: "archived",
       isDefault: false,

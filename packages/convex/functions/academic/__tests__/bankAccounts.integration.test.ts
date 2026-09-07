@@ -72,7 +72,7 @@ async function fixture() {
       isHeadquarters: true,
       linkedAt: 1,
     });
-    return { schoolId };
+    return { schoolId, userId };
   });
   return {
     t,
@@ -101,9 +101,16 @@ it("denies unauthenticated metadata, masks summaries and requires confirmation",
   expect(await viewer.query(bank.listBankAccounts, { schoolId })).toMatchObject(
     [{ accountNumber: "***-****-7890", isDefault: true, isMasked: true }],
   );
-  expect(
-    await viewer.query(bank.getBankAccount, { schoolId, bankAccountId: id }),
-  ).toMatchObject({ accountNumber: fields.accountNumber });
+  const editMetadata = await viewer.query(bank.getBankAccount, {
+    schoolId,
+    bankAccountId: id,
+  });
+  expect(editMetadata).toMatchObject({
+    accountNumber: "",
+    maskedAccountNumber: "***-****-7890",
+    isMasked: true,
+  });
+  expect(JSON.stringify(editMetadata)).not.toContain(fields.accountNumber);
   const events = await t.run((ctx) => ctx.db.query("auditEvents").collect());
   expect(JSON.stringify(events)).not.toContain(fields.accountNumber);
   expect(events[0].retentionClass).toBe("permanent_statutory");
@@ -112,7 +119,7 @@ it("denies unauthenticated metadata, masks summaries and requires confirmation",
   ).toHaveLength(1);
 });
 it("requires explicit active replacement for default archive and never deletes historical accounts", async () => {
-  const { t, viewer, schoolId } = await fixture();
+  const { t, viewer, schoolId, userId } = await fixture();
   const first = await viewer.mutation(bank.addBankAccount, {
     schoolId,
     ...fields,
@@ -122,6 +129,26 @@ it("requires explicit active replacement for default archive and never deletes h
     ...fields,
     accountNumber: "9999999999",
   });
+  const feePlanId = await t.run((ctx) =>
+    ctx.db.insert("feePlans", {
+      schoolId,
+      bankAccountId: first,
+      name: "Current tuition",
+      currency: "NGN",
+      lineItems: [],
+      installmentPolicy: {
+        enabled: false,
+        installmentCount: 1,
+        intervalDays: 0,
+        firstDueDays: 0,
+      },
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+      createdBy: userId,
+      updatedBy: userId,
+    }),
+  );
   await expect(
     viewer.mutation(bank.archiveBankAccount, {
       schoolId,
@@ -142,6 +169,9 @@ it("requires explicit active replacement for default archive and never deletes h
   expect(await t.run((ctx) => ctx.db.get(second))).toMatchObject({
     status: "active",
     isDefault: true,
+  });
+  expect(await t.run((ctx) => ctx.db.get(feePlanId))).toMatchObject({
+    bankAccountId: second,
   });
   await expect(
     viewer.mutation(bank.setPrimaryBankAccount, {

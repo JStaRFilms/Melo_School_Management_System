@@ -101,7 +101,10 @@ export const getAdmissionNumberPolicy = query({
               school: policy.schoolCode,
               campus: policy.campusCode,
               level: args.level ?? "",
-              year: new Date(session.startDate).getUTCFullYear(),
+              year:
+                policy.resetFrequency === "calendar"
+                  ? new Date().getUTCFullYear()
+                  : new Date(session.startDate).getUTCFullYear(),
               seq: sequence,
             })
           : null,
@@ -210,7 +213,10 @@ export async function proposeAdmissionNumberHelper(
     school: policy.schoolCode,
     campus: policy.campusCode,
     level: args.level ?? "",
-    year: new Date(session.startDate).getUTCFullYear(),
+    year:
+      policy.resetFrequency === "calendar"
+        ? new Date().getUTCFullYear()
+        : new Date(session.startDate).getUTCFullYear(),
     seq: sequence,
   });
   return {

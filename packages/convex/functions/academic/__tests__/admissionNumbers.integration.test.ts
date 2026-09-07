@@ -280,7 +280,7 @@ it("preserves legacy manual student creation until a numbering policy is configu
     ),
   ).not.toBeNull();
 });
-it("conflicts on policy versions and rejects counter rewinds; calendar reset keeps YEAR academic", async () => {
+it("conflicts on policy versions and keeps calendar resets in a calendar-year namespace", async () => {
   const { t, schoolId, policyId } = await fixture();
   const viewer = t.withIdentity({
     subject: "owner",
@@ -332,7 +332,7 @@ it("conflicts on policy versions and rejects counter rewinds; calendar reset kee
         { schoolId },
       )
     ).allocatedNumber,
-  ).toBe("SYN/2025/00001");
+  ).toBe(`SYN/${new Date().getUTCFullYear()}/00001`);
 });
 it("rejects malformed tokens, excessive padding and fractional or unbounded sequences", () => {
   for (const pattern of [
