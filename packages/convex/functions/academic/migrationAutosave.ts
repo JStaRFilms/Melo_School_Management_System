@@ -42,8 +42,11 @@ export const patchStagedRecord = mutation({
 
     const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, record.workspaceId);
 
-    if (workspace.status === "cancelled" || workspace.status === "merged" || workspace.status === "committing") {
+    if (workspace.status === "cancelled" || workspace.status === "merged") {
       throw new ConvexError(`Cannot modify records in a ${workspace.status} workspace`);
+    }
+    if (workspace.status === "committing" && record.isCommitted) {
+      throw new ConvexError("Cannot modify a record that has already committed");
     }
 
     const updatedParsed = {

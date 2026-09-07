@@ -142,7 +142,10 @@ describe("Migration Lifecycle Engine", () => {
     await expect(platform.query(migrationWorkspace.getWorkspaceSummary as unknown as QueryRef, { schoolId: schoolA, workspaceId })).rejects.toThrow();
     await expect(owner.mutation(commitImportWorkspace, { schoolId: schoolA, workspaceId, batchSize: 0 })).rejects.toThrow("Batch size");
     await t.run((ctx) => ctx.db.patch(workspaceId, { status: "committing" }));
-    await expect(owner.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("committing");
+    await owner.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Recovered" } });
+    expect(await t.run((ctx) => ctx.db.get(records[0]._id))).toMatchObject({ parsedData: { firstName: "Recovered" } });
+    await t.run((ctx) => ctx.db.patch(records[0]._id, { isCommitted: true }));
+    await expect(owner.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("already committed");
     await expect(owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId, records: [row] })).rejects.toThrow("committing");
     await expect(owner.mutation(bulkResolveAdmissionNumbers, { schoolId: schoolA, workspaceId })).rejects.toThrow("committing");
   });
