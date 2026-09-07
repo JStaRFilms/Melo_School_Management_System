@@ -812,10 +812,15 @@ export const issueSubscriptionInvoice = mutation({
     if (contract.rate.cadence === "termly") {
       const terms = await ctx.db
         .query("academicTerms")
-        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-        .take(101);
-      if (terms.length > 100)
-        throw new ConvexError("Academic term history exceeds local review bound");
+        .withIndex("by_school_and_start_date", (q) =>
+          q
+            .eq("schoolId", args.schoolId)
+            .gte("startDate", args.periodStart)
+            .lt("startDate", args.periodStart + 86400000),
+        )
+        .take(11);
+      if (terms.length > 10)
+        throw new ConvexError("Academic term period is ambiguous");
       const startDay = Math.floor(args.periodStart / 86400000);
       const exclusiveEndDay = Math.floor(args.periodEnd / 86400000);
       const matchingTerms = terms.filter(

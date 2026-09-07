@@ -89,6 +89,41 @@ describe("usage accounting safety", () => {
     await expect(viewer.query(api.functions.academic.metering.getUsageStatus, { schoolId })).rejects.toThrow("Duplicate usage allocations");
     await expect(viewer.query(api.functions.academic.metering.getUsageStatus, { schoolId, meterType: "ai_tokens" })).rejects.toThrow("Duplicate usage allocations");
   });
+  it("does not report a rounded display percentage as exhausted while units remain", async () => {
+    const { t, schoolId } = await setup();
+    await t.run(async (ctx) => {
+      await seedReviewedTenantOperatorWithCapabilities(
+        ctx,
+        [schoolId],
+        "test|usage-near-limit",
+        ["finance.reports.view"],
+      );
+      await ctx.db.insert("usageMeterAllocations", {
+        schoolId,
+        meterType: "ocr_pages",
+        allocatedUnits: 1000,
+        consumedUnits: 995,
+        reservedUnits: 0,
+        resetCadence: "termly",
+        lastResetAt: 1,
+        updatedAt: 1,
+      });
+    });
+    const viewer = t.withIdentity({
+      subject: "usage-near-limit",
+      tokenIdentifier: "test|usage-near-limit",
+    });
+
+    const [status] = await viewer.query(
+      api.functions.academic.metering.getUsageStatus,
+      { schoolId, meterType: "ocr_pages" },
+    );
+    expect(status.utilizationPercent).toBe(100);
+    expect(status.availableUnits).toBe(5);
+    expect(status.isHardStopped).toBe(false);
+    expect(status.isCritical90).toBe(true);
+    expect(status.thresholdAlert).toBe("warning_90");
+  });
   it("does not enable paid execution merely because a provider key might exist", () => {
     expect(() => assertPaidUsageAvailable()).toThrow("unavailable");
   });

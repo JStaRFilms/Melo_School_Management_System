@@ -346,15 +346,17 @@ export const getUsageStatus = query({
 
     const results = allocations.map((alloc) => {
       const activeUsed = alloc.consumedUnits + alloc.reservedUnits;
-      const utilizationPercent =
-        alloc.allocatedUnits > 0
-          ? Math.min(100, Math.round((activeUsed / alloc.allocatedUnits) * 100))
-          : 100;
-      const thresholdAlert = calculateThresholdAlert(utilizationPercent);
       const availableUnits = Math.max(
         0,
         alloc.allocatedUnits - alloc.consumedUnits - alloc.reservedUnits
       );
+      const rawUtilizationPercent =
+        alloc.allocatedUnits > 0 ? (activeUsed / alloc.allocatedUnits) * 100 : 100;
+      const utilizationPercent = Math.min(100, Math.round(rawUtilizationPercent));
+      const isHardStopped = availableUnits === 0;
+      const thresholdAlert = isHardStopped
+        ? "hard_stop"
+        : calculateThresholdAlert(rawUtilizationPercent);
 
       return {
         meterType: alloc.meterType,
@@ -367,9 +369,9 @@ export const getUsageStatus = query({
         availableUnits,
         utilizationPercent,
         thresholdAlert,
-        isHardStopped: utilizationPercent >= 100,
-        isCritical90: utilizationPercent >= 90 && utilizationPercent < 100,
-        isWarning75: utilizationPercent >= 75 && utilizationPercent < 90,
+        isHardStopped,
+        isCritical90: !isHardStopped && rawUtilizationPercent >= 90,
+        isWarning75: rawUtilizationPercent >= 75 && rawUtilizationPercent < 90,
         resetCadence: alloc.resetCadence,
         lastResetAt: alloc.lastResetAt,
       };

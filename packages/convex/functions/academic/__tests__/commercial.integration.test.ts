@@ -339,6 +339,35 @@ it("keeps valid contracts reachable beyond the recent workspace slice", async ()
   expect(second.page.map((contract) => contract._id)).toContain(f.contractId);
 });
 
+it("resolves the requested term after more than 100 historical terms", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    const session = await ctx.db
+      .query("academicSessions")
+      .withIndex("by_school", (q) => q.eq("schoolId", f.schoolId))
+      .first();
+    if (!session) throw new Error("Missing session fixture");
+    for (let index = 0; index < 101; index += 1) {
+      await ctx.db.insert("academicTerms", {
+        schoolId: f.schoolId,
+        sessionId: session._id,
+        name: `Historical ${index}`,
+        startDate: today - (index + 200) * day + day / 2,
+        endDate: today - (index + 190) * day + day / 2,
+        isActive: false,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    }
+  });
+
+  const invoiceId = await f.platform.mutation(
+    commercial.issueSubscriptionInvoice,
+    f.invoiceArgs,
+  );
+  expect(invoiceId).toBeTruthy();
+});
+
 it("requires Platform-only confirmed writes, delegated school reads and separate settlement permission", async () => {
   const f = await fixture();
   await expect(

@@ -1622,6 +1622,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
+    .index("by_school_and_start_date", ["schoolId", "startDate"])
     .index("by_session", ["sessionId"])
     .index("by_school_active", ["schoolId", "isActive"]),
 
