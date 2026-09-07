@@ -17,12 +17,12 @@ The stale staged/deleted `results/R1-api-adoption.json` entry was removed from t
 | Boundary | Commit | Branch | Notes |
 |---|---|---|---|
 | Independent architecture head | `f03d5cd2e5767c618d223046aa7d5ddc17e0726a` | `docs/module-entitlements-checkpoint` | Reviewed PR #30 head. |
-| U1 current verified head | `533179d` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. |
-| U2 current verified head | `1a299b3` | `feat/melo-productization-u2` | Grading, report consumers, numbering, and banks. |
-| U3 current verified head | `027c149` | `feat/melo-productization-u3` | Drafts, bounded form adoption, and tenant themes. |
-| U4 current verified head | `ba6d0c6` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. |
-| U5 current verified head | `ff5c059` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle; upload remains fail-closed. |
-| U6 current verified head | `96de1bc` | `feat/melo-productization-u6` | Within-group transfers. |
+| U1 current verified head | `f31fb3c` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. |
+| U2 current verified head | `f249897` | `feat/melo-productization-u2` | Grading, report consumers, numbering, and banks. |
+| U3 current verified head | `21c1d87` | `feat/melo-productization-u3` | Drafts, bounded form adoption, and tenant themes. |
+| U4 current verified head | `bf6979e` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. |
+| U5 current verified head | `67dc2dc` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle; upload remains fail-closed. |
+| U6 current verified head | `7a6ed04` | `feat/melo-productization-u6` | Within-group transfers. |
 | S0 records | PR #29 / `docs/melo-productization-stabilization` | `feat/melo-productization-u6` | This document does not self-record its own commit hash; the PR head is authoritative. |
 
 These heads include the latest actionable review remediations; fresh automated review was requested after the dependent rebases. Known multi-slice files were serialized to their dependency owner rather than repeatedly restaged. `packages/shared/src/index.ts` was manually hunk-split so U1 received workspace/audit exports and U2 received the invoice export. Product code was committed from explicit reviewed path lists; the remaining session records are isolated in this final documentation commit.
