@@ -15,8 +15,7 @@ FolderArchive,
 GraduationCap,
 Search,
 ShieldCheck,
-Users,
-X
+Users
 } from "lucide-react";
 import { useDeferredValue,useEffect,useMemo,useState } from "react";
 
@@ -28,6 +27,9 @@ import { ArchivedRecordDetail } from "./components/ArchivedRecordDetail";
 import { ArchivedRecordsFilters } from "./components/ArchivedRecordsFilters";
 import { ArchivedRecordsList } from "./components/ArchivedRecordsList";
 import type { ArchivedRecordItem,ArchivedRecordsSummary,ArchiveFilterType } from "./components/types";
+import { api } from "../../../../../packages/convex/_generated/api";
+import type { Id } from "../../../../../packages/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
 
 interface ArchivedRecordsQueryResult {
   summary: ArchivedRecordsSummary;
@@ -44,6 +46,14 @@ function LoadingShell() {
 }
 
 export default function ArchivedRecordsPage() {
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? workspaceAccess.branch.schoolId as Id<"schools">
+    : undefined;
+  const canManageAssetArchive = useQuery(
+    api.functions.academic.rbac.hasViewerCapability,
+    schoolId ? { schoolId, capability: "assets.archive.manage" } : "skip",
+  );
   const archiveData = useQuery(
     "functions/academic/archiveRecords:listArchivedRecords" as never
   ) as ArchivedRecordsQueryResult | undefined;
@@ -280,7 +290,11 @@ export default function ArchivedRecordsPage() {
                 />
               </div>
               <AdminHeader title="Archive Audit" />
-              <Link href="/admin/assets/archive">School Asset Archive and Trash (separate from academic records)</Link>
+              <Link href={canManageAssetArchive ? "/admin/assets/archive" : "/admin/assets"}>
+                {canManageAssetArchive
+                  ? "School Asset Archive and Trash (separate from academic records)"
+                  : "School Asset Library (separate from academic records)"}
+              </Link>
             </div>
 
 

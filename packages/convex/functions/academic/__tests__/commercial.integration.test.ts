@@ -231,6 +231,35 @@ it("filters active plans before applying the catalog limit", async () => {
   expect((await f.t.query(commercial.listSubscriptionPlans, {})).map((plan) => plan._id)).toEqual([activePlanId]);
 });
 
+it("paginates rate versions and resolves a code outside the recent global slice", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    for (let index = 0; index < 101; index += 1) {
+      await ctx.db.insert("commercialRateVersions", {
+        code: `other_${index}`,
+        name: `Other ${index}`,
+        version: 1,
+        effectiveFrom: today - day,
+        rate,
+        createdAt: today + index,
+      });
+    }
+  });
+
+  expect(await f.platform.query(commercial.getLatestCommercialRateVersion, { code: "core_basic" })).toMatchObject({
+    _id: f.rateVersionId,
+    version: 1,
+  });
+  const first = await f.platform.query(commercial.listCommercialRateVersions, {
+    paginationOpts: { numItems: 100, cursor: null },
+  });
+  expect(first.isDone).toBe(false);
+  const second = await f.platform.query(commercial.listCommercialRateVersions, {
+    paginationOpts: { numItems: 100, cursor: first.continueCursor },
+  });
+  expect([...first.page, ...second.page].map((version) => version._id)).toContain(f.rateVersionId);
+});
+
 it("requires Platform-only confirmed writes, delegated school reads and separate settlement permission", async () => {
   const f = await fixture();
   await expect(

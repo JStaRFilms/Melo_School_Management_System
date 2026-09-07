@@ -132,7 +132,13 @@ function Workbench() {
     {},
     { initialNumItems: 25 },
   );
+  const rateCatalog = usePaginatedQuery(
+    commercial.listCommercialRateVersions,
+    {},
+    { initialNumItems: 100 },
+  );
   const [schoolId, setSchoolId] = useState<Id<"schools">>();
+  const [catalogCode, setCatalogCode] = useState("core_basic");
   const [rateId, setRateId] = useState<Id<"commercialRateVersions">>();
   const [contractId, setContractId] = useState<Id<"commercialContracts">>();
   const [override, setOverride] = useState(false);
@@ -141,6 +147,10 @@ function Workbench() {
   const data = useQuery(
     commercial.getCommercialWorkspace,
     schoolId ? { schoolId } : "skip",
+  );
+  const latestPublishedRate = useQuery(
+    commercial.getLatestCommercialRateVersion,
+    catalogCode.trim() ? { code: catalogCode.trim() } : "skip",
   );
   const publish = useMutation(commercial.publishRateVersion);
   const contract = useMutation(commercial.createContract);
@@ -161,7 +171,7 @@ function Workbench() {
       setPending(false);
     }
   }
-  const selectedRate = data?.rates.find((r) => r._id === rateId);
+  const selectedRate = rateCatalog.results.find((r) => r._id === rateId);
   const selectedContract = data?.contracts.find((c) => c._id === contractId);
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-4 sm:p-8">
@@ -231,19 +241,27 @@ function Workbench() {
           )}
           <section className="space-y-3">
             <h2 className="text-xl font-semibold">Versioned catalog</h2>
-            {!data.rates.length && (
+            {!rateCatalog.results.length && (
               <p>
                 No catalog configured. The form contains only the approved Core
                 / Basic anchor; review before publishing.
               </p>
             )}
-            {data.rates.map((r) => (
+            {rateCatalog.results.map((r) => (
               <p key={r._id}>
                 {r.name} v{r.version} · {r.rate.currency}{" "}
                 {r.rate.perStudentMinor} minor/student/{r.rate.cadence} ·
                 effective {new Date(r.effectiveFrom).toISOString().slice(0, 10)}
               </p>
             ))}
+            {rateCatalog.status !== "Exhausted" && (
+              <button
+                disabled={rateCatalog.status !== "CanLoadMore"}
+                onClick={() => rateCatalog.loadMore(100)}
+              >
+                {rateCatalog.status === "LoadingMore" ? "Loading rates…" : "Load more rate versions"}
+              </button>
+            )}
             <form
               className="space-y-3"
               onSubmit={(e) => {
@@ -255,19 +273,23 @@ function Workbench() {
                     confirmation: String(f.get("confirmation")),
                     code: String(f.get("code")),
                     name: String(f.get("name")),
-                    expectedVersion: Math.max(
-                      0,
-                      ...data.rates
-                        .filter((r) => r.code === f.get("code"))
-                        .map((r) => r.version),
-                    ),
+                    expectedVersion: latestPublishedRate?.version ?? 0,
                     effectiveFrom: Date.parse(String(f.get("effectiveFrom"))),
                     rate: readRate(f),
                   }),
                 );
               }}
             >
-              <Field name="code" label="Catalog code" value="core_basic" />
+              <label className="block text-sm">
+                Catalog code
+                <input
+                  className={input}
+                  name="code"
+                  value={catalogCode}
+                  onChange={(event) => setCatalogCode(event.target.value)}
+                  required
+                />
+              </label>
               <Field name="name" label="Name" value="Core / Basic" />
               <Field
                 name="effectiveFrom"
@@ -284,7 +306,7 @@ function Workbench() {
                 name="confirmation"
                 label="Type CONFIRM to publish an immutable version"
               />
-              <button disabled={pending}>Publish new version</button>
+              <button disabled={pending || latestPublishedRate === undefined}>Publish new version</button>
             </form>
           </section>
           <section className="space-y-3">
@@ -340,13 +362,13 @@ function Workbench() {
                   value={rateId ?? ""}
                   onChange={(e) =>
                     setRateId(
-                      data.rates.find((r) => r._id === e.target.value)?._id,
+                      rateCatalog.results.find((r) => r._id === e.target.value)?._id,
                     )
                   }
                   required
                 >
                   <option value="">Select version</option>
-                  {data.rates.map((r) => (
+                  {rateCatalog.results.map((r) => (
                     <option key={r._id} value={r._id}>
                       {r.code} v{r.version}
                     </option>

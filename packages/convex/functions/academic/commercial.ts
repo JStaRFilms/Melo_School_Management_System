@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import {
   internalMutation,
@@ -421,6 +422,33 @@ export const listSubscriptionPlans = query({
       .query("subscriptionPlans")
       .withIndex("by_status", (q) => q.eq("status", "active"))
       .take(100);
+  },
+});
+
+export const listCommercialRateVersions = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    if (!(await isGroupPlatformOperator(ctx)))
+      throw new ConvexError("Forbidden: active Platform authority required");
+    return await ctx.db
+      .query("commercialRateVersions")
+      .order("desc")
+      .paginate(args.paginationOpts);
+  },
+});
+
+export const getLatestCommercialRateVersion = query({
+  args: { code: v.string() },
+  handler: async (ctx, args) => {
+    if (!(await isGroupPlatformOperator(ctx)))
+      throw new ConvexError("Forbidden: active Platform authority required");
+    const code = args.code.trim();
+    if (!code || code.length > 40) throw new ConvexError("Invalid catalog code");
+    return await ctx.db
+      .query("commercialRateVersions")
+      .withIndex("by_code_and_version", (q) => q.eq("code", code))
+      .order("desc")
+      .first();
   },
 });
 
