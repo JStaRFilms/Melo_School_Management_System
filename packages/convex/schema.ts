@@ -1623,7 +1623,8 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_session", ["sessionId"])
-    .index("by_school_active", ["schoolId", "isActive"]),
+    .index("by_school_active", ["schoolId", "isActive"])
+    .index("by_school_and_start_date_and_end_date", ["schoolId", "startDate", "endDate"]),
 
   academicTimelineAuditEvents: defineTable({
     schoolId: v.id("schools"),

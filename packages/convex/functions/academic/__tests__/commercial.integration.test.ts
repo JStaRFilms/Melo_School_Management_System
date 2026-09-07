@@ -47,6 +47,54 @@ async function fixture() {
       createdAt: 1,
       updatedAt: 1,
     });
+    const sessionId = await ctx.db.insert("academicSessions", {
+      schoolId,
+      name: "Current session",
+      startDate: today - 10 * day,
+      endDate: today + 60 * day,
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("academicTerms", {
+      schoolId,
+      sessionId,
+      name: "Current term",
+      startDate: today - 10 * day,
+      endDate: today + 30 * day,
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("academicTerms", {
+      schoolId,
+      sessionId,
+      name: "Next term",
+      startDate: today + 30 * day,
+      endDate: today + 60 * day,
+      isActive: false,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const otherSessionId = await ctx.db.insert("academicSessions", {
+      schoolId: otherSchoolId,
+      name: "Other session",
+      startDate: today - 10 * day,
+      endDate: today + 10 * day,
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    await ctx.db.insert("academicTerms", {
+      schoolId: otherSchoolId,
+      sessionId: otherSessionId,
+      name: "Other term",
+      startDate: today - 10 * day,
+      endDate: today + 10 * day,
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
     await ctx.db.insert("platformAdmins", {
       authId: "platform",
       authTokenIdentifier: "test|platform",
@@ -484,6 +532,13 @@ it("keeps version/effective dates, contracts and issued snapshots immutable; inv
 });
 it("fails stale review, rejects future/past periods, charges setup once and prorates explicitly", async () => {
   const f = await fixture();
+  await expect(
+    f.platform.mutation(commercial.issueSubscriptionInvoice, {
+      ...f.invoiceArgs,
+      periodStart: today - day,
+      periodEnd: today + day,
+    }),
+  ).rejects.toThrow("exact configured academic term");
   await expect(
     f.platform.mutation(commercial.issueSubscriptionInvoice, {
       ...f.invoiceArgs,

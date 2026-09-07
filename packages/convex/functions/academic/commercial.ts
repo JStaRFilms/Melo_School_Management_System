@@ -809,6 +809,20 @@ export const issueSubscriptionInvoice = mutation({
       throw new ConvexError(
         "Only a currently effective contract can be invoiced; snapshots are taken now, never retrospectively",
       );
+    if (contract.rate.cadence === "termly") {
+      const term = await ctx.db
+        .query("academicTerms")
+        .withIndex("by_school_and_start_date_and_end_date", (q) =>
+          q
+            .eq("schoolId", args.schoolId)
+            .eq("startDate", args.periodStart)
+            .eq("endDate", args.periodEnd),
+        )
+        .unique();
+      const session = term ? await ctx.db.get(term.sessionId) : null;
+      if (!term || !session || session.schoolId !== args.schoolId || session.isArchived)
+        throw new ConvexError("Termly invoices require an exact configured academic term period");
+    }
     if (
       contract.rate.proration === "none" &&
       (start !== args.periodStart || end !== args.periodEnd)
