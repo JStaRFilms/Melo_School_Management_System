@@ -259,6 +259,7 @@ export default function BillingPage() {
         name: planName,
         description: feePlanDraft.description?.trim() || undefined,
         currency: feePlanDraft.currency || "NGN",
+        bankAccountId: feePlanDraft.bankAccountId || undefined,
         billingMode: feePlanDraft.billingMode,
         targetClassIds: feePlanDraft.targetClassIds.length > 0 ? (feePlanDraft.targetClassIds as any) : undefined,
         installmentPolicy: {
@@ -284,6 +285,7 @@ export default function BillingPage() {
         classId: feePlanApplicationDraft.classId,
         sessionId: feePlanApplicationDraft.sessionId,
         termId: feePlanApplicationDraft.termId,
+        bankAccountId: feePlanApplicationDraft.bankAccountId || undefined,
       } as never);
     }, "Invoices Generated", "Unable to distribute invoices for class.");
     if (success) {

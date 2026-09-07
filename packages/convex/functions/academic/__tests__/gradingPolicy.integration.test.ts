@@ -317,8 +317,8 @@ it("preserves certified outputs after policy and score edits; old reports never 
       examRawScore: 20,
       examScaledScore: 20,
       total: 80,
-      gradeLetter: "A",
-      remark: "Excellent",
+      gradeLetter: "F",
+      remark: "Stale pre-policy grade",
       examInputModeSnapshot: "raw40",
       examRawMaxSnapshot: 40,
       status: "draft",
@@ -338,6 +338,7 @@ it("preserves certified outputs after policy and score edits; old reports never 
   const reportApi = api.functions.academic.reportCards;
   const preview = await viewer.query(reportApi.getStudentReportCard, args);
   expect(preview.gradingPolicy?.source).toBe("current");
+  expect(preview.results[0]).toMatchObject({ gradeLetter: "A", remark: "Excellent" });
   const reviewedKey = reportCardReviewKey(preview);
   await expect(
     viewer.mutation(reportApi.certifyStudentReportCard, {

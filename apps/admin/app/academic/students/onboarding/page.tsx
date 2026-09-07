@@ -26,6 +26,16 @@ type FamilyLinkResult = {
   familyMemberId: string;
 };
 
+type OnboardingAttempt = {
+  requestKey: string;
+  studentId?: string;
+  photoMetadata?: {
+    storageId: string;
+    fileName: string;
+    contentType: string;
+  } | null;
+};
+
 export default function StudentOnboardingPage() {
   const { workspaceAccess } = useAuth();
   const schoolId =
@@ -92,6 +102,7 @@ export default function StudentOnboardingPage() {
     parent: { email: string; temporaryPassword: string } | null;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const onboardingAttemptRef = useRef<OnboardingAttempt | null>(null);
 
   const selectedClassLevel = classes?.find(
     (classDoc) => classDoc._id === selectedClassId,
@@ -271,14 +282,22 @@ export default function StudentOnboardingPage() {
 
     let uploadedPhoto = false;
     try {
-      const uploadedPhotoMetadata = studentPhotoFile
-        ? await uploadStudentPhoto(studentPhotoFile, () =>
-            generateStudentPhotoUploadUrl({} as never) as Promise<string>
-          )
-        : null;
+      const attempt =
+        onboardingAttemptRef.current ??
+        { requestKey: crypto.randomUUID() };
+      onboardingAttemptRef.current = attempt;
+      if (attempt.photoMetadata === undefined) {
+        attempt.photoMetadata = studentPhotoFile
+          ? await uploadStudentPhoto(studentPhotoFile, () =>
+              generateStudentPhotoUploadUrl({} as never) as Promise<string>
+            )
+          : null;
+      }
+      const uploadedPhotoMetadata = attempt.photoMetadata;
       uploadedPhoto = Boolean(uploadedPhotoMetadata);
 
-      const createdStudentId = (await createStudent({
+      const createdStudentId = attempt.studentId ?? (await createStudent({
+        requestKey: attempt.requestKey,
         firstName: normalizedFirstName,
         lastName: normalizedLastName,
         admissionNumber: useAutomaticAdmissionNumber
@@ -316,6 +335,7 @@ export default function StudentOnboardingPage() {
         photoFileName: uploadedPhotoMetadata?.fileName,
         photoContentType: uploadedPhotoMetadata?.contentType,
       } as never)) as string;
+      attempt.studentId = createdStudentId;
 
       let familyLinkResult: FamilyLinkResult | null = null;
       if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
@@ -364,6 +384,7 @@ export default function StudentOnboardingPage() {
           : null,
       });
 
+      onboardingAttemptRef.current = null;
       resetForm();
       showNotice({
         tone: "success",

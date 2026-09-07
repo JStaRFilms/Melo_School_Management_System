@@ -1,5 +1,5 @@
 import { getUnboundStorageUrl } from "./assetStorageBoundary";
-import { reportCardReviewKey } from "@school/shared/exam-recording";
+import { deriveGradeAndRemark, reportCardReviewKey } from "@school/shared/exam-recording";
 import { reportCardResultValidator } from "../foundation/reportCardContract";
 export { reportCardResultValidator } from "../foundation/reportCardContract";
 import { resolveEffectiveGradingBands } from "./gradingBands";
@@ -140,7 +140,7 @@ function buildCumulativeResult(args: {
   } | null;
 }) {
   const currentBase = args.currentRecord
-    ? buildRecordedResult(args.subject, args.currentRecord)
+    ? buildRecordedResult(args.subject, args.currentRecord, args.gradingBands)
     : buildPendingResult(args.subject);
 
   const totals: CumulativeTermTotals = {
@@ -233,7 +233,10 @@ function buildRecordedResult(subject: {
   total: number;
   gradeLetter: string;
   remark: string;
-}) {
+}, gradingBands: GradingBand[]) {
+  const grade = gradingBands.length > 0
+    ? deriveGradeAndRemark(record.total, gradingBands)
+    : { gradeLetter: record.gradeLetter, remark: record.remark };
   return {
     subjectId: subject._id,
     subjectName: normalizeHumanName(subject.name),
@@ -243,8 +246,8 @@ function buildRecordedResult(subject: {
     ca3: record.ca3,
     examScore: record.examScaledScore,
     total: record.total,
-    gradeLetter: record.gradeLetter,
-    remark: record.remark,
+    gradeLetter: grade.gradeLetter,
+    remark: grade.remark,
     isRecorded: true,
     calculationMode: "standalone" as const,
     currentTermTotal: record.total,
@@ -760,7 +763,7 @@ export async function buildStudentReportCard(
 
       if (!useCumulativeAnnualMode || !firstTermId || !secondTermId) {
         return record
-          ? buildRecordedResult(subject, record)
+          ? buildRecordedResult(subject, record, activeGradingBands)
           : buildPendingResult(subject);
       }
 

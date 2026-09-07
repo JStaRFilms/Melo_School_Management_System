@@ -8,6 +8,7 @@ import {
 import React, { useMemo, useState } from "react";
 import { cn } from "@/utils";
 import type { ClassOption, FeePlanDraft } from "../../types";
+import { BankAccountSelection } from "../BankAccountSelection";
 
 interface FeePlanFormProps {
   draft: FeePlanDraft;
@@ -105,6 +106,11 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
             required
           />
         </div>
+
+        <BankAccountSelection
+          value={draft.bankAccountId ?? ""}
+          onChange={(bankAccountId) => onChange({ ...draft, bankAccountId })}
+        />
 
         {/* Target Classes Scope */}
         <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
