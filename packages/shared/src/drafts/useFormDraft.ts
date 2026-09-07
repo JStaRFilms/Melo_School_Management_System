@@ -56,7 +56,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   const closed = useRef(false);
   const finishing = useRef(false);
   const inFlight = useRef<Promise<void> | null>(null);
-  const savedData = useRef<T | undefined>(undefined);
+  const savedPayloadKey = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const pause = useRef(false);
   const wasAvailable = useRef(false);
@@ -100,17 +100,18 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
     }
     if (o.serverDraft === undefined || (!accepted.current && o.serverDraft) || memoryDraft) throw new Error("Resolve draft recovery before saving.");
     if (statusRef.current === "conflict") throw new Error("Preview and load the latest draft before saving. Your current edits have not been overwritten.");
-    if (savedData.current === o.currentData) return;
     const payload = o.parsePayload(o.currentData);
+    const snapshotKey = JSON.stringify(payload) ?? "null";
+    if (savedPayloadKey.current === snapshotKey) return;
     accepted.current = true; // Subsequent reactive echoes belong to this editing instance, not recovery.
-    const snapshot = o.currentData;
     updateStatus("saving");
     const operation = (async () => {
       try {
         const result = await o.onSave(payload, revision.current);
         revision.current = result.revision;
-        savedData.current = snapshot;
-        if (latest.current.currentData === snapshot) memory?.delete(memoryKey);
+        savedPayloadKey.current = snapshotKey;
+        const latestKey = JSON.stringify(latest.current.parsePayload(latest.current.currentData)) ?? "null";
+        if (latestKey === snapshotKey) memory?.delete(memoryKey);
         else {
           const buffered = memory?.get(memoryKey);
           if (buffered) memory?.set(memoryKey, { ...buffered, revision: result.revision });
@@ -118,7 +119,8 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
         if (mounted.current) {
           setLastSavedAt(result.lastSavedAt);
           const now = latest.current;
-          updateStatus(!now.connection.authenticated ? "reauth_required" : !now.connection.connected || now.connection.accountId !== now.accountId ? "connection_lost" : now.currentData === snapshot ? "saved" : "idle");
+          const nowKey = JSON.stringify(now.parsePayload(now.currentData)) ?? "null";
+          updateStatus(!now.connection.authenticated ? "reauth_required" : !now.connection.connected || now.connection.accountId !== now.accountId ? "connection_lost" : nowKey === snapshotKey ? "saved" : "idle");
         }
         pause.current = false;
       } catch (error) {
@@ -131,13 +133,16 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
     inFlight.current = operation;
     try { await operation; } finally { if (inFlight.current === operation) inFlight.current = null; }
     // Save-and-leave must include edits made while the previous request was in flight.
-    if (latest.current.currentData !== snapshot) await retrySave();
+    const latestKey = JSON.stringify(latest.current.parsePayload(latest.current.currentData)) ?? "null";
+    if (latestKey !== snapshotKey) await retrySave();
   }, [memoryDraft, memory, memoryKey]);
 
   useEffect(() => {
     clearTimeout(timer.current);
     if (!options.isDirty || memoryDraft || !available || closed.current || finishing.current || pause.current || options.serverDraft === undefined || (!accepted.current && options.serverDraft)) return;
-    if (savedData.current === options.currentData) return;
+    try {
+      if (savedPayloadKey.current === (JSON.stringify(options.parsePayload(options.currentData)) ?? "null")) return;
+    } catch { return; }
     updateStatus("idle");
     timer.current = setTimeout(() => { void retrySave().catch(() => {}); }, Math.max(1000, Math.min(2000, options.debounceMs ?? 1500)));
     return () => clearTimeout(timer.current);
@@ -153,7 +158,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
     revision.current = draft.revision ?? 0;
     accepted.current = true;
     pause.current = false;
-    savedData.current = restored;
+    savedPayloadKey.current = JSON.stringify(restored) ?? "null";
     setLastSavedAt(new Date(draft.lastSavedAt).getTime());
     setShowRecoveryModal(false);
     updateStatus("saved");

@@ -251,7 +251,7 @@ function HeroSection({ school, page }: { school: SchoolConfig; page: PageContent
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-2xl bg-white p-3 shadow-sm">
-                  <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent-foreground)]">
+                  <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--school-accent-surface)] text-[color:var(--school-accent-surface-contrast)]">
                     <Phone className="h-4 w-4" />
                   </span>
                   <div>
@@ -316,7 +316,7 @@ function TimelineSection({ items }: { items: SummaryCard[] }) {
         <div className="mt-8 grid gap-4 lg:grid-cols-3">
           {items.map((item, index) => (
             <SurfaceCard key={item.title} className="space-y-4">
-              <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent-foreground)]">
+              <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-accent-surface)] text-[color:var(--school-accent-surface-contrast)]">
                 <span className="text-sm font-bold">0{index + 1}</span>
               </div>
               <div className="space-y-2">
