@@ -460,7 +460,7 @@ export const acceptDestinationTransfer = mutation({
     }
 
     const now = Date.now();
-    if (args.admissionNumberOverride) {
+    if (manualAdmissionNumber) {
       await claimAdmissionNumberHelper(
         ctx,
         transfer.destinationSchoolId,

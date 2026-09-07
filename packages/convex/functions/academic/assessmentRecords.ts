@@ -16,6 +16,7 @@ import {
   normalizePersonName,
 } from "@school/shared/name-format";
 import { getActiveAggregationByUmbrellaSubject } from "./subjectAggregationHelpers";
+import { resolveEffectiveGradingBands } from "./gradingBands";
 import {
   assessmentEditingStateReturnValidator,
   getAssessmentEditingPolicy,
@@ -182,13 +183,8 @@ export const getExamEntrySheet = query({
     ]);
     const editingState = getAssessmentEditingState(editingPolicy, Date.now());
 
-    // Fetch active grading bands
-    const gradingBandsResult = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .collect();
+    // Use the same effective local/inherited policy as previews and issued reports.
+    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
 
     // Sort grading bands by minScore
     const sortedBands = [...gradingBandsResult].sort((a, b) => a.minScore - b.minScore);
@@ -397,13 +393,8 @@ export const upsertAssessmentRecordsBulk = mutation({
       throw new ConvexError("School assessment settings not configured");
     }
 
-    // Fetch active grading bands
-    const gradingBandsResult = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .collect();
+    // Use the same effective local/inherited policy as previews and issued reports.
+    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
 
     if (gradingBandsResult.length === 0) {
       throw new ConvexError("Grading bands not configured");

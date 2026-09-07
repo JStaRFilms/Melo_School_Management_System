@@ -28,6 +28,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 
 // Hooks & Utils
 import { useBillingActions } from "./hooks/useBillingActions";
+import { useAuth } from "@/AuthProvider";
 import { useBillingData } from "./hooks/useBillingData";
 import { useBillingSortPreferences } from "./hooks/useBillingSortPreferences";
 import type {
@@ -71,6 +72,9 @@ type PaymentLinkActionResult = {
 };
 
 export default function BillingPage() {
+  const { workspaceAccess } = useAuth();
+  const canManageFeePlans = workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("finance.fee_plans.manage");
   // 1. State Management
   const [activeTab, setActiveTab] = useState<BillingTab>("overview");
   const [filters, setFilters] = useState<DashboardFilters>({
@@ -532,7 +536,7 @@ export default function BillingPage() {
                      sortKey={sortPreferences.plans.key}
                      sortDirection={sortPreferences.plans.direction}
                      onSortChange={handleFeePlanSortChange}
-                     onNewPlan={() => openSidebar("plan")}
+                     onNewPlan={canManageFeePlans ? () => openSidebar("plan") : undefined}
                      onApplyPlan={(planId) => {
                        setFeePlanApplicationDraft((current) => ({
                          ...current,
@@ -630,7 +634,7 @@ export default function BillingPage() {
                 >
                   Bulk Invoicing
                 </button>
-                <button 
+                {canManageFeePlans && <button
                   type="button"
                   onClick={() => setSidebarVariant("plan")}
                   className={`w-full flex items-center justify-center gap-1.5 h-10 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-2xs transition-all cursor-pointer ${
@@ -640,7 +644,7 @@ export default function BillingPage() {
                   }`}
                 >
                   <Plus className="h-3 w-3" /> New Plan
-                </button>
+                </button>}
               </div>
             </div>
 
@@ -675,6 +679,7 @@ export default function BillingPage() {
                 sessions={sessions ?? []}
                 applicationTerms={applicationTerms ?? []}
                 feePlans={data.feePlans}
+                canManageFeePlans={canManageFeePlans}
               />
             </div>
           </div>
@@ -713,6 +718,7 @@ export default function BillingPage() {
           sessions={sessions ?? []}
           applicationTerms={applicationTerms ?? []}
           feePlans={data.feePlans}
+          canManageFeePlans={canManageFeePlans}
         />
       </AdminSheet>
 
