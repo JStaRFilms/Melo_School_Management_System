@@ -36,6 +36,13 @@ describe("two-base school theme derivation", () => {
     expect(hexToRgb("invalid")).toBeNull();
   });
 
+  it("derives accent text that remains readable on white", () => {
+    const tokens = deriveSchoolTheme("#0f172a", "#e9a23b");
+    expect(
+      calculateContrastRatio(tokens["--school-accent-foreground"], "#ffffff"),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("uses WCAG luminance and contrast calculations", () => {
     expect(calculateLuminance({ r: 255, g: 255, b: 255 })).toBeCloseTo(1, 4);
     expect(calculateContrastRatio("#ffffff", "#000000")).toBeCloseTo(21, 1);

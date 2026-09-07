@@ -1,7 +1,6 @@
 import { BankAccountSelection } from "../BankAccountSelection";
 import { Users } from "lucide-react";
 import React, { useMemo } from "react";
-import { BankAccountSelection } from "../BankAccountSelection";
 import type {
   BillingDashboardData,
   ClassOption,

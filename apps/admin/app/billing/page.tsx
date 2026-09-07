@@ -290,6 +290,7 @@ export default function BillingPage() {
         sessionId: feePlanApplicationDraft.sessionId,
         termId: feePlanApplicationDraft.termId,
         bankAccountId: feePlanApplicationDraft.bankAccountId || undefined,
+        notes: feePlanApplicationDraft.notes.trim() || undefined,
       } as never);
     }, "Invoices Generated", "Unable to distribute invoices for class.");
     if (success) {

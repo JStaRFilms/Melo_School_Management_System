@@ -24,6 +24,7 @@ export interface SchoolThemeDerivation {
   "--school-primary-surface-contrast": string;
   "--school-primary-border": string;
   "--school-accent": string;
+  "--school-accent-foreground": string;
   "--school-accent-hover": string;
   "--school-accent-hover-contrast": string;
   "--school-accent-pressed": string;
@@ -111,6 +112,16 @@ export function getContrastSafeText(background: string): string {
   return CONTRAST_FALLBACK_TEXT;
 }
 
+export function deriveReadableForeground(color: string, background = CONTRAST_LIGHT_TEXT): string {
+  const base = resolvedBase(color, DEFAULT_ACCENT_COLOR);
+  if (isWcagAABody(calculateContrastRatio(base, background))) return base;
+  for (let step = 1; step <= 20; step += 1) {
+    const candidate = adjustBrightness(base, -step * 0.05);
+    if (isWcagAABody(calculateContrastRatio(candidate, background))) return candidate;
+  }
+  return CONTRAST_FALLBACK_TEXT;
+}
+
 export function adjustBrightness(hex: string, factor: number): string {
   const rgb = hexToRgb(hex) ?? hexToRgb(DEFAULT_PRIMARY_COLOR)!;
   const adjust = (channel: number) => factor >= 0 ? channel + (255 - channel) * factor : channel * (1 + factor);
@@ -156,6 +167,7 @@ export function deriveSchoolTheme(primaryColor?: string | null, accentColor?: st
     "--school-primary-surface-contrast": CONTRAST_DARK_TEXT,
     "--school-primary-border": rgba(primary, 0.18),
     "--school-accent": accent,
+    "--school-accent-foreground": deriveReadableForeground(accent),
     "--school-accent-hover": accentHover,
     "--school-accent-hover-contrast": getContrastSafeText(accentHover),
     "--school-accent-pressed": accentPressed,

@@ -432,7 +432,6 @@ export default function SchoolSettingsPage() {
 
               <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <label
-                  aria-disabled="true"
                   className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white opacity-50 shadow-xs sm:w-auto"
                 >
                   <Upload className="h-3.5 w-3.5" />
@@ -577,7 +576,7 @@ export default function SchoolSettingsPage() {
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <button
                   type="button"
-                  className="rounded-lg px-3 py-2 text-xs font-bold outline-none ring-offset-2 focus-visible:ring-2"
+                  className="rounded-lg px-3 py-2 text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                   style={{
                     backgroundColor: previewTokens["--school-primary"],
                     color: previewTokens["--school-primary-contrast"],

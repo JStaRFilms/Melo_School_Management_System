@@ -41,10 +41,20 @@ async function owned(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId:
     let payload;
     try { payload = parseDraftPayload(formKey, draft.payload); }
     catch { return fail("SCHEMA_REJECTED", "Legacy draft contains unsupported fields."); }
-    await ctx.db.patch(draft._id, { payload, schemaVersion: policy.version, expiresAt, revision });
+    await ctx.db.patch(draft._id, {
+      payload,
+      schemaVersion: policy.version,
+      activeScopeKey: activeScopeKey(draft.userId, draft.schoolId, formKey),
+      expiresAt,
+      revision,
+    });
   }
   return { draft: { ...draft, schemaVersion: policy.version, expiresAt, revision }, auth };
 }
+function activeScopeKey(userId: Id<"users">, schoolId: Id<"schools">, formKey: string) {
+  return `${userId}:${schoolId}:${formKey}:new`;
+}
+
 async function audit(ctx: MutationCtx, schoolId: Id<"schools">, userId: Id<"users">, draftId: Id<"formDrafts">, action: string) {
   const user = await ctx.db.get(userId);
   await recordAuditEventHelper(ctx, { schoolId, actorKind: action === "expired" ? "system" : "user", actorEmailSnapshot: action === "expired" ? "system" : user?.email ?? "", module: "drafts", action, targetType: "formDraft", targetId: draftId, outcome: "success", safeSummary: `Private draft ${action}; content omitted.` });
@@ -56,11 +66,13 @@ export const beginFormDraft = mutation({
   handler: async (ctx, args) => {
     const { auth, policy } = await authority(ctx, args.schoolId, args.formKey, args.entityId);
     if (args.schemaVersion !== policy.version) fail("SCHEMA_REJECTED", "Unsupported draft version.");
-    const existing = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
-    if (existing.some(d => d.schoolId === args.schoolId && d.status === "active" && (d.expiresAt ?? d.createdAt + policy.retentionDays * 86400000) > Date.now())) fail("RECOVERY_REQUIRED", "Preview, resume or discard the existing draft first.");
+    const scopeKey = activeScopeKey(auth.userId, args.schoolId, args.formKey);
+    const current = await ctx.db.query("formDrafts").withIndex("by_active_scope", q => q.eq("activeScopeKey", scopeKey)).take(2);
+    const legacy = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
+    if ([...current, ...legacy].some(d => d.schoolId === args.schoolId && d.status === "active" && (d.expiresAt ?? d.createdAt + policy.retentionDays * 86400000) > Date.now())) fail("RECOVERY_REQUIRED", "Preview, resume or discard the existing draft first.");
     const now = Date.now();
     const expiresAt = now + policy.retentionDays * 86400000;
-    const draftId = await ctx.db.insert("formDrafts", { schoolId: args.schoolId, userId: auth.userId, formKey: args.formKey, payload: {}, schemaVersion: policy.version, expiresAt, status: "active", revision: 0, lastSavedAt: now, createdAt: now, updatedAt: now });
+    const draftId = await ctx.db.insert("formDrafts", { schoolId: args.schoolId, userId: auth.userId, formKey: args.formKey, activeScopeKey: scopeKey, payload: {}, schemaVersion: policy.version, expiresAt, status: "active", revision: 0, lastSavedAt: now, createdAt: now, updatedAt: now });
     await audit(ctx, args.schoolId, auth.userId, draftId, "created");
     return { draftId, revision: 0, expiresAt };
   },
@@ -104,13 +116,13 @@ export const getFormDraft = query({
 /** Call this helper INSIDE a domain's successful submission transaction. Never before submission. */
 export async function finishFormDraft(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId: Id<"formDrafts">; expectedRevision: number }, status: "committed" | "discarded") {
   const { draft, auth } = await owned(ctx, args);
-  await ctx.db.patch(draft._id, { status, payload: {}, revision: args.expectedRevision + 1, updatedAt: Date.now() });
+  await ctx.db.patch(draft._id, { status, activeScopeKey: undefined, payload: {}, revision: args.expectedRevision + 1, updatedAt: Date.now() });
   await audit(ctx, args.schoolId, auth.userId, draft._id, status);
   return { success: true as const };
 }
 export const discardFormDraft = mutation({ args: instance, handler: (ctx, args) => finishFormDraft(ctx, args, "discarded") });
-// Compatibility endpoint for non-atomic legacy submit adapters; new domain mutations use the helper.
-export const commitFormDraft = mutation({ args: instance, handler: (ctx, args) => finishFormDraft(ctx, args, "committed") });
+// Trusted server code may close a legacy draft while adapters move to atomic domain submissions.
+export const commitFormDraft = internalMutation({ args: instance, handler: (ctx, args) => finishFormDraft(ctx, args, "committed") });
 /** Retention contract only: bounded and internal; no cron/scheduler is installed or run. */
 export const expireFormDrafts = internalMutation({
   args: {},
@@ -128,12 +140,19 @@ export const expireFormDrafts = internalMutation({
         try { payload = parseDraftPayload(formKey, draft.payload); }
         catch { payload = null; }
         if (payload) {
-          await ctx.db.patch(draft._id, { payload, schemaVersion: policy.version, expiresAt, revision: draft.revision ?? 0, updatedAt: now });
+          await ctx.db.patch(draft._id, {
+            payload,
+            schemaVersion: policy.version,
+            activeScopeKey: activeScopeKey(draft.userId, draft.schoolId, formKey),
+            expiresAt,
+            revision: draft.revision ?? 0,
+            updatedAt: now,
+          });
           processed++;
           continue;
         }
       }
-      await ctx.db.patch(draft._id, { payload: {}, status: "discarded", expiresAt: undefined, updatedAt: now });
+      await ctx.db.patch(draft._id, { payload: {}, status: "discarded", activeScopeKey: undefined, expiresAt: undefined, updatedAt: now });
       await audit(ctx, draft.schoolId, draft.userId, draft._id, "expired");
       processed++;
     }

@@ -38,7 +38,7 @@ export function SectionHeading({
   return (
     <div className="space-y-3">
       {eyebrow ? (
-        <p className="text-xs font-bold uppercase tracking-[0.24em] text-[color:var(--school-accent)]">{eyebrow}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-[color:var(--school-accent-foreground)]">{eyebrow}</p>
       ) : null}
       <h2 className="max-w-3xl text-3xl font-semibold text-slate-950 sm:text-4xl">{title}</h2>
       {description ? <p className="max-w-3xl text-base leading-7 text-slate-600">{description}</p> : null}
@@ -213,7 +213,7 @@ function HeroSection({ school, page }: { school: SchoolConfig; page: PageContent
       <Container>
         <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div className="space-y-6">
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-[color:var(--school-accent)]">{page.hero.eyebrow}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.28em] text-[color:var(--school-accent-foreground)]">{page.hero.eyebrow}</p>
             <div className="space-y-4">
               <h1 className="max-w-3xl text-4xl font-semibold text-slate-950 sm:text-5xl lg:text-6xl">{page.hero.title}</h1>
               <p className="max-w-2xl text-lg leading-8 text-slate-600">{page.hero.description}</p>
@@ -251,7 +251,7 @@ function HeroSection({ school, page }: { school: SchoolConfig; page: PageContent
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-2xl bg-white p-3 shadow-sm">
-                  <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent)]">
+                  <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent-foreground)]">
                     <Phone className="h-4 w-4" />
                   </span>
                   <div>
@@ -316,7 +316,7 @@ function TimelineSection({ items }: { items: SummaryCard[] }) {
         <div className="mt-8 grid gap-4 lg:grid-cols-3">
           {items.map((item, index) => (
             <SurfaceCard key={item.title} className="space-y-4">
-              <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent)]">
+              <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--school-accent)]/10 text-[color:var(--school-accent-foreground)]">
                 <span className="text-sm font-bold">0{index + 1}</span>
               </div>
               <div className="space-y-2">

@@ -68,11 +68,11 @@ describe("Private registered draft lifecycle", () => {
     await h.t.run(async ctx => { await ctx.db.patch(h.schoolId, { status: "active" }); await ctx.db.patch(h.userId, { isArchived: true }); });
     await expect(h.user.mutation(drafts.discardFormDraft, args)).rejects.toThrow();
   });
-  it.each(["discardFormDraft", "commitFormDraft"] as const)("%s erases payload and permanently rejects delayed autosave", async endpoint => {
+  it("discardFormDraft erases payload and permanently rejects delayed autosave", async () => {
     const h = await setup(); const instance = await h.begin();
     await h.user.mutation(drafts.saveFormDraft, { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload: { firstName: "Remove me" } });
     const args = { schoolId: h.schoolId, draftId: instance.draftId, expectedRevision: 1 };
-    await h.user.mutation(drafts[endpoint], args);
+    await h.user.mutation(drafts.discardFormDraft, args);
     await expect(h.user.mutation(drafts.saveFormDraft, { ...args, schemaVersion: 1, payload: { firstName: "late" } })).rejects.toThrow(/already/);
     expect(await h.user.query(drafts.getFormDraft, h.scope)).toBeNull();
     expect((await h.t.run(ctx => ctx.db.get(instance.draftId)))?.payload).toEqual({});

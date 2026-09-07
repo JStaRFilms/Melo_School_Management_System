@@ -34,7 +34,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
     setCopied(false);
   };
 
-  useDirtyForm({
+  const requestDeparture = useDirtyForm({
     name: "Teacher onboarding (not saved as a draft)",
     isDirty: isSubmitting || (!result && Boolean(name || email || temporaryPassword !== "Teacher123!Pass")),
     discard: () => {
@@ -99,7 +99,11 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
         </div>
 
         <button 
-          onClick={resetForm}
+          onClick={() => {
+            void requestDeparture({ kind: "close" }).then((confirmed) => {
+              if (confirmed) resetForm();
+            });
+          }}
           className="w-full h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
         >
           Provision Another

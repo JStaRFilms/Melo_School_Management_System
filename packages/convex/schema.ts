@@ -3289,6 +3289,7 @@ export default defineSchema({
     userId: v.id("users"),
     formKey: v.string(),
     entityId: v.optional(v.string()),
+    activeScopeKey: v.optional(v.string()),
     payload: v.any(),
     status: v.union(
       v.literal("active"),
@@ -3301,6 +3302,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user_and_form", ["userId", "formKey"])
+    .index("by_active_scope", ["activeScopeKey"])
     .index("by_school_and_form", ["schoolId", "formKey"])
     .index("by_expiresAt", ["expiresAt"])
     .index("by_status_and_expiresAt", ["status", "expiresAt"]),

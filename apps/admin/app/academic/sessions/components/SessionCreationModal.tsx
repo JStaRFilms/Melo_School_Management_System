@@ -39,7 +39,7 @@ export function SessionCreationModal({
   const [activateSession, setActivateSession] = useState(true);
   const [autoGenerateTerms, setAutoGenerateTerms] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [initial] = useState({ sessionName, startDate, endDate, activateSession, autoGenerateTerms });
+  const [initial, setInitial] = useState({ sessionName, startDate, endDate, activateSession, autoGenerateTerms });
   const requestDeparture = useDirtyForm({
     name: "Session setup (not saved as a draft)",
     isDirty: isOpen && (isSaving || JSON.stringify({ sessionName, startDate, endDate, activateSession, autoGenerateTerms }) !== JSON.stringify(initial)),
@@ -63,6 +63,7 @@ export function SessionCreationModal({
 
   useEffect(() => {
     if (isOpen) {
+      setInitial({ sessionName, startDate, endDate, activateSession, autoGenerateTerms });
       prevOverflowRef.current = document.body.style.overflow;
       setShouldRender(true);
       const timer = setTimeout(() => setIsAnimating(true), 20);
@@ -79,6 +80,8 @@ export function SessionCreationModal({
       }, 400);
       return () => clearTimeout(timer);
     }
+  // Opening the modal establishes a fresh dirty baseline for that attempt.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   useEffect(() => {
@@ -145,6 +148,7 @@ export function SessionCreationModal({
       if (onSessionCreated && sessionId) {
         onSessionCreated(sessionId);
       }
+      setInitial({ sessionName, startDate, endDate, activateSession, autoGenerateTerms });
       onClose();
     } catch (err) {
       appToast.error("Session creation failed", {

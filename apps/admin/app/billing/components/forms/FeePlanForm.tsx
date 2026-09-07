@@ -11,7 +11,6 @@ import { feePlanValidation } from "../../fee-plan-validation";
 import { BankAccountSelection } from "../BankAccountSelection";
 import { cn } from "@/utils";
 import type { ClassOption, FeePlanDraft } from "../../types";
-import { BankAccountSelection } from "../BankAccountSelection";
 
 interface FeePlanFormProps {
   draft: FeePlanDraft;
