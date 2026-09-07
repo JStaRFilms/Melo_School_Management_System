@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useId, useMemo, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useQuery } from "convex/react";
 import {
   ArrowLeft,
@@ -185,6 +185,7 @@ export function StudentFirstOnboardingForm({
   onReset,
   onSubmit,
 }: StudentFirstOnboardingFormProps) {
+  const admissionNumberSourceName = useId();
   const [classSearch, setClassSearch] = useState("");
   const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
   const deferredClassSearch = useDeferredValue(classSearch);
@@ -660,7 +661,7 @@ export function StudentFirstOnboardingForm({
                         <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
                           <input
                             type="radio"
-                            name="onboarding-admission-number-source"
+                            name={admissionNumberSourceName}
                             checked={admissionNumberMode === "automatic"}
                             onChange={() => onAdmissionNumberModeChange("automatic")}
                           />
@@ -672,7 +673,7 @@ export function StudentFirstOnboardingForm({
                         <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
                           <input
                             type="radio"
-                            name="onboarding-admission-number-source"
+                            name={admissionNumberSourceName}
                             checked={admissionNumberMode === "manual"}
                             disabled={!canOverrideAdmissionNumber}
                             onChange={() => onAdmissionNumberModeChange("manual")}

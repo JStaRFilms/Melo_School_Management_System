@@ -697,7 +697,7 @@ export function ReportCardSheet({
                       color={
                         isIncompleteCumulativeResult(result)
                           ? "#64748b"
-                          : resolveGradeColor(result.gradeLetter, reportCard.gradingPolicy?.bands)
+                          : resolveGradeColor(result.gradeLetter, reportCard.gradingPolicy?.bands ?? [])
                       }
                     >
                       {getResultGradeDisplay(result)}

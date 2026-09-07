@@ -191,7 +191,7 @@ export function ResultsSummary({
                       </>
                     )}
                     <td
-                      className="px-2 py-2 text-center font-bold" style={{color: isIncompleteCumulativeResult(r) ? "#64748b" : resolveGradeColor(r.gradeLetter, reportCard.gradingPolicy?.bands)}}
+                      className="px-2 py-2 text-center font-bold" style={{color: isIncompleteCumulativeResult(r) ? "#64748b" : resolveGradeColor(r.gradeLetter, reportCard.gradingPolicy?.bands ?? [])}}
                     >
                       {gradeDisplay(r)}
                     </td>

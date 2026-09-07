@@ -128,7 +128,7 @@ export function StudentProfileEditor({
     if (!studentProfile) return;
     setFirstName(studentProfile.firstName ?? "");
     setLastName(studentProfile.lastName ?? "");
-    setAdmissionNumber(studentProfile.admissionNumber);
+    setAdmissionNumber(studentProfile.admissionNumber ?? "");
     setOverrideReason("");
     setOverrideConfirmed(false);
     setOverrideCounterDecision("");
@@ -154,7 +154,7 @@ export function StudentProfileEditor({
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || studentProfile?.displayName || "Unnamed Student";
   const admissionNumberChanged = Boolean(
     studentProfile &&
-      admissionNumber.trim() !== studentProfile.admissionNumber,
+      admissionNumber.trim() !== (studentProfile.admissionNumber ?? ""),
   );
   const admissionNumberOverrideReady =
     !admissionNumberChanged ||

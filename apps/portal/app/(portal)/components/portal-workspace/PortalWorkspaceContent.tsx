@@ -352,7 +352,7 @@ function DashboardView({
                   <tr key={result.subjectId} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-2.5 font-medium text-slate-700">{result.subjectName}</td>
                     <td className="px-4 py-2.5 text-right font-bold text-slate-900 tabular-nums">{formatScore(result.total)}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold" style={{color: resolveGradeColor(result.gradeLetter, workspace.selectedReportCard?.gradingPolicy?.bands)}}>{result.gradeLetter}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold" style={{color: resolveGradeColor(result.gradeLetter, workspace.selectedReportCard?.gradingPolicy?.bands ?? [])}}>{result.gradeLetter}</td>
                   </tr>
                 ))}
               </tbody>

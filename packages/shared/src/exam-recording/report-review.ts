@@ -20,6 +20,13 @@ export function reportCardReviewKey(report: ReportCardSheetData): string {
     student,
     ...content
   } = report;
-  const { photoUrl: _photoUrl, ...studentContent } = student;
+  let studentContent: Omit<
+    NonNullable<ReportCardSheetData["student"]>,
+    "photoUrl"
+  > | null = null;
+  if (student) {
+    const { photoUrl: _photoUrl, ...safeStudent } = student;
+    studentContent = safeStudent;
+  }
   return JSON.stringify(ordered({ ...content, student: studentContent }));
 }

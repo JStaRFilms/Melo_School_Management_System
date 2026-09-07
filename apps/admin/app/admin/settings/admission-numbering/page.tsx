@@ -165,8 +165,11 @@ export default function AdmissionNumberingPage() {
           Confirm next sequence
           <input
             className="block border p-2"
+            type="number"
+            min="1"
+            max="999999999"
+            step="1"
             required
-            inputMode="numeric"
             value={confirmation}
             onChange={(e) => setConfirmation(e.target.value)}
           />
