@@ -3498,7 +3498,9 @@ export default defineSchema({
     schoolId: v.id("schools"), settlementId: v.id("settlementLedgers"),
     kind: v.union(v.literal("refund"), v.literal("dispute"), v.literal("adjustment")),
     amountMinor: v.number(), evidenceReference: v.string(), createdAt: v.number(),
-  }).index("by_settlementId", ["settlementId"]),
+  })
+    .index("by_settlementId", ["settlementId"])
+    .index("by_school", ["schoolId"]),
   settlementLedgers: defineTable({
     schoolId: v.id("schools"),
     transactionRef: v.string(),
@@ -3586,7 +3588,9 @@ export default defineSchema({
     ),
     lastResetAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_school_and_meter", ["schoolId", "meterType"]),
+  })
+    .index("by_school_and_meter", ["schoolId", "meterType"])
+    .index("by_school", ["schoolId"]),
 
   // Internal provider evidence is separate from customer allowance, including failed work.
   usageProviderCosts: defineTable({
@@ -3605,7 +3609,8 @@ export default defineSchema({
     measuredAt: v.number(),
   })
     .index("by_school_and_measuredAt", ["schoolId", "measuredAt"])
-    .index("by_provider_and_evidenceId", ["provider", "evidenceId"]),
+    .index("by_provider_and_evidenceId", ["provider", "evidenceId"])
+    .index("by_school", ["schoolId"]),
 
   usageEvents: defineTable({
     schoolId: v.id("schools"),
@@ -3628,7 +3633,8 @@ export default defineSchema({
     timestamp: v.number(),
   })
     .index("by_school_and_timestamp", ["schoolId", "timestamp"])
-    .index("by_school_and_meter", ["schoolId", "meterType"]),
+    .index("by_school_and_meter", ["schoolId", "meterType"])
+    .index("by_school", ["schoolId"]),
 
   usageQuotaReservations: defineTable({
     schoolId: v.id("schools"),
@@ -3663,7 +3669,9 @@ export default defineSchema({
     releasedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_school_and_meter_and_idempotency_key", ["schoolId", "meterType", "idempotencyKey"]),
+  })
+    .index("by_school_and_meter_and_idempotency_key", ["schoolId", "meterType", "idempotencyKey"])
+    .index("by_school", ["schoolId"]),
 
   // --- School Asset Security, Navigable Trash, and PDF Compression (H9 / MX-14) ---
   schoolAssets: defineTable({
@@ -3721,7 +3729,9 @@ export default defineSchema({
     assetId: v.id("schoolAssets"),
     fileName: v.string(),
     purgedAt: v.number(),
-  }).index("by_asset", ["assetId"]),
+  })
+    .index("by_asset", ["assetId"])
+    .index("by_school", ["schoolId"]),
 
   assetPolicies: defineTable({
     schoolId: v.id("schools"),
@@ -3737,6 +3747,7 @@ export default defineSchema({
     recipientSchoolId: v.id("schools"),
     createdAt: v.number(),
   }).index("by_asset", ["assetId"])
+    .index("by_owner", ["ownerSchoolId"])
     .index("by_recipient", ["recipientSchoolId"]),
 
   assetUploadIntents: defineTable({
@@ -3750,7 +3761,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school_and_status", ["schoolId", "status"])
-    .index("by_storage", ["storageId"]),
+    .index("by_storage", ["storageId"])
+    .index("by_school", ["schoolId"]),
 
   pdfCompressionCandidates: defineTable({
     schoolId: v.id("schools"),
@@ -3773,7 +3785,8 @@ export default defineSchema({
   })
     .index("by_asset_and_source_and_candidate", ["assetId", "sourceStorageId", "candidateStorageId"])
     .index("by_candidate_storage", ["candidateStorageId"])
-    .index("by_cleanup_schedule", ["cleanupScheduledAt"]),
+    .index("by_cleanup_schedule", ["cleanupScheduledAt"])
+    .index("by_school", ["schoolId"]),
 
   assetStorageReconciliationIssues: defineTable({
     schoolId: v.id("schools"),
@@ -3789,7 +3802,8 @@ export default defineSchema({
     resolvedAt: v.optional(v.number()),
   })
     .index("by_asset_and_storage_and_code", ["assetId", "storageId", "code"])
-    .index("by_school_and_status", ["schoolId", "status"]),
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school", ["schoolId"]),
 
   assetRetentionHolds: defineTable({
     assetId: v.id("schoolAssets"),
@@ -3810,7 +3824,9 @@ export default defineSchema({
     scannerEngine: v.string(),
     scannedAt: v.number(),
     metadata: v.optional(v.string()),
-  }).index("by_asset", ["assetId"]),
+  })
+    .index("by_asset", ["assetId"])
+    .index("by_school", ["schoolId"]),
 });
 
 

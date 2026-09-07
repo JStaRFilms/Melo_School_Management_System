@@ -35,6 +35,9 @@ const DEMO_SCHOOL_TABLES = [
   "instructionArtifactSources", "instructionArtifactRevisions", "instructionArtifactDocuments", "instructionArtifacts", "instructionTemplates",
   "curriculumUnits", "curriculumImports",
   "knowledgeOcrJobs", "knowledgeMaterialChunks", "knowledgeMaterialClassBindings", "knowledgeMaterials", "knowledgeTopics",
+  "assetQuarantineLogs", "assetRetentionHolds", "assetStorageReconciliationIssues", "assetPurgeReceipts", "pdfCompressionCandidates", "assetUploadIntents", "schoolAssets", "assetPolicies",
+  "settlementLegs", "settlementLedgers", "subscriptionInvoices", "commercialContracts", "paymentMandates", "schoolSubscriptions",
+  "usageProviderCosts", "usageEvents", "usageQuotaReservations", "usageMeterAllocations",
   "paymentAllocations", "billingPaymentAttempts", "paymentGatewayEvents", "billingPayments", "studentInvoices", "feePlanApplications", "feePlans", "schoolPaymentProviderSecrets", "schoolPaymentProviders", "schoolBillingSettings",
   "issuedReportCards", "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
@@ -47,9 +50,17 @@ function gradeFor(total: number) {
   return DEMO_BANDS.find((band) => total >= band.minScore && total <= band.maxScore) ?? DEMO_BANDS[0];
 }
 
-function storageIdsOnRow(row: object): Id<"_storage">[] {
+export function storageIdsOnRow(row: object): Id<"_storage">[] {
   const candidate = row as Record<string, unknown>;
-  const singular = ["photoStorageId", "logoStorageId", "storageId"].flatMap((key) =>
+  const singular = [
+    "photoStorageId",
+    "logoStorageId",
+    "schoolLogoStorageId",
+    "studentPhotoStorageId",
+    "storageId",
+    "rollbackStorageId",
+    "candidateStorageId",
+  ].flatMap((key) =>
     typeof candidate[key] === "string" ? [candidate[key] as Id<"_storage">] : []
   );
   const portraits = Array.isArray(candidate.portraitStorageIds)
@@ -156,6 +167,40 @@ export const clearDemoSchoolBatchInternal = internalMutation({
       .withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug))
       .unique();
     if (!school) return { complete: true, deletedCount: 0, storageIds: [] };
+
+    // These child rows do not carry schoolId. Remove them in bounded batches
+    // before their school-scoped parents enter the generic reset loop.
+    const invoices = await ctx.db
+      .query("subscriptionInvoices")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .take(75);
+    for (const invoice of invoices) {
+      const students = await ctx.db
+        .query("subscriptionInvoiceStudents")
+        .withIndex("by_invoiceId", (q) => q.eq("invoiceId", invoice._id))
+        .take(75);
+      if (students.length > 0) {
+        for (const student of students) await ctx.db.delete(student._id);
+        return { complete: false, deletedCount: students.length, storageIds: [] };
+      }
+    }
+
+    const ownedShares = await ctx.db
+      .query("assetBranchShares")
+      .withIndex("by_owner", (q) => q.eq("ownerSchoolId", school._id))
+      .take(75);
+    if (ownedShares.length > 0) {
+      for (const share of ownedShares) await ctx.db.delete(share._id);
+      return { complete: false, deletedCount: ownedShares.length, storageIds: [] };
+    }
+    const receivedShares = await ctx.db
+      .query("assetBranchShares")
+      .withIndex("by_recipient", (q) => q.eq("recipientSchoolId", school._id))
+      .take(75);
+    if (receivedShares.length > 0) {
+      for (const share of receivedShares) await ctx.db.delete(share._id);
+      return { complete: false, deletedCount: receivedShares.length, storageIds: [] };
+    }
 
     for (const tableName of DEMO_SCHOOL_TABLES) {
       const rows = await ctx.db
