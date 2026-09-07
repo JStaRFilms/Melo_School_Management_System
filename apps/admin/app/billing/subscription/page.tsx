@@ -14,6 +14,9 @@ export default function SubscriptionPage() {
     api.functions.academic.rbac.hasViewerCapability,
     schoolId ? { schoolId, capability: "finance.reports.view" } : "skip",
   );
+  const canViewSettlements =
+    workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("finance.settlements.view");
   const data = useQuery(
     api.functions.academic.commercial.getCommercialWorkspace,
     schoolId && allowed ? { schoolId } : "skip",
@@ -26,7 +29,9 @@ export default function SubscriptionPage() {
     <main className="mx-auto max-w-4xl space-y-5 p-4">
       <nav className="flex flex-wrap gap-4">
         <Link href="/billing">School fee invoices</Link>
-        <Link href="/billing/settlements">Collection settlements</Link>
+        {canViewSettlements && (
+          <Link href="/billing/settlements">Collection settlements</Link>
+        )}
       </nav>
       <h1 className="text-xl font-semibold">Melo SaaS subscription</h1>
       <p>

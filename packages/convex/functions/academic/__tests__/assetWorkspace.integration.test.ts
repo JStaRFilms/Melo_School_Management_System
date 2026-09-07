@@ -145,6 +145,34 @@ it("applies scan status before bounding the active asset result", async () => {
   ).toMatchObject([{ _id: assetId, scanStatus: "failed" }]);
 });
 
+it("keeps an existing share idempotent at the recipient cap", async () => {
+  const { t, p, schoolId, otherId, assetId } = await fixture();
+  await p.mutation(a.setBranchShare, {
+    schoolId,
+    assetId,
+    recipientSchoolId: otherId,
+    shared: true,
+  });
+  await t.run(async (ctx) => {
+    for (let index = 0; index < 49; index += 1) {
+      await ctx.db.insert("assetBranchShares", {
+        assetId,
+        ownerSchoolId: schoolId,
+        recipientSchoolId: otherId,
+        createdAt: Date.now() + index,
+      });
+    }
+  });
+  await expect(
+    p.mutation(a.setBranchShare, {
+      schoolId,
+      assetId,
+      recipientSchoolId: otherId,
+      shared: true,
+    }),
+  ).resolves.toBeNull();
+});
+
 it("membership alone shares nothing; explicit grants are tenant-bound and revoked immediately", async () => {
   const { p, schoolId, otherId, assetId } = await fixture();
   expect((await p.query(a.listSharedAssets, { schoolId: otherId })).rows).toHaveLength(0);

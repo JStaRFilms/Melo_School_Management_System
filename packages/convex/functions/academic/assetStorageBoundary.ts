@@ -97,7 +97,7 @@ export async function storageClaimedOnlyBy(
   );
   const allowedClaims = claims.filter(claim =>
     (claim.purpose === expected.purpose && claim.ownerId === expected.ownerId) ||
-    (expected.purpose === "schoolAsset" && claim.purpose === "assetUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
+    ((expected.purpose === "schoolAsset" || expected.purpose === "schoolAssetRollback") && claim.purpose === "assetUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
     (expected.purpose === "demoSeedCleanup" && claim.purpose === "demoSeedCleanup")
   );
   return expectedClaims.length === 1 && claims.length === allowedClaims.length;

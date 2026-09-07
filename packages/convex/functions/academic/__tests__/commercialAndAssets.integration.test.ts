@@ -1082,10 +1082,19 @@ describe("B-08 / M7 (PR-H): Commercial Catalog, Usage Metering, and Asset Securi
       let storageAllocation = await t.run((ctx) =>
         ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique()
       );
-      // Synthetic historical promoted state proves existing rollback remains usable.
+      // Synthetic historical promoted state proves existing rollback remains usable,
+      // including when the finalized upload intent still owns the original bytes.
       await t.run(async ctx => {
         const metadata = await ctx.db.system.get("_storage", optimized);
         assertExists(metadata); assertExists(storageAllocation);
+        await ctx.db.insert("assetUploadIntents", {
+          schoolId,
+          storageId: asset.storageId,
+          assetId: asset._id,
+          status: "finalized",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
         await ctx.db.patch(asset._id, { storageId: optimized, byteSize: metadata.size, sha256: metadata.sha256, rollbackStorageId: asset.storageId, rollbackExpiryAt: Date.now() + 86400000, isOptimized: true });
         await ctx.db.patch(storageAllocation._id, { activeStorageBytes: metadata.size, tempStorageBytes: asset.byteSize });
       });

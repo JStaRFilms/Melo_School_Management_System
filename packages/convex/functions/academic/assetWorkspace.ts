@@ -149,6 +149,7 @@ export const setBranchShare = mutation({
     const existing = await ctx.db.query("assetBranchShares").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51);
     const share = existing.find(s => s.recipientSchoolId === args.recipientSchoolId);
     if (args.shared) {
+      if (share) return;
       if (asset.isTrashed || args.schoolId === args.recipientSchoolId || existing.length >= 50) throw new ConvexError("Invalid share target, trashed asset or share limit reached");
       const [owner, recipient, school] = await Promise.all([
         ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique(),
@@ -156,7 +157,6 @@ export const setBranchShare = mutation({
         ctx.db.get(args.recipientSchoolId),
       ]);
       if (!owner || !recipient || owner.groupId !== recipient.groupId || school?.status !== "active" || (await ctx.db.get(owner.groupId))?.status !== "active") throw new ConvexError("Recipient must be an authorized active branch in the same active group");
-      if (share) return;
       await ctx.db.insert("assetBranchShares", { assetId: asset._id, ownerSchoolId: args.schoolId, recipientSchoolId: args.recipientSchoolId, createdAt: Date.now() });
     } else {
       if (!share) return;

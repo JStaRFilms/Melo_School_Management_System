@@ -7,10 +7,15 @@ const mocks = vi.hoisted(() => ({
   allowed: true as boolean | undefined,
   loading: false,
   populated: false,
+  capabilities: ["finance.reports.view", "finance.settlements.view"] as string[],
 }));
 vi.mock("@/AuthProvider", () => ({
   useAuth: () => ({
-    workspaceAccess: { state: "ready", branch: { schoolId: "school" } },
+    workspaceAccess: {
+      state: "ready",
+      branch: { schoolId: "school" },
+      effectiveCapabilities: mocks.capabilities,
+    },
   }),
 }));
 vi.mock("convex/react", () => ({
@@ -70,6 +75,7 @@ afterEach(() => {
   mocks.allowed = true;
   mocks.loading = false;
   mocks.populated = false;
+  mocks.capabilities = ["finance.reports.view", "finance.settlements.view"];
 });
 it("shows loading/denied/empty legacy subscription and fail-closed purchase states", () => {
   mocks.allowed = undefined;
@@ -95,6 +101,12 @@ it("shows loading/denied/empty legacy subscription and fail-closed purchase stat
       .getByRole("link", { name: "Collection settlements" })
       .getAttribute("href"),
   ).toBe("/billing/settlements");
+  cleanup();
+  mocks.capabilities = ["finance.reports.view"];
+  render(<Subscription />);
+  expect(
+    screen.queryByRole("link", { name: "Collection settlements" }),
+  ).toBeNull();
 });
 it("separates settlement legs, never presents historical next-day estimate as evidence", () => {
   render(<Settlements />);
