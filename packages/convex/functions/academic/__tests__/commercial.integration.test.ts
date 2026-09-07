@@ -199,6 +199,38 @@ async function fixture() {
     contractId,
   };
 }
+it("filters active plans before applying the catalog limit", async () => {
+  const f = await fixture();
+  const activePlanId = await f.t.run(async (ctx) => {
+    for (let index = 0; index < 101; index += 1) {
+      await ctx.db.insert("subscriptionPlans", {
+        code: `archived-${index}`,
+        name: `Archived ${index}`,
+        perStudentFeeKobo: 100000,
+        termSetupFeeKobo: 0,
+        currency: "NGN",
+        billingCadence: "termly",
+        status: "archived",
+        createdAt: index,
+        updatedAt: index,
+      });
+    }
+    return await ctx.db.insert("subscriptionPlans", {
+      code: "active-plan",
+      name: "Active plan",
+      perStudentFeeKobo: 100000,
+      termSetupFeeKobo: 0,
+      currency: "NGN",
+      billingCadence: "termly",
+      status: "active",
+      createdAt: 102,
+      updatedAt: 102,
+    });
+  });
+
+  expect((await f.t.query(commercial.listSubscriptionPlans, {})).map((plan) => plan._id)).toEqual([activePlanId]);
+});
+
 it("requires Platform-only confirmed writes, delegated school reads and separate settlement permission", async () => {
   const f = await fixture();
   await expect(

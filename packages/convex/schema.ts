@@ -3468,7 +3468,9 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("archived")),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_code", ["code"]),
+  })
+    .index("by_code", ["code"])
+    .index("by_status", ["status"]),
 
   schoolSubscriptions: defineTable({
     schoolId: v.id("schools"),

@@ -413,14 +413,14 @@ export const getSchoolSubscription = query({
   },
 });
 
-/**
- * Returns all active subscription plans in commercial catalog.
- */
+/** Returns up to 100 active subscription plans in the commercial catalog. */
 export const listSubscriptionPlans = query({
   args: {},
   handler: async (ctx) => {
-    const plans = await ctx.db.query("subscriptionPlans").take(100);
-    return plans.filter((plan) => plan.status === "active");
+    return await ctx.db
+      .query("subscriptionPlans")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .take(100);
   },
 });
 
