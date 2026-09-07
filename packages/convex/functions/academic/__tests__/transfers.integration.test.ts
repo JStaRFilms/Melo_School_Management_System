@@ -1253,6 +1253,41 @@ describe("U6 routed workflow contracts", () => {
         schoolId: h.schoolB,
       }),
     ).toEqual({ allowed: false });
+    expect(
+      await source.query(transfersApi.listTransferCandidates, {
+        schoolId: h.schoolA,
+        classId: h.classAId,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        _id: h.studentId,
+        name: "Oluwaseun Adeyemi",
+      }),
+    ]);
+    await t.run(async (ctx) => {
+      const membership = await ctx.db.get(h.adminBMembershipId);
+      if (!membership?.legacyUserId) throw new Error("Missing foreign user");
+      await ctx.db.patch(h.studentId, { userId: membership.legacyUserId });
+    });
+    expect(
+      await source.query(transfersApi.listTransferCandidates, {
+        schoolId: h.schoolA,
+        classId: h.classAId,
+      }),
+    ).toEqual([]);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(h.studentId, { userId: h.studentUserId });
+      await ctx.db.patch(h.studentUserId, { isArchived: true });
+    });
+    expect(
+      await source.query(transfersApi.listTransferCandidates, {
+        schoolId: h.schoolA,
+        classId: h.classAId,
+      }),
+    ).toEqual([]);
+    await t.run((ctx) =>
+      ctx.db.patch(h.studentUserId, { isArchived: false }),
+    );
     const { transferId } = await source.mutation(initiateStudentTransferRef, {
       sourceSchoolId: h.schoolA,
       destinationSchoolId: h.schoolB,

@@ -1126,20 +1126,29 @@ export const listTransferCandidates = query({
       .take(501);
     if (rows.length > 500)
       throw new ConvexError("Class exceeds supported 500-student selector");
-    return await Promise.all(
-      rows
-        .filter(
-          (s) =>
-            s.schoolId === args.schoolId &&
-            !s.isArchived &&
-            (!s.enrollmentStatus || s.enrollmentStatus === "active"),
-        )
-        .map(async (s) => ({
-          _id: s._id,
-          name: (await ctx.db.get(s.userId))?.name ?? "Student",
-          admissionNumber: s.admissionNumber,
-        })),
-    );
+    const candidates = [];
+    for (const student of rows) {
+      if (
+        student.schoolId !== args.schoolId ||
+        student.isArchived ||
+        (student.enrollmentStatus && student.enrollmentStatus !== "active")
+      )
+        continue;
+      const user = await ctx.db.get(student.userId);
+      if (
+        !user ||
+        user.schoolId !== args.schoolId ||
+        user.isArchived ||
+        user.role !== "student"
+      )
+        continue;
+      candidates.push({
+        _id: student._id,
+        name: user.name,
+        admissionNumber: student.admissionNumber,
+      });
+    }
+    return candidates;
   },
 });
 
