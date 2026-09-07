@@ -315,13 +315,7 @@ it("keeps leadership alerts reachable and records safe export outcomes", async (
   });
   expect(
     await f.reader.query(audit.listAuditAlerts, { schoolId: f.schoolId }),
-  ).toEqual([]);
-  await expect(
-    f.reader.mutation(audit.dismissAuditAlert, {
-      schoolId: f.schoolId,
-      alertDocId: alertId,
-    }),
-  ).rejects.toThrow("not addressed");
+  ).toHaveLength(1);
   expect(
     await f.owner.query(audit.listAuditAlerts, { schoolId: f.schoolId }),
   ).toHaveLength(1);

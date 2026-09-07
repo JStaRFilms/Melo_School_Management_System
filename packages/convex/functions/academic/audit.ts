@@ -403,7 +403,7 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
     platformOnly: auth.isPlatformAdmin,
     personId: auth.personId,
     owner,
-    leadership: owner || legacyAdmin,
+    leadership: owner || legacyAdmin || caps.includes("audit.branch.view"),
     canCsv: caps.includes("audit.export.csv"),
     canPdf: caps.includes("audit.export.pdf"),
   };

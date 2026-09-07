@@ -150,6 +150,7 @@ export default function AdminDashboardPage() {
   const canViewEnrollment = capabilities.includes("enrollment.intakes.manage");
   const canEnterAssessments = capabilities.includes("academic.assessments.enter");
   const canOnboardStaff = capabilities.includes("staff.onboard");
+  const canManageSubjects = capabilities.includes("academic.subjects.manage");
   const queryArgs = canViewDashboardDetails ? ({} as never) : ("skip" as never);
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never,
@@ -161,7 +162,7 @@ export default function AdminDashboardPage() {
   ) as ClassRecord[] | undefined;
   const subjects = useQuery(
     "functions/academic/academicSetup:listSubjects" as never,
-    queryArgs,
+    canViewDashboardDetails && canManageSubjects ? ({} as never) : ("skip" as never),
   ) as SubjectRecord[] | undefined;
   const sessions = useQuery(
     "functions/academic/academicSetup:listSessions" as never,
@@ -259,8 +260,11 @@ export default function AdminDashboardPage() {
         href: "/academic/students",
         actionLabel: "Enroll Students",
       },
-    ].filter((milestone) => milestone.id !== "students" || canViewEnrollment);
-  }, [activeSession, activeClasses, activeSubjects, activeTeachers, unassignedClasses, totalEnrolledStudents, canViewEnrollment]);
+    ].filter((milestone) =>
+      (milestone.id !== "students" || canViewEnrollment) &&
+      (milestone.id !== "subjects" || canManageSubjects),
+    );
+  }, [activeSession, activeClasses, activeSubjects, activeTeachers, unassignedClasses, totalEnrolledStudents, canViewEnrollment, canManageSubjects]);
 
   const completedMilestones = setupMilestones.filter((m) => m.status).length;
   const setupPercentage = Math.round((completedMilestones / setupMilestones.length) * 100);
@@ -625,12 +629,12 @@ export default function AdminDashboardPage() {
                     ? "Full Coverage"
                     : `${unassignedClasses.length} Unassigned Arm${unassignedClasses.length > 1 ? "s" : ""}`,
               },
-              {
+              ...(canManageSubjects ? [{
                 label: "Academic Structure",
                 value: `${activeClasses.length} / ${activeSubjects.length}`,
                 icon: <BookOpenText />,
                 description: "Classes / Subjects",
-              },
+              }] : []),
               ...(canViewBilling
                 ? [{
                     label: "Fee Balances",

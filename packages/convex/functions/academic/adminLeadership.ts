@@ -405,6 +405,10 @@ export const demoteAdminToTeacher = mutation({
       schoolId,
       target._id,
     );
+    const targetMembership = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_legacy_user", (q) => q.eq("legacyUserId", target._id))
+      .unique();
 
     const resolvedLeadAdminUserId = await getResolvedSchoolLeadAdminUserId(
       ctx,
@@ -428,6 +432,14 @@ export const demoteAdminToTeacher = mutation({
         : userId;
 
     const now = Date.now();
+    if (targetMembership) {
+      const [roleAssignments, directGrants] = await Promise.all([
+        ctx.db.query("membershipRoleAssignments").withIndex("by_membership", (q) => q.eq("membershipId", targetMembership._id)).collect(),
+        ctx.db.query("membershipDirectGrants").withIndex("by_membership", (q) => q.eq("membershipId", targetMembership._id)).collect(),
+      ]);
+      for (const row of [...roleAssignments, ...directGrants]) await ctx.db.delete(row._id);
+      await ctx.db.patch(targetMembership._id, { permissionsManagedAt: now, updatedAt: now });
+    }
     for (const subAdmin of managedAdmins) {
       await ctx.db.patch(subAdmin._id, {
         managerUserId: fallbackManagerId,

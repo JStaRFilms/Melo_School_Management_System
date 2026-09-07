@@ -30,6 +30,7 @@ export const WORKSPACE_CAPABILITY_MATRIX: readonly {
   { workspace: "admin", path: "/academic/sessions", required: ["academic.classes.manage"] },
   { workspace: "admin", path: "/academic/classes", required: ["academic.classes.manage"] },
   { workspace: "admin", path: "/academic/subjects", required: ["academic.subjects.manage"] },
+  { workspace: "admin", path: "/academic/events", required: ["academic.classes.manage"] },
   { workspace: "admin", path: "/assessments/results/entry", required: ["academic.assessments.enter"] },
   { workspace: "admin", path: "/assessments/report-cards", required: ["academic.report_cards.preview"] },
   { workspace: "admin", path: "/assessments/report-cards/manual-adjustments", required: ["academic.assessments.adjust"] },
