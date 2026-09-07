@@ -54,6 +54,8 @@ it("authorizes every branch, projects no storage references and keeps delivery c
   await t.mutation(internal.functions.academic.assets.recordAssetScanFailure, { assetId, code: "timeout" });
   expect(await p.query(a.inspectAsset, { schoolId, assetId })).toMatchObject({ scanStatus: "failed", scanFailureCode: "timeout" });
   await expect(p.query(a.getDownloadableAssetUrl, { schoolId, assetId })).rejects.toThrow("Access Denied");
+  await t.mutation(internal.functions.academic.assets.beginAssetScan, { assetId });
+  expect(await p.query(a.inspectAsset, { schoolId, assetId })).toMatchObject({ scanStatus: "scanning", scanFailureCode: null });
 });
 it("archive is active charged storage, Trash follows policy and restore preserves archive, owner and shares", async () => {
   const { t, p, schoolId, otherId, assetId, size } = await fixture();

@@ -278,8 +278,13 @@ export const beginAssetScan = internalMutation({
     const asset = await ctx.db.get(args.assetId);
     if (!asset) throw new ConvexError("Asset not found");
     if (asset.scanStatus === "scanning") return asset;
-    if (validationStatusOf(asset) !== "valid" || asset.scanStatus !== "quarantined") throw new ConvexError("Only signature-validated quarantined assets can be submitted for scanning");
-    await ctx.db.patch(asset._id, { scanStatus: "scanning", updatedAt: Date.now() });
+    const canStart = asset.scanStatus === "quarantined" || asset.scanStatus === "failed";
+    if (validationStatusOf(asset) !== "valid" || !canStart) throw new ConvexError("Only signature-validated quarantined or failed assets can be submitted for scanning");
+    await ctx.db.patch(asset._id, {
+      scanStatus: "scanning",
+      scanFailureCode: undefined,
+      updatedAt: Date.now(),
+    });
     return await ctx.db.get(asset._id);
   },
 });
