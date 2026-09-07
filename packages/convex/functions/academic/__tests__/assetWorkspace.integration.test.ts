@@ -110,6 +110,41 @@ it("filters library and archive state before pagination", async () => {
   expect(archive.isDone).toBe(false);
 });
 
+it("applies scan status before bounding the active asset result", async () => {
+  const { t, p, schoolId, assetId } = await fixture();
+  await t.run(async (ctx) => {
+    await ctx.db.patch(assetId, { scanStatus: "failed" });
+    for (let index = 0; index < 21; index += 1) {
+      const storageId = await ctx.storage.store(new Blob([`clean-${index}`]));
+      const metadata = await ctx.db.system.get("_storage", storageId);
+      if (!metadata) throw new Error("clean storage fixture missing");
+      await ctx.db.insert("schoolAssets", {
+        schoolId,
+        storageId,
+        fileName: `Clean ${index}.pdf`,
+        category: "Policy",
+        mimeType: "application/pdf",
+        byteSize: metadata.size,
+        sha256: metadata.sha256,
+        scanStatus: "clean",
+        validationStatus: "valid",
+        isTrashed: false,
+        storageAccountingInitializedAt: Date.now(),
+        createdAt: Date.now() + index + 1,
+        updatedAt: Date.now() + index + 1,
+      });
+    }
+  });
+
+  expect(
+    await p.query(a.listSchoolAssets, {
+      schoolId,
+      scanStatus: "failed",
+      limit: 10,
+    }),
+  ).toMatchObject([{ _id: assetId, scanStatus: "failed" }]);
+});
+
 it("membership alone shares nothing; explicit grants are tenant-bound and revoked immediately", async () => {
   const { p, schoolId, otherId, assetId } = await fixture();
   expect((await p.query(a.listSharedAssets, { schoolId: otherId })).rows).toHaveLength(0);

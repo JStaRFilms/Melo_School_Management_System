@@ -3719,6 +3719,7 @@ export default defineSchema({
   })
     .index("by_school_and_trashed", ["schoolId", "isTrashed"])
     .index("by_school_and_trashed_and_archived_at", ["schoolId", "isTrashed", "archivedAt"])
+    .index("by_school_and_active_and_scan", ["schoolId", "isTrashed", "archivedAt", "scanStatus"])
     .index("by_school_and_scan", ["schoolId", "scanStatus"])
     .index("by_purge_schedule", ["isTrashed", "purgeScheduledAt"])
     .index("by_rollback_expiry", ["rollbackExpiryAt"])

@@ -934,11 +934,12 @@ export const recordSettlementLeg = internalMutation({
     const settlement = await ctx.db.get(args.settlementId);
     if (!settlement || settlement.schoolId !== args.schoolId)
       throw new ConvexError("Settlement unavailable");
+    const evidenceReference = args.evidenceReference.trim();
     if (
       !Number.isSafeInteger(args.amountMinor) ||
       args.amountMinor === 0 ||
-      !args.evidenceReference.trim() ||
-      args.evidenceReference.length > 160
+      !evidenceReference ||
+      evidenceReference.length > 160
     )
       throw new ConvexError(
         "Signed integer amount and bounded evidence reference required",
@@ -950,7 +951,7 @@ export const recordSettlementLeg = internalMutation({
       )
       .take(101);
     const existing = legs.find(
-      (leg) => leg.evidenceReference === args.evidenceReference,
+      (leg) => leg.evidenceReference === evidenceReference,
     );
     if (existing) {
       if (
@@ -965,7 +966,11 @@ export const recordSettlementLeg = internalMutation({
         "Settlement leg bound exceeded; reconciliation review required",
       );
     const id = await ctx.db.insert("settlementLegs", {
-      ...args,
+      schoolId: args.schoolId,
+      settlementId: args.settlementId,
+      kind: args.kind,
+      amountMinor: args.amountMinor,
+      evidenceReference,
       createdAt: Date.now(),
     });
     await recordAuditEventHelper(ctx, {

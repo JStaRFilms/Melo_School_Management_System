@@ -662,6 +662,12 @@ it("keeps evidence-backed refund/dispute/adjustment legs separate and idempotent
   };
   const leg = await f.t.mutation(privateApi.recordSettlementLeg, legArgs);
   expect(await f.t.mutation(privateApi.recordSettlementLeg, legArgs)).toBe(leg);
+  expect(
+    await f.t.mutation(privateApi.recordSettlementLeg, {
+      ...legArgs,
+      evidenceReference: `  ${legArgs.evidenceReference}  `,
+    }),
+  ).toBe(leg);
   await expect(
     f.t.mutation(privateApi.recordSettlementLeg, {
       ...legArgs,

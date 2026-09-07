@@ -39,6 +39,13 @@ describe("usage accounting safety", () => {
     const evidence = { schoolId, operationId: "op-1", evidenceId: "provider-1", provider: "test-double", model: "local", outcome: "failed" as const, currency: "USD", costMinor: 3, inputTokens: 40, measuredAt: 10 };
     const id = await t.mutation(metering.recordProviderCost, evidence);
     expect(await t.mutation(metering.recordProviderCost, evidence)).toEqual(id);
+    expect(
+      await t.mutation(metering.recordProviderCost, {
+        ...evidence,
+        evidenceId: ` ${evidence.evidenceId} `,
+        provider: ` ${evidence.provider} `,
+      }),
+    ).toEqual(id);
     await expect(t.mutation(metering.recordProviderCost, { ...evidence, costMinor: 4 })).rejects.toThrow("Conflicting");
     const { inputTokens: _unused, ...missingDimension } = evidence;
     await expect(t.mutation(metering.recordProviderCost, missingDimension)).rejects.toThrow("Conflicting");

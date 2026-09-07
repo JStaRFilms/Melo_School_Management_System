@@ -428,7 +428,9 @@ export const recordProviderCost = internalMutation({
     pages: v.optional(v.number()), bytes: v.optional(v.number()), measuredAt: v.number(),
   },
   handler: async (ctx, args) => {
-    for (const value of [args.operationId, args.evidenceId, args.provider, args.model]) {
+    const evidenceId = args.evidenceId.trim();
+    const provider = args.provider.trim();
+    for (const value of [args.operationId, evidenceId, provider, args.model]) {
       if (!value.trim() || value.length > 128) throw new ConvexError("Bounded accounting identifiers required");
     }
     if (!/^[A-Z]{3}$/.test(args.currency)) throw new ConvexError("Explicit uppercase currency required");
@@ -436,16 +438,17 @@ export const recordProviderCost = internalMutation({
       if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) throw new ConvexError("Cost and dimensions must be non-negative safe integers");
     }
     if (!(await ctx.db.get(args.schoolId))) throw new ConvexError("School not found");
+    const normalized = { ...args, evidenceId, provider };
     const existing = await ctx.db.query("usageProviderCosts")
-      .withIndex("by_provider_and_evidenceId", q => q.eq("provider", args.provider).eq("evidenceId", args.evidenceId)).unique();
+      .withIndex("by_provider_and_evidenceId", q => q.eq("provider", provider).eq("evidenceId", evidenceId)).unique();
     if (existing) {
-      const keys: Array<keyof typeof args> = ["schoolId", "operationId", "evidenceId", "provider", "model", "outcome", "currency", "costMinor", "inputTokens", "outputTokens", "pages", "bytes", "measuredAt"];
-      if (keys.some(key => existing[key] !== args[key])) {
+      const keys: Array<keyof typeof normalized> = ["schoolId", "operationId", "evidenceId", "provider", "model", "outcome", "currency", "costMinor", "inputTokens", "outputTokens", "pages", "bytes", "measuredAt"];
+      if (keys.some(key => existing[key] !== normalized[key])) {
         throw new ConvexError("Conflicting provider evidence retry");
       }
       return existing._id;
     }
-    return await ctx.db.insert("usageProviderCosts", args);
+    return await ctx.db.insert("usageProviderCosts", normalized);
   },
 });
 
