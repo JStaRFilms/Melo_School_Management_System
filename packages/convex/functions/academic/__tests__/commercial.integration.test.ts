@@ -271,6 +271,65 @@ it("requires the latest catalog version effective at contract start", async () =
   ).resolves.toBeDefined();
 });
 
+it("allows adjacent contracts to invoice non-overlapping spans of one reference period", async () => {
+  const f = await fixture();
+  const periodStart = today - 100 * day;
+  const split = today;
+  const periodEnd = today + 265 * day;
+  const dailyAnnualRate = {
+    ...rate,
+    cadence: "annually" as const,
+    proration: "daily" as const,
+  };
+  const firstContractId = await f.platform.mutation(commercial.createContract, {
+    ...f.contractArgs,
+    schoolId: f.otherSchoolId,
+    effectiveFrom: periodStart,
+    effectiveTo: split,
+    overrideRate: dailyAnnualRate,
+    overrideReason: "Approved annual daily proration",
+    setupHandling: "waived",
+  });
+  const secondContractId = await f.platform.mutation(commercial.createContract, {
+    ...f.contractArgs,
+    schoolId: f.otherSchoolId,
+    effectiveFrom: split,
+    effectiveTo: periodEnd,
+    overrideRate: dailyAnnualRate,
+    overrideReason: "Approved annual daily proration",
+    setupHandling: "waived",
+  });
+  const invoice = {
+    schoolId: f.otherSchoolId,
+    confirmation: "CONFIRM",
+    expectedStudentCount: 0,
+    expectedTotalMinor: 0,
+    periodLabel: "Annual reference period",
+    periodStart,
+    periodEnd,
+  };
+  const clock = vi.spyOn(Date, "now");
+  try {
+    clock.mockReturnValue(split - day);
+    await f.platform.mutation(commercial.issueSubscriptionInvoice, {
+      ...invoice,
+      contractId: firstContractId,
+    });
+    clock.mockReturnValue(split + day);
+    await f.platform.mutation(commercial.issueSubscriptionInvoice, {
+      ...invoice,
+      contractId: secondContractId,
+    });
+  } finally {
+    clock.mockRestore();
+  }
+
+  expect(await f.t.run((ctx) => ctx.db.query("subscriptionInvoices").withIndex("by_school", q => q.eq("schoolId", f.otherSchoolId)).take(3))).toEqual([
+    expect.objectContaining({ contractId: firstContractId, coveredStart: periodStart, coveredEnd: split }),
+    expect.objectContaining({ contractId: secondContractId, coveredStart: split, coveredEnd: periodEnd }),
+  ]);
+});
+
 it("keeps version/effective dates, contracts and issued snapshots immutable; invoices exclude inactive and duplicate students", async () => {
   const f = await fixture();
   await expect(

@@ -3443,6 +3443,8 @@ export default defineSchema({
     schoolId: v.id("schools"), contractId: v.id("commercialContracts"),
     chargeClass: v.literal("saas_subscription"), status: v.literal("issued_unpaid"),
     periodLabel: v.string(), periodStart: v.number(), periodEnd: v.number(),
+    // Optional for deploy compatibility; new invoices persist the actual contract intersection.
+    coveredStart: v.optional(v.number()), coveredEnd: v.optional(v.number()),
     rate: commercialRate, studentCount: v.number(), excludedCount: v.number(),
     snapshotPolicy: v.literal("active_unique_user_v1"),
     prorationNumerator: v.number(), prorationDenominator: v.number(),

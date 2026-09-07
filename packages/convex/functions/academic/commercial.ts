@@ -767,9 +767,11 @@ export const issueSubscriptionInvoice = mutation({
     if (invoices.length > 500)
       throw new ConvexError("Invoice history exceeds local review bound");
     if (
-      invoices.some(
-        (i) => args.periodStart < i.periodEnd && args.periodEnd > i.periodStart,
-      )
+      invoices.some((invoice) => {
+        const coveredStart = invoice.coveredStart ?? invoice.periodStart;
+        const coveredEnd = invoice.coveredEnd ?? invoice.periodEnd;
+        return start < coveredEnd && end > coveredStart;
+      })
     )
       throw new ConvexError(
         "A subscription invoice already covers this period",
@@ -809,6 +811,8 @@ export const issueSubscriptionInvoice = mutation({
       periodLabel: args.periodLabel.trim(),
       periodStart: args.periodStart,
       periodEnd: args.periodEnd,
+      coveredStart: start,
+      coveredEnd: end,
       rate: contract.rate,
       studentCount: included.length,
       excludedCount,

@@ -1059,14 +1059,13 @@ export const listSchoolAssets = query({
 
     const assets = await ctx.db
       .query("schoolAssets")
-      .withIndex("by_school_and_trashed", (q) =>
-        q.eq("schoolId", args.schoolId).eq("isTrashed", false)
+      .withIndex("by_school_and_trashed_and_archived_at", (q) =>
+        q.eq("schoolId", args.schoolId).eq("isTrashed", false).eq("archivedAt", undefined)
       )
       .order("desc")
       .take(limit * 2);
 
     const filtered = assets.filter((a) => {
-      if (a.archivedAt !== undefined) return false;
       if (args.category && a.category !== args.category) return false;
       if (args.scanStatus && a.scanStatus !== args.scanStatus) return false;
       return true;

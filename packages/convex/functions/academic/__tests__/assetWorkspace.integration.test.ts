@@ -105,6 +105,7 @@ it("filters library and archive state before pagination", async () => {
   const archive = await p.query(a.listAssets, { schoolId, workspace: "archive", paginationOpts });
   expect(library.page.map((asset) => asset._id)).toEqual([assetId]);
   expect(library.isDone).toBe(true);
+  expect(await p.query(a.listSchoolAssets, { schoolId, limit: 30 })).toHaveLength(1);
   expect(archive.page).toHaveLength(30);
   expect(archive.isDone).toBe(false);
 });
