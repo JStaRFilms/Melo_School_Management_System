@@ -6,6 +6,7 @@ import {
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { hasActiveGroupBranding, resolveEffectiveTheme } from "./groupSettings";
+import { requireCapability } from "./rbac";
 
 const schoolBrandingThemeValidator = v.object({
   primaryColor: v.string(),
@@ -113,12 +114,24 @@ export const updateSchoolProfile = mutation({
     if (!trimmedName) {
       throw new ConvexError("School name is required");
     }
+    const school = await ctx.db.get(schoolId);
+    if (!school) throw new ConvexError("School not found");
+    const profileChanged =
+      trimmedName !== school.name ||
+      (args.motto?.trim() || undefined) !== school.motto ||
+      (args.contactEmail?.trim() || undefined) !== school.contactEmail ||
+      (args.contactPhone?.trim() || undefined) !== school.contactPhone ||
+      (args.address?.trim() || undefined) !== school.address;
+    if (profileChanged) {
+      await requireCapability(ctx, schoolId, "settings.general.edit");
+    }
+    if (args.theme) {
+      await requireCapability(ctx, schoolId, "settings.branding.manage");
+    }
     const groupBrandingControlled = args.theme
       ? await hasActiveGroupBranding(ctx, schoolId)
       : false;
     if (args.theme && groupBrandingControlled) {
-      const school = await ctx.db.get(schoolId);
-      if (!school) throw new ConvexError("School not found");
       const effectiveTheme = (await resolveEffectiveTheme(ctx, school)).theme;
       if (
         args.theme.primaryColor.toLowerCase() !== effectiveTheme.primaryColor.toLowerCase() ||
@@ -151,6 +164,7 @@ export const generateSchoolLogoUploadUrl = mutation({
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "settings.branding.manage");
 
     return await ctx.storage.generateUploadUrl();
   },
@@ -167,6 +181,7 @@ export const saveSchoolLogo = mutation({
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "settings.branding.manage");
 
     if (!args.logoContentType.startsWith("image/")) {
       throw new ConvexError("School logo must be an image file");
@@ -196,6 +211,7 @@ export const removeSchoolLogo = mutation({
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "settings.branding.manage");
 
     const school = await ctx.db.get(schoolId);
     if (!school) {

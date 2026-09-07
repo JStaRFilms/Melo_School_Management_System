@@ -8,6 +8,7 @@ import { appToast, getErrorMessage } from "@school/shared/toast";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { BranchBrandingEditor } from "../group/GroupBranding";
+import { useAuth } from "@/AuthProvider";
 import {
   Building2,
   Upload,
@@ -61,6 +62,11 @@ const PRESET_PALETTES = [
 
 export default function SchoolSettingsPage() {
   const isConfigured = isConvexConfigured();
+  const { workspaceAccess } = useAuth();
+  const capabilities =
+    workspaceAccess?.state === "ready" ? workspaceAccess.effectiveCapabilities : [];
+  const canEditProfile = capabilities.includes("settings.general.edit");
+  const canManageBranding = capabilities.includes("settings.branding.manage");
 
   const branding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
@@ -161,7 +167,7 @@ export default function SchoolSettingsPage() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
+    if (canEditProfile && !name.trim()) {
       appToast.warning("School name required", {
         description: "Please enter your official school name.",
       });
@@ -171,7 +177,7 @@ export default function SchoolSettingsPage() {
     setIsSaving(true);
     try {
       // 1. Upload logo if new file chosen
-      if (logoFile) {
+      if (logoFile && canManageBranding) {
         const uploadUrl = (await generateLogoUploadUrl({} as never)) as string;
         const uploadResponse = await fetch(uploadUrl, {
           method: "POST",
@@ -196,10 +202,12 @@ export default function SchoolSettingsPage() {
       await updateProfile({
         name: name.trim(),
         motto: motto.trim() || undefined,
-        theme: {
-          primaryColor,
-          accentColor,
-        },
+        theme: canManageBranding
+          ? {
+              primaryColor,
+              accentColor,
+            }
+          : undefined,
         contactEmail: contactEmail.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         address: address.trim() || undefined,
@@ -256,7 +264,7 @@ export default function SchoolSettingsPage() {
         <button
           type="button"
           onClick={handleSaveProfile}
-          disabled={isSaving}
+          disabled={isSaving || (!canEditProfile && !canManageBranding)}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
         >
           {isSaving ? (
@@ -290,6 +298,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. Meridian Crest Academy"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -306,6 +315,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={motto}
                 onChange={(e) => setMotto(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. Nurturing Intellectual Depth, Character, and Global Leadership."
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -413,7 +423,7 @@ export default function SchoolSettingsPage() {
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                    disabled={isSaving}
+                    disabled={isSaving || !canManageBranding}
                     className="sr-only"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
@@ -490,12 +500,14 @@ export default function SchoolSettingsPage() {
                   <input
                     type="color"
                     value={primaryColor}
+                    disabled={!canManageBranding}
                     onChange={(e) => setPrimaryColor(e.target.value)}
                     className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
                   />
                   <input
                     type="text"
                     value={primaryColor}
+                    disabled={!canManageBranding}
                     onChange={(e) => setPrimaryColor(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 uppercase"
                   />
@@ -511,12 +523,14 @@ export default function SchoolSettingsPage() {
                   <input
                     type="color"
                     value={accentColor}
+                    disabled={!canManageBranding}
                     onChange={(e) => setAccentColor(e.target.value)}
                     className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
                   />
                   <input
                     type="text"
                     value={accentColor}
+                    disabled={!canManageBranding}
                     onChange={(e) => setAccentColor(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 uppercase"
                   />
@@ -535,6 +549,7 @@ export default function SchoolSettingsPage() {
                   <button
                     key={preset.name}
                     type="button"
+                    disabled={!canManageBranding}
                     onClick={() => {
                       setPrimaryColor(preset.primary);
                       setAccentColor(preset.accent);
@@ -582,6 +597,7 @@ export default function SchoolSettingsPage() {
                 type="email"
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. info@meridiancrest.org"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -596,6 +612,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={contactPhone}
                 onChange={(e) => setContactPhone(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. +234 803 123 4567"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -610,6 +627,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. Plot 12, Heritage Way, Victoria Island, Lagos"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />

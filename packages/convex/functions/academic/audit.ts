@@ -325,9 +325,12 @@ async function auditAuthority(ctx: Context, scope: AuditScope) {
           branch.schoolId,
           "audit.group.view",
         );
+        const membership = actor.membershipId
+          ? await ctx.db.get(actor.membershipId)
+          : null;
         return {
           schoolIds: overview.branches.map((b) => b.schoolId),
-          modules: null,
+          modules: membership?.auditModules ?? [],
           platformOnly: false,
           personId: actor.personId,
           owner: false,

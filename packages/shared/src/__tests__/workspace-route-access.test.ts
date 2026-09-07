@@ -71,6 +71,16 @@ describe("managed capability navigation and deep links", () => {
     expect(getWorkspaceCapabilityDenial("admin", `${path}/detail`, restricted)?.state).toBe("forbidden");
     expect(getAccessibleWorkspaceSections("admin", { access: restricted }).some(s => s.href === path)).toBe(false);
   });
+  it("admits general-profile and branding settings authorities independently", () => {
+    for (const capability of ["settings.general.edit", "settings.branding.manage"] as const) {
+      const access = {
+        ...ready,
+        compatibility: { ...ready.compatibility, permissionManaged: true },
+        effectiveCapabilities: [capability],
+      };
+      expect(getWorkspaceCapabilityDenial("admin", "/admin/settings", access)).toBeNull();
+    }
+  });
   it("admits managed teacher planning without granting curriculum administration or upload authority", () => {
     const planning = { ...ready, compatibility: { ...ready.compatibility, permissionManaged: true }, effectiveCapabilities: ["academic.planning.use"] };
     expect(getWorkspaceCapabilityDenial("teacher", "/planning/library", planning)).toBeNull();

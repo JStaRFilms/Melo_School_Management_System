@@ -273,6 +273,14 @@ it("paginates past recent nonmatches, enforces branch/module boundaries and keep
   expect(delegatedPage.page.every((row) => row.schoolId === f.schoolId)).toBe(
     true,
   );
+  expect(delegatedPage.page.every((row) => row.module === "academic")).toBe(true);
+  await expect(
+    f.reader.query(audit.queryAuditPage, {
+      scope: { kind: "group", groupId: f.groupId },
+      module: "finance",
+      paginationOpts: { numItems: 100, cursor: null },
+    }),
+  ).rejects.toThrow("Module outside");
 });
 
 it("keeps leadership alerts reachable and records safe export outcomes", async () => {
