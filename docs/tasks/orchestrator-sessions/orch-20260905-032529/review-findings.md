@@ -4,11 +4,11 @@ Reviewed the U1–U6 working-tree changes since `f6fc7c4817eb287daeebf78a4d143ef
 
 ## Verdict
 
-**NEEDS CHANGES**
+**INITIAL REVIEW: NEEDS CHANGES — SUPERSEDED BY THE RECORDED REMEDIATION PASSES**
 
-> **Storage stabilization update:** Critical 4 is locally contained by server-side fail-closed upload issuance/finalization for assets, logos, student photos, staff/Portal knowledge uploads, and PDF candidates. The generic Convex URL is not treated as provenance or quota evidence. Existing authorized historical reads remain compatibility-only. See `results/S0-storage.md`. Upload functionality remains unavailable/incomplete pending authoritative transport, reservation, and cleanup support; the overall verdict remains unchanged for findings outside this storage-only task.
+> **Current reconciliation:** Critical 1–3 were remediated by the reviewed import, authoritative capability, and Platform-isolation work recorded in `results/R1-security.md` and the later lifecycle remediation results. Critical 4 is locally contained by server-side fail-closed upload issuance/finalization for assets, logos, student photos, staff/Portal knowledge uploads, and PDF candidates. The generic Convex URL is not treated as provenance or quota evidence. Existing authorized historical reads remain compatibility-only. See `results/S0-storage.md`. Upload functionality remains unavailable pending authoritative transport/provider activation, so that feature is explicitly incomplete rather than an unresolved authorization bypass.
 
-The local slices contain useful tenant checks, immutable invoice-instruction snapshots, audit redaction, draft revision handling, quota accounting, asset quarantine, and transfer history. All executed checks passed. However, four release-blocking security/data-integrity issues remain, several lifecycle defects are concrete, and substantial packet requirements remain safe repository work rather than external gates.
+The findings below preserve the point-in-time evidence that triggered remediation; they are not a current count of four open release blockers. Remaining limitations and external gates are tracked in the later result documents.
 
 ## Blocking findings
 

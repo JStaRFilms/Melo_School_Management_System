@@ -16,16 +16,14 @@ The stale staged/deleted `results/R1-api-adoption.json` entry was removed from t
 
 | Boundary | Commit | Branch | Notes |
 |---|---|---|---|
-| Independent ancestor | `44086fa005db6adaf161ef2ddb070bc8a8a14d6c` | `docs/module-entitlements-checkpoint`; inherited by stack | Existing architecture documentation; not part of this program's authored commits. |
-| Shared prerequisite | `61cdbc79a036bd2ed51a050b47631ca2d6317aeb` | included in U1 | Serialized shared contracts and additive schema required by the domain slices. |
-| U1 | `53d44175427f7deb438fd7eead4a4df1efa84b8d` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. Partial/E0. |
-| U2 | `9e0d55ab93753515bc8d0ec978de542745e55197` | `feat/melo-productization-u2` | Grading, report consumers, numbering, banks. Partial/E0. |
-| U3 | `3225f415c1a71226ef423403085e1da19c1bf57b` | `feat/melo-productization-u3` | Drafts, bounded form adoption, tenant themes. Partial/E0. |
-| U4 | `5043200506aa2e655fe00c0f611fae76c2377c26` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. Partial/E0; import commit correctness remains release-blocking. |
-| U5 | `aa46e20729a69ccf3e9c6831ae8f2f78d44cf011` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle. Partial/E0; upload remains fail-closed. |
-| U6 | `f814be9d1cf3313470b9830c9c801ff86d797ca2` | `feat/melo-productization-u6` | Within-group transfers. Locally implemented/E0. |
-| Cross-stack test correction | `2463b62c12ffbb93142892340908792bd3674674` | `feat/melo-productization-u6` | Aligns the group-default test with the final terminal Platform capability denial. |
-| S0 records | `3ec1fee12acfdf9b361cbfbc1c22236a0ef1d222` | `docs/melo-productization-stabilization` | Documentation-only packet, review, and stabilization evidence. |
+| Independent architecture head | `f03d5cd2e5767c618d223046aa7d5ddc17e0726a` | `docs/module-entitlements-checkpoint` | Reviewed PR #30 head. |
+| U1 reviewed head | `46a413f17b70199f433afabe123b65639ef6ef0d` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. |
+| U2 reviewed head | `84d4c2b4d8d649bafe31cde3ca44aa41561585b7` | `feat/melo-productization-u2` | Grading, report consumers, numbering, and banks. |
+| U3 reviewed head | `65156988481a25859cef72c62604321c97eee9e6` | `feat/melo-productization-u3` | Drafts, bounded form adoption, and tenant themes. |
+| U4 reviewed head | `ba670afb11e709e0b1b7c4690a863edc7a0fca64` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. |
+| U5 reviewed head | `c0fa5a8f4c69a739ccbf1e33e906daa6900c40d9` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle; upload remains fail-closed. |
+| U6 reviewed head | `60029df2b81f709b571a4f2e82e6edf5235204e0` | `feat/melo-productization-u6` | Within-group transfers. |
+| S0 records | PR #29 / `docs/melo-productization-stabilization` | `feat/melo-productization-u6` | This document does not self-record its own commit hash; the PR head is authoritative. |
 
 Known multi-slice files were serialized to their dependency owner rather than repeatedly restaged. `packages/shared/src/index.ts` was manually hunk-split so U1 received workspace/audit exports and U2 received the invoice export. Product code was committed from explicit reviewed path lists; the remaining session records are isolated in this final documentation commit.
 
