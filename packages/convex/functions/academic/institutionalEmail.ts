@@ -25,7 +25,7 @@ async function emailAccess(ctx: Context, schoolId: Id<"schools">) {
     student: caps.includes("enrollment.intakes.manage"),
     lifecycle: caps.includes("staff.account.suspend"),
   };
-  if (!permissions.policy && !permissions.staff && !permissions.student)
+  if (!permissions.policy && !permissions.staff && !permissions.student && !permissions.lifecycle)
     throw new ConvexError("Forbidden: institutional email review authority required");
   return { auth, permissions };
 }
@@ -37,10 +37,23 @@ async function targetKind(ctx: Context, personId: Id<"persons">, schoolId: Id<"s
   if (!user || user.schoolId !== schoolId || (user.personId && user.personId !== personId)) return "unclassified" as const;
   return user.role === "student" ? "student" as const : user.role === "admin" || user.role === "teacher" ? "staff" as const : "unclassified" as const;
 }
-async function requireTargetAuthority(ctx: Context, schoolId: Id<"schools">, personId: Id<"persons">) {
+async function requireTargetAuthority(
+  ctx: Context,
+  schoolId: Id<"schools">,
+  personId: Id<"persons">,
+  options?: { allowStaffLifecycle?: boolean },
+) {
   const access = await emailAccess(ctx, schoolId);
   const kind = await targetKind(ctx, personId, schoolId);
-  if ((kind !== "staff" && !access.permissions.student) || (kind !== "student" && !access.permissions.staff))
+  const authorized =
+    (kind === "student" && access.permissions.student) ||
+    (kind === "staff" &&
+      (access.permissions.staff ||
+        (options?.allowStaffLifecycle && access.permissions.lifecycle))) ||
+    (kind === "unclassified" &&
+      access.permissions.staff &&
+      access.permissions.student);
+  if (!authorized)
     throw new ConvexError("Forbidden: scoped student/staff approval authority required; reconcile unclassified membership");
   return { ...access, kind };
 }
@@ -294,9 +307,12 @@ export const applyProviderMailboxResult = internalMutation({
     const mailbox = await ctx.db.get(args.mailboxId);
     if (!mailbox) throw new ConvexError("Mailbox not found");
     if (mailbox.status !== "active") throw new ConvexError("Inactive mailbox requires lifecycle reconciliation");
-    const policy = await policyFor(ctx, mailbox.schoolId);
-    const domain = policy?.domainId ? await resolveDomain(ctx, mailbox.schoolId, policy.domainId) : await ctx.db.query("schoolEmailDomains")
-      .withIndex("by_school_and_domain", q => q.eq("schoolId", mailbox.schoolId).eq("domain", mailbox.email.split("@")[1])).first();
+    const mailboxDomain = mailbox.email.split("@")[1];
+    const registeredDomain = await ctx.db.query("schoolEmailDomains")
+      .withIndex("by_domain", q => q.eq("domain", mailboxDomain)).first();
+    const domain = registeredDomain
+      ? await resolveDomain(ctx, mailbox.schoolId, registeredDomain._id)
+      : null;
     if (!domain || domain.domain !== mailbox.email.split("@")[1] || domain.status !== "verified" || domain.provider !== args.providerType)
       throw new ConvexError("Provider operation does not match a verified school domain");
     if (args.providerType !== "none" && !args.providerAccountId) throw new ConvexError("Provider account identifier is required for provisioning");
@@ -331,7 +347,12 @@ export const suspendOrArchiveMailbox = mutation({
   handler: async (ctx, args) => {
     const mailbox = await ctx.db.get(args.mailboxId);
     if (!mailbox) throw new ConvexError("Mailbox not found");
-    const access = await requireTargetAuthority(ctx, mailbox.schoolId, mailbox.personId);
+    const access = await requireTargetAuthority(
+      ctx,
+      mailbox.schoolId,
+      mailbox.personId,
+      { allowStaffLifecycle: true },
+    );
     if (access.kind !== "student" && !access.permissions.lifecycle) throw new ConvexError("Forbidden: lifecycle authority required");
     if (mailbox.status === "archived" && args.action === "suspend") throw new ConvexError("Archived address cannot be reactivated");
     const status = args.action === "suspend" ? "suspended" as const : "archived" as const;
