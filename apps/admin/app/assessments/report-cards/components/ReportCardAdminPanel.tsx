@@ -369,7 +369,7 @@ export function ReportCardAdminPanel({
       )}
 
       {/* Student Specific Section */}
-      <section className="space-y-4">
+      {!reportCard.certifiedAt && <section className="space-y-4">
         <div className="flex items-center gap-2 px-1">
           <MessageSquare className="h-4 w-4 text-slate-400" />
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
@@ -424,7 +424,7 @@ export function ReportCardAdminPanel({
             <span>{isSavingComments ? "Saving..." : "Save Comments"}</span>
           </button>
         </div>
-      </section>
+      </section>}
 
       {/* Global Term Settings */}
       <section className="space-y-4 pt-6 border-t border-slate-100">

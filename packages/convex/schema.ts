@@ -1692,7 +1692,9 @@ export default defineSchema({
     schoolLogoStorageId: v.optional(v.id("_storage")),
     studentPhotoStorageId: v.optional(v.id("_storage")),
     report: reportCardResultValidator,
-  }).index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"]),
+  })
+    .index("by_student_session_term", ["studentId", "sessionId", "termId"])
+    .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"]),
 
   gradingBands: defineTable({
     schoolId: v.id("schools"),

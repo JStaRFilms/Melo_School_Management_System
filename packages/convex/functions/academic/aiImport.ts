@@ -3,6 +3,7 @@ import { mutation, query, type MutationCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
+import { claimAdmissionNumberHelper } from "./admissionNumbers";
 
 /**
  * Strict Invariant (F3 / MX-11):
@@ -494,6 +495,7 @@ export const commitImportWorkspace = mutation({
 
         // Validation and explicit approval above establish these prerequisites;
         // this path deliberately performs no credential or H4-number fabrication.
+        await claimAdmissionNumberHelper(ctx, workspace.schoolId, admissionNumber);
         await ctx.db.insert("students", {
           schoolId: workspace.schoolId,
           classId: defaultClass._id,

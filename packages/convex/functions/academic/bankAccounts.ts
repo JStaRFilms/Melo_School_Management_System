@@ -245,6 +245,15 @@ export const editBankAccount = mutation({
       throw new ConvexError("Active account unavailable");
     if (account.updatedAt !== args.expectedUpdatedAt)
       throw new ConvexError("Account changed; reload and review again");
+    if (account.currency !== args.currency) {
+      const referencedPlans = await ctx.db
+        .query("feePlans")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .filter((q) => q.eq(q.field("bankAccountId"), account._id))
+        .take(1);
+      if (referencedPlans.length)
+        throw new ConvexError("Change the bank account on referenced fee plans before changing currency");
+    }
     const {
       schoolId,
       bankAccountId,

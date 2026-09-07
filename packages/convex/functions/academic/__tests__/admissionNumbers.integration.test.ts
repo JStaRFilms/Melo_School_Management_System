@@ -379,7 +379,7 @@ it("allocates concurrent transactions uniquely and rolls back a failed transacti
   ).rejects.toThrow("failed enrollment");
   expect((await t.run((ctx) => ctx.db.get(policyId)))?.currentSequence).toBe(4);
 });
-it("never reuses a claimed number after reset or format change and rejects stale versions", async () => {
+it("skips permanently claimed numbers after reset and rejects stale versions", async () => {
   const { t, schoolId, policyId } = await fixture();
   await t.mutation(
     internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
@@ -393,12 +393,12 @@ it("never reuses a claimed number after reset or format change and rejects stale
   await t.run((ctx) =>
     ctx.db.patch(policyId, { currentSequence: 1, version: 2 }),
   );
-  await expect(
-    t.mutation(
-      internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
-      { schoolId },
-    ),
-  ).rejects.toThrow("never reused");
+  const allocation = await t.mutation(
+    internal.functions.academic.admissionNumbers.allocateNextAdmissionNumber,
+    { schoolId },
+  );
+  expect(allocation.allocatedNumber).toBe("SYN-2025-0002");
+  expect((await t.run((ctx) => ctx.db.get(policyId)))?.currentSequence).toBe(3);
 });
 it("applies session reset using academic start year without guessing legacy advancement", async () => {
   const { t, schoolId, policyId, sessionId } = await fixture();

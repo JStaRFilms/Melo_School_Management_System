@@ -1656,7 +1656,9 @@ export const setStudentSubjectSelections = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: ["enrollment.intakes.manage", "academic.report_cards.preview"],
+      });
 
     // Teachers can edit subject selections for their assigned classes
     if (role === "teacher") {

@@ -8,7 +8,10 @@ import {
   requireCapability,
 } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
-import { allocateNextAdmissionNumberHelper } from "./admissionNumbers";
+import {
+  allocateNextAdmissionNumberHelper,
+  claimAdmissionNumberHelper,
+} from "./admissionNumbers";
 
 /**
  * Validates that the caller holds authority to manage student transfers
@@ -457,6 +460,13 @@ export const acceptDestinationTransfer = mutation({
     }
 
     const now = Date.now();
+    if (args.admissionNumberOverride) {
+      await claimAdmissionNumberHelper(
+        ctx,
+        transfer.destinationSchoolId,
+        destinationAdmissionNumber,
+      );
+    }
     const destinationStudentUserId = await ctx.db.insert("users", {
       schoolId: transfer.destinationSchoolId,
       authId: `student:${transfer.destinationSchoolId}:${destinationAdmissionNumber.toLowerCase()}`,

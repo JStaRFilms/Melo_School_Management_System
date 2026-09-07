@@ -19,6 +19,7 @@ interface StudentPhotoPanelProps {
   resetKey?: string | number | null;
   onProcessingChange?: (isProcessing: boolean) => void;
   onValidationError?: (message: string) => void;
+  disabled?: boolean;
 }
 
 const defaultCrop: StudentPhotoCrop = { zoom: 1, x: 50, y: 50 };
@@ -32,6 +33,7 @@ export function StudentPhotoPanel({
   resetKey,
   onProcessingChange,
   onValidationError,
+  disabled = false,
 }: StudentPhotoPanelProps) {
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [crop, setCrop] = useState<StudentPhotoCrop>(defaultCrop);
@@ -150,6 +152,14 @@ export function StudentPhotoPanel({
   };
 
   const visiblePreviewUrl = sourcePreviewUrl ?? previewUrl;
+
+  if (disabled) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
+        Student photo uploads are temporarily unavailable. Existing photos are preserved.
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-2.5">

@@ -198,6 +198,7 @@ export const updateAdmissionNumberPolicy = mutation({
 export async function proposeAdmissionNumberHelper(
   ctx: QueryCtx | MutationCtx,
   args: { schoolId: Id<"schools">; level?: string },
+  sequenceOverride?: number,
 ) {
   const { policy, session, period, sequence } = await getContext(
     ctx,
@@ -209,6 +210,8 @@ export async function proposeAdmissionNumberHelper(
     );
   if (policy.pattern.includes("{LEVEL}") && !args.level)
     throw new ConvexError("An explicit enrollment level is required");
+  const sequenceNumber = sequenceOverride ?? sequence;
+  validateSequence(sequenceNumber);
   const allocatedNumber = formatAdmissionNumber(policy.pattern, {
     school: policy.schoolCode,
     campus: policy.campusCode,
@@ -217,11 +220,11 @@ export async function proposeAdmissionNumberHelper(
       policy.resetFrequency === "calendar"
         ? new Date().getUTCFullYear()
         : new Date(session.startDate).getUTCFullYear(),
-    seq: sequence,
+    seq: sequenceNumber,
   });
   return {
     allocatedNumber,
-    sequenceNumber: sequence,
+    sequenceNumber,
     policyVersion: policy.version ?? 0,
     period,
     policyId: policy._id,
@@ -247,17 +250,18 @@ export async function allocateNextAdmissionNumberHelper(
     throw new ConvexError(
       "Allocation uses the reviewed policy and academic session, not caller token overrides",
     );
-  const proposal = await proposeAdmissionNumberHelper(ctx, args);
+  let proposal = await proposeAdmissionNumberHelper(ctx, args);
   if (
     args.expectedVersion !== undefined &&
     args.expectedVersion !== proposal.policyVersion
   )
     throw new ConvexError("Numbering policy changed; review again");
-  await claimAdmissionNumberHelper(
-    ctx,
-    args.schoolId,
-    proposal.allocatedNumber,
-  );
+  for (let skipped = 0; await isAdmissionNumberClaimed(ctx, args.schoolId, proposal.allocatedNumber); skipped += 1) {
+    if (skipped >= 999)
+      throw new ConvexError("Admission-number sequence is exhausted; review the next sequence");
+    proposal = await proposeAdmissionNumberHelper(ctx, args, proposal.sequenceNumber + 1);
+  }
+  await claimAdmissionNumberHelper(ctx, args.schoolId, proposal.allocatedNumber);
   await ctx.db.patch(proposal.policyId, {
     currentSequence: proposal.sequenceNumber + 1,
     resetPeriod: proposal.period,
@@ -265,8 +269,8 @@ export async function allocateNextAdmissionNumberHelper(
   });
   return proposal;
 }
-export async function claimAdmissionNumberHelper(
-  ctx: MutationCtx,
+async function isAdmissionNumberClaimed(
+  ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   number: string,
 ) {
@@ -282,7 +286,15 @@ export async function claimAdmissionNumberHelper(
       q.eq("schoolId", schoolId).eq("number", number),
     )
     .unique();
-  if (existing || claim)
+  return Boolean(existing || claim);
+}
+
+export async function claimAdmissionNumberHelper(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  number: string,
+) {
+  if (await isAdmissionNumberClaimed(ctx, schoolId, number))
     throw new ConvexError(
       "Admission number already assigned; review the explicit next sequence. Numbers are never reused.",
     );

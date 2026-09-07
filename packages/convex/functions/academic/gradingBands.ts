@@ -374,14 +374,15 @@ export const publishGroupGradingDefault = mutation({
       .unique();
     if (!link || args.confirmation !== group.slug)
       throw new ConvexError("Confirm the linked group slug");
-    const bands = await localBands(ctx, args.schoolId);
+    const bands = await resolveEffectiveGradingBands(ctx, args.schoolId);
+    const sourceSchoolId = bands[0]?.schoolId;
     const version = bands[0]?.version;
-    if (!version || bands.some((b) => b.version !== version))
+    if (!sourceSchoolId || !version || bands.some((b) => b.version !== version))
       throw new ConvexError("Save a versioned branch policy first");
     const versionBands = await ctx.db
       .query("gradingBands")
       .withIndex("by_school_version", (q) =>
-        q.eq("schoolId", args.schoolId).eq("version", version),
+        q.eq("schoolId", sourceSchoolId).eq("version", version),
       )
       .take(101);
     if (
@@ -393,7 +394,7 @@ export const publishGroupGradingDefault = mutation({
       );
     await ctx.db.patch(group._id, {
       gradingDefault: {
-        schoolId: args.schoolId,
+        schoolId: sourceSchoolId,
         version,
         allowBranchOverride: args.allowBranchOverride,
       },

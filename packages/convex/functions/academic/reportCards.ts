@@ -436,6 +436,13 @@ export async function buildStudentReportCard(
     throw new ConvexError("School not found");
   }
 
+  const issued = await getIssuedReport(
+    ctx,
+    args.studentId,
+    args.sessionId,
+    args.termId,
+  );
+
   const allSessionRecords = await ctx.db
     .query("assessmentRecords")
     .withIndex("by_student_and_session", (q: any) =>
@@ -466,6 +473,7 @@ export async function buildStudentReportCard(
     ? sessionSelectionDocs.filter((selection: any) => String(selection.classId) === String(preferredClassId))
     : [];
   if (
+    !issued &&
     preferredClassId &&
     (!session.isActive || String(student.classId) !== String(preferredClassId)) &&
     recordsForPreferredClass.length === 0 &&
@@ -482,6 +490,7 @@ export async function buildStudentReportCard(
     (record: any) => String(record.classId) === String(student.classId)
   );
   const reportCardClassId =
+    issued?.classId ??
     preferredClassId ??
     (currentClassTermRecord?.classId ??
       latestTermRecord?.classId ??
@@ -509,9 +518,6 @@ export async function buildStudentReportCard(
     }
   }
 
-  const issued = await getIssuedReport(
-    ctx, args.studentId, args.sessionId, args.termId, reportCardClassId
-  );
   if (issued) return {
     ...issued.report,
     schoolLogoUrl: issued.schoolLogoStorageId
@@ -1082,7 +1088,7 @@ export const saveStudentReportCardComments = mutation({
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "academic.assessments.enter",
       });
-    const [student, session, term, existingComment, assessmentRecords] =
+    const [student, session, term, existingComment, assessmentRecords, issuedReport] =
       await Promise.all([
         ctx.db.get(args.studentId),
         ctx.db.get(args.sessionId),
@@ -1107,6 +1113,7 @@ export const saveStudentReportCardComments = mutation({
               .eq("termId", args.termId)
           )
           .collect(),
+        getIssuedReport(ctx, args.studentId, args.sessionId, args.termId),
       ]);
 
     if (!student || student.schoolId !== schoolId) {
@@ -1118,6 +1125,8 @@ export const saveStudentReportCardComments = mutation({
     if (!term || term.schoolId !== schoolId || term.sessionId !== args.sessionId) {
       throw new ConvexError("Term not found");
     }
+    if (issuedReport)
+      throw new ConvexError("Certified report-card comments are immutable");
 
     const reportCardClassId = assessmentRecords[0]?.classId ?? student.classId;
 
@@ -1262,18 +1271,24 @@ async function getIssuedReport(
   studentId: Id<"students">,
   sessionId: Id<"academicSessions">,
   termId: Id<"academicTerms">,
-  classId: Id<"classes">,
+  classId?: Id<"classes">,
 ) {
-  return ctx.db
-    .query("issuedReportCards")
-    .withIndex("by_student_session_term_class", (q) =>
-      q
-        .eq("studentId", studentId)
-        .eq("sessionId", sessionId)
-        .eq("termId", termId)
-        .eq("classId", classId),
-    )
-    .unique();
+  const reports = ctx.db.query("issuedReportCards");
+  return classId
+    ? reports
+        .withIndex("by_student_session_term_class", (q) =>
+          q
+            .eq("studentId", studentId)
+            .eq("sessionId", sessionId)
+            .eq("termId", termId)
+            .eq("classId", classId),
+        )
+        .unique()
+    : reports
+        .withIndex("by_student_session_term", (q) =>
+          q.eq("studentId", studentId).eq("sessionId", sessionId).eq("termId", termId),
+        )
+        .unique();
 }
 
 export const certifyStudentReportCard = mutation({

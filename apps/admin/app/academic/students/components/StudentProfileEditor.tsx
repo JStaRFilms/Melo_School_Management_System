@@ -366,6 +366,7 @@ export function StudentProfileEditor({
           <div className="space-y-6">
             <StudentPhotoPanel
               name={displayName}
+              disabled
               previewUrl={previewUrl}
               onPhotoChange={(file) => {
                 setPhotoFile(file);
