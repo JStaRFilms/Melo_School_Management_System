@@ -234,9 +234,16 @@ export const ReportCardBundlesScreen = memo(function ReportCardBundlesScreen({
   const handleSaveScaleAndCreateNew = useCallback(async () => {
     if (scaleDirty) {
       await handleSaveScale();
+    } else if (!await requestDeparture({ kind: "close" })) {
+      return;
     }
-    handleSelectScale("new");
-  }, [handleSaveScale, handleSelectScale, scaleDirty]);
+    const empty = createEmptyScaleDraft();
+    setSelectedScaleId("new");
+    setScaleDraft(empty);
+    loadedScaleSerializedRef.current = serializeScaleDraft(empty);
+    setScaleDirty(false);
+    loadedScaleIdRef.current = "new";
+  }, [handleSaveScale, requestDeparture, scaleDirty]);
 
   const handleSaveBundleAndNext = useCallback(async () => {
     if (bundleDirty) {

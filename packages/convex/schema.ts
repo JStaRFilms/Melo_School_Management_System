@@ -3302,7 +3302,8 @@ export default defineSchema({
   })
     .index("by_user_and_form", ["userId", "formKey"])
     .index("by_school_and_form", ["schoolId", "formKey"])
-    .index("by_expiresAt", ["expiresAt"]),
+    .index("by_expiresAt", ["expiresAt"])
+    .index("by_status_and_expiresAt", ["status", "expiresAt"]),
 
   // --- Institutional Email & Directory Provisioning (H5) ---
   emailAddressPolicies: defineTable({

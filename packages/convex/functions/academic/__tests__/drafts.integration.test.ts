@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
-import { api } from "../../../_generated/api";
+import { api, internal } from "../../../_generated/api";
 const convexRoot = new URL("../../../", import.meta.url).pathname;
 const rawModules = import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"]);
 const modules = Object.fromEntries(Object.entries(rawModules).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(convexRoot.length)}`, module]));
@@ -78,6 +78,60 @@ describe("Private registered draft lifecycle", () => {
     expect((await h.t.run(ctx => ctx.db.get(instance.draftId)))?.payload).toEqual({});
     const next = await h.begin(); expect(next.draftId).not.toBe(instance.draftId);
   });
+  it("normalizes recoverable legacy drafts and expires legacy payloads", async () => {
+    const h = await setup();
+    const now = Date.now();
+    const recoverableId = await h.t.run((ctx) =>
+      ctx.db.insert("formDrafts", {
+        schoolId: h.schoolId,
+        userId: h.userId,
+        formKey: "student_onboarding",
+        payload: { firstName: "Legacy" },
+        status: "active",
+        lastSavedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    expect(await h.user.query(drafts.getFormDraft, h.scope)).toMatchObject({
+      draftId: recoverableId,
+      payload: { firstName: "Legacy" },
+      schemaVersion: 1,
+      revision: 0,
+    });
+    await expect(h.begin()).rejects.toThrow(/recovery/i);
+    await h.user.mutation(drafts.saveFormDraft, {
+      schoolId: h.schoolId,
+      draftId: recoverableId,
+      expectedRevision: 0,
+      schemaVersion: 1,
+      payload: { firstName: "Recovered" },
+    });
+    expect(await h.t.run((ctx) => ctx.db.get(recoverableId))).toMatchObject({
+      schemaVersion: 1,
+      revision: 1,
+      payload: { firstName: "Recovered" },
+    });
+
+    const expiredId = await h.t.run((ctx) =>
+      ctx.db.insert("formDrafts", {
+        schoolId: h.schoolId,
+        userId: h.userId,
+        formKey: "student_onboarding",
+        payload: { firstName: "Expired" },
+        status: "active",
+        lastSavedAt: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+    );
+    await h.t.mutation(internal.functions.academic.drafts.expireFormDrafts, {});
+    expect(await h.t.run((ctx) => ctx.db.get(expiredId))).toMatchObject({
+      status: "discarded",
+      payload: {},
+    });
+  });
+
   it("hides expired drafts and rejects both stale saves and closure", async () => {
     const h = await setup(); const instance = await h.begin();
     await h.t.run(ctx => ctx.db.patch(instance.draftId, { expiresAt: Date.now() - 1 }));

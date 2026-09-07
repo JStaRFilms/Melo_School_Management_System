@@ -30,11 +30,20 @@ async function owned(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId:
   const draft = await ctx.db.get(args.draftId);
   const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId });
   if (!draft || draft.userId !== auth.userId || draft.schoolId !== args.schoolId) return fail("FORBIDDEN", "Draft unavailable.");
-  await authority(ctx, args.schoolId, draft.formKey, draft.entityId);
+  const { policy, formKey } = await authority(ctx, args.schoolId, draft.formKey, draft.entityId);
   if (draft.status !== "active") fail("CLOSED", "This draft has already been submitted or discarded.");
-  if (!draft.expiresAt || draft.expiresAt <= Date.now()) fail("EXPIRED", "This draft has expired.");
-  if (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision !== draft.revision) fail("CONFLICT", "Conflict detected: load the latest draft before saving.");
-  return { draft, auth };
+  if (draft.schemaVersion !== undefined && draft.schemaVersion !== policy.version) fail("SCHEMA_REJECTED", "Unsupported draft version.");
+  const expiresAt = draft.expiresAt ?? draft.createdAt + policy.retentionDays * 86400000;
+  if (expiresAt <= Date.now()) fail("EXPIRED", "This draft has expired.");
+  const revision = draft.revision ?? 0;
+  if (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision !== revision) fail("CONFLICT", "Conflict detected: load the latest draft before saving.");
+  if (draft.schemaVersion === undefined || draft.expiresAt === undefined || draft.revision === undefined) {
+    let payload;
+    try { payload = parseDraftPayload(formKey, draft.payload); }
+    catch { return fail("SCHEMA_REJECTED", "Legacy draft contains unsupported fields."); }
+    await ctx.db.patch(draft._id, { payload, schemaVersion: policy.version, expiresAt, revision });
+  }
+  return { draft: { ...draft, schemaVersion: policy.version, expiresAt, revision }, auth };
 }
 async function audit(ctx: MutationCtx, schoolId: Id<"schools">, userId: Id<"users">, draftId: Id<"formDrafts">, action: string) {
   const user = await ctx.db.get(userId);
@@ -48,7 +57,7 @@ export const beginFormDraft = mutation({
     const { auth, policy } = await authority(ctx, args.schoolId, args.formKey, args.entityId);
     if (args.schemaVersion !== policy.version) fail("SCHEMA_REJECTED", "Unsupported draft version.");
     const existing = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
-    if (existing.some(d => d.schoolId === args.schoolId && d.status === "active" && d.expiresAt && d.expiresAt > Date.now())) fail("RECOVERY_REQUIRED", "Preview, resume or discard the existing draft first.");
+    if (existing.some(d => d.schoolId === args.schoolId && d.status === "active" && (d.expiresAt ?? d.createdAt + policy.retentionDays * 86400000) > Date.now())) fail("RECOVERY_REQUIRED", "Preview, resume or discard the existing draft first.");
     const now = Date.now();
     const expiresAt = now + policy.retentionDays * 86400000;
     const draftId = await ctx.db.insert("formDrafts", { schoolId: args.schoolId, userId: auth.userId, formKey: args.formKey, payload: {}, schemaVersion: policy.version, expiresAt, status: "active", revision: 0, lastSavedAt: now, createdAt: now, updatedAt: now });
@@ -74,10 +83,22 @@ export const saveFormDraft = mutation({
 export const getFormDraft = query({
   args: scope,
   handler: async (ctx, args) => {
-    const { auth, policy } = await authority(ctx, args.schoolId, args.formKey, args.entityId);
+    const { auth, policy, formKey } = await authority(ctx, args.schoolId, args.formKey, args.entityId);
     const rows = await ctx.db.query("formDrafts").withIndex("by_user_and_form", q => q.eq("userId", auth.userId).eq("formKey", args.formKey)).order("desc").take(100);
-    const draft = rows.find(d => d.schoolId === args.schoolId && d.status === "active" && d.schemaVersion === policy.version && d.expiresAt && d.expiresAt > Date.now());
-    return draft ? { ...draft, draftId: draft._id } : null;
+    const now = Date.now();
+    for (const draft of rows) {
+      if (draft.schoolId !== args.schoolId || draft.status !== "active") continue;
+      if (draft.schemaVersion !== undefined && draft.schemaVersion !== policy.version) continue;
+      const expiresAt = draft.expiresAt ?? draft.createdAt + policy.retentionDays * 86400000;
+      if (expiresAt <= now) continue;
+      try {
+        const payload = parseDraftPayload(formKey, draft.payload);
+        return { ...draft, payload, schemaVersion: policy.version, expiresAt, revision: draft.revision ?? 0, draftId: draft._id };
+      } catch {
+        continue;
+      }
+    }
+    return null;
   },
 });
 /** Call this helper INSIDE a domain's successful submission transaction. Never before submission. */
@@ -94,12 +115,29 @@ export const commitFormDraft = mutation({ args: instance, handler: (ctx, args) =
 export const expireFormDrafts = internalMutation({
   args: {},
   handler: async ctx => {
-    const rows = await ctx.db.query("formDrafts").withIndex("by_expiresAt", q => q.gt("expiresAt", 0).lte("expiresAt", Date.now())).take(100);
-    for (const draft of rows) {
-      await ctx.db.patch(draft._id, { payload: {}, status: draft.status === "active" ? "discarded" : draft.status, expiresAt: undefined, updatedAt: Date.now() });
+    const now = Date.now();
+    const legacyRows = await ctx.db.query("formDrafts").withIndex("by_status_and_expiresAt", q => q.eq("status", "active").eq("expiresAt", undefined)).take(100);
+    const expiredRows = legacyRows.length === 100 ? [] : await ctx.db.query("formDrafts").withIndex("by_status_and_expiresAt", q => q.eq("status", "active").gt("expiresAt", 0).lte("expiresAt", now)).take(100 - legacyRows.length);
+    let processed = 0;
+    for (const draft of [...legacyRows, ...expiredRows]) {
+      const formKey = draft.formKey;
+      const policy = isDraftFormKey(formKey) ? draftRegistry[formKey] : null;
+      const expiresAt = draft.expiresAt ?? (policy ? draft.createdAt + policy.retentionDays * 86400000 : now);
+      if (expiresAt > now && policy && isDraftFormKey(formKey)) {
+        let payload;
+        try { payload = parseDraftPayload(formKey, draft.payload); }
+        catch { payload = null; }
+        if (payload) {
+          await ctx.db.patch(draft._id, { payload, schemaVersion: policy.version, expiresAt, revision: draft.revision ?? 0, updatedAt: now });
+          processed++;
+          continue;
+        }
+      }
+      await ctx.db.patch(draft._id, { payload: {}, status: "discarded", expiresAt: undefined, updatedAt: now });
       await audit(ctx, draft.schoolId, draft.userId, draft._id, "expired");
+      processed++;
     }
-    return { processed: rows.length, mayHaveMore: rows.length === 100 };
+    return { processed, mayHaveMore: legacyRows.length + expiredRows.length === 100 };
   },
 });
 export const saveDraft = saveFormDraft;
