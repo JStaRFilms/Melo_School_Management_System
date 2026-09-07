@@ -1236,6 +1236,18 @@ describe("U6 routed workflow contracts", () => {
     const h = await setupTestHarness(t);
     const source = t.withIdentity(h.adminAIdentity);
     const destination = t.withIdentity(h.adminBIdentity);
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 501; index += 1) {
+        await ctx.db.insert("classes", {
+          schoolId: h.schoolA,
+          name: `Archived ${index}`,
+          level: "Legacy",
+          isArchived: true,
+          createdAt: index,
+          updatedAt: index,
+        });
+      }
+    });
     const workspace = await source.query(transfersApi.getTransferWorkspace, {
       schoolId: h.schoolA,
     });
@@ -1275,6 +1287,15 @@ describe("U6 routed workflow contracts", () => {
         classId: h.classAId,
       }),
     ).toEqual([]);
+    await expect(
+      source.mutation(initiateStudentTransferRef, {
+        sourceSchoolId: h.schoolA,
+        destinationSchoolId: h.schoolB,
+        studentId: h.studentId,
+        guardianConsentRecorded: true,
+        guardianConsentMethod: "Written consent",
+      }),
+    ).rejects.toThrow("reconciliation");
     await t.run(async (ctx) => {
       await ctx.db.patch(h.studentId, { userId: h.studentUserId });
       await ctx.db.patch(h.studentUserId, { isArchived: true });

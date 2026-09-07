@@ -305,7 +305,17 @@ export const initiateStudentTransfer = mutation({
     const studentUser = student.userId
       ? await ctx.db.get(student.userId)
       : null;
-    const studentName = studentUser?.name ?? "Student";
+    if (
+      !studentUser ||
+      studentUser.schoolId !== args.sourceSchoolId ||
+      studentUser.isArchived ||
+      studentUser.role !== "student"
+    ) {
+      throw new ConvexError(
+        "Student account link requires reconciliation before transfer",
+      );
+    }
+    const studentName = studentUser.name;
 
     const currentClass = await ctx.db.get(student.classId);
     const academicHistorySummary =
@@ -1073,10 +1083,22 @@ export const getTransferWorkspace = query({
       if (target && target._id !== schoolId && target.status !== "suspended")
         destinations.push({ _id: target._id, name: target.name });
     }
-    const classes = await ctx.db
+    const legacyActiveClasses = await ctx.db
       .query("classes")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .withIndex("by_school_and_archived", (q) =>
+        q.eq("schoolId", schoolId).eq("isArchived", undefined),
+      )
       .take(501);
+    const currentActiveClasses =
+      legacyActiveClasses.length > 500
+        ? []
+        : await ctx.db
+            .query("classes")
+            .withIndex("by_school_and_archived", (q) =>
+              q.eq("schoolId", schoolId).eq("isArchived", false),
+            )
+            .take(501 - legacyActiveClasses.length);
+    const classes = [...legacyActiveClasses, ...currentActiveClasses];
     const sessions = await ctx.db
       .query("academicSessions")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))

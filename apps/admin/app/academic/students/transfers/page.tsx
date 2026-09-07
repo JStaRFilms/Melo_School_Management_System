@@ -776,7 +776,10 @@ function Review({
               className={control}
               maxLength={500}
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              onChange={(e) => {
+                setReason(e.target.value);
+                setConfirmed(false);
+              }}
             />
           </label>
           <label className="block">

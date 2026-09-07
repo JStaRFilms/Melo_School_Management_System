@@ -1401,7 +1401,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_school", ["schoolId"]),
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_archived", ["schoolId", "isArchived"]),
 
   subjects: defineTable({
     schoolId: v.id("schools"),
