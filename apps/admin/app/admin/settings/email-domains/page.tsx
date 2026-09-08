@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useDirtyForm } from "@school/shared/drafts";
 import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
@@ -36,6 +36,8 @@ function EmailAccess({ schoolId }: { schoolId: Id<"schools"> }) {
 }
 function EmailWorkbench({ schoolId }: { schoolId: Id<"schools"> }) {
   const data = useQuery(emailApi.getEmailWorkbench, { schoolId });
+  const proposalPeople = usePaginatedQuery(emailApi.listEmailProposalPeoplePage, { schoolId }, { initialNumItems: 100 });
+  const people = proposalPeople.results;
   const register = useMutation(emailApi.registerEmailDomain);
   const savePolicy = useMutation(emailApi.saveEmailPolicy);
   const setSharing = useMutation(emailApi.setEmailDomainSharing);
@@ -86,7 +88,7 @@ function EmailWorkbench({ schoolId }: { schoolId: Id<"schools"> }) {
     ?? data.domains[0];
   const value = policyDraft ?? (defaultDomain ? { domainId: defaultDomain._id, staffTemplate: data.policy?.staffTemplate ?? "firstname.lastname",
     studentTemplate: data.policy?.studentTemplate ?? "firstname.lastname", expectedVersion: data.policy?.version ?? 0 } : null);
-  const selected = data.people.find(p => p.personId === personId);
+  const selected = people.find(p => p.personId === personId);
   const duplicateDomain = data.domains.some(d => d.schoolId === schoolId && d.domain === domain.trim().toLowerCase());
   return <main className="mx-auto max-w-4xl space-y-6 p-4 text-slate-900">
     <header className="space-y-2"><h1 className="text-xl font-semibold">Institutional email policy and review</h1>
@@ -128,12 +130,13 @@ function EmailWorkbench({ schoolId }: { schoolId: Id<"schools"> }) {
       {confirmation === "policy" && value && <div className="space-y-2 rounded border p-3"><p>Confirm authority and review of student/minor naming and jurisdiction-specific notice requirements. Apply this policy to future proposals only?</p><button className={button} disabled={pending} onClick={() => void run(async () => { await savePolicy({ schoolId, ...value, confirmed: true }); setPolicyDraft(null); setRequest(null); }, "Address policy saved. Repeat dry run before approval; external activation remains gated.")}>Confirm policy</button> <button className={button} disabled={pending} onClick={() => setConfirmation(null)}>Cancel</button></div>}
     </section>
     <section className="space-y-3" aria-labelledby="review-title"><h2 id="review-title" className="font-semibold">Address proposal · dry run and human approval</h2>
-      <p>Only existing canonical branch members within your student/staff authority are shown (first {data.limit}). AI/import proposals never provision a mailbox. Deterministic results have no AI confidence score.</p>
-      {!data.people.length && <p>No eligible people in this review window. Complete onboarding or resolve membership classification with an administrator.</p>}
+      <p>Only existing canonical branch members within your student/staff authority are shown. AI/import proposals never provision a mailbox. Deterministic results have no AI confidence score.</p>
+      {!people.length && proposalPeople.status === "Exhausted" && <p>No eligible people found. Complete onboarding or resolve membership classification with an administrator.</p>}
       <form onSubmit={e => { e.preventDefault(); if (personId) { setReviewedVersion(data.policy?.version ?? 0); setRequest({ personId, firstName, middleName, lastName, isMinor: minor, minorPrivacyRequested: privacy }); setManual(null); setConfirmation(null); } }}>
         {!data.policy && <p>Save a reviewed address policy before running proposals.</p>}
-        <fieldset disabled={pending || !data.policy || data.policyDomainUnavailable || !defaultDomain || !data.people.length} className="space-y-3">
-          <label className="block">Person<select className={field} required value={personId ?? ""} onChange={e => { const person = data.people.find(p => p.personId === e.target.value); setPersonId(person?.personId ?? null); const parts = person?.name.trim().split(/\s+/) ?? []; setFirstName(parts[0] ?? ""); setLastName(parts.length > 1 ? parts[parts.length - 1] : ""); setMiddleName(parts.slice(1, -1).join(" ")); setMinor(person?.kind === "student"); setPrivacy(false); invalidate(); }}><option value="">Select a member</option>{data.people.map(p => <option key={p.personId} value={p.personId}>{p.name} ({p.kind})</option>)}</select></label>
+        <fieldset disabled={pending || !data.policy || data.policyDomainUnavailable || !defaultDomain || !people.length} className="space-y-3">
+          <label className="block">Person<select className={field} required value={personId ?? ""} onChange={e => { const person = people.find(p => p.personId === e.target.value); setPersonId(person?.personId ?? null); const parts = person?.name.trim().split(/\s+/) ?? []; setFirstName(parts[0] ?? ""); setLastName(parts.length > 1 ? parts[parts.length - 1] : ""); setMiddleName(parts.slice(1, -1).join(" ")); setMinor(person?.kind === "student"); setPrivacy(false); invalidate(); }}><option value="">Select a member</option>{people.map(p => <option key={p.personId} value={p.personId}>{p.name} ({p.kind})</option>)}</select></label>
+          {proposalPeople.status === "CanLoadMore" && <button type="button" className={button} onClick={() => proposalPeople.loadMore(100)}>Load more recipients</button>}
           <div className="grid gap-3 sm:grid-cols-3">{[{ label: "First name", value: firstName, set: setFirstName, required: true }, { label: "Middle name", value: middleName, set: setMiddleName, required: false }, { label: "Last name", value: lastName, set: setLastName, required: true }].map(input => <label key={input.label}>{input.label}<input className={field} required={input.required} maxLength={100} value={input.value} onChange={e => { input.set(e.target.value); invalidate(); }} /></label>)}</div>
           <p>These name fields are proposal inputs only; they never rename the person. Transliteration and single-name cases require manual review.</p>
           <label className="block"><input type="checkbox" checked={minor} onChange={e => { setMinor(e.target.checked); invalidate(); }} /> Student/minor naming review required</label>

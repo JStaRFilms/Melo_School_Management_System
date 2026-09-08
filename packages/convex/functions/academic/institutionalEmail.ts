@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
@@ -398,6 +399,32 @@ async function visibleMailboxes(ctx: Context, schoolId: Id<"schools">) {
       failureClass: !lastSyncError ? null : lastSyncError === "transient" ? "transient" as const : lastSyncError === "permanent" ? "permanent" as const : "unknown" as const };
   });
 }
+export const listEmailProposalPeoplePage = query({
+  args: { schoolId: v.id("schools"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 100)
+      throw new ConvexError("Request 1–100 email recipients per page");
+    const { permissions } = await emailAccess(ctx, args.schoolId);
+    const result = await ctx.db.query("branchMemberships")
+      .withIndex("by_school_and_status", q => q.eq("schoolId", args.schoolId).eq("status", "active"))
+      .paginate(args.paginationOpts);
+    const page = [];
+    for (const member of result.page) {
+      const kind = await targetKind(ctx, member.personId, args.schoolId);
+      const visible = kind === "student"
+        ? permissions.student
+        : kind === "staff"
+          ? permissions.staff || permissions.lifecycle
+          : false;
+      if (!visible) continue;
+      const person = await ctx.db.get(member.personId);
+      if (person?.status === "active" && person.identityReconciliationState !== "reconciliation_required")
+        page.push({ personId: person._id, name: person.name, kind });
+    }
+    return { ...result, page };
+  },
+});
+
 export const getInstitutionalMailboxes = query({
   args: { schoolId: v.id("schools") }, handler: (ctx, args) => visibleMailboxes(ctx, args.schoolId),
 });
@@ -446,32 +473,7 @@ export const getEmailWorkbench = query({
         policyDomainUnavailable = true;
       }
     }
-    const recipientRoles = [
-      ...(permissions.staff ? ["admin" as const, "teacher" as const] : []),
-      ...(permissions.student ? ["student" as const] : []),
-    ];
-    const userPages = await Promise.all(recipientRoles.map(role =>
-      ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", args.schoolId))
-        .filter(q => q.and(q.eq(q.field("role"), role), q.or(q.eq(q.field("isArchived"), false), q.eq(q.field("isArchived"), undefined))))
-        .take(501),
-    ));
-    if (userPages.some(page => page.length > 500))
-      throw new ConvexError("Recipient directory exceeds the supported 500 people per role");
-    const people = [];
-    const seenPeople = new Set<string>();
-    for (const user of userPages.flat()) {
-      const personId = user.personId;
-      if (!personId || seenPeople.has(String(personId))) continue;
-      const [member, person] = await Promise.all([
-        ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", personId).eq("schoolId", args.schoolId)).unique(),
-        ctx.db.get(personId),
-      ]);
-      if (member?.status !== "active" || person?.status !== "active") continue;
-      const kind = user.role === "student" ? "student" as const : "staff" as const;
-      seenPeople.add(String(person._id));
-      people.push({ personId: person._id, name: person.name, kind });
-    }
-    return { permissions, policy, people, domains: domains.map(({ _id, domain, schoolId, provider, status, isDefault, sharedGroupId }) => ({ _id, domain, schoolId, provider, status, isDefault, sharedWithGroup: Boolean(group && sharedGroupId === group._id) })),
+    return { permissions, policy, domains: domains.map(({ _id, domain, schoolId, provider, status, isDefault, sharedGroupId }) => ({ _id, domain, schoolId, provider, status, isDefault, sharedWithGroup: Boolean(group && sharedGroupId === group._id) })),
       mailboxes: await visibleMailboxes(ctx, args.schoolId), groupName: group?.status === "active" ? group.name : null,
       policyDomainUnavailable,
       providerActivation: "unavailable" as const, limit: 100 };

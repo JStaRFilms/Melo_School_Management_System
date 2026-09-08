@@ -108,6 +108,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
       { href: "/students/import", label: "Import Students", matchers: ["/students/import", "/academic/students/import"] },
+      { href: "/admin/settings/email-domains", label: "Institutional Email", matchers: ["/admin/settings/email-domains"] },
       { href: "/admin/settings", label: "School Settings", matchers: ["/admin/settings"] },
       { href: "/admin", label: "Admin Users", matchers: ["/admin"] },
       {
