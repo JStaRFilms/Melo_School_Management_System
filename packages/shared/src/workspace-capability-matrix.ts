@@ -39,7 +39,7 @@ export const WORKSPACE_CAPABILITY_MATRIX: readonly {
   { workspace: "admin", path: "/assessments/setup", required: ["academic.grading_bands.manage"] },
   { workspace: "admin", path: "/admin/assets", required: ["assets.library.view"] },
   { workspace: "admin", path: "/admin/assets/archive", required: ["assets.library.view", "assets.archive.manage"] },
-  { workspace: "admin", path: "/admin/assets/trash", required: ["assets.library.view", "assets.trash.manage"] },
+  { workspace: "admin", path: "/admin/assets/trash", required: ["assets.library.view"], requiredAny: ["assets.trash.manage", "assets.restore", "assets.holds.apply", "assets.holds.remove", "assets.permanent_delete"] },
   { workspace: "admin", path: "/admin/permissions", required: ["staff.permissions.manage"] },
   { workspace: "admin", path: "/admin/audit", required: ["audit.branch.view"] },
   { workspace: "admin", path: "/admin/group", required: ["audit.group.view"] },
