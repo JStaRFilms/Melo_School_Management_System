@@ -45,7 +45,7 @@ export const WORKSPACE_CAPABILITY_MATRIX: readonly {
   { workspace: "admin", path: "/admin/group", required: ["audit.group.view"] },
   { workspace: "admin", path: "/admin/settings", required: [], requiredAny: ["settings.general.edit", "settings.branding.manage"] },
   { workspace: "admin", path: "/admin/settings/admission-numbering", required: ["enrollment.intakes.manage"] },
-  { workspace: "admin", path: "/admin/settings/email-domains", required: ["settings.domains.manage"] },
+  { workspace: "admin", path: "/admin/settings/email-domains", required: [], requiredAny: ["settings.domains.manage", "staff.onboard", "staff.account.suspend", "enrollment.intakes.manage"] },
   { workspace: "admin", path: "/billing", required: ["finance.reports.view"] },
   { workspace: "admin", path: "/billing/bank-accounts", required: ["finance.bank_details.manage"] },
   { workspace: "admin", path: "/billing/settlements", required: ["finance.settlements.view"] },

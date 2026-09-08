@@ -115,8 +115,9 @@ export const registerEmailDomain = mutation({
     const existing = await ctx.db.query("schoolEmailDomains")
       .withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId).eq("domain", domain)).unique();
     if (existing) return { domainId: existing._id, domain, dnsTxtRecord: existing.dnsTxtRecord, status: existing.status };
-    const namespaceOwner = await ctx.db.query("schoolEmailDomains").withIndex("by_domain", q => q.eq("domain", domain)).first();
-    if (namespaceOwner) throw new ConvexError("Domain already registered; inherit an explicitly shared group domain or request ownership reconciliation");
+    const namespaceOwners = await ctx.db.query("schoolEmailDomains").withIndex("by_domain", q => q.eq("domain", domain)).take(2);
+    if (namespaceOwners.length > 1) throw new ConvexError("Domain ownership is ambiguous; reconcile duplicate registrations");
+    if (namespaceOwners.length === 1) throw new ConvexError("Domain already registered; inherit an explicitly shared group domain or request ownership reconciliation");
     const previous = await ctx.db.query("schoolEmailDomains")
       .withIndex("by_school_and_default", q => q.eq("schoolId", args.schoolId).eq("isDefault", true)).first();
     const isDefault = args.isDefault ?? !previous;
@@ -250,7 +251,7 @@ export const assignInstitutionalMailbox = mutation({
     isMinor: v.optional(v.boolean()), minorPrivacyRequested: v.optional(v.boolean()), expectedPolicyVersion: v.optional(v.number()),
     aliasOfMailboxId: v.optional(v.id("institutionalMailboxes")) },
   handler: async (ctx, args) => {
-    await requireTargetAuthority(ctx, args.schoolId, args.personId);
+    const access = await requireTargetAuthority(ctx, args.schoolId, args.personId);
     await assertActiveTarget(ctx, args.schoolId, args.personId);
     const email = args.email.toLowerCase().trim();
     const [local, domainName, extra] = email.split("@");
@@ -274,9 +275,10 @@ export const assignInstitutionalMailbox = mutation({
       throw new ConvexError("Existing address relation cannot be silently changed");
     // Idempotent retry never reactivates or changes source ownership/provider evidence.
     if (existing) return { success: true, mailboxId: existing._id, email, state: existing.state };
+    if (access.kind === "unclassified") throw new ConvexError("Reconcile recipient type before assigning an address");
     const now = Date.now();
     const mailboxId = await ctx.db.insert("institutionalMailboxes", {
-      personId: args.personId, schoolId: args.schoolId, email, address: email, state: "login_only", aliasOfMailboxId: args.aliasOfMailboxId, approvedPolicyVersion: policy?.version ?? 0,
+      personId: args.personId, schoolId: args.schoolId, recipientKind: access.kind, email, address: email, state: "login_only", aliasOfMailboxId: args.aliasOfMailboxId, approvedPolicyVersion: policy?.version ?? 0,
       providerType: "none", status: "active", isMinor: args.isMinor, minorPrivacyRequested: args.minorPrivacyRequested,
       createdAt: now, updatedAt: now,
     });
@@ -308,10 +310,12 @@ export const applyProviderMailboxResult = internalMutation({
     if (!mailbox) throw new ConvexError("Mailbox not found");
     if (mailbox.status !== "active") throw new ConvexError("Inactive mailbox requires lifecycle reconciliation");
     const mailboxDomain = mailbox.email.split("@")[1];
-    const registeredDomain = await ctx.db.query("schoolEmailDomains")
-      .withIndex("by_domain", q => q.eq("domain", mailboxDomain)).first();
-    const domain = registeredDomain
-      ? await resolveDomain(ctx, mailbox.schoolId, registeredDomain._id)
+    const registeredDomains = await ctx.db.query("schoolEmailDomains")
+      .withIndex("by_domain", q => q.eq("domain", mailboxDomain)).take(2);
+    if (registeredDomains.length > 1)
+      throw new ConvexError("Domain ownership is ambiguous; reconcile duplicate registrations");
+    const domain = registeredDomains[0]
+      ? await resolveDomain(ctx, mailbox.schoolId, registeredDomains[0]._id)
       : null;
     if (!domain || domain.domain !== mailbox.email.split("@")[1] || domain.status !== "verified" || domain.provider !== args.providerType)
       throw new ConvexError("Provider operation does not match a verified school domain");
@@ -366,17 +370,20 @@ export const suspendOrArchiveMailbox = mutation({
 });
 async function visibleMailboxes(ctx: Context, schoolId: Id<"schools">) {
   const { permissions } = await emailAccess(ctx, schoolId);
-  const mailboxes = await ctx.db.query("institutionalMailboxes").withIndex("by_school_and_email", q => q.eq("schoolId", schoolId)).take(100);
-  const visible = [];
-  for (const mailbox of mailboxes) {
-    const kind = await targetKind(ctx, mailbox.personId, schoolId);
-    if ((kind === "staff" && permissions.staff) || (kind === "student" && permissions.student) || (permissions.staff && permissions.student)) {
-      const { providerAccountId: _providerAccountId, lastProviderOperationId: _operationId, lastSyncError, ...safe } = mailbox;
-      visible.push({ ...safe, kind, reconciliationRequired: Boolean(lastSyncError),
-        failureClass: !lastSyncError ? null : lastSyncError === "transient" ? "transient" as const : lastSyncError === "permanent" ? "permanent" as const : "unknown" as const });
-    }
-  }
-  return visible;
+  const kinds = [
+    ...(permissions.staff || permissions.lifecycle ? ["staff" as const] : []),
+    ...(permissions.student ? ["student" as const] : []),
+  ];
+  const pages = await Promise.all(kinds.map(recipientKind =>
+    ctx.db.query("institutionalMailboxes")
+      .withIndex("by_school_kind_and_email", q => q.eq("schoolId", schoolId).eq("recipientKind", recipientKind))
+      .take(100),
+  ));
+  return pages.flat().sort((a, b) => a.email.localeCompare(b.email)).slice(0, 100).map(mailbox => {
+    const { providerAccountId: _providerAccountId, lastProviderOperationId: _operationId, lastSyncError, ...safe } = mailbox;
+    return { ...safe, kind: mailbox.recipientKind, reconciliationRequired: Boolean(lastSyncError),
+      failureClass: !lastSyncError ? null : lastSyncError === "transient" ? "transient" as const : lastSyncError === "permanent" ? "permanent" as const : "unknown" as const };
+  });
 }
 export const getInstitutionalMailboxes = query({
   args: { schoolId: v.id("schools") }, handler: (ctx, args) => visibleMailboxes(ctx, args.schoolId),
@@ -415,17 +422,43 @@ export const getEmailWorkbench = query({
         domains.push(...branchDomains.filter(domain => domain.sharedGroupId === group._id));
       }
     }
-    const members = await ctx.db.query("branchMemberships").withIndex("by_school_and_status", q => q.eq("schoolId", args.schoolId).eq("status", "active")).take(100);
+    let policyDomainUnavailable = false;
+    if (policy?.domainId && !domains.some(domain => domain._id === policy.domainId)) {
+      try {
+        domains.push(await resolveDomain(ctx, args.schoolId, policy.domainId));
+      } catch {
+        const configuredDomain = await ctx.db.get(policy.domainId);
+        if (configuredDomain) domains.push(configuredDomain);
+        policyDomainUnavailable = true;
+      }
+    }
+    const recipientRoles = [
+      ...(permissions.staff ? ["admin" as const, "teacher" as const] : []),
+      ...(permissions.student ? ["student" as const] : []),
+    ];
+    const userPages = await Promise.all(recipientRoles.map(role =>
+      ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", args.schoolId))
+        .filter(q => q.and(q.eq(q.field("role"), role), q.or(q.eq(q.field("isArchived"), false), q.eq(q.field("isArchived"), undefined))))
+        .take(100),
+    ));
     const people = [];
-    for (const member of members) {
-      const kind = await targetKind(ctx, member.personId, args.schoolId);
-      if (!((kind === "staff" && permissions.staff) || (kind === "student" && permissions.student) || (permissions.staff && permissions.student))) continue;
-      const person = await ctx.db.get(member.personId);
-      if (person?.status === "active") people.push({ personId: person._id, name: person.name, kind });
+    const seenPeople = new Set<string>();
+    for (const user of userPages.flat()) {
+      const personId = user.personId;
+      if (!personId || seenPeople.has(String(personId))) continue;
+      const [member, person] = await Promise.all([
+        ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", personId).eq("schoolId", args.schoolId)).unique(),
+        ctx.db.get(personId),
+      ]);
+      if (member?.status !== "active" || person?.status !== "active") continue;
+      const kind = user.role === "student" ? "student" as const : "staff" as const;
+      seenPeople.add(String(person._id));
+      people.push({ personId: person._id, name: person.name, kind });
+      if (people.length === 100) break;
     }
     return { permissions, policy, people, domains: domains.map(({ _id, domain, schoolId, provider, status, isDefault, sharedGroupId }) => ({ _id, domain, schoolId, provider, status, isDefault, sharedWithGroup: Boolean(group && sharedGroupId === group._id) })),
       mailboxes: await visibleMailboxes(ctx, args.schoolId), groupName: group?.status === "active" ? group.name : null,
-      policyDomainUnavailable: Boolean(policy?.domainId && !domains.some(domain => domain._id === policy.domainId)),
+      policyDomainUnavailable,
       providerActivation: "unavailable" as const, limit: 100 };
   },
 });

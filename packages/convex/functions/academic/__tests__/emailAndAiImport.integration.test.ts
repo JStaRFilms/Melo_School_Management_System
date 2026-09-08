@@ -136,6 +136,7 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
     const membership1Id = await ctx.db.insert("branchMemberships", {
       personId: person1Id,
       schoolId,
+      legacyUserId: importStudentUserIds[0],
       status: "active",
       displayTitle: "Student",
       isDefaultBranch: true,
@@ -176,10 +177,11 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
       updatedAt: now,
     });
 
-    for (const personId of [person2Id, person3Id, person4Id]) {
+    for (const [index, personId] of [person2Id, person3Id, person4Id].entries()) {
       await ctx.db.insert("branchMemberships", {
         personId,
         schoolId,
+        legacyUserId: importStudentUserIds[index + 1],
         status: "active",
         isDefaultBranch: false,
         joinedAt: now,
@@ -674,7 +676,7 @@ describe("B-07: Institutional Email Operations and AI Import Review Pipeline", (
         const schoolB = await ctx.db.insert("schools", { name: "Other Academy", slug: "other-academy", status: "active", createdAt: now, updatedAt: now });
         const personB = await ctx.db.insert("persons", { authTokenIdentifier: "https://auth.school.test|person-b", email: "person-b@other.test", name: "Person B", status: "active", primarySchoolId: schoolB, createdAt: now, updatedAt: now });
         await ctx.db.insert("branchMemberships", { personId: personB, schoolId: schoolB, status: "active", isDefaultBranch: true, joinedAt: now, updatedAt: now });
-        const mailboxB = await ctx.db.insert("institutionalMailboxes", { personId: personB, schoolId: schoolB, email: "person-b@other.edu.ng", state: "login_only", providerType: "none", status: "active", createdAt: now, updatedAt: now });
+        const mailboxB = await ctx.db.insert("institutionalMailboxes", { personId: personB, schoolId: schoolB, recipientKind: "student", email: "person-b@other.edu.ng", state: "login_only", providerType: "none", status: "active", createdAt: now, updatedAt: now });
         const workspaceB = await ctx.db.insert("aiImportWorkspaces", { schoolId: schoolB, importer: "other", entityType: "students", status: "staged", stagedRows: [], validationErrors: [], createdAt: now, updatedAt: now });
         const uploadIntentB = await ctx.db.insert("assetUploadIntents", { schoolId: schoolB, status: "pending", createdAt: now, updatedAt: now });
         const storageId = await ctx.storage.store(new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: "image/png" }));

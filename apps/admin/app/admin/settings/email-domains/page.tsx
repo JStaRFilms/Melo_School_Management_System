@@ -29,8 +29,9 @@ function EmailAccess({ schoolId }: { schoolId: Id<"schools"> }) {
   const policy = useQuery(api.functions.academic.rbac.hasViewerCapability, { schoolId, capability: "settings.domains.manage" });
   const staff = useQuery(api.functions.academic.rbac.hasViewerCapability, { schoolId, capability: "staff.onboard" });
   const student = useQuery(api.functions.academic.rbac.hasViewerCapability, { schoolId, capability: "enrollment.intakes.manage" });
-  if (policy === undefined || staff === undefined || student === undefined) return <p>Checking email permissions…</p>;
-  if (!policy && !staff && !student) return <p role="alert">Email settings access denied. Ask the proprietor for scoped registrar, staff administrator, or domain policy authority.</p>;
+  const lifecycle = useQuery(api.functions.academic.rbac.hasViewerCapability, { schoolId, capability: "staff.account.suspend" });
+  if (policy === undefined || staff === undefined || student === undefined || lifecycle === undefined) return <p>Checking email permissions…</p>;
+  if (!policy && !staff && !student && !lifecycle) return <p role="alert">Email settings access denied. Ask the proprietor for scoped registrar, staff administrator, or domain policy authority.</p>;
   return <EmailWorkbench schoolId={schoolId} />;
 }
 function EmailWorkbench({ schoolId }: { schoolId: Id<"schools"> }) {
@@ -133,7 +134,6 @@ function EmailWorkbench({ schoolId }: { schoolId: Id<"schools"> }) {
         {!data.policy && <p>Save a reviewed address policy before running proposals.</p>}
         <fieldset disabled={pending || !data.policy || data.policyDomainUnavailable || !defaultDomain || !data.people.length} className="space-y-3">
           <label className="block">Person<select className={field} required value={personId ?? ""} onChange={e => { const person = data.people.find(p => p.personId === e.target.value); setPersonId(person?.personId ?? null); const parts = person?.name.trim().split(/\s+/) ?? []; setFirstName(parts[0] ?? ""); setLastName(parts.length > 1 ? parts[parts.length - 1] : ""); setMiddleName(parts.slice(1, -1).join(" ")); setMinor(person?.kind === "student"); setPrivacy(false); invalidate(); }}><option value="">Select a member</option>{data.people.map(p => <option key={p.personId} value={p.personId}>{p.name} ({p.kind})</option>)}</select></label>
-          {selected?.kind === "unclassified" && <p role="alert">Recipient classification requires reconciliation. Both student and staff approval authority are required.</p>}
           <div className="grid gap-3 sm:grid-cols-3">{[{ label: "First name", value: firstName, set: setFirstName, required: true }, { label: "Middle name", value: middleName, set: setMiddleName, required: false }, { label: "Last name", value: lastName, set: setLastName, required: true }].map(input => <label key={input.label}>{input.label}<input className={field} required={input.required} maxLength={100} value={input.value} onChange={e => { input.set(e.target.value); invalidate(); }} /></label>)}</div>
           <p>These name fields are proposal inputs only; they never rename the person. Transliteration and single-name cases require manual review.</p>
           <label className="block"><input type="checkbox" checked={minor} onChange={e => { setMinor(e.target.checked); invalidate(); }} /> Student/minor naming review required</label>

@@ -3351,6 +3351,7 @@ export default defineSchema({
     lastProviderOperationId: v.optional(v.string()),
     personId: v.id("persons"),
     schoolId: v.id("schools"),
+    recipientKind: v.union(v.literal("staff"), v.literal("student")),
     email: v.string(),
     address: v.optional(v.string()),
     state: v.union(
@@ -3379,6 +3380,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_person_and_school", ["personId", "schoolId"])
+    .index("by_school_kind_and_email", ["schoolId", "recipientKind", "email"])
     .index("by_school_and_email", ["schoolId", "email"])
     .index("by_email", ["email"]),
 
