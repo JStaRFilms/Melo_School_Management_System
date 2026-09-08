@@ -78,10 +78,8 @@ The create action performs its authority check through one serialized query befo
 - `git status --short -- scripts/r1-*.mjs` — no working-tree script paths; none were recreated.
 - Vite emitted its existing CJS deprecation warning during passing tests.
 
-## Explicitly unresolved / not claimed
+## Scope boundary and later disposition
 
-- **F5 managed-teacher planning parity remains unresolved.**
-- **F6 legacy upload provenance and unique claim binding remains unresolved.**
-- **F7 group asset-sharing recipient contract remains unresolved.**
+This report closes only the listed F1–F4 and F8–F9 changes from its point-in-time remediation pass. F5–F7 were deliberately deferred here and were subsequently reviewed in `S0-auth-rereview.md`: F5 and F7 were accepted there, while F6 was accepted only as a fail-closed authorization state and upload transport remains unavailable.
 
-No completion claim is made for F5, F6, or F7. No runtime/browser/accessibility/print, schema rollout, migration, provider, deployment, or production evidence was gathered.
+This report gathered no runtime/browser/accessibility/print, schema rollout, migration, provider, deployment, or production evidence.

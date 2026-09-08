@@ -10,13 +10,9 @@ This verdict is limited to S0 authorization stabilization. It does **not** close
 
 ## Review basis
 
-- Reviewed HEAD: `44086fa005db6adaf161ef2ddb070bc8a8a14d6c`.
-- The index is stale and was not treated as authoritative. At fetch time:
-  - final tracked worktree versus HEAD: 312 paths, 23,767 insertions / 7,208 deletions;
-  - index versus HEAD: 307 paths, 23,695 insertions / 6,802 deletions;
-  - unstaged tracked delta: 46 paths, 794 insertions / 1,128 deletions;
-  - untracked paths before this report: 13.
-- The review used the final filesystem contents, the three remediation reports, the original F1-F9 report, and focused source/helper/test tracing. It did not restart the whole-program audit.
+- This is a point-in-time S0 authorization review. Commit IDs, paths, and line numbers below identify the reviewed snapshot and are historical rather than claims about the current branch tip.
+- The review used the then-current filesystem contents, the three remediation reports, the original F1-F9 report, and focused source/helper/test tracing. It did not restart the whole-program audit.
+- Current branch status and final verification are recorded in the later stack-level acceptance results; volatile working-tree/index counts are intentionally omitted.
 - No index, commit, deployment, migration, provider, credential, production-data, or live-service operation was performed.
 
 ## Per-finding disposition
