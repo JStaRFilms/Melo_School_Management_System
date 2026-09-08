@@ -125,8 +125,8 @@ export function StudentProfileEditor({
     "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
     schoolId ? ({ schoolId } as never) : ("skip" as never),
   ) as { policy: { pattern: string } | null } | undefined;
-  const transferWorkspace = useQuery(
-    "functions/academic/transfers:getTransferWorkspace" as never,
+  const transferAccess = useQuery(
+    "functions/academic/transfers:getTransferPilotAccess" as never,
     schoolId ? ({ schoolId } as never) : ("skip" as never),
   ) as { allowed: boolean } | undefined;
 
@@ -318,7 +318,7 @@ export function StudentProfileEditor({
 
   return (
     <div className="space-y-6 pb-10">
-      {studentId && transferWorkspace?.allowed && <Link className="block text-sm underline" href={`/academic/students/transfers?student=${encodeURIComponent(studentId)}`}>Within-group transfer history</Link>}
+      {studentId && transferAccess?.allowed && <Link className="block text-sm underline" href={`/academic/students/transfers?student=${encodeURIComponent(studentId)}`}>Within-group transfer history</Link>}
       {/* Tab Switcher - Only in Sidebar/Default Desktop mode */}
       {isSidebar && (
         <div className="flex p-1 bg-slate-100/60 rounded-xl mb-2">

@@ -787,6 +787,7 @@ export const rejectOrCancelTransfer = mutation({
       transfer.sourceSchoolId,
       transfer.destinationSchoolId,
       transfer.groupId,
+      false,
     );
 
     // Resolve caller authority: check destination branch first, then source branch
@@ -887,6 +888,7 @@ export const getTransfer = query({
       transfer.sourceSchoolId,
       transfer.destinationSchoolId,
       transfer.groupId,
+      false,
     );
     return redactTransferForScope(transfer, scope);
   },
@@ -1074,6 +1076,7 @@ async function assertActiveTransferGroup(
   sourceSchoolId: Id<"schools">,
   destinationSchoolId: Id<"schools">,
   groupId: Id<"schoolGroups">,
+  requirePilotEnabled = true,
 ) {
   const [source, destination, group, sourceLink, destinationLink] =
     await Promise.all([
@@ -1096,7 +1099,7 @@ async function assertActiveTransferGroup(
     !destination ||
     (destination.status !== undefined && destination.status !== "active") ||
     group?.status !== "active" ||
-    group.studentTransfersEnabled !== true ||
+    (requirePilotEnabled && group.studentTransfersEnabled !== true) ||
     sourceLink?.groupId !== groupId ||
     destinationLink?.groupId !== groupId
   ) {
