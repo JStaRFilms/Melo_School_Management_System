@@ -92,7 +92,7 @@ function StudentsPageContent() {
     "functions/academic/academicSetup:listSessions" as never
   ) as SessionSummary[] | undefined;
   const transferWorkspace = useQuery(
-    "functions/academic/transfers:getTransferWorkspace" as never,
+    "functions/academic/transfers:getTransferPilotAccess" as never,
     schoolId ? ({ schoolId } as never) : ("skip" as never),
   ) as { allowed: boolean } | undefined;
 

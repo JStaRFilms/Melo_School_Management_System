@@ -122,11 +122,13 @@ async function getStudentPortalContext(
         .withIndex("by_auth_token_identifier", (q: any) =>
           q.eq("authTokenIdentifier", tokenIdentifier)
         )
+        .filter((q: any) => q.neq(q.field("isArchived"), true))
         .take(2),
     bySubject: (subject) =>
       ctx.db
         .query("users")
         .withIndex("by_auth", (q: any) => q.eq("authId", subject))
+        .filter((q: any) => q.neq(q.field("isArchived"), true))
         .take(2),
   });
   if (!membership || membership.isArchived) {

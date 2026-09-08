@@ -1097,6 +1097,20 @@ async function assertActiveTransferGroup(
   }
 }
 
+export const getTransferPilotAccess = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, { schoolId }) => {
+    try {
+      await assertTransferAuthority(ctx, schoolId);
+      await assertTransferPilotForSchool(ctx, schoolId);
+      return { allowed: true as const };
+    } catch (error) {
+      if (!(error instanceof ConvexError)) throw error;
+      return { allowed: false as const };
+    }
+  },
+});
+
 /** Dedicated, minimized proposal seam: group membership exposes destination names, not rosters or dossiers. */
 export const getTransferWorkspace = query({
   args: { schoolId: v.id("schools") },
