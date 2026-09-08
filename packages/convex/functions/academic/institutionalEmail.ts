@@ -414,7 +414,7 @@ export const listEmailProposalPeoplePage = query({
       const visible = kind === "student"
         ? permissions.student
         : kind === "staff"
-          ? permissions.staff || permissions.lifecycle
+          ? permissions.staff
           : false;
       if (!visible) continue;
       const person = await ctx.db.get(member.personId);
@@ -459,7 +459,9 @@ export const getEmailWorkbench = query({
       if (branches.length > 100) throw new ConvexError("Group exceeds the supported 100-branch domain directory");
       for (const branch of branches) if (branch.schoolId !== args.schoolId) {
         const branchDomains = await ctx.db.query("schoolEmailDomains")
-          .withIndex("by_school_and_domain", q => q.eq("schoolId", branch.schoolId)).take(50);
+          .withIndex("by_school_and_domain", q => q.eq("schoolId", branch.schoolId)).take(101);
+        if (branchDomains.length > 100)
+          throw new ConvexError("A branch exceeds the supported 100-domain inheritance directory");
         domains.push(...branchDomains.filter(domain => domain.sharedGroupId === group._id));
       }
     }
