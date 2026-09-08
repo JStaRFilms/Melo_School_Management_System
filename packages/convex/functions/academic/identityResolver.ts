@@ -9,6 +9,7 @@ export interface AuthIdentity {
 export interface LegacyIdentityRow {
   authId: string;
   authTokenIdentifier?: string;
+  isArchived?: boolean;
 }
 
 export interface IdentityLookup<Row extends LegacyIdentityRow> {
@@ -32,7 +33,8 @@ export async function resolveTokenFirstTrustedLegacyRow<Row extends LegacyIdenti
   lookup: IdentityLookup<Row>
 ): Promise<Row | null> {
   if (identity.tokenIdentifier) {
-    const tokenRows = await lookup.byTokenIdentifier(identity.tokenIdentifier);
+    const tokenRows = (await lookup.byTokenIdentifier(identity.tokenIdentifier))
+      .filter((row) => !row.isArchived);
     if (tokenRows.length > 1) {
       throw new ConvexError("Unauthorized: ambiguous canonical identity");
     }
@@ -48,7 +50,8 @@ export async function resolveTokenFirstTrustedLegacyRow<Row extends LegacyIdenti
     throw new ConvexError("Unauthorized: untrusted legacy identity issuer");
   }
 
-  const subjectRows = await lookup.bySubject(identity.subject);
+  const subjectRows = (await lookup.bySubject(identity.subject))
+    .filter((row) => !row.isArchived);
   if (subjectRows.length > 1) {
     throw new ConvexError("Unauthorized: ambiguous legacy identity");
   }

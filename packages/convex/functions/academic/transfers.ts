@@ -644,10 +644,11 @@ export const acceptDestinationTransfer = mutation({
         "Source student record is unavailable for transfer",
       );
     }
+    if (!transfer.sourceStudentUserId)
+      throw new ConvexError("Legacy transfer lacks a reviewed source identity; cancel and restart the transfer");
     const sourceStudentUser = await ctx.db.get(sourceStudent.userId);
-    const reviewedSourceUserId = transfer.sourceStudentUserId ?? sourceStudent.userId;
     if (
-      sourceStudent.userId !== reviewedSourceUserId ||
+      sourceStudent.userId !== transfer.sourceStudentUserId ||
       !sourceStudentUser ||
       sourceStudentUser.schoolId !== transfer.sourceSchoolId ||
       sourceStudentUser.role !== "student" ||
@@ -1126,14 +1127,27 @@ export const getTransferWorkspace = query({
     const destinations: { _id: Id<"schools">; name: string }[] = [];
     for (const branch of branches) {
       const target = await ctx.db.get(branch.schoolId);
-      if (target && target._id !== schoolId && target.status !== "suspended")
-        destinations.push({ _id: target._id, name: target.name });
+      if (
+        target &&
+        target._id !== schoolId &&
+        (target.status === undefined || target.status === "active")
+      ) destinations.push({ _id: target._id, name: target.name });
     }
-    const classes = await ctx.db
+    const legacyActiveClasses = await ctx.db
       .query("classes")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-      .filter((q) => q.neq(q.field("isArchived"), true))
+      .withIndex("by_school_and_archived", (q) =>
+        q.eq("schoolId", schoolId).eq("isArchived", undefined),
+      )
       .take(501);
+    const currentActiveClasses = legacyActiveClasses.length > 500
+      ? []
+      : await ctx.db
+          .query("classes")
+          .withIndex("by_school_and_archived", (q) =>
+            q.eq("schoolId", schoolId).eq("isArchived", false),
+          )
+          .take(501 - legacyActiveClasses.length);
+    const classes = [...legacyActiveClasses, ...currentActiveClasses];
     const sessions = await ctx.db
       .query("academicSessions")
       .withIndex("by_school_active", (q) =>
@@ -1181,21 +1195,24 @@ export const listTransferCandidates = query({
       classroom.isArchived
     )
       throw new ConvexError("Class unavailable in this branch");
-    const rows = await ctx.db
-      .query("students")
-      .withIndex("by_school_and_class", (q) =>
-        q.eq("schoolId", args.schoolId).eq("classId", args.classId),
-      )
-      .filter((q) =>
-        q.and(
-          q.neq(q.field("isArchived"), true),
-          q.or(
-            q.eq(q.field("enrollmentStatus"), undefined),
-            q.eq(q.field("enrollmentStatus"), "active"),
-          ),
-        ),
-      )
-      .take(501);
+    const activeStates = [
+      [undefined, undefined],
+      [undefined, "active" as const],
+      [false, undefined],
+      [false, "active" as const],
+    ] as const;
+    const pages = await Promise.all(activeStates.map(([isArchived, enrollmentStatus]) =>
+      ctx.db
+        .query("students")
+        .withIndex("by_school_class_archived_enrollment", (q) =>
+          q.eq("schoolId", args.schoolId)
+            .eq("classId", args.classId)
+            .eq("isArchived", isArchived)
+            .eq("enrollmentStatus", enrollmentStatus),
+        )
+        .take(501),
+    ));
+    const rows = pages.flat();
     if (rows.length > 500)
       throw new ConvexError("Class exceeds supported 500-student selector");
     const candidates = [];
