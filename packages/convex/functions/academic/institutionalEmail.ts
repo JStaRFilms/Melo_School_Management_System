@@ -374,12 +374,23 @@ async function visibleMailboxes(ctx: Context, schoolId: Id<"schools">) {
     ...(permissions.staff || permissions.lifecycle ? ["staff" as const] : []),
     ...(permissions.student ? ["student" as const] : []),
   ];
-  const pages = await Promise.all(kinds.map(recipientKind =>
+  const [pages, legacy] = await Promise.all([
+    Promise.all(kinds.map(recipientKind =>
+      ctx.db.query("institutionalMailboxes")
+        .withIndex("by_school_kind_and_email", q => q.eq("schoolId", schoolId).eq("recipientKind", recipientKind))
+        .take(100),
+    )),
     ctx.db.query("institutionalMailboxes")
-      .withIndex("by_school_kind_and_email", q => q.eq("schoolId", schoolId).eq("recipientKind", recipientKind))
+      .withIndex("by_school_and_email", q => q.eq("schoolId", schoolId))
+      .filter(q => q.eq(q.field("recipientKind"), undefined))
       .take(100),
-  ));
-  return pages.flat().sort((a, b) => a.email.localeCompare(b.email)).slice(0, 100).map(mailbox => {
+  ]);
+  const authorizedLegacy = [];
+  for (const mailbox of legacy) {
+    const kind = await targetKind(ctx, mailbox.personId, schoolId);
+    if (kind !== "unclassified" && kinds.includes(kind)) authorizedLegacy.push({ ...mailbox, recipientKind: kind });
+  }
+  return [...pages.flat(), ...authorizedLegacy].sort((a, b) => a.email.localeCompare(b.email)).slice(0, 100).map(mailbox => {
     const { providerAccountId: _providerAccountId, lastProviderOperationId: _operationId, lastSyncError, ...safe } = mailbox;
     return { ...safe, kind: mailbox.recipientKind, reconciliationRequired: Boolean(lastSyncError),
       failureClass: !lastSyncError ? null : lastSyncError === "transient" ? "transient" as const : lastSyncError === "permanent" ? "permanent" as const : "unknown" as const };

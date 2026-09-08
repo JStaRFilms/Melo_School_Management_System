@@ -3351,7 +3351,7 @@ export default defineSchema({
     lastProviderOperationId: v.optional(v.string()),
     personId: v.id("persons"),
     schoolId: v.id("schools"),
-    recipientKind: v.union(v.literal("staff"), v.literal("student")),
+    recipientKind: v.optional(v.union(v.literal("staff"), v.literal("student"))),
     email: v.string(),
     address: v.optional(v.string()),
     state: v.union(
