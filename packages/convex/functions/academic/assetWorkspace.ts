@@ -161,8 +161,9 @@ export const setBranchShare = mutation({
     const existing = await ctx.db.query("assetBranchShares").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51);
     const share = existing.find(s => s.recipientSchoolId === args.recipientSchoolId);
     if (args.shared) {
+      if (asset.isTrashed) throw new ConvexError("Trashed assets cannot be shared");
       if (share) return;
-      if (asset.isTrashed || args.schoolId === args.recipientSchoolId || existing.length >= 50) throw new ConvexError("Invalid share target, trashed asset or share limit reached");
+      if (args.schoolId === args.recipientSchoolId || existing.length >= 50) throw new ConvexError("Invalid share target or share limit reached");
       const [owner, recipient, school] = await Promise.all([
         ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique(),
         ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.recipientSchoolId)).unique(),

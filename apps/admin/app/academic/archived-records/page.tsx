@@ -290,11 +290,15 @@ export default function ArchivedRecordsPage() {
                 />
               </div>
               <AdminHeader title="Archive Audit" />
-              <Link href={canManageAssetArchive ? "/admin/assets/archive" : "/admin/assets"}>
-                {canManageAssetArchive
-                  ? "School Asset Archive and Trash (separate from academic records)"
-                  : "School Asset Library (separate from academic records)"}
-              </Link>
+              {canManageAssetArchive === undefined ? (
+                <span className="text-slate-500">Loading asset access…</span>
+              ) : (
+                <Link href={canManageAssetArchive ? "/admin/assets/archive" : "/admin/assets"}>
+                  {canManageAssetArchive
+                    ? "School Asset Archive and Trash (separate from academic records)"
+                    : "School Asset Library (separate from academic records)"}
+                </Link>
+              )}
             </div>
 
 

@@ -414,14 +414,17 @@ export const getSchoolSubscription = query({
   },
 });
 
-/** Returns up to 100 active subscription plans in the commercial catalog. */
+/** Returns the bounded active subscription-plan catalog. */
 export const listSubscriptionPlans = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const plans = await ctx.db
       .query("subscriptionPlans")
       .withIndex("by_status", (q) => q.eq("status", "active"))
-      .take(100);
+      .take(101);
+    if (plans.length > 100)
+      throw new ConvexError("Subscription plan catalog exceeds the supported 100-plan limit");
+    return plans;
   },
 });
 
