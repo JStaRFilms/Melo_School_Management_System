@@ -383,8 +383,10 @@ async function visibleMailboxes(ctx: Context, schoolId: Id<"schools">) {
     ctx.db.query("institutionalMailboxes")
       .withIndex("by_school_and_email", q => q.eq("schoolId", schoolId))
       .filter(q => q.eq(q.field("recipientKind"), undefined))
-      .take(100),
+      .take(501),
   ]);
+  if (legacy.length > 500)
+    throw new ConvexError("Legacy mailbox rollout exceeds the supported 500-row compatibility window");
   const authorizedLegacy = [];
   for (const mailbox of legacy) {
     const kind = await targetKind(ctx, mailbox.personId, schoolId);
@@ -426,7 +428,8 @@ export const getEmailWorkbench = query({
     const link = await ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
     const group = link ? await ctx.db.get(link.groupId) : null;
     if (link && group?.status === "active") {
-      const branches = await ctx.db.query("schoolGroupBranches").withIndex("by_group", q => q.eq("groupId", link.groupId)).take(50);
+      const branches = await ctx.db.query("schoolGroupBranches").withIndex("by_group", q => q.eq("groupId", link.groupId)).take(101);
+      if (branches.length > 100) throw new ConvexError("Group exceeds the supported 100-branch domain directory");
       for (const branch of branches) if (branch.schoolId !== args.schoolId) {
         const branchDomains = await ctx.db.query("schoolEmailDomains")
           .withIndex("by_school_and_domain", q => q.eq("schoolId", branch.schoolId)).take(50);
@@ -450,8 +453,10 @@ export const getEmailWorkbench = query({
     const userPages = await Promise.all(recipientRoles.map(role =>
       ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", args.schoolId))
         .filter(q => q.and(q.eq(q.field("role"), role), q.or(q.eq(q.field("isArchived"), false), q.eq(q.field("isArchived"), undefined))))
-        .take(100),
+        .take(501),
     ));
+    if (userPages.some(page => page.length > 500))
+      throw new ConvexError("Recipient directory exceeds the supported 500 people per role");
     const people = [];
     const seenPeople = new Set<string>();
     for (const user of userPages.flat()) {
@@ -465,7 +470,6 @@ export const getEmailWorkbench = query({
       const kind = user.role === "student" ? "student" as const : "staff" as const;
       seenPeople.add(String(person._id));
       people.push({ personId: person._id, name: person.name, kind });
-      if (people.length === 100) break;
     }
     return { permissions, policy, people, domains: domains.map(({ _id, domain, schoolId, provider, status, isDefault, sharedGroupId }) => ({ _id, domain, schoolId, provider, status, isDefault, sharedWithGroup: Boolean(group && sharedGroupId === group._id) })),
       mailboxes: await visibleMailboxes(ctx, args.schoolId), groupName: group?.status === "active" ? group.name : null,
