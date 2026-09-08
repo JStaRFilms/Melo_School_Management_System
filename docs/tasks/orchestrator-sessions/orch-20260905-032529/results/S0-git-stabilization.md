@@ -20,9 +20,9 @@ The stale staged/deleted `results/R1-api-adoption.json` entry was removed from t
 | U1 current verified head | `e8763a97f2bad52dc2a19dd4910a5952fa32b9c0` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. |
 | U2 current verified head | `843a679a567e73b77c9ef4f8e47c10641e8aa906` | `feat/melo-productization-u2` | Grading, report consumers, numbering, and banks. |
 | U3 current verified head | `b60a4ec6887c9a5f0c7a63bd640f574f927cb52a` | `feat/melo-productization-u3` | Drafts, bounded form adoption, and tenant themes. |
-| U4 current verified head | `786111710cc8c96ef89b17805eb788a7f6e53387` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. |
-| U5 current verified head | `09ff619af060ebb33112e45bd4b1e50269e7e9c4` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle; upload remains fail-closed. |
-| U6 current verified head | `5b9ffdd7d7cb06cdfb62ab09bd588bb8a33bf773` | `feat/melo-productization-u6` | Default-off within-group transfer pilot. |
+| U4 current verified head | `56b0cd3f84a6f91082681089afb63aec575d8cf1` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. |
+| U5 current verified head | `329f336e563be823b06b2fd84ba1a110f19b1862` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle; upload remains fail-closed. |
+| U6 current verified head | `35f315dd0d3b597dea70736ff663873d82d71aaf` | `feat/melo-productization-u6` | Default-off within-group transfer pilot. |
 | S0 records | PR #29 / `docs/melo-productization-stabilization` | `feat/melo-productization-u6` | This document does not self-record its own commit hash; the PR head is authoritative. |
 
 These heads include the latest actionable review remediations; fresh automated review was requested after the dependent rebases. Known multi-slice files were serialized to their dependency owner rather than repeatedly restaged. `packages/shared/src/index.ts` was manually hunk-split so U1 received workspace/audit exports and U2 received the invoice export. Product code was committed from explicit reviewed path lists; the remaining session records are isolated in this final documentation commit.

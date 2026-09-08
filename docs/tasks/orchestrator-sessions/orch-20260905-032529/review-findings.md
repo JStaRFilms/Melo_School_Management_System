@@ -125,11 +125,9 @@ These are not satisfied by screenshots, credentials, deployment, or provider app
 5. **U1g:** authoritative enrollment, attendance, finance, staffing, and academic aggregates with tenant-safe drill-down, replacing metadata/placeholders.
 6. **U2c:** named default/branch-level counters, approved group-wide and branch-plus-level scopes, inherited numbering defaults, import integration, and optimistic policy/counter checks.
 7. **U3b/U3c:** persistent adapters, timestamped Preview/Resume/Discard, atomic finish-on-domain-submit, and adoption across student, family, staff, fee-plan, academic setup, report-card, import-review, and Teacher planning. Current guard/in-memory slices are partial.
-8. **U3a lifecycle:** operational expiry and correct active-instance indexing (Warnings 6–7).
-9. **U4b (completed in later stack changes):** the public import commit now requires reviewed mappings/confidence/duplicate/relationship decisions, authoritative H4 numbering, audit/reconciliation receipts, bounded retry, and privacy-safe outcomes (Critical 1).
-10. **U5a/U5b:** versioned plan entitlements/editor; allowance cycle/top-up/exception/grace/group pools; model/task profiles; authoritative heavy-action estimate/confirm/cancel and reserve-dispatch-settle/reconcile. Dashboards and a generic ledger are not a provider gate.
-11. **U5c/U5d:** purchased-entitlement upload binding, abandoned/raw temporary-object accounting/cleanup, non-starving retention sweeps, and provider-failure recovery (Critical 4, Warning 8). Private download, AV, and PDF promotion stay hard-disabled pending genuine external approvals.
-12. **U6a:** canonical transfer/Portal identity continuity and destination-login regressions (Warning 5). The explicitly excluded future inter-school network and automated staff-transfer policy are not added to this milestone.
+8. **U4b:** replace or disable the unsafe public import commit with reviewed mappings/confidence/duplicate/relationship decisions, authoritative H4 numbering, audit/reconciliation receipts, bounded retry, and privacy-safe outcomes (Critical 1). This stabilization PR does not claim the later integration fix.
+9. **U5a/U5b:** versioned plan entitlements/editor; allowance cycle/top-up/exception/grace/group pools; model/task profiles; authoritative heavy-action estimate/confirm/cancel and reserve-dispatch-settle/reconcile. Dashboards and a generic ledger are not a provider gate.
+10. **U5c/U5d:** purchased-entitlement upload binding, abandoned/raw temporary-object accounting/cleanup, and provider-failure recovery remain (Critical 4). Cursor-fair retention sweeps are already implemented. Private download, AV, and PDF promotion stay hard-disabled pending genuine external approvals.
 
 ## Genuine external/runtime gates after remediation
 
