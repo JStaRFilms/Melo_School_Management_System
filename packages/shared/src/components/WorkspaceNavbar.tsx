@@ -302,6 +302,7 @@ export function WorkspaceNavbar({
                   "/academic/classes",
                   "/academic/subjects",
                   "/students/import",
+                  "/admin/settings/email-domains",
                   "/admin/settings",
                   "/admin",
                   "/academic/archived-records",

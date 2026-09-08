@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
 import { requireCapability, getContextCapabilities } from "./rbac";
 import { resolveActiveMembership } from "./auth";
@@ -113,11 +113,13 @@ export const registerEmailDomain = mutation({
     await requireCapability(ctx, args.schoolId, "settings.domains.manage");
     const domain = args.domain.toLowerCase().trim();
     if (!validDomain(domain)) throw new ConvexError("Invalid domain name");
-    const existing = await ctx.db.query("schoolEmailDomains")
-      .withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId).eq("domain", domain)).unique();
-    if (existing) return { domainId: existing._id, domain, dnsTxtRecord: existing.dnsTxtRecord, status: existing.status };
-    const namespaceOwners = await ctx.db.query("schoolEmailDomains").withIndex("by_domain", q => q.eq("domain", domain)).take(2);
+    const [existing, namespaceOwners] = await Promise.all([
+      ctx.db.query("schoolEmailDomains")
+        .withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId).eq("domain", domain)).unique(),
+      ctx.db.query("schoolEmailDomains").withIndex("by_domain", q => q.eq("domain", domain)).take(2),
+    ]);
     if (namespaceOwners.length > 1) throw new ConvexError("Domain ownership is ambiguous; reconcile duplicate registrations");
+    if (existing) return { domainId: existing._id, domain, dnsTxtRecord: existing.dnsTxtRecord, status: existing.status };
     if (namespaceOwners.length === 1) throw new ConvexError("Domain already registered; inherit an explicitly shared group domain or request ownership reconciliation");
     const previous = await ctx.db.query("schoolEmailDomains")
       .withIndex("by_school_and_default", q => q.eq("schoolId", args.schoolId).eq("isDefault", true)).first();
@@ -425,6 +427,44 @@ export const listEmailProposalPeoplePage = query({
   },
 });
 
+function mailboxMetadata(mailbox: Doc<"institutionalMailboxes">, kind: "staff" | "student") {
+  const { providerAccountId: _providerAccountId, lastProviderOperationId: _operationId, lastSyncError, ...safe } = mailbox;
+  return { ...safe, recipientKind: kind, kind, reconciliationRequired: Boolean(lastSyncError),
+    failureClass: !lastSyncError ? null : lastSyncError === "transient" ? "transient" as const : lastSyncError === "permanent" ? "permanent" as const : "unknown" as const };
+}
+export const listInstitutionalMailboxesPage = query({
+  args: { schoolId: v.id("schools"), recipientKind: v.union(v.literal("staff"), v.literal("student")), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 100)
+      throw new ConvexError("Request 1–100 mailboxes per page");
+    const { permissions } = await emailAccess(ctx, args.schoolId);
+    const visible = args.recipientKind === "student" ? permissions.student : permissions.staff || permissions.lifecycle;
+    if (!visible) throw new ConvexError("Institutional mailbox recipient scope required");
+    const result = await ctx.db.query("institutionalMailboxes")
+      .withIndex("by_school_kind_and_email", q => q.eq("schoolId", args.schoolId).eq("recipientKind", args.recipientKind))
+      .paginate(args.paginationOpts);
+    return { ...result, page: result.page.map(mailbox => mailboxMetadata(mailbox, args.recipientKind)) };
+  },
+});
+export const listLegacyInstitutionalMailboxesPage = query({
+  args: { schoolId: v.id("schools"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 100)
+      throw new ConvexError("Request 1–100 legacy mailboxes per page");
+    const { permissions } = await emailAccess(ctx, args.schoolId);
+    const result = await ctx.db.query("institutionalMailboxes")
+      .withIndex("by_school_kind_and_email", q => q.eq("schoolId", args.schoolId).eq("recipientKind", undefined))
+      .paginate(args.paginationOpts);
+    const page = [];
+    for (const mailbox of result.page) {
+      const kind = await targetKind(ctx, mailbox.personId, args.schoolId);
+      const visible = kind === "student" ? permissions.student : kind === "staff" ? permissions.staff || permissions.lifecycle : false;
+      if (visible && kind !== "unclassified") page.push(mailboxMetadata(mailbox, kind));
+    }
+    return { ...result, page };
+  },
+});
+
 export const getInstitutionalMailboxes = query({
   args: { schoolId: v.id("schools") }, handler: (ctx, args) => visibleMailboxes(ctx, args.schoolId),
 });
@@ -451,7 +491,8 @@ export const getEmailWorkbench = query({
   args: { schoolId: v.id("schools") }, handler: async (ctx, args) => {
     const { permissions } = await emailAccess(ctx, args.schoolId);
     const policy = await policyFor(ctx, args.schoolId);
-    const domains = await ctx.db.query("schoolEmailDomains").withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId)).take(50);
+    const domains = await ctx.db.query("schoolEmailDomains").withIndex("by_school_and_domain", q => q.eq("schoolId", args.schoolId)).take(101);
+    if (domains.length > 100) throw new ConvexError("Branch exceeds the supported 100-domain directory");
     const link = await ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
     const group = link ? await ctx.db.get(link.groupId) : null;
     if (link && group?.status === "active") {
@@ -476,7 +517,7 @@ export const getEmailWorkbench = query({
       }
     }
     return { permissions, policy, domains: domains.map(({ _id, domain, schoolId, provider, status, isDefault, sharedGroupId }) => ({ _id, domain, schoolId, provider, status, isDefault, sharedWithGroup: Boolean(group && sharedGroupId === group._id) })),
-      mailboxes: await visibleMailboxes(ctx, args.schoolId), groupName: group?.status === "active" ? group.name : null,
+      groupName: group?.status === "active" ? group.name : null,
       policyDomainUnavailable,
       providerActivation: "unavailable" as const, limit: 100 };
   },
