@@ -645,8 +645,9 @@ export const acceptDestinationTransfer = mutation({
       );
     }
     const sourceStudentUser = await ctx.db.get(sourceStudent.userId);
+    const reviewedSourceUserId = transfer.sourceStudentUserId ?? sourceStudent.userId;
     if (
-      sourceStudent.userId !== transfer.sourceStudentUserId ||
+      sourceStudent.userId !== reviewedSourceUserId ||
       !sourceStudentUser ||
       sourceStudentUser.schoolId !== transfer.sourceSchoolId ||
       sourceStudentUser.role !== "student" ||
@@ -1081,9 +1082,9 @@ async function assertActiveTransferGroup(
   if (
     sourceSchoolId === destinationSchoolId ||
     !source ||
-    source.status === "suspended" ||
+    (source.status !== undefined && source.status !== "active") ||
     !destination ||
-    destination.status === "suspended" ||
+    (destination.status !== undefined && destination.status !== "active") ||
     group?.status !== "active" ||
     group.studentTransfersEnabled !== true ||
     sourceLink?.groupId !== groupId ||
@@ -1112,13 +1113,12 @@ export const getTransferWorkspace = query({
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
       .unique();
     const group = link ? await ctx.db.get(link.groupId) : null;
-    const branches =
-      group?.status === "active"
-        ? await ctx.db
-            .query("schoolGroupBranches")
-            .withIndex("by_group", (q) => q.eq("groupId", group._id))
-            .take(101)
-        : [];
+    const branches = group
+      ? await ctx.db
+          .query("schoolGroupBranches")
+          .withIndex("by_group", (q) => q.eq("groupId", group._id))
+          .take(101)
+      : [];
     if (branches.length > 100)
       throw new ConvexError(
         "Group directory exceeds the supported 100 branches",
@@ -1129,22 +1129,11 @@ export const getTransferWorkspace = query({
       if (target && target._id !== schoolId && target.status !== "suspended")
         destinations.push({ _id: target._id, name: target.name });
     }
-    const legacyActiveClasses = await ctx.db
+    const classes = await ctx.db
       .query("classes")
-      .withIndex("by_school_and_archived", (q) =>
-        q.eq("schoolId", schoolId).eq("isArchived", undefined),
-      )
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .filter((q) => q.neq(q.field("isArchived"), true))
       .take(501);
-    const currentActiveClasses =
-      legacyActiveClasses.length > 500
-        ? []
-        : await ctx.db
-            .query("classes")
-            .withIndex("by_school_and_archived", (q) =>
-              q.eq("schoolId", schoolId).eq("isArchived", false),
-            )
-            .take(501 - legacyActiveClasses.length);
-    const classes = [...legacyActiveClasses, ...currentActiveClasses];
     const sessions = await ctx.db
       .query("academicSessions")
       .withIndex("by_school_active", (q) =>
@@ -1192,25 +1181,21 @@ export const listTransferCandidates = query({
       classroom.isArchived
     )
       throw new ConvexError("Class unavailable in this branch");
-    const activeStates = [
-      [undefined, undefined],
-      [undefined, "active" as const],
-      [false, undefined],
-      [false, "active" as const],
-    ] as const;
-    const pages = await Promise.all(activeStates.map(([isArchived, enrollmentStatus]) =>
-      ctx.db
-        .query("students")
-        .withIndex("by_school_class_archived_enrollment", (q) =>
-          q
-            .eq("schoolId", args.schoolId)
-            .eq("classId", args.classId)
-            .eq("isArchived", isArchived)
-            .eq("enrollmentStatus", enrollmentStatus),
-        )
-        .take(501),
-    ));
-    const rows = pages.flat();
+    const rows = await ctx.db
+      .query("students")
+      .withIndex("by_school_and_class", (q) =>
+        q.eq("schoolId", args.schoolId).eq("classId", args.classId),
+      )
+      .filter((q) =>
+        q.and(
+          q.neq(q.field("isArchived"), true),
+          q.or(
+            q.eq(q.field("enrollmentStatus"), undefined),
+            q.eq(q.field("enrollmentStatus"), "active"),
+          ),
+        ),
+      )
+      .take(501);
     if (rows.length > 500)
       throw new ConvexError("Class exceeds supported 500-student selector");
     const candidates = [];

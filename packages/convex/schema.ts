@@ -1349,7 +1349,7 @@ export default defineSchema({
     sourceSchoolId: v.id("schools"),
     destinationSchoolId: v.id("schools"),
     studentId: v.id("students"),
-    sourceStudentUserId: v.id("users"),
+    sourceStudentUserId: v.optional(v.id("users")),
     studentName: v.string(),
     guardianConsentRecorded: v.boolean(),
     guardianConsentMethod: v.string(),
