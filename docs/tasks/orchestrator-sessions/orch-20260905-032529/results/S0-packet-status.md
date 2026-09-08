@@ -22,7 +22,7 @@ Inventory basis: `03-stabilization.task.md`, `implementation-plan.md`, all packe
 | U3c long forms | **Partial** | **Not runtime-verified (E0)** | Persistent recovery/tombstones for fee/academic/report forms, Teacher planning adoption/conflict/reauth, and U4b import handoff. |
 | U3d theme | **Implemented locally** | **Not runtime-verified (E0)** | Authorized rollout, branch switching/runtime token update, Sites published synchronization seam, and 320px/keyboard/print evidence. |
 | U4a email | **Implemented locally** | **Not runtime-verified (E0)** | Provider outbox/provisioning/verification remains intentionally unavailable; persistent review recovery, pagination, and authenticated runtime evidence are missing. |
-| U4b import review | **Implemented locally** | **Not runtime-verified (E0)** | Immutable reviewed per-row decisions, authoritative numbering, audit/reconciliation receipts, bounded retry, and privacy-safe outcomes are implemented; authorized rollout and browser acceptance remain. |
+| U4b import review | **Partial** | **Not runtime-verified (E0)** | At this stabilization boundary the public commit remains unsafe and must be disabled or replaced by immutable reviewed per-row decisions, authoritative numbering, audit/reconciliation receipts, bounded retry, and privacy-safe outcomes. The fix belongs to the later integration follow-up, not this PR. |
 | U5a commercial | **Partial** | **Not runtime-verified (E0)** | Bounded group totals are implemented; proprietor contract-choice flow, >500 batching/pagination, custom cadence, invoice correction lifecycle, and full draft adoption remain. Provider/finance/legal gates also remain. |
 | U5b usage | **Partial** | **Not runtime-verified (E0)** | Versioned entitlements/caps/cycles/top-ups/exceptions/grace/group pools/model profiles; authoritative estimate/confirm/cancel → reserve/dispatch/settle/reconcile; upload/range batching and all-operation coverage. Disabled controls are not completed workflows. |
 | U5c assets | **Partial; upload unavailable** | **Not runtime-verified (E0)** | See `S0-storage.md`. New asset/logo/photo/knowledge/Portal/PDF-candidate intake is server-disabled after authorization. Enabling requires authoritative school/caller/purpose transport evidence, versioned purchased-quota reservation before transfer, provider size enforcement, single-use settlement, abandoned/terminal cleanup and reconciliation. Full search, deeper OOXML validation, and AV/private-delivery approval also remain. Disabled upload is not completion. |
@@ -32,11 +32,11 @@ Inventory basis: `03-stabilization.task.md`, `implementation-plan.md`, all packe
 
 ### Counts and release conclusion
 
-- **Implemented locally:** 11 (U1a, U1c, U1d, U1e, U2a, U2b, U2d, U3d, U4a, U4b, U6a).
-- **Partial:** 11 (U1b, U1f, U1g, U2c, U3a, U3b, U3c, U5a, U5b, U5c, U5d).
+- **Implemented locally:** 10 (U1a, U1c, U1d, U1e, U2a, U2b, U2d, U3d, U4a, U6a).
+- **Partial:** 12 (U1b, U1f, U1g, U2c, U3a, U3b, U3c, U4b, U5a, U5b, U5c, U5d).
 - **Not implemented:** 1 (U7a).
 - Runtime verification: **0/23** packets verified; **23/23 E0**.
-- Release status: **not complete / NEEDS CHANGES**. R1 Critical 1 and the reviewed Portal identity, draft scheduling/indexing, and cleanup fairness warnings are resolved in later local stack changes. Critical 4 is locally contained by fail-closed server upload issuance/finalization, but upload remains unavailable and its authoritative transport/reservation/cleanup implementation is not complete. Group audit scalability and runtime/external gates remain open.
+- Release status: **not complete / NEEDS CHANGES**. At this stabilization boundary, R1 Critical 1 remains open; its remediation is intentionally deferred to the later integration follow-up. The reviewed Portal identity, draft scheduling/indexing, and cleanup fairness warnings are resolved locally. Critical 4 is contained by fail-closed server upload issuance/finalization, but upload remains unavailable and its authoritative transport/reservation/cleanup implementation is not complete. Group audit scalability and runtime/external gates remain open.
 
 Local tests/typechecks reported by packet owners are evidence of local slices only. No live command, provider, migration, deployment, credential, destructive storage, or index operation was performed for this inventory.
 
