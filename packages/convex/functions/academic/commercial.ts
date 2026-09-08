@@ -732,6 +732,12 @@ export const createContract = mutation({
       throw new ConvexError("Explain the setup handling (8–240 characters)");
     const rate = args.overrideRate ?? version.rate;
     validateRate(rate);
+    if (
+      rate.cadence === "annually" &&
+      rate.proration === "none" &&
+      args.effectiveTo < annualAnniversary(args.effectiveFrom)
+    )
+      throw new ConvexError("A no-proration annual contract must contain a complete annual cadence period");
     if (rate.cadence === "termly" && rate.proration === "none") {
       const terms = await ctx.db
         .query("academicTerms")
