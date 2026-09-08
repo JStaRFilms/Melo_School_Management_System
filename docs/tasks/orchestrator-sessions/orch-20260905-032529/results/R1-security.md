@@ -20,15 +20,15 @@ API adoption: `A/studentEnrollment.ts`, `academicSetup.ts`, `adminLeadership.ts`
 
 UI: Admin/Teacher `lib/StaffWorkspace.tsx`; new Admin billing bank-account page; Platform school migration page.
 
-Tests: new `A/__tests__/securityAuthority.integration.test.ts`, `securityFixtures.ts`; updated asset/commercial/email/import/transfer fixtures, migration references, shared route tests and Admin shell tests. Temporary editing scripts were removed from the working tree.
+Tests: retained `A/__tests__/authorizationRemediation.integration.test.ts`, `workspaceAccess.integration.test.ts`, `storageSafety.integration.test.ts`, `assetWorkspace.integration.test.ts`, and shared/Admin route-shell suites use `securityFixtures.ts` for direct-call, Platform-denial, managed-restriction, and storage-boundary coverage. A previously cited scratch file, `securityAuthority.integration.test.ts`, is not present in the final stack and is not a reproducible test target. Temporary editing scripts were removed from the working tree.
 
 `A/` = `packages/convex/functions/academic/`.
 
 ## Checks actually run
 
 - Convex, Shared, Admin, Teacher, Portal, Platform and Sites `tsc --noEmit`: **passed**. Convex rerun after later backend changes also passed.
-- Final combined Convex run: **19 files / 161 tests passed**: security authority, auth, identity/tenancy, RBAC/audit, workspace access, bank, numbering, grading, drafts, transfers, assets workspace, commercial/assets, audit explorer, groups, commercial, usage, email/import, migration lifecycle and billing.
-- Subsequently added unrestricted migrated enrollment lifecycle parity: security suite rerun **7/7 passed** (the combined run above contained its earlier six tests).
+- The historical worker report recorded a combined **19 files / 161 tests passed**, but its command included the subsequently removed scratch `securityAuthority.integration.test.ts`; that exact aggregate is therefore not reproducible from the final stack. Equivalent retained coverage is identified above and in the final verification record.
+- Unrestricted migrated enrollment lifecycle parity remains covered by the retained authorization-remediation fixtures; no standalone 7/7 scratch-suite claim is made.
 - Shared route/navigation tests **14/14 passed**; Admin actual shell tests **11/11 passed** (including four managed deep-link child-mount denials).
 - Focused ESLint on authority helpers, shared contracts/navigation, both shells and new bank page: **passed**.
 - `git diff HEAD --check`: **passed** after removing a trailing blank line; Windows LF/CRLF notices remain.

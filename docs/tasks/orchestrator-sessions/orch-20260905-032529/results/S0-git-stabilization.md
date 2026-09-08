@@ -17,12 +17,12 @@ The stale staged/deleted `results/R1-api-adoption.json` entry was removed from t
 | Boundary | Commit | Branch | Notes |
 |---|---|---|---|
 | Independent architecture head | `f03d5cd2e5767c618d223046aa7d5ddc17e0726a` | `docs/module-entitlements-checkpoint` | Reviewed PR #30 head. |
-| U1 current verified head | `f31fb3c` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. |
-| U2 current verified head | `f249897` | `feat/melo-productization-u2` | Grading, report consumers, numbering, and banks. |
-| U3 current verified head | `21c1d87` | `feat/melo-productization-u3` | Drafts, bounded form adoption, and tenant themes. |
-| U4 current verified head | `bf6979e` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. |
-| U5 current verified head | `67dc2dc` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle; upload remains fail-closed. |
-| U6 current verified head | `7a6ed04` | `feat/melo-productization-u6` | Within-group transfers. |
+| U1 current verified head | `e8763a97f2bad52dc2a19dd4910a5952fa32b9c0` | `feat/melo-productization-u1` | Governance, access, audit, groups, permissions, workspace shells. |
+| U2 current verified head | `843a679a567e73b77c9ef4f8e47c10641e8aa906` | `feat/melo-productization-u2` | Grading, report consumers, numbering, and banks. |
+| U3 current verified head | `b60a4ec6887c9a5f0c7a63bd640f574f927cb52a` | `feat/melo-productization-u3` | Drafts, bounded form adoption, and tenant themes. |
+| U4 current verified head | `1dc3782829084dd9a3e6cfaf5c39dfc25b2e6823` | `feat/melo-productization-u4` | Institutional email policy and import surfaces. |
+| U5 current verified head | `ab7a6da2eea97559be69fbd498467aaaab2c62af` | `feat/melo-productization-u5` | Commercial/usage and safe asset lifecycle; upload remains fail-closed. |
+| U6 current verified head | `bc84c78fc4bffd7fbb972b435b490330a390d981` | `feat/melo-productization-u6` | Default-off within-group transfer pilot. |
 | S0 records | PR #29 / `docs/melo-productization-stabilization` | `feat/melo-productization-u6` | This document does not self-record its own commit hash; the PR head is authoritative. |
 
 These heads include the latest actionable review remediations; fresh automated review was requested after the dependent rebases. Known multi-slice files were serialized to their dependency owner rather than repeatedly restaged. `packages/shared/src/index.ts` was manually hunk-split so U1 received workspace/audit exports and U2 received the invoice export. Product code was committed from explicit reviewed path lists; the remaining session records are isolated in this final documentation commit.

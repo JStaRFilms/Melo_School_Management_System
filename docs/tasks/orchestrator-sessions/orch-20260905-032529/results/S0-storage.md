@@ -58,7 +58,7 @@ Focused tests cover:
 - `pnpm --filter @school/admin typecheck` — pass.
 - `pnpm --filter @school/teacher typecheck` — pass.
 - `pnpm --filter @school/portal typecheck` — pass.
-- Convex focused regression run: `storageSafety.integration.test.ts`, `assetWorkspace.integration.test.ts`, `securityAuthority.integration.test.ts`, `commercialAndAssets.integration.test.ts`, `teacherPlanningAuthorization.integration.test.ts`, and `seedRunnerGate.test.ts` — 6 files / 43 tests pass. Existing known 30-day timer overflow warnings remain in the commercial/assets suite.
+- The historical storage aggregate referenced the removed `securityAuthority.integration.test.ts` scratch suite and is not rerunnable verbatim. Final retained coverage uses `storageSafety.integration.test.ts`, `assetWorkspace.integration.test.ts`, `authorizationRemediation.integration.test.ts`, `commercialAndAssets.integration.test.ts`, `teacherPlanningAuthorization.integration.test.ts`, and `seedRunnerGate.test.ts`; see final verification for current counts. Existing known 30-day timer overflow warnings remain in the commercial/assets suite.
 - Admin: `assets-workspace.test.tsx` — 1 file / 5 tests pass.
 - Teacher: `LibrarySidebar.test.tsx` — 1 file / 2 tests pass.
 - `node scripts/audit-theme-colors.mjs` — completed informationally; touched direct colours classify as existing semantic status/product-neutral usage and no global replacement was made.

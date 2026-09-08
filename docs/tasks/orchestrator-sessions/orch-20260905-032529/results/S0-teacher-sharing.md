@@ -70,8 +70,7 @@ Focused tests prove:
 
 ## Checks run
 
-- `pnpm --filter @school/convex exec vitest run functions/academic/__tests__/teacherPlanningAuthorization.integration.test.ts functions/academic/__tests__/assetWorkspace.integration.test.ts functions/academic/__tests__/curriculumTeacherIntegration.test.ts functions/academic/__tests__/drafts.integration.test.ts functions/academic/__tests__/securityAuthority.integration.test.ts functions/academic/__tests__/authorizationRemediation.integration.test.ts`
-  - **PASS:** 6 files, 31 tests.
+- The historical six-file aggregate included the removed `securityAuthority.integration.test.ts` scratch suite and is not rerunnable verbatim. Final retained coverage uses `teacherPlanningAuthorization.integration.test.ts`, `assetWorkspace.integration.test.ts`, `curriculumTeacherIntegration.test.ts`, `drafts.integration.test.ts`, `workspaceAccess.integration.test.ts`, and `authorizationRemediation.integration.test.ts`; see final verification for current counts.
   - Existing Convex direct-function-call warnings appeared only in the pre-existing `curriculumTeacherIntegration.test.ts` fixture.
 - `pnpm --filter @school/convex exec vitest run functions/academic/__tests__/rbacAudit.integration.test.ts functions/academic/__tests__/auth.test.ts`
   - **PASS:** 2 files, 26 tests.

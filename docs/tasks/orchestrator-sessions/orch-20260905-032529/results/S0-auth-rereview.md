@@ -114,8 +114,7 @@ Exact tests allow a payment-only managed admin to run the empty reconciliation s
 
 ## Checks run against this final worktree
 
-1. `pnpm --filter @school/convex exec vitest run functions/academic/__tests__/authorizationRemediation.integration.test.ts functions/academic/__tests__/teacherPlanningAuthorization.integration.test.ts functions/academic/__tests__/storageSafety.integration.test.ts functions/academic/__tests__/assetWorkspace.integration.test.ts functions/academic/__tests__/securityAuthority.integration.test.ts`
-   - **PASS:** 5 files, 27 tests.
+1. The historical command included the removed `securityAuthority.integration.test.ts` scratch suite, so its 5-file/27-test aggregate is not reproducible verbatim. The final rerunnable equivalent uses `authorizationRemediation.integration.test.ts`, `teacherPlanningAuthorization.integration.test.ts`, `storageSafety.integration.test.ts`, `assetWorkspace.integration.test.ts`, and `workspaceAccess.integration.test.ts`; see final verification for current counts.
 2. `pnpm --filter @school/convex exec vitest run functions/academic/__tests__/curriculumTeacherIntegration.test.ts functions/academic/__tests__/drafts.integration.test.ts functions/academic/__tests__/auth.test.ts functions/academic/__tests__/rbacAudit.integration.test.ts`
    - **PASS:** 4 files, 34 tests.
    - Existing direct-Convex-function-call warnings appeared in the curriculum integration fixture.

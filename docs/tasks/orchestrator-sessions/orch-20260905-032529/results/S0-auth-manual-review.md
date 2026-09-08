@@ -236,7 +236,7 @@ Use a school-bound internal query after the action's operation check, or explici
 
 | File(s) | Disposition |
 |---|---|
-| `securityAuthority.integration.test.ts`, `workspaceAccess.integration.test.ts` | Valuable terminal Platform, managed fail-closed, route, direct-call, and asset DTO denial coverage. They do not prove operation-level least privilege; **F8**. |
+| `authorizationRemediation.integration.test.ts`, `workspaceAccess.integration.test.ts`, `storageSafety.integration.test.ts` | Retained terminal Platform, managed fail-closed, route, direct-call, and storage-boundary denial coverage. The previously cited `securityAuthority.integration.test.ts` scratch suite is not present in the final stack. These retained suites do not by themselves prove operation-level least privilege; **F8**. |
 | `migrationLifecycle.test.ts` | Approved migration authority assertions; Platform tenant denial is explicit. |
 | `emailAndAiImport.integration.test.ts` | Functional tests pass, but all-cap tenant fixture does not cover F4/F5. |
 | `assetWorkspace.integration.test.ts`, `commercialAndAssets.integration.test.ts` | Functional coverage retained, but dual-branch/all-cap fixture masks F7/F8. |
@@ -285,9 +285,8 @@ Codes: **A** = approved after body/chain review; **F#** = disposition is the ref
 ## Checks run
 
 - Manual comparison of `git diff HEAD`, index, worktree, status, changed-file lists, and the archived staged script contents.
-- `pnpm --filter @school/convex exec vitest run functions/academic/__tests__/securityAuthority.integration.test.ts functions/academic/__tests__/workspaceAccess.integration.test.ts functions/academic/__tests__/migrationLifecycle.test.ts functions/academic/__tests__/emailAndAiImport.integration.test.ts`
-  - **Passed:** 4 files, 44 tests.
-  - These passing tests do not cover the least-privilege gaps listed above.
+- The historical command cited a now-removed `securityAuthority.integration.test.ts` scratch suite and is not rerunnable verbatim. Final equivalent coverage uses `authorizationRemediation.integration.test.ts`, `workspaceAccess.integration.test.ts`, `storageSafety.integration.test.ts`, `migrationLifecycle.test.ts`, and `emailAndAiImport.integration.test.ts`; see the final verification record for current counts.
+  - These retained tests do not cover every least-privilege gap listed above.
 - No production, deployment, provider, credential, or live data operation was performed.
 
 ## Decision

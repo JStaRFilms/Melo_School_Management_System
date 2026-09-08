@@ -4,7 +4,7 @@
 
 ## Routed workflow
 
-Actual Admin `/academic/students/transfers`, discovered through Academic **Transfers** navigation, the student-list link, and the profile **Within-group transfer history** link (`?student=...`). Uses generated typed APIs, not mocked runtime data.
+Actual Admin `/academic/students/transfers`; student-list and profile-history links render only when the backend reports the default-off group pilot enabled. Uses generated typed APIs, not mocked runtime data.
 
 - Authoritative branch access gate before student queries. Source class → own-class student selector, same-active-group destination metadata, explicit proposed class/session names, guardian consent method/evidence reference and attestation, optional academic/attendance summary, minimal preview, and source/destination confirmation.
 - Source proposal names are intentionally **not destination class/session selectors**: source authority does not confer destination operational access. Destination registrar chooses its actual nonarchived class and the one active academic session at acceptance. Names and session/class/number mappings are retained as snapshots.
@@ -32,9 +32,9 @@ Identical acknowledged intent replay returns its original action result,
 not a second transition; timeline independently shows current state.
 ```
 
-Transfer authority retains the packet's current contract: U1a active branch membership plus Platform/legacy-admin compatibility, branch proprietor, or one of `enrollment.intakes.manage`, `academic.classes.manage`, `enrollment.decisions.record`. No group membership alone grants another branch's operations. Manual numbering additionally requires `enrollment.admissions.override_number` through U2c's own helper. Legacy shell admission remains U1b-compatible/default-school only; this packet does not activate global branch switching or claim capability-only shell parity.
+Transfer authority is the post-remediation contract: an active reviewed branch membership with `enrollment.intakes.manage`. Platform status, legacy admin role, proprietor ownership, `academic.classes.manage`, and `enrollment.decisions.record` are not alternate transfer authorities. Every endpoint also requires the same active group to have the default-off `studentTransfersEnabled` pilot flag. No group membership alone grants another branch's operations. Manual numbering additionally requires `enrollment.admissions.override_number` through U2c's helper.
 
-Every mutation authorizes the acting branch **before** replay/state handling. Initiate/release/accept recheck active schools, unique branch links and active same group. Abort can unwind a pending proposal even if group configuration subsequently changed; it never rewrites source enrollment. Source release requires recorded consent. Acceptance also rejects a source student that has since been archived/withdrawn/graduated/transferred, an archived/foreign class, a foreign/stale session or changed reviewed numbering policy.
+Every mutation authorizes the acting branch and enabled pilot **before** replay/state handling. Initiate/release/accept/abort recheck active schools, unique branch links and the active same group. Abort never rewrites source enrollment. Source release requires recorded consent. Acceptance also rejects a source student that has since been archived/withdrawn/graduated/transferred, an archived/foreign class, a foreign/stale session or changed reviewed numbering policy.
 
 ## API manifest — `api.functions.academic.transfers`
 
@@ -50,7 +50,7 @@ Every mutation authorizes the acting branch **before** replay/state handling. In
 | `getTransfer` query | `{transferId}` → scope-redacted participant record, or null for missing. No initiation/acceptance fingerprints or request keys returned. Legacy health data stripped at read time. |
 | `listTransfersBySchool` query | Existing `{schoolId,direction?,status?}` signature. Current-branch redaction, newest first. |
 | `listTransfersByGroup` query | Existing `{groupId,status?}` signature. Filters individually unauthorized transfer edges rather than failing an otherwise valid branch reader's entire group result. Does not grant all-group history. |
-| `getStudentTransferHistory` query | `{studentId}`. First authorizes that student's actual school, then follows connected enrollment IDs across individually authorized transfer edges. Stops at unauthorized edges; no arbitrary source-student probing by a destination-only reader. |
+| `getStudentTransferHistory` query | `{studentId: string}` normalizes untrusted URL input and returns empty for malformed/table-invalid IDs. For a valid student it authorizes the actual school, then follows connected enrollment IDs across individually authorized transfer edges. Stops at unauthorized edges; no arbitrary source-student probing by a destination-only reader. |
 
 ## Numbering / history mapping
 

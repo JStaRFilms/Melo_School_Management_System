@@ -61,8 +61,8 @@ The create action performs its authority check through one serialized query befo
 - `packages/convex/functions/academic/institutionalEmail.ts`
 - `packages/convex/functions/billing.ts`
 - `packages/convex/functions/academic/__tests__/securityFixtures.ts`
-- `packages/convex/functions/academic/__tests__/securityAuthority.integration.test.ts`
-- `packages/convex/functions/academic/__tests__/authorizationRemediation.integration.test.ts` (new)
+- `packages/convex/functions/academic/__tests__/authorizationRemediation.integration.test.ts` (retained)
+- `packages/convex/functions/academic/__tests__/workspaceAccess.integration.test.ts` and `storageSafety.integration.test.ts` (retained equivalent coverage; the previously cited `securityAuthority.integration.test.ts` scratch file is not in the final stack)
 - `packages/shared/src/workspace-capability-matrix.ts`
 - This result file.
 
