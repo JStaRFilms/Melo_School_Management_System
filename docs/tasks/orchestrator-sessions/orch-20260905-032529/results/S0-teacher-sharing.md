@@ -39,7 +39,7 @@ Focused tests prove:
 - planning-only does not admit Admin curriculum routes;
 - a teacher holding `academic.curriculum.manage` still cannot pass the downstream Admin role boundary;
 - planning-only and curriculum-only teachers are both denied upload;
-- planning-plus-upload and curriculum-plus-upload teachers can request an assigned private upload shell;
+- planning-plus-upload and curriculum-plus-upload teachers pass capability and assignment checks but receive the explicit `Uploads unavailable` outcome before any material shell or upload transport is created;
 - an unassigned teacher and an assigned teacher targeting another subject are denied;
 - upload controls are absent and the explicit denial is rendered without `assets.upload`.
 
