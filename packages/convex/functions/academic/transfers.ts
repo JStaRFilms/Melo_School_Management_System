@@ -29,6 +29,20 @@ async function assertTransferAuthority(
 
 type TransferScope = "source" | "destination" | "both";
 
+async function assertTransferPilotForSchool(
+  ctx: MutationCtx | QueryCtx,
+  schoolId: Id<"schools">,
+): Promise<Id<"schoolGroups">> {
+  const link = await ctx.db
+    .query("schoolGroupBranches")
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .unique();
+  const group = link ? await ctx.db.get(link.groupId) : null;
+  if (!link || group?.status !== "active" || group.studentTransfersEnabled !== true)
+    throw new ConvexError("Within-group transfers are not enabled for this pilot group");
+  return group._id;
+}
+
 async function getAuthorizedTransferScope(
   ctx: QueryCtx,
   transfer: Doc<"studentTransfers">,
@@ -63,6 +77,9 @@ async function assertGroupTransferAuthority(
   ctx: QueryCtx,
   groupId: Id<"schoolGroups">,
 ): Promise<void> {
+  const group = await ctx.db.get(groupId);
+  if (group?.status !== "active" || group.studentTransfersEnabled !== true)
+    throw new ConvexError("Within-group transfers are not enabled for this pilot group");
   const branches = await ctx.db
     .query("schoolGroupBranches")
     .withIndex("by_group", (q) => q.eq("groupId", groupId))
@@ -92,6 +109,7 @@ function redactTransferForScope(
     requestKey: _requestKey,
     initiationIntent: _initiationIntent,
     acceptanceIntent: _acceptanceIntent,
+    sourceStudentUserId: _sourceStudentUserId,
     ...safeRecord
   } = record;
   const transfer = {
@@ -160,6 +178,7 @@ export const initiateStudentTransfer = mutation({
   handler: async (ctx, args) => {
     // 1. Verify caller authority in source school
     const authContext = await assertTransferAuthority(ctx, args.sourceSchoolId);
+    await assertTransferPilotForSchool(ctx, args.sourceSchoolId);
 
     const initiationIntent = JSON.stringify([
       args.studentId,
@@ -280,20 +299,22 @@ export const initiateStudentTransfer = mutation({
       );
     }
 
-    // Check for existing active transfer
-    const existingTransfers = await ctx.db
-      .query("studentTransfers")
-      .withIndex("by_student", (q) => q.eq("studentId", args.studentId))
-      .take(501);
-
-    if (existingTransfers.length > 500)
-      throw new ConvexError(
-        "Student transfer history exceeds supported bounds",
-      );
-    const hasActiveTransfer = existingTransfers.some(
-      (t) => t.status === "initiated" || t.status === "source_released",
-    );
-    if (hasActiveTransfer) {
+    // Historical attempts never block a new proposal; only active states do.
+    const [initiatedTransfer, releasedTransfer] = await Promise.all([
+      ctx.db
+        .query("studentTransfers")
+        .withIndex("by_student_and_status", (q) =>
+          q.eq("studentId", args.studentId).eq("status", "initiated"),
+        )
+        .first(),
+      ctx.db
+        .query("studentTransfers")
+        .withIndex("by_student_and_status", (q) =>
+          q.eq("studentId", args.studentId).eq("status", "source_released"),
+        )
+        .first(),
+    ]);
+    if (initiatedTransfer || releasedTransfer) {
       throw new ConvexError(
         "An active transfer already exists for this student in this school group",
       );
@@ -318,11 +339,15 @@ export const initiateStudentTransfer = mutation({
     const studentName = studentUser.name;
 
     const currentClass = await ctx.db.get(student.classId);
+    if (
+      !currentClass ||
+      currentClass.schoolId !== args.sourceSchoolId ||
+      currentClass.isArchived
+    )
+      throw new ConvexError("Source class requires reconciliation before transfer");
     const academicHistorySummary =
       args.academicHistorySummary ??
-      (currentClass
-        ? `Enrolled in ${currentClass.name} with admission number ${student.admissionNumber}`
-        : `Admission number ${student.admissionNumber}`);
+      `Enrolled in ${currentClass.name} with admission number ${student.admissionNumber}`;
 
     const attendanceSummaryPct = args.attendanceSummaryPct;
 
@@ -350,6 +375,7 @@ export const initiateStudentTransfer = mutation({
       sourceSchoolName: (await ctx.db.get(args.sourceSchoolId))?.name,
       destinationSchoolName: (await ctx.db.get(args.destinationSchoolId))?.name,
       studentId: args.studentId,
+      sourceStudentUserId: studentUser._id,
       studentName,
       guardianConsentRecorded: args.guardianConsentRecorded,
       guardianConsentMethod: args.guardianConsentMethod,
@@ -409,18 +435,18 @@ export const authorizeSourceRelease = mutation({
       ctx,
       transfer.sourceSchoolId,
     );
-    if (
-      transfer.sourceReleasedAt &&
-      transfer.sourceReleaseNote === args.sourceReleaseNote
-    ) {
-      return { transferId: transfer._id, status: "source_released" as const };
-    }
     await assertActiveTransferGroup(
       ctx,
       transfer.sourceSchoolId,
       transfer.destinationSchoolId,
       transfer.groupId,
     );
+    if (
+      transfer.sourceReleasedAt &&
+      transfer.sourceReleaseNote === args.sourceReleaseNote
+    ) {
+      return { transferId: transfer._id, status: "source_released" as const };
+    }
     if (
       args.sourceReleaseNote !== undefined &&
       (!args.sourceReleaseNote.trim() || args.sourceReleaseNote.length > 500)
@@ -504,6 +530,12 @@ export const acceptDestinationTransfer = mutation({
       ctx,
       transfer.destinationSchoolId,
     );
+    await assertActiveTransferGroup(
+      ctx,
+      transfer.sourceSchoolId,
+      transfer.destinationSchoolId,
+      transfer.groupId,
+    );
     const acceptanceIntent = JSON.stringify([
       args.destinationClassId,
       args.destinationSessionId,
@@ -527,12 +559,6 @@ export const acceptDestinationTransfer = mutation({
         destinationAdmissionNumber: transfer.destinationAdmissionNumber,
       };
     }
-    await assertActiveTransferGroup(
-      ctx,
-      transfer.sourceSchoolId,
-      transfer.destinationSchoolId,
-      transfer.groupId,
-    );
 
     // Two-Phase Commit Hard Gate: Must be released by source branch first
     if (transfer.status !== "source_released") {
@@ -553,17 +579,14 @@ export const acceptDestinationTransfer = mutation({
       );
     }
 
-    const sessions = await ctx.db
+    const active = await ctx.db
       .query("academicSessions")
-      .withIndex("by_school", (q) =>
-        q.eq("schoolId", transfer.destinationSchoolId),
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", transfer.destinationSchoolId).eq("isActive", true),
       )
-      .take(101);
-    const active = sessions.filter(
-      (session) => session.isActive && !session.isArchived,
-    );
+      .filter((q) => q.neq(q.field("isArchived"), true))
+      .take(2);
     if (
-      sessions.length > 100 ||
       active.length !== 1 ||
       (args.destinationSessionId && args.destinationSessionId !== active[0]._id)
     ) {
@@ -622,23 +645,22 @@ export const acceptDestinationTransfer = mutation({
       );
     }
     const sourceStudentUser = await ctx.db.get(sourceStudent.userId);
-    if (!sourceStudentUser || sourceStudentUser.isArchived) {
+    if (
+      sourceStudent.userId !== transfer.sourceStudentUserId ||
+      !sourceStudentUser ||
+      sourceStudentUser.schoolId !== transfer.sourceSchoolId ||
+      sourceStudentUser.role !== "student" ||
+      sourceStudentUser.isArchived
+    ) {
       throw new ConvexError(
-        "Source student account is unavailable for transfer",
+        "Source student account changed after review; restart the transfer",
       );
     }
 
     const now = Date.now();
-    if (manualAdmissionNumber) {
-      await claimAdmissionNumberHelper(
-        ctx,
-        transfer.destinationSchoolId,
-        destinationAdmissionNumber,
-      );
-    }
     const destinationStudentUserId = await ctx.db.insert("users", {
       schoolId: transfer.destinationSchoolId,
-      authId: `student:${transfer.destinationSchoolId}:${destinationAdmissionNumber.toLowerCase()}`,
+      authId: sourceStudentUser.authId,
       ...(sourceStudentUser.authTokenIdentifier
         ? { authTokenIdentifier: sourceStudentUser.authTokenIdentifier }
         : {}),
@@ -674,6 +696,12 @@ export const acceptDestinationTransfer = mutation({
     // Preserve the source row and all source-scoped records as historical evidence.
     await ctx.db.patch(sourceStudent._id, {
       enrollmentStatus: "transferred_out",
+      updatedAt: now,
+    });
+    await ctx.db.patch(sourceStudentUser._id, {
+      isArchived: true,
+      archivedAt: now,
+      archivedBy: authContext.userId,
       updatedAt: now,
     });
 
@@ -743,6 +771,12 @@ export const rejectOrCancelTransfer = mutation({
     if (!transfer) {
       throw new ConvexError("Transfer record not found");
     }
+    await assertActiveTransferGroup(
+      ctx,
+      transfer.sourceSchoolId,
+      transfer.destinationSchoolId,
+      transfer.groupId,
+    );
 
     // Resolve caller authority: check destination branch first, then source branch
     let actingSchoolId: Id<"schools">;
@@ -837,6 +871,12 @@ export const getTransfer = query({
       return null;
     }
     const scope = await getAuthorizedTransferScope(ctx, transfer);
+    await assertActiveTransferGroup(
+      ctx,
+      transfer.sourceSchoolId,
+      transfer.destinationSchoolId,
+      transfer.groupId,
+    );
     return redactTransferForScope(transfer, scope);
   },
 });
@@ -861,6 +901,7 @@ export const listTransfersBySchool = query({
   },
   handler: async (ctx, args) => {
     await assertTransferAuthority(ctx, args.schoolId);
+    await assertTransferPilotForSchool(ctx, args.schoolId);
 
     const page = args.direction === "source"
       ? args.status
@@ -962,13 +1003,16 @@ export const listTransfersByGroup = query({
  */
 export const getStudentTransferHistory = query({
   args: {
-    studentId: v.id("students"),
+    studentId: v.string(),
   },
   handler: async (ctx, args) => {
-    const student = await ctx.db.get(args.studentId);
+    const studentId = ctx.db.normalizeId("students", args.studentId);
+    if (!studentId) return [];
+    const student = await ctx.db.get(studentId);
     if (!student) return [];
     await assertTransferAuthority(ctx, student.schoolId);
-    const queue = [args.studentId];
+    await assertTransferPilotForSchool(ctx, student.schoolId);
+    const queue: Id<"students">[] = [student._id];
     const visited = new Set<string>();
     const visible = new Map<
       string,
@@ -1041,11 +1085,12 @@ async function assertActiveTransferGroup(
     !destination ||
     destination.status === "suspended" ||
     group?.status !== "active" ||
+    group.studentTransfersEnabled !== true ||
     sourceLink?.groupId !== groupId ||
     destinationLink?.groupId !== groupId
   ) {
     throw new ConvexError(
-      "Transfer requires two active branches in the same active school group",
+      "Transfer requires two active branches in the same active school group with the transfer pilot enabled",
     );
   }
 }
@@ -1056,6 +1101,7 @@ export const getTransferWorkspace = query({
   handler: async (ctx, { schoolId }) => {
     try {
       await assertTransferAuthority(ctx, schoolId);
+      await assertTransferPilotForSchool(ctx, schoolId);
     } catch (error) {
       if (!(error instanceof ConvexError)) throw error;
       return { allowed: false as const };
@@ -1101,7 +1147,10 @@ export const getTransferWorkspace = query({
     const classes = [...legacyActiveClasses, ...currentActiveClasses];
     const sessions = await ctx.db
       .query("academicSessions")
-      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", schoolId).eq("isActive", true),
+      )
+      .filter((q) => q.neq(q.field("isArchived"), true))
       .take(101);
     if (classes.length > 500 || sessions.length > 100)
       throw new ConvexError("School directory exceeds supported bounds");
@@ -1135,6 +1184,7 @@ export const listTransferCandidates = query({
   args: { schoolId: v.id("schools"), classId: v.id("classes") },
   handler: async (ctx, args) => {
     await assertTransferAuthority(ctx, args.schoolId);
+    await assertTransferPilotForSchool(ctx, args.schoolId);
     const classroom = await ctx.db.get(args.classId);
     if (
       !classroom ||
@@ -1142,10 +1192,25 @@ export const listTransferCandidates = query({
       classroom.isArchived
     )
       throw new ConvexError("Class unavailable in this branch");
-    const rows = await ctx.db
-      .query("students")
-      .withIndex("by_class", (q) => q.eq("classId", args.classId))
-      .take(501);
+    const activeStates = [
+      [undefined, undefined],
+      [undefined, "active" as const],
+      [false, undefined],
+      [false, "active" as const],
+    ] as const;
+    const pages = await Promise.all(activeStates.map(([isArchived, enrollmentStatus]) =>
+      ctx.db
+        .query("students")
+        .withIndex("by_school_class_archived_enrollment", (q) =>
+          q
+            .eq("schoolId", args.schoolId)
+            .eq("classId", args.classId)
+            .eq("isArchived", isArchived)
+            .eq("enrollmentStatus", enrollmentStatus),
+        )
+        .take(501),
+    ));
+    const rows = pages.flat();
     if (rows.length > 500)
       throw new ConvexError("Class exceeds supported 500-student selector");
     const candidates = [];
@@ -1178,6 +1243,7 @@ export const previewTransferNumber = query({
   args: { schoolId: v.id("schools"), classId: v.id("classes") },
   handler: async (ctx, args) => {
     await assertTransferAuthority(ctx, args.schoolId);
+    await assertTransferPilotForSchool(ctx, args.schoolId);
     const classroom = await ctx.db.get(args.classId);
     if (
       !classroom ||

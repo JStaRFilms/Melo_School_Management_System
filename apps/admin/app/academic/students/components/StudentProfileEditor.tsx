@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
+import { useDirtyForm } from "@school/shared/drafts";
 import { useMutation,useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
-import { useEffect,useMemo,useState } from "react";
+import { useCallback,useEffect,useMemo,useState } from "react";
 
 import { useAuth } from "@/AuthProvider";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
@@ -124,27 +125,34 @@ export function StudentProfileEditor({
     "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
     schoolId ? ({ schoolId } as never) : ("skip" as never),
   ) as { policy: { pattern: string } | null } | undefined;
+  const transferWorkspace = useQuery(
+    "functions/academic/transfers:getTransferWorkspace" as never,
+    schoolId ? ({ schoolId } as never) : ("skip" as never),
+  ) as { allowed: boolean } | undefined;
 
-  useEffect(() => {
-    if (!studentProfile) return;
-    setFirstName(studentProfile.firstName ?? "");
-    setLastName(studentProfile.lastName ?? "");
-    setAdmissionNumber(studentProfile.admissionNumber ?? "");
+  const resetProfileFields = useCallback((profile: StudentProfile) => {
+    setFirstName(profile.firstName ?? "");
+    setLastName(profile.lastName ?? "");
+    setAdmissionNumber(profile.admissionNumber ?? "");
     setOverrideReason("");
     setOverrideConfirmed(false);
     setOverrideCounterDecision("");
     setAdvanceCounterTo("");
-    setClassId(studentProfile.classId);
-    setHouseName(studentProfile.houseName ?? "");
-    setGender(studentProfile.gender ?? "");
-    setDateOfBirth(toDateInput(studentProfile.dateOfBirth));
-    setGuardianName(studentProfile.guardianName ?? "");
-    setGuardianPhone(studentProfile.guardianPhone ?? "");
-    setAddress(studentProfile.address ?? "");
+    setClassId(profile.classId);
+    setHouseName(profile.houseName ?? "");
+    setGender(profile.gender ?? "");
+    setDateOfBirth(toDateInput(profile.dateOfBirth));
+    setGuardianName(profile.guardianName ?? "");
+    setGuardianPhone(profile.guardianPhone ?? "");
+    setAddress(profile.address ?? "");
     setPhotoFile(null);
     setClearPhoto(false);
     setIsPhotoProcessing(false);
-  }, [studentProfile]);
+  }, []);
+
+  useEffect(() => {
+    if (studentProfile) resetProfileFields(studentProfile);
+  }, [resetProfileFields, studentProfile]);
 
   const previewUrl = useMemo(() => {
     if (photoFile) return URL.createObjectURL(photoFile);
@@ -157,6 +165,30 @@ export function StudentProfileEditor({
     studentProfile &&
       admissionNumber.trim() !== (studentProfile.admissionNumber ?? ""),
   );
+  const profileDirty = Boolean(studentProfile && (
+    firstName !== (studentProfile.firstName ?? "") ||
+    lastName !== (studentProfile.lastName ?? "") ||
+    admissionNumber !== studentProfile.admissionNumber ||
+    classId !== studentProfile.classId ||
+    houseName !== (studentProfile.houseName ?? "") ||
+    gender !== (studentProfile.gender ?? "") ||
+    dateOfBirth !== toDateInput(studentProfile.dateOfBirth) ||
+    guardianName !== (studentProfile.guardianName ?? "") ||
+    guardianPhone !== (studentProfile.guardianPhone ?? "") ||
+    address !== (studentProfile.address ?? "") ||
+    photoFile !== null || clearPhoto ||
+    overrideReason !== "" || overrideConfirmed ||
+    overrideCounterDecision !== "" || advanceCounterTo !== ""
+  ));
+  useDirtyForm({
+    name: "Student profile edits",
+    isDirty: profileDirty || isSaving || isArchiving || isPhotoProcessing,
+    discard: () => {
+      if (isSaving || isArchiving || isPhotoProcessing)
+        throw new Error("Wait for the student profile operation to finish before leaving.");
+      if (studentProfile) resetProfileFields(studentProfile);
+    },
+  });
   const admissionNumberOverrideReady =
     !admissionNumberChanged ||
     hasCompleteAdmissionNumberOverride({
@@ -286,7 +318,7 @@ export function StudentProfileEditor({
 
   return (
     <div className="space-y-6 pb-10">
-      {studentId && <Link className="block text-sm underline" href={`/academic/students/transfers?student=${encodeURIComponent(studentId)}`}>Within-group transfer history</Link>}
+      {studentId && transferWorkspace?.allowed && <Link className="block text-sm underline" href={`/academic/students/transfers?student=${encodeURIComponent(studentId)}`}>Within-group transfer history</Link>}
       {/* Tab Switcher - Only in Sidebar/Default Desktop mode */}
       {isSidebar && (
         <div className="flex p-1 bg-slate-100/60 rounded-xl mb-2">

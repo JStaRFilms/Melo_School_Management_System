@@ -102,6 +102,7 @@ async function setupTestHarness(
       slug: "olive-crest-group",
       proprietorPersonId: proprietorPersonA,
       status: "active",
+      studentTransfersEnabled: true,
       settingsVersion: 1,
       createdAt: now,
       updatedAt: now,
@@ -122,6 +123,7 @@ async function setupTestHarness(
       slug: "cedarwood-group",
       proprietorPersonId: proprietorPersonB,
       status: "active",
+      studentTransfersEnabled: true,
       settingsVersion: 1,
       createdAt: now,
       updatedAt: now,
@@ -585,6 +587,12 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
       acceptResult.destinationAdmissionNumber,
     );
     expect(destinationStudent?.enrollmentStatus).toBe("active");
+    const [sourceStudentUser, destinationStudentUser] = await t.run(async (ctx) => [
+      await ctx.db.get(harness.studentUserId),
+      destinationStudent ? await ctx.db.get(destinationStudent.userId) : null,
+    ]);
+    expect(sourceStudentUser?.isArchived).toBe(true);
+    expect(destinationStudentUser?.authId).toBe(sourceStudentUser?.authId);
 
     // Immutability Check (MX-15 §4): Source branch historical records retain sourceSchoolId
     const historicalInvoice = await t.run(async (ctx) => {
@@ -901,6 +909,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
           sourceSchoolId: harness.schoolA,
           destinationSchoolId: harness.schoolB,
           studentId: harness.studentId,
+          sourceStudentUserId: harness.studentUserId,
           studentName: `Student ${index}`,
           guardianConsentRecorded: true,
           guardianConsentMethod: "signed_form",
@@ -1123,6 +1132,52 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
 });
 
 describe("U6 routed workflow contracts", () => {
+  it("keeps the transfer pilot default-off and normalizes invalid history IDs", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const source = t.withIdentity(h.adminAIdentity);
+    await t.run((ctx) => ctx.db.patch(h.groupA, { studentTransfersEnabled: undefined }));
+    expect(await source.query(transfersApi.getTransferWorkspace, { schoolId: h.schoolA })).toEqual({ allowed: false });
+    await expect(source.mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Written consent",
+    })).rejects.toThrow("not enabled");
+    expect(await source.query(getStudentTransferHistoryRef, { studentId: "not-a-convex-id" })).toEqual([]);
+  });
+
+  it("does not let finalized transfer history exhaust active-transfer checks", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 501; index += 1) {
+        await ctx.db.insert("studentTransfers", {
+          groupId: h.groupA,
+          sourceSchoolId: h.schoolA,
+          destinationSchoolId: h.schoolB,
+          studentId: h.studentId,
+          sourceStudentUserId: h.studentUserId,
+          studentName: "Historical student",
+          guardianConsentRecorded: true,
+          guardianConsentMethod: "Written",
+          status: "cancelled",
+          cancellationReason: "Historical attempt",
+          createdAt: index,
+          updatedAt: index,
+        });
+      }
+    });
+    await expect(t.withIdentity(h.adminAIdentity).mutation(initiateStudentTransferRef, {
+      sourceSchoolId: h.schoolA,
+      destinationSchoolId: h.schoolB,
+      studentId: h.studentId,
+      guardianConsentRecorded: true,
+      guardianConsentMethod: "Written consent",
+    })).resolves.toMatchObject({ status: "initiated" });
+  });
+
   it("replays initiation/release/accept atomically, rejects altered intent and keeps claims", async () => {
     const t = convexTest(schema, modules);
     const h = await setupTestHarness(t);
@@ -1246,6 +1301,25 @@ describe("U6 routed workflow contracts", () => {
           createdAt: index,
           updatedAt: index,
         });
+        await ctx.db.insert("students", {
+          schoolId: h.schoolA,
+          classId: h.classAId,
+          userId: h.studentUserId,
+          admissionNumber: `HIST-${index}`,
+          enrollmentStatus: "transferred_out",
+          createdAt: index,
+          updatedAt: index,
+        });
+        await ctx.db.insert("academicSessions", {
+          schoolId: h.schoolA,
+          name: `Archived session ${index}`,
+          startDate: index * 2,
+          endDate: index * 2 + 1,
+          isActive: false,
+          isArchived: true,
+          createdAt: index,
+          updatedAt: index,
+        });
       }
     });
     const workspace = await source.query(transfersApi.getTransferWorkspace, {
@@ -1340,9 +1414,22 @@ describe("U6 routed workflow contracts", () => {
         destinationSessionId: session,
       }),
     ).rejects.toThrow("active academic session");
-    await t.run(async (ctx) =>
-      ctx.db.patch(h.studentId, { enrollmentStatus: "withdrawn" }),
-    );
+    const foreignUserId = await t.run(async (ctx) => {
+      const membership = await ctx.db.get(h.adminBMembershipId);
+      if (!membership?.legacyUserId) throw new Error("Missing destination operator");
+      await ctx.db.patch(h.studentId, { userId: membership.legacyUserId });
+      return membership.legacyUserId;
+    });
+    await expect(
+      destination.mutation(acceptDestinationTransferRef, {
+        transferId,
+        destinationClassId: h.classBId,
+      }),
+    ).rejects.toThrow("account changed after review");
+    await t.run(async (ctx) => {
+      if (!foreignUserId) throw new Error("Missing foreign user");
+      await ctx.db.patch(h.studentId, { userId: h.studentUserId, enrollmentStatus: "withdrawn" });
+    });
     await expect(
       destination.mutation(acceptDestinationTransferRef, {
         transferId,
@@ -1398,6 +1485,7 @@ describe("U6 routed workflow contracts", () => {
         sourceSchoolId: h.schoolB,
         destinationSchoolId: h.schoolC,
         studentId: h.studentId,
+        sourceStudentUserId: h.studentUserId,
         studentName: "Unrelated student",
         guardianConsentRecorded: true,
         guardianConsentMethod: "Written",

@@ -65,13 +65,9 @@ function TransferWorkspace({
   const params = useSearchParams();
   const { requestDeparture } = useDepartureGuard();
   const [selected, setSelected] = useState<Id<"studentTransfers">>();
-  // IDs from links are untrusted input; Convex validators and history authority check them.
-  const [historyStudent, setHistoryStudent] = useState<
-    Id<"students"> | undefined
-  >(() =>
-    params.get("student")
-      ? (params.get("student") as Id<"students">)
-      : undefined,
+  // IDs from links are untrusted input; the history query normalizes strings without throwing.
+  const [historyStudent, setHistoryStudent] = useState<string | undefined>(
+    () => params.get("student") ?? undefined,
   );
   const outgoing = usePaginatedQuery(
     transfers.listTransfersBySchool,
@@ -931,7 +927,7 @@ function Timeline({ record }: { record: Transfer }) {
     </ol>
   );
 }
-function History({ studentId }: { studentId: Id<"students"> }) {
+function History({ studentId }: { studentId: string }) {
   const history = useQuery(transfers.getStudentTransferHistory, { studentId });
   return (
     <section

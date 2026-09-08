@@ -996,6 +996,7 @@ export default defineSchema({
     slug: v.string(),
     proprietorPersonId: v.id("persons"),
     status: v.union(v.literal("active"), v.literal("archived")),
+    studentTransfersEnabled: v.optional(v.boolean()),
     settingsVersion: v.optional(v.number()),
     gradingDefault: v.optional(v.object({
       schoolId: v.id("schools"),
@@ -1326,6 +1327,7 @@ export default defineSchema({
     .index("by_class", ["classId"])
     .index("by_family", ["familyId"])
     .index("by_school_and_class", ["schoolId", "classId"])
+    .index("by_school_class_archived_enrollment", ["schoolId", "classId", "isArchived", "enrollmentStatus"])
     .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
     .index("by_photo_storage", ["photoStorageId"])
     .index("by_school_and_user", ["schoolId", "userId"])
@@ -1347,6 +1349,7 @@ export default defineSchema({
     sourceSchoolId: v.id("schools"),
     destinationSchoolId: v.id("schools"),
     studentId: v.id("students"),
+    sourceStudentUserId: v.id("users"),
     studentName: v.string(),
     guardianConsentRecorded: v.boolean(),
     guardianConsentMethod: v.string(),
@@ -1385,6 +1388,7 @@ export default defineSchema({
     .index("by_destination_school", ["destinationSchoolId"])
     .index("by_destination_school_and_status", ["destinationSchoolId", "status"])
     .index("by_student", ["studentId"])
+    .index("by_student_and_status", ["studentId", "status"])
     .index("by_destination_student", ["destinationStudentId"])
     .index("by_source_request", ["sourceSchoolId", "requestKey"]),
 

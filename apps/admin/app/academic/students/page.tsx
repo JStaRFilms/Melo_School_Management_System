@@ -91,6 +91,10 @@ function StudentsPageContent() {
   const sessions = useQuery(
     "functions/academic/academicSetup:listSessions" as never
   ) as SessionSummary[] | undefined;
+  const transferWorkspace = useQuery(
+    "functions/academic/transfers:getTransferWorkspace" as never,
+    schoolId ? ({ schoolId } as never) : ("skip" as never),
+  ) as { allowed: boolean } | undefined;
 
   const createStudent = useMutation(
     "functions/academic/studentEnrollment:createStudent" as never
@@ -1097,7 +1101,7 @@ function StudentsPageContent() {
                       ]}
                     />
                     <div className="flex items-center gap-2">
-                      <Link href="/academic/students/transfers" className="text-xs font-semibold underline">Within-group transfers</Link>
+                      {transferWorkspace?.allowed && <Link href="/academic/students/transfers" className="text-xs font-semibold underline">Within-group transfers</Link>}
                       <Link 
                         href="/students/import"
                         className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3.5 py-1.5 rounded-xl border border-indigo-200 transition-colors shadow-2xs"
