@@ -37,9 +37,18 @@ async function fixture() {
     await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|source-share", ["assets.group_share.manage"]);
     await seedReviewedTenantOperatorWithCapabilities(ctx, [otherId], "test|recipient-library", ["assets.library.view"]);
     await seedReviewedTenantOperatorWithCapabilities(ctx, [outsiderId], "test|outsider-share", ["assets.group_share.manage"]);
+    await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|restore-only", ["assets.library.view", "assets.restore"]);
+    await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|hold-only", ["assets.library.view", "assets.holds.apply"]);
     return { schoolId, otherId, outsiderId, assetId, storageId, size: metadata.size };
   });
-  return { t, p: t.withIdentity({ tokenIdentifier: "test|reviewed", subject: "reviewed" }), principal: t.withIdentity({ tokenIdentifier: "test|admin", subject: "admin" }), ...ids };
+  return {
+    t,
+    p: t.withIdentity({ tokenIdentifier: "test|reviewed", subject: "reviewed" }),
+    principal: t.withIdentity({ tokenIdentifier: "test|admin", subject: "admin" }),
+    restorer: t.withIdentity({ tokenIdentifier: "test|restore-only", subject: "restore-only" }),
+    holdOperator: t.withIdentity({ tokenIdentifier: "test|hold-only", subject: "hold-only" }),
+    ...ids,
+  };
 }
 it("authorizes every branch, projects no storage references and keeps delivery closed for clean flags", async () => {
   const { t, p, schoolId, otherId, assetId } = await fixture();
@@ -74,6 +83,16 @@ it("archive is active charged storage, Trash follows policy and restore preserve
   const restored = await p.query(a.inspectAsset, { schoolId, assetId });
   expect(restored.archivedAt).not.toBeNull(); expect(restored.ownerName).toBe("Principal"); expect(restored.shares).toHaveLength(1);
 });
+it("allows independently delegated restore and hold operators to use their Trash actions", async () => {
+  const { p, restorer, holdOperator, schoolId, assetId } = await fixture();
+  await holdOperator.mutation(a.applyRetentionHold, { schoolId, assetId, holdReason: "Independent compliance review" });
+  await p.mutation(a.trashAsset, { schoolId, assetId });
+  const pageArgs = { schoolId, workspace: "trash" as const, paginationOpts: { numItems: 30, cursor: null } };
+  expect((await restorer.query(a.listAssets, pageArgs)).page).toHaveLength(1);
+  expect(await restorer.query(a.inspectAsset, { schoolId, assetId })).toMatchObject({ isTrashed: true });
+  await restorer.mutation(a.restoreAsset, { schoolId, assetId });
+});
+
 it("filters library and archive state before pagination", async () => {
   const { t, p, schoolId, assetId } = await fixture();
   await t.run(async (ctx) => {

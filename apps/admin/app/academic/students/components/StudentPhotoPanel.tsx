@@ -222,14 +222,16 @@ export function StudentPhotoPanel({
                 <span>Change</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleRemovePhoto}
-              title="Remove Photo"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0 shadow-sm"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
+            {uploadAvailable && (
+              <button
+                type="button"
+                onClick={handleRemovePhoto}
+                title="Remove Photo"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0 shadow-sm"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
           </div>
 
           {/* Collapsible Crop Adjuster */}

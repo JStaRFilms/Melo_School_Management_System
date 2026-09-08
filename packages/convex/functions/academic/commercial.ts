@@ -523,6 +523,17 @@ function period(start: number, end: number) {
     );
 }
 
+function annualAnniversary(start: number): number {
+  const date = new Date(start);
+  const nextYear = date.getUTCFullYear() + 1;
+  const month = date.getUTCMonth();
+  const day = Math.min(
+    date.getUTCDate(),
+    new Date(Date.UTC(nextYear, month + 1, 0)).getUTCDate(),
+  );
+  return Date.UTC(nextYear, month, day);
+}
+
 export const publishRateVersion = mutation({
   args: {
     journalSchoolId: v.id("schools"),
@@ -718,6 +729,28 @@ export const createContract = mutation({
       throw new ConvexError("Explain the setup handling (8–240 characters)");
     const rate = args.overrideRate ?? version.rate;
     validateRate(rate);
+    if (rate.cadence === "termly" && rate.proration === "none") {
+      const terms = await ctx.db
+        .query("academicTerms")
+        .withIndex("by_school_and_start_date", (q) =>
+          q
+            .eq("schoolId", args.schoolId)
+            .gte("startDate", args.effectiveFrom)
+            .lt("startDate", args.effectiveTo),
+        )
+        .take(101);
+      if (terms.length > 100)
+        throw new ConvexError("Academic term history exceeds the contract review bound");
+      const contractStartDay = Math.floor(args.effectiveFrom / 86400000);
+      const contractEndDay = Math.floor(args.effectiveTo / 86400000);
+      const hasBillableTerm = terms.some(
+        (term) =>
+          Math.floor(term.startDate / 86400000) >= contractStartDay &&
+          Math.floor(term.endDate / 86400000) + 1 <= contractEndDay,
+      );
+      if (!hasBillableTerm)
+        throw new ConvexError("A no-proration termly contract must fully contain a configured academic term");
+    }
     const contracts = await ctx.db
       .query("commercialContracts")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
@@ -789,14 +822,12 @@ export const issueSubscriptionInvoice = mutation({
     const contract = await ctx.db.get(args.contractId);
     if (!contract || contract.schoolId !== args.schoolId)
       throw new ConvexError("Contract unavailable");
-    const periodDays = (args.periodEnd - args.periodStart) / 86400000;
     if (
       contract.rate.cadence === "annually" &&
-      periodDays !== 365 &&
-      periodDays !== 366
+      args.periodEnd !== annualAnniversary(args.periodStart)
     )
       throw new ConvexError(
-        "Annual-upfront invoices require a 365/366-day reference period",
+        "Annual-upfront invoices require the calendar-year anniversary of the reference start",
       );
     const start = Math.max(args.periodStart, contract.effectiveFrom),
       end = Math.min(args.periodEnd, contract.effectiveTo);

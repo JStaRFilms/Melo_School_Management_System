@@ -167,7 +167,8 @@ it("preserves logo storage referenced by an immutable issued report", async () =
     report,
   }));
 
-  await expect(f.operator.mutation(a.schoolBranding.removeSchoolLogo, {})).rejects.toThrow("conflicting ownership");
+  await expect(f.operator.mutation(a.schoolBranding.removeSchoolLogo, {})).resolves.toBeNull();
+  expect((await f.t.run((ctx) => ctx.db.get(f.schoolId)))?.logoStorageId).toBeUndefined();
   expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.historicalLogoStorageId)))).toBe(true);
   expect(await f.operator.query(a.reportCards.getStudentReportCard, {
     studentId: f.studentId,

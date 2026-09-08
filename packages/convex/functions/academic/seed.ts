@@ -1,6 +1,6 @@
 import { internalMutation, internalQuery } from "../../_generated/server";
 import type { MutationCtx } from "../../_generated/server";
-import type { Id, TableNames } from "../../_generated/dataModel";
+import type { Doc, Id, TableNames } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import {
   DEMO_BANDS,
@@ -174,15 +174,19 @@ export const clearDemoSchoolBatchInternal = internalMutation({
       .query("subscriptionInvoices")
       .withIndex("by_school", (q) => q.eq("schoolId", school._id))
       .take(75);
+    const invoiceStudents: Doc<"subscriptionInvoiceStudents">[] = [];
+    const invoiceStudentBatchSize = 1000;
     for (const invoice of invoices) {
-      const students = await ctx.db
+      const remaining = invoiceStudentBatchSize - invoiceStudents.length;
+      if (remaining === 0) break;
+      invoiceStudents.push(...await ctx.db
         .query("subscriptionInvoiceStudents")
         .withIndex("by_invoiceId", (q) => q.eq("invoiceId", invoice._id))
-        .take(75);
-      if (students.length > 0) {
-        for (const student of students) await ctx.db.delete(student._id);
-        return { complete: false, deletedCount: students.length, storageIds: [] };
-      }
+        .take(remaining));
+    }
+    if (invoiceStudents.length > 0) {
+      for (const student of invoiceStudents) await ctx.db.delete(student._id);
+      return { complete: false, deletedCount: invoiceStudents.length, storageIds: [] };
     }
 
     const ownedShares = await ctx.db

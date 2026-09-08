@@ -618,7 +618,7 @@ export function StudentFirstOnboardingForm({
                   </label>
                   <StudentPhotoPanel
                     name={fullNameDisplay}
-                    disabled
+                    uploadAvailable={false}
                     previewUrl={photoPreviewUrl}
                     onPhotoChange={onPhotoChange}
                     onRemovePhoto={onRemovePhoto}

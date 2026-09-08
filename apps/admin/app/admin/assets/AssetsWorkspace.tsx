@@ -12,6 +12,7 @@ type Area = "library" | "archive" | "trash";
 const control = "rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 disabled:opacity-50";
 const bytes = (n: number | null) => n === null ? "not recorded" : `${n.toLocaleString()} bytes`;
 const date = (n: number | null) => n === null ? "not recorded" : new Date(n).toLocaleString();
+const canViewTrash = (capabilities: string[]) => ["assets.trash.manage", "assets.restore", "assets.holds.apply", "assets.holds.remove", "assets.permanent_delete"].some(capability => capabilities.includes(capability));
 
 export default function AssetsWorkspace({ area }: { area: Area }) {
   const { workspaceAccess } = useAuth();
@@ -20,7 +21,7 @@ export default function AssetsWorkspace({ area }: { area: Area }) {
   const workspace = useQuery(assets.getWorkspace, schoolId && allowed ? { schoolId } : "skip");
   if (allowed === false) return <p role="alert">Asset library access denied.</p>;
   if (!schoolId || !workspace) return <p role="status">Loading asset workspace…</p>;
-  if (area === "trash" && !workspace.capabilities.includes("assets.trash.manage")) return <p role="alert">Trash access denied. <Link href="/admin/assets">Return to library</Link></p>;
+  if (area === "trash" && !canViewTrash(workspace.capabilities)) return <p role="alert">Trash access denied. <Link href="/admin/assets">Return to library</Link></p>;
   if (area === "archive" && !workspace.capabilities.includes("assets.archive.manage")) return <p role="alert">Archive access denied. <Link href="/admin/assets">Return to library</Link></p>;
   return <Library key={`${schoolId}:${area}`} schoolId={schoolId} workspace={workspace} area={area} />;
 }
@@ -41,7 +42,7 @@ function Library({ schoolId, workspace, area }: { schoolId: Id<"schools">; works
     <nav aria-label="Asset workspaces" className="flex flex-wrap gap-4">
       <Link aria-current={area === "library" ? "page" : undefined} href="/admin/assets">Library</Link>
       {workspace.capabilities.includes("assets.archive.manage") && <Link aria-current={area === "archive" ? "page" : undefined} href="/admin/assets/archive">Asset Archive</Link>}
-      {workspace.capabilities.includes("assets.trash.manage") && <Link aria-current={area === "trash" ? "page" : undefined} href="/admin/assets/trash">Trash</Link>}
+      {canViewTrash(workspace.capabilities) && <Link aria-current={area === "trash" ? "page" : undefined} href="/admin/assets/trash">Trash</Link>}
     </nav>
     <p>Private branch-owned files, separate from lesson knowledge. Antivirus is unconfigured: no file is cleared for download, even with a recorded clean flag. No public links.</p>
     <section aria-label="Storage accounting" className="space-y-1 border-y py-3">
@@ -167,7 +168,7 @@ function Inspector({ schoolId, assetId, capabilities, close }: { schoolId: Id<"s
     <h3 className="font-semibold">Retention holds</h3>
     {!asset.holds.length && <p>No retention hold recorded.</p>}
     <ul>{asset.holds.map(h => <li key={h._id}>{h.reason} · {date(h.appliedAt)} {can("assets.holds.remove") ? <button className={control} disabled={busy} onClick={() => void run(() => release({ schoolId, holdId: h._id }))}>Release hold: {h.reason}</button> : <span>Proprietor hold-removal authority required.</span>}</li>)}</ul>
-    {can("assets.holds.apply") && can("assets.trash.manage") && <div className="space-y-2"><label>Retention reason<input className={`${control} w-full`} value={reason} maxLength={200} onChange={e => setReason(e.target.value)} /></label><button className={control} disabled={busy || !reason.trim()} onClick={() => void run(() => hold({ ...target, holdReason: reason }))}>Apply retention hold</button></div>}
+    {can("assets.holds.apply") && <div className="space-y-2"><label>Retention reason<input className={`${control} w-full`} value={reason} maxLength={200} onChange={e => setReason(e.target.value)} /></label><button className={control} disabled={busy || !reason.trim()} onClick={() => void run(() => hold({ ...target, holdReason: reason }))}>Apply retention hold</button></div>}
     {asset.isTrashed && can("assets.permanent_delete") && <div className="space-y-2 border-t pt-3"><p>Permanent deletion cannot be undone. Exact target: {asset.fileName} ({assetId}). Active holds block deletion. Existing deadline: {date(asset.purgeScheduledAt)}.</p><label>Type PURGE {asset.fileName}<input className={`${control} w-full`} autoComplete="off" value={confirmation} onChange={e => setConfirmation(e.target.value)} /></label><button className={control} disabled={busy || !!asset.holds.length || !asset.accountingReady || confirmation !== `PURGE ${asset.fileName}`} onClick={() => void run(() => purge({ ...target, confirmation }), true)}>Permanently purge this asset</button></div>}
     <h3 className="font-semibold">Explicit branch sharing</h3>
     <p>Group membership alone grants nothing. Metadata sharing never enables file downloads. Restore preserves these grants.</p>

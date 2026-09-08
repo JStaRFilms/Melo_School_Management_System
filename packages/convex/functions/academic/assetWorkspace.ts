@@ -6,6 +6,16 @@ import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 
 type Context = QueryCtx | MutationCtx;
+const trashWorkspaceCapabilities = [
+  "assets.trash.manage",
+  "assets.restore",
+  "assets.holds.apply",
+  "assets.holds.remove",
+  "assets.permanent_delete",
+] as const;
+function canViewTrash(capabilities: string[]): boolean {
+  return trashWorkspaceCapabilities.some(capability => capabilities.includes(capability));
+}
 async function owned(ctx: Context, schoolId: Id<"schools">, assetId: Id<"schoolAssets">) {
   const asset = await ctx.db.get(assetId);
   if (!asset || asset.schoolId !== schoolId) throw new ConvexError("Asset not found in this branch");
@@ -59,8 +69,9 @@ export const getWorkspace = query({
 export const listAssets = query({
   args: { schoolId: v.id("schools"), workspace: v.union(v.literal("library"), v.literal("archive"), v.literal("trash")), paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, args.schoolId, "assets.library.view");
-    if (args.workspace === "trash") await requireCapability(ctx, args.schoolId, "assets.trash.manage");
+    const actor = await requireCapability(ctx, args.schoolId, "assets.library.view");
+    if (args.workspace === "trash" && !canViewTrash(actor.effectiveCapabilities))
+      throw new ConvexError("Forbidden: Trash workspace authority required");
     if (args.workspace === "archive") await requireCapability(ctx, args.schoolId, "assets.archive.manage");
     const page = args.workspace === "trash"
       ? await ctx.db
@@ -84,9 +95,10 @@ export const listAssets = query({
 export const inspectAsset = query({
   args: { schoolId: v.id("schools"), assetId: v.id("schoolAssets") },
   handler: async (ctx, args) => {
-    await requireCapability(ctx, args.schoolId, "assets.library.view");
+    const actor = await requireCapability(ctx, args.schoolId, "assets.library.view");
     const asset = await owned(ctx, args.schoolId, args.assetId);
-    if (asset.isTrashed) await requireCapability(ctx, args.schoolId, "assets.trash.manage");
+    if (asset.isTrashed && !canViewTrash(actor.effectiveCapabilities))
+      throw new ConvexError("Forbidden: Trash workspace authority required");
     else if (asset.archivedAt !== undefined) await requireCapability(ctx, args.schoolId, "assets.archive.manage");
     const [holds, shares, candidates, owner] = await Promise.all([
       ctx.db.query("assetRetentionHolds").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51),

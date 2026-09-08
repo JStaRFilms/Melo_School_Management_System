@@ -426,6 +426,8 @@ it("requires the latest catalog version effective at contract start", async () =
     schoolId: f.otherSchoolId,
     effectiveFrom: today + 2 * day,
     effectiveTo: today + 30 * day,
+    overrideRate: { ...rate, proration: "daily" as const },
+    overrideReason: "Reviewed daily proration",
     setupHandling: "waived" as const,
   };
 
@@ -438,6 +440,39 @@ it("requires the latest catalog version effective at contract start", async () =
       rateVersionId: latestRateVersionId,
     }),
   ).resolves.toBeDefined();
+});
+
+it("rejects a no-proration termly contract with no billable configured term", async () => {
+  const f = await fixture();
+  await expect(
+    f.platform.mutation(commercial.createContract, {
+      ...f.contractArgs,
+      schoolId: f.otherSchoolId,
+      effectiveFrom: today + 2 * day,
+      effectiveTo: today + 30 * day,
+      setupHandling: "waived",
+    }),
+  ).rejects.toThrow("must fully contain a configured academic term");
+});
+
+it("rejects annual reference periods that do not end on their calendar anniversary", async () => {
+  const f = await fixture();
+  const contractId = await f.platform.mutation(commercial.createContract, {
+    ...f.contractArgs,
+    schoolId: f.otherSchoolId,
+    overrideRate: { ...rate, cadence: "annually", proration: "daily" },
+    overrideReason: "Reviewed annual daily proration",
+    setupHandling: "waived",
+  });
+  await expect(
+    f.platform.mutation(commercial.issueSubscriptionInvoice, {
+      ...f.invoiceArgs,
+      schoolId: f.otherSchoolId,
+      contractId,
+      periodStart: Date.UTC(2025, 0, 1),
+      periodEnd: Date.UTC(2026, 0, 2),
+    }),
+  ).rejects.toThrow("calendar-year anniversary");
 });
 
 it("allows adjacent contracts to invoice non-overlapping spans of one reference period", async () => {

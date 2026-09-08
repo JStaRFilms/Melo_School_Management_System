@@ -3,6 +3,7 @@ import {
   getUnboundStorageUrl,
   secureUploadUnavailable,
 } from "./assetStorageBoundary";
+import type { Id } from "../../_generated/dataModel";
 import { mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import {
@@ -208,12 +209,19 @@ export const removeSchoolLogo = mutation({
       throw new ConvexError("School not found");
     }
 
+    let deleteStorageId: Id<"_storage"> | undefined;
     if (school.logoStorageId) {
-      await assertStorageClaimedOnlyBy(ctx, school.logoStorageId, {
-        purpose: "schoolLogo",
-        ownerId: String(school._id),
-      });
-      await ctx.storage.delete(school.logoStorageId);
+      const issuedReportReference = await ctx.db
+        .query("issuedReportCards")
+        .withIndex("by_school_logo_storage", (q) => q.eq("schoolLogoStorageId", school.logoStorageId))
+        .first();
+      if (!issuedReportReference) {
+        await assertStorageClaimedOnlyBy(ctx, school.logoStorageId, {
+          purpose: "schoolLogo",
+          ownerId: String(school._id),
+        });
+        deleteStorageId = school.logoStorageId;
+      }
     }
 
     await ctx.db.patch(schoolId, {
@@ -223,6 +231,7 @@ export const removeSchoolLogo = mutation({
       logoUpdatedAt: undefined,
       updatedAt: Date.now(),
     });
+    if (deleteStorageId) await ctx.storage.delete(deleteStorageId);
 
     return null;
   },

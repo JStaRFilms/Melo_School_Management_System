@@ -580,13 +580,12 @@ export const applyRetentionHold = mutation({
     userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    const actor = await requireCapability(ctx, args.schoolId, "assets.trash.manage");
+    const actor = await requireCapability(ctx, args.schoolId, "assets.holds.apply");
     const asset = await ctx.db.get(args.assetId);
     if (!asset || asset.schoolId !== args.schoolId) {
       throw new ConvexError("Asset not found");
     }
 
-    await requireCapability(ctx, args.schoolId, "assets.holds.apply");
     if (!args.holdReason.trim() || args.holdReason.length > 200 || (args.notes?.length ?? 0) > 1000) throw new ConvexError("A bounded retention reason is required");
     const now = Date.now();
     const holdId = await ctx.db.insert("assetRetentionHolds", {
