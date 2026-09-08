@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useId, useMemo, useState, useDeferredValue, type FormEvent, type ReactNode, type RefObject } from "react";
 import { useQuery } from "convex/react";
 import {
   ArrowLeft,
@@ -17,13 +17,18 @@ import {
   Users,
   AlertCircle,
   RotateCcw,
-  Sparkles,
   Check,
 } from "lucide-react";
 import Link from "next/link";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
+import { cleanEmailInput, cleanPhoneInput, MobileProgressIndicator } from "@school/shared";
+import type { DraftStatus } from "@school/shared/drafts";
+import {
+  AdmissionNumberGovernanceFields,
+  hasCompleteAdmissionNumberOverride,
+  type AdmissionCounterDecision,
+} from "../components/AdmissionNumberGovernanceFields";
 import { StudentPhotoPanel } from "../components/StudentPhotoPanel";
 import type { ClassSummary } from "../components/types";
 import { cn } from "@/utils";
@@ -45,6 +50,15 @@ type StudentFirstOnboardingFormProps = {
   firstName: string;
   lastName: string;
   admissionNumber: string;
+  admissionNumberMode: "automatic" | "manual";
+  numberingPolicyConfigured: boolean;
+  numberingPolicyLoading: boolean;
+  numberingPreview: string | null;
+  canOverrideAdmissionNumber: boolean;
+  overrideReason: string;
+  overrideConfirmed: boolean;
+  overrideCounterDecision: AdmissionCounterDecision;
+  advanceCounterTo: string;
   gender: string;
   houseName: string;
   dateOfBirth: string;
@@ -65,12 +79,20 @@ type StudentFirstOnboardingFormProps = {
   photoPreviewUrl: string | null;
   photoResetKey: number;
   isSubmitting: boolean;
+  numberingReady: boolean;
+  draftStatus: DraftStatus;
+  draftLastSavedAt: number | null;
   firstNameInputRef: RefObject<HTMLInputElement>;
   onFirstNameChange: (value: string) => void;
   onFirstNameBlur: (value: string) => void;
   onLastNameChange: (value: string) => void;
   onLastNameBlur: (value: string) => void;
   onAdmissionNumberChange: (value: string) => void;
+  onAdmissionNumberModeChange: (value: "automatic" | "manual") => void;
+  onOverrideReasonChange: (value: string) => void;
+  onOverrideConfirmedChange: (value: boolean) => void;
+  onOverrideCounterDecisionChange: (value: AdmissionCounterDecision) => void;
+  onAdvanceCounterToChange: (value: string) => void;
   onGenderChange: (value: string) => void;
   onHouseNameChange: (value: string) => void;
   onDateOfBirthChange: (value: string) => void;
@@ -103,6 +125,15 @@ export function StudentFirstOnboardingForm({
   firstName,
   lastName,
   admissionNumber,
+  admissionNumberMode,
+  numberingPolicyConfigured,
+  numberingPolicyLoading,
+  numberingPreview,
+  canOverrideAdmissionNumber,
+  overrideReason,
+  overrideConfirmed,
+  overrideCounterDecision,
+  advanceCounterTo,
   gender,
   houseName,
   dateOfBirth,
@@ -123,12 +154,20 @@ export function StudentFirstOnboardingForm({
   photoPreviewUrl,
   photoResetKey,
   isSubmitting,
+  numberingReady,
+  draftStatus,
+  draftLastSavedAt,
   firstNameInputRef,
   onFirstNameChange,
   onFirstNameBlur,
   onLastNameChange,
   onLastNameBlur,
   onAdmissionNumberChange,
+  onAdmissionNumberModeChange,
+  onOverrideReasonChange,
+  onOverrideConfirmedChange,
+  onOverrideCounterDecisionChange,
+  onAdvanceCounterToChange,
   onGenderChange,
   onHouseNameChange,
   onDateOfBirthChange,
@@ -152,6 +191,7 @@ export function StudentFirstOnboardingForm({
   onReset,
   onSubmit,
 }: StudentFirstOnboardingFormProps) {
+  const admissionNumberSourceName = useId();
   const [classSearch, setClassSearch] = useState("");
   const [isClassDropdownOpen, setIsClassDropdownOpen] = useState(false);
   const deferredClassSearch = useDeferredValue(classSearch);
@@ -190,10 +230,23 @@ export function StudentFirstOnboardingForm({
 
   const todayDateString = new Date().toISOString().split("T")[0];
 
+  const governedManualNumber =
+    numberingPolicyConfigured && admissionNumberMode === "manual";
+  const admissionNumberReady = numberingPolicyConfigured
+    ? admissionNumberMode === "automatic" ||
+      (Boolean(admissionNumber.trim()) &&
+        hasCompleteAdmissionNumberOverride({
+          canOverride: canOverrideAdmissionNumber,
+          confirmed: overrideConfirmed,
+          reason: overrideReason,
+          counterDecision: overrideCounterDecision,
+          advanceCounterTo,
+        }))
+    : Boolean(admissionNumber.trim());
   const hasCoreIdentity = Boolean(
-    firstName.trim() && lastName.trim() && admissionNumber.trim() && gender.trim()
+    firstName.trim() && lastName.trim() && admissionNumberReady && gender.trim()
   );
-  const hasClassPlacement = Boolean(selectedClassId);
+  const hasClassPlacement = Boolean(selectedClassId && numberingReady);
   const hasParentOrGuardian = Boolean(
     guardianName.trim() || parentFirstName.trim() || parentEmail.trim()
   );
@@ -201,21 +254,38 @@ export function StudentFirstOnboardingForm({
     provisionStudentPortalAccess || provisionParentPortalAccess
   );
 
-  const canSubmit = hasClassPlacement && hasCoreIdentity && !isPhotoProcessing;
-
-  const completedStepsCount = [
-    hasClassPlacement,
-    hasCoreIdentity,
-    hasParentOrGuardian,
-    hasPortalAccess,
-  ].filter(Boolean).length;
-  const progressPercent = Math.round((completedStepsCount / 4) * 100);
+  const canSubmit =
+    hasClassPlacement &&
+    hasCoreIdentity &&
+    !numberingPolicyLoading &&
+    !isPhotoProcessing;
+  const hasAnyParentField = Boolean(parentFirstName.trim() || parentLastName.trim() || parentEmail.trim() || parentPhone.trim() || parentRelationship.trim());
+  const parentDetailsValid = !hasAnyParentField || Boolean(parentFirstName.trim() && parentLastName.trim() && isParentEmailValid);
+  const portalDetailsValid =
+    (!provisionStudentPortalAccess || Boolean(studentTemporaryPassword.trim())) &&
+    (!provisionParentPortalAccess || Boolean(parentTemporaryPassword.trim()) && parentDetailsValid);
+  const dateIsValid = !dateOfBirth || dateOfBirth <= todayDateString;
+  const progressSections = [
+    { id: "placement", title: "Class placement", isValid: hasClassPlacement, hasError: false },
+    { id: "identity", title: "Student identity", isValid: hasCoreIdentity && dateIsValid, hasError: Boolean(dateOfBirth && !dateIsValid) },
+    { id: "household", title: "Household contact", isValid: parentDetailsValid, hasError: hasAnyParentField && !parentDetailsValid, optional: true },
+    { id: "portal", title: "Portal access", isValid: portalDetailsValid, hasError: hasPortalAccess && !portalDetailsValid, optional: true },
+  ];
+  const firstInvalidSection = progressSections.findIndex((section) => !section.isValid);
+  const currentProgressIndex = firstInvalidSection >= 0 ? firstInvalidSection : progressSections.length - 1;
 
   const fullNameDisplay = [firstName, lastName].filter(Boolean).join(" ") || "New Student";
 
   return (
     <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+      <MobileProgressIndicator
+        mode="sections"
+        sections={progressSections}
+        currentStepIndex={currentProgressIndex}
+        draftStatus={draftStatus}
+        lastSavedAt={draftLastSavedAt}
+      />
 
       {/* Split Workbench View */}
       <form
@@ -267,7 +337,9 @@ export function StudentFirstOnboardingForm({
                   </h3>
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-slate-500">
                     <span className="font-mono font-bold text-slate-700">
-                      {admissionNumber.trim() || "ID Pending"}
+                      {numberingPolicyConfigured && admissionNumberMode === "automatic"
+                        ? numberingPreview ?? "Assigned on enrollment"
+                        : admissionNumber.trim() || "ID Pending"}
                     </span>
                     {gender && <span>• {gender}</span>}
                   </div>
@@ -298,13 +370,13 @@ export function StudentFirstOnboardingForm({
               <div className="space-y-2">
                 <ChecklistItem
                   isDone={hasClassPlacement}
-                  label="Academic Class Selected"
-                  detail={selectedClassName ?? "Required for roster assignment"}
+                  label="Class and numbering reviewed"
+                  detail={selectedClassName ? `${selectedClassName} · ${numberingReady ? "numbering reviewed" : "numbering review required"}` : "Required for roster assignment"}
                 />
                 <ChecklistItem
                   isDone={hasCoreIdentity}
                   label="Student Core Identity"
-                  detail="First name, last name, admission ID, and gender"
+                  detail="First name, last name, governed admission ID, and gender"
                 />
                 <ChecklistItem
                   isDone={hasParentOrGuardian}
@@ -411,6 +483,9 @@ export function StudentFirstOnboardingForm({
                 <h1 className="text-xl lg:text-2xl font-bold tracking-tight text-slate-950 font-display">
                   Student Onboarding
                 </h1>
+                <p className="text-xs text-slate-500">
+                  Institutional address review is separate; login-only is not an inbox.
+                </p>
               </div>
 
               {selectedClassName && (
@@ -562,6 +637,7 @@ export function StudentFirstOnboardingForm({
                   </label>
                   <StudentPhotoPanel
                     name={fullNameDisplay}
+                    uploadAvailable={false}
                     previewUrl={photoPreviewUrl}
                     onPhotoChange={onPhotoChange}
                     onRemovePhoto={onRemovePhoto}
@@ -598,13 +674,60 @@ export function StudentFirstOnboardingForm({
                   </Field>
 
                   <Field label="Admission Number *">
-                    <input
-                      value={admissionNumber}
-                      onChange={(e) => onAdmissionNumberChange(e.target.value)}
-                      className={fieldInputClassName}
-                      placeholder="e.g. NUR-0014"
-                      required
-                    />
+                    {numberingPolicyLoading ? (
+                      <p role="status" className="text-xs font-medium text-slate-500">
+                        Loading numbering policy…
+                      </p>
+                    ) : numberingPolicyConfigured ? (
+                      <fieldset className="space-y-2">
+                        <legend className="sr-only">Admission number source</legend>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <input
+                            type="radio"
+                            name={admissionNumberSourceName}
+                            checked={admissionNumberMode === "automatic"}
+                            onChange={() => onAdmissionNumberModeChange("automatic")}
+                          />
+                          Assign automatically on enrollment
+                        </label>
+                        <p className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs font-bold text-slate-800">
+                          {numberingPreview ?? "Number assigned in the enrollment transaction"}
+                        </p>
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                          <input
+                            type="radio"
+                            name={admissionNumberSourceName}
+                            checked={admissionNumberMode === "manual"}
+                            disabled={!canOverrideAdmissionNumber}
+                            onChange={() => onAdmissionNumberModeChange("manual")}
+                          />
+                          Supply a historical or manual number
+                        </label>
+                        {admissionNumberMode === "manual" && (
+                          <input
+                            aria-label="Manual admission number"
+                            value={admissionNumber}
+                            onChange={(e) => onAdmissionNumberChange(e.target.value)}
+                            className={fieldInputClassName}
+                            placeholder="Historical admission number"
+                            required
+                          />
+                        )}
+                      </fieldset>
+                    ) : (
+                      <>
+                        <input
+                          value={admissionNumber}
+                          onChange={(e) => onAdmissionNumberChange(e.target.value)}
+                          className={fieldInputClassName}
+                          placeholder="e.g. NUR-0014"
+                          required
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          This branch has not configured automatic numbering, so its existing manual-ID workflow remains active.
+                        </p>
+                      </>
+                    )}
                   </Field>
 
                   <Field label="Gender *">
@@ -640,6 +763,21 @@ export function StudentFirstOnboardingForm({
                   </Field>
                 </div>
               </div>
+
+              {governedManualNumber && (
+                <AdmissionNumberGovernanceFields
+                  canOverride={canOverrideAdmissionNumber}
+                  confirmed={overrideConfirmed}
+                  reason={overrideReason}
+                  counterDecision={overrideCounterDecision}
+                  advanceCounterTo={advanceCounterTo}
+                  policyConfigured={numberingPolicyConfigured}
+                  onConfirmedChange={onOverrideConfirmedChange}
+                  onReasonChange={onOverrideReasonChange}
+                  onCounterDecisionChange={onOverrideCounterDecisionChange}
+                  onAdvanceCounterToChange={onAdvanceCounterToChange}
+                />
+              )}
             </AdminSurface>
 
             {/* ── SECTION 3: Household & Primary Guardian ── */}
@@ -924,19 +1062,10 @@ export function StudentFirstOnboardingForm({
 
         {/* ── MOBILE STICKY ACTION BAR (< lg) ── */}
         <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur-xl lg:hidden">
-          {/* Subtle Dynamic Progress Line */}
-          <div className="h-1 w-full bg-slate-100 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300 ease-out"
-              style={{ width: `${Math.max(10, progressPercent)}%` }}
-            />
-          </div>
-
           <div className="flex items-center gap-4 p-3.5">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 font-display">Target Class</p>
-                <span className="text-[9px] font-bold text-emerald-600 font-mono">• {completedStepsCount}/4 Done</span>
               </div>
               <p className="text-xs font-bold text-slate-950 truncate">
                 {selectedClassName || "Unselected"}

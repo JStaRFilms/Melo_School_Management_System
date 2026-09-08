@@ -9,7 +9,7 @@ interface FeePlanListProps {
   sortKey: FeePlanSortKey;
   sortDirection: SortDirection;
   onSortChange: (key: FeePlanSortKey) => void;
-  onNewPlan: () => void;
+  onNewPlan?: () => void;
   onApplyPlan?: (planId: string) => void;
 }
 
@@ -85,14 +85,14 @@ export function FeePlanList({
             direction={sortDirection}
             onClick={() => onSortChange("status")}
           />
-          <button
+          {onNewPlan && <button
             type="button"
             onClick={onNewPlan}
             className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white transition-colors hover:bg-slate-800 cursor-pointer shadow-xs"
           >
             <Plus className="h-3.5 w-3.5" />
             New Plan
-          </button>
+          </button>}
         </div>
       </div>
 

@@ -1,11 +1,14 @@
+import { getUnboundStorageUrl } from "./academic/assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
+import type { Doc, Id } from "../_generated/dataModel";
 import { api } from "../_generated/api";
-import { query } from "../_generated/server";
+import { query, type QueryCtx } from "../_generated/server";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
-import { getAuthenticatedSchoolMembership } from "./academic/auth";
+import { getPortalStudentAccess, resolvePortalMemberships, type PortalAuth } from "./academic/portalIdentity";
 import { buildStudentReportCard, reportCardResultValidator } from "./academic/reportCards";
 import { getReadableUserName } from "./academic/studentNameCompat";
+import { resolveDomainSetting } from "./academic/groupSettings";
 
 const portalStudentValidator = v.object({
   studentId: v.id("students"),
@@ -20,6 +23,7 @@ const portalStudentValidator = v.object({
   relationship: v.union(v.string(), v.null()),
   photoUrl: v.union(v.string(), v.null()),
   isActive: v.boolean(),
+  enrollmentState: v.union(v.literal("active"), v.literal("historical")),
 });
 
 const portalHistoryItemValidator = v.object({
@@ -52,6 +56,7 @@ const portalNotificationValidator = v.object({
 });
 
 const portalBillingInvoiceValidator = v.object({
+  paymentInstructions: v.union(paymentInstructionsValidator, v.null()),
   invoiceId: v.id("studentInvoices"),
   studentId: v.id("students"),
   invoiceNumber: v.string(),
@@ -201,202 +206,55 @@ function sortNewestFirst<T extends { startDate: number }>(items: T[]) {
   return [...items].sort((a, b) => b.startDate - a.startDate);
 }
 
-async function getPortalMemberships(ctx: any) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new ConvexError("Unauthorized");
-  }
-
-  const memberships = await ctx.db
-    .query("users")
-    .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
-    .collect();
-
-  const activeMemberships = memberships.filter((user: any) => !user.isArchived);
-  const studentMembership = activeMemberships.find(
-    (user: any) => user.role === "student"
-  );
-  if (studentMembership) {
-    return {
-      role: "student" as const,
-      memberships: [studentMembership],
-      viewer: studentMembership,
-    };
-  }
-
-  const parentMemberships = [];
-  for (const user of activeMemberships) {
-    if (user.role === "student") {
-      continue;
-    }
-
-    const familyLink = await ctx.db
-      .query("familyMembers")
-      .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", user._id))
-      .first();
-    if (familyLink && familyLink.schoolId === user.schoolId) {
-      parentMemberships.push({ ...user, role: "parent" as const });
-    }
-  }
-
-  if (parentMemberships.length === 0) {
-    throw new ConvexError("Unauthorized");
-  }
-
-  return {
-    role: "parent" as const,
-    memberships: parentMemberships,
-    viewer: parentMemberships[0],
-  };
-}
+export const getPortalShellContext = query({
+  args: { studentId: v.optional(v.union(v.id("students"), v.null())) },
+  returns: v.object({ schoolId: v.id("schools"), selectedStudentId: v.id("students") }),
+  handler: async (ctx, args) => {
+    const portalAuth = await resolvePortalMemberships(ctx);
+    const students = await getAccessibleStudentsAcrossPortalMemberships(ctx, portalAuth);
+    const selected = args.studentId
+      ? students.find((entry) => entry.student._id === args.studentId)
+      : students[0];
+    if (!selected) throw new ConvexError("Student not found");
+    return { schoolId: selected.student.schoolId, selectedStudentId: selected.student._id };
+  },
+});
 
 export const canAccessPortal = query({
   args: {},
   returns: v.boolean(),
   handler: async (ctx) => {
     try {
-      await getPortalMemberships(ctx);
-      return true;
+      const portalAuth = await resolvePortalMemberships(ctx);
+      return (await getAccessibleStudentsAcrossPortalMemberships(ctx, portalAuth)).length > 0;
     } catch {
       return false;
     }
   },
 });
 
-async function getAccessibleStudentsAcrossPortalMemberships(ctx: any, portalAuth: Awaited<ReturnType<typeof getPortalMemberships>>) {
-  const entries: Array<{
-    student: any;
-    relationship: string | null;
-    school: any;
-    schoolLogoUrl: string | null;
-    className: string;
-  }> = [];
-
-  for (const membership of portalAuth.memberships) {
-    const school = await ctx.db.get(membership.schoolId);
+async function getAccessibleStudentsAcrossPortalMemberships(ctx: QueryCtx, portalAuth: PortalAuth) {
+  const access = await getPortalStudentAccess(ctx, portalAuth);
+  const entries = [];
+  for (const entry of access) {
+    const school = await ctx.db.get(entry.student.schoolId);
     if (!school) continue;
-
-    const { students, classNameById } = await getAccessibleStudents(ctx, {
-      userId: membership._id,
-      schoolId: membership.schoolId,
-      role: membership.role,
-    });
-    const schoolLogoUrl = school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null;
-
-    for (const entry of students) {
-      entries.push({
-        ...entry,
-        school,
-        schoolLogoUrl,
-        className: classNameById.get(String(entry.student.classId)) ?? "Current class",
-      });
-    }
-  }
-
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = String(entry.student._id);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-async function getAccessibleStudents(
-  ctx: any,
-  args: {
-    userId: Id<"users">;
-    schoolId: Id<"schools">;
-    role: "parent" | "student";
-  }
-) {
-  const classDocs = await ctx.db
-    .query("classes")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
-    .collect();
-  const classNameById = new Map<string, string>();
-  for (const classDoc of classDocs) {
-    if (!classDoc.isArchived) {
-      classNameById.set(
-        String(classDoc._id),
-        formatClassDisplayName({
+    const classDoc = await ctx.db.get(entry.student.classId);
+    const className = classDoc && classDoc.schoolId === school._id && !classDoc.isArchived
+      ? formatClassDisplayName({
           gradeName: classDoc.gradeName,
           classLabel: classDoc.classLabel,
           name: classDoc.name,
         })
-      );
-    }
+      : "Current class";
+    entries.push({
+      ...entry,
+      school,
+      schoolLogoUrl: school.logoStorageId ? await getUnboundStorageUrl(ctx, school.logoStorageId) : null,
+      className,
+    });
   }
-
-  if (args.role === "student") {
-    const studentRows = await ctx.db
-      .query("students")
-      .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
-      .collect();
-    const activeStudent = studentRows.find(
-      (student: any) =>
-        !student.isArchived && String(student.userId) === String(args.userId)
-    );
-
-    if (!activeStudent) {
-      return {
-        students: [] as Array<{
-          student: any;
-          relationship: string | null;
-        }>,
-        classNameById,
-      };
-    }
-
-    return {
-      students: [
-        {
-          student: activeStudent,
-          relationship: null,
-        },
-      ],
-      classNameById,
-    };
-  }
-
-  const familyLinks = await ctx.db
-    .query("familyMembers")
-    .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", args.userId))
-    .collect();
-  const familyById = new Map<string, string | null>();
-  for (const familyLink of familyLinks) {
-    familyById.set(String(familyLink.familyId), familyLink.relationship ?? null);
-  }
-
-  const studentById = new Map<string, { student: any; relationship: string | null }>();
-
-  await Promise.all(
-    familyLinks.map(async (familyLink: any) => {
-      const familyStudents = await ctx.db
-        .query("students")
-        .withIndex("by_family", (q: any) => q.eq("familyId", familyLink.familyId))
-        .collect();
-
-      for (const student of familyStudents) {
-        if (student.schoolId !== args.schoolId || student.isArchived) {
-          continue;
-        }
-
-        const studentKey = String(student._id);
-        if (!studentById.has(studentKey)) {
-          studentById.set(studentKey, {
-            student,
-            relationship: familyById.get(String(familyLink.familyId)) ?? null,
-          });
-        }
-      }
-    })
-  );
-
-  return {
-    students: [...studentById.values()],
-    classNameById,
-  };
+  return entries;
 }
 
 async function tryBuildStudentReportCard(
@@ -430,9 +288,7 @@ export const getWorkspaceData = query({
   },
   returns: portalWorkspaceDataValidator,
   handler: async (ctx, args) => {
-    const portalAuth = await getPortalMemberships(ctx);
-    const portalRole = portalAuth.role;
-    const userId = portalAuth.viewer._id;
+    const portalAuth = await resolvePortalMemberships(ctx);
     const studentRows = await getAccessibleStudentsAcrossPortalMemberships(ctx, portalAuth);
     const selectedStudentRow =
       args.studentId === undefined || args.studentId === null
@@ -441,19 +297,22 @@ export const getWorkspaceData = query({
 
     if (
       (args.studentId !== undefined && args.studentId !== null) &&
-      !selectedStudentRow &&
-      studentRows.length > 0
+      !selectedStudentRow
     ) {
       throw new ConvexError("Student not found");
     }
 
-    const schoolId = selectedStudentRow?.student.schoolId ?? portalAuth.viewer.schoolId;
+    const fallbackMembership = portalAuth.memberships.find(entry => entry.isDefaultBranch) ?? portalAuth.memberships[0];
+    const selectedMembership = selectedStudentRow?.portalMembership ?? fallbackMembership;
+    const portalRole = selectedMembership.role;
+    const userId = selectedMembership.user._id;
+    const schoolId = selectedStudentRow?.student.schoolId ?? selectedMembership.user.schoolId;
     const school = selectedStudentRow?.school ?? (await ctx.db.get(schoolId));
     if (!school) {
       throw new ConvexError("School not found");
     }
 
-    const [sessions, terms, schoolEvents] = await Promise.all([
+    const [sessions, terms, schoolEvents, notificationSetting] = await Promise.all([
       ctx.db
         .query("academicSessions")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
@@ -466,7 +325,14 @@ export const getWorkspaceData = query({
         .query("schoolEvents")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
         .collect(),
+      resolveDomainSetting(ctx, schoolId, "notification_preferences"),
     ]);
+    const notificationPreferences =
+      notificationSetting.value ?? {
+        showReportUpdates: true,
+        showTeacherComments: true,
+        showUpcomingEvents: true,
+      };
 
     const selectedStudent = selectedStudentRow
       ? selectedStudentRow.student
@@ -477,7 +343,7 @@ export const getWorkspaceData = query({
       studentRows.map(async ({ student, relationship, school: studentSchool, schoolLogoUrl, className }) => {
         const [studentUser, photoUrl] = await Promise.all([
           ctx.db.get(student.userId),
-          student.photoStorageId ? ctx.storage.getUrl(student.photoStorageId) : null,
+          student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
         ]);
 
         const studentUserRecord = studentUser as
@@ -490,7 +356,11 @@ export const getWorkspaceData = query({
             }
           | null;
 
-        if (!studentUserRecord || studentUserRecord.schoolId !== student.schoolId || studentUserRecord.isArchived) {
+        if (
+          !studentUserRecord ||
+          studentUserRecord.schoolId !== student.schoolId ||
+          (studentUserRecord.isArchived && student.enrollmentStatus === "active")
+        ) {
           return null;
         }
 
@@ -510,6 +380,7 @@ export const getWorkspaceData = query({
           isActive: selectedStudentId
             ? String(selectedStudentId) === String(student._id)
             : false,
+          enrollmentState: student.enrollmentStatus === "active" ? "active" as const : "historical" as const,
         };
       })
     );
@@ -699,7 +570,10 @@ export const getWorkspaceData = query({
     }> = [];
 
     if (selectedReportCard) {
-      if (selectedReportCard.summary.pendingSubjects > 0) {
+      if (
+        notificationPreferences.showReportUpdates &&
+        selectedReportCard.summary.pendingSubjects > 0
+      ) {
         notifications.push({
           id: `pending-${selectedReportCard.student._id}`,
           title: "Some subjects are still pending",
@@ -713,7 +587,10 @@ export const getWorkspaceData = query({
         });
       }
 
-      if (selectedReportCard.student.nextTermBegins) {
+      if (
+        notificationPreferences.showReportUpdates &&
+        selectedReportCard.student.nextTermBegins
+      ) {
         notifications.push({
           id: `next-term-${selectedReportCard.student._id}`,
           title: "Next term date is available",
@@ -729,7 +606,10 @@ export const getWorkspaceData = query({
         });
       }
 
-      if (selectedReportCard.classTeacherComment || selectedReportCard.headTeacherComment) {
+      if (
+        notificationPreferences.showTeacherComments &&
+        (selectedReportCard.classTeacherComment || selectedReportCard.headTeacherComment)
+      ) {
         notifications.push({
           id: `comment-${selectedReportCard.student._id}`,
           title: "A class comment is attached",
@@ -744,9 +624,13 @@ export const getWorkspaceData = query({
       }
     }
 
-    const upcomingEvents = sortNewestFirst(
-      schoolEvents.filter((event: any) => !event.isArchived && event.startDate >= Date.now())
-    ).slice(0, 3);
+    const upcomingEvents = notificationPreferences.showUpcomingEvents
+      ? sortNewestFirst(
+          schoolEvents.filter(
+            (event: any) => !event.isArchived && event.startDate >= Date.now(),
+          ),
+        ).slice(0, 3)
+      : [];
 
     for (const event of upcomingEvents) {
       notifications.push({
@@ -778,7 +662,7 @@ export const getWorkspaceData = query({
       school: {
         id: school._id,
         name: normalizeHumanName(school.name),
-        logoUrl: school.logoStorageId ? await ctx.storage.getUrl(school.logoStorageId) : null,
+        logoUrl: school.logoStorageId ? await getUnboundStorageUrl(ctx, school.logoStorageId) : null,
         theme: {
           primaryColor: "#020617",
           accentColor: "#2563eb",
@@ -786,7 +670,7 @@ export const getWorkspaceData = query({
       },
       viewer: {
         userId,
-        name: getReadableUserName(((await ctx.db.get(userId)) as any) ?? { name: "Portal user" }).displayName || "Portal user",
+        name: getReadableUserName(selectedMembership.user).displayName || "Portal user",
         role: portalRole,
         schoolId,
       },
@@ -822,7 +706,7 @@ export const getBillingData = query({
   },
   returns: portalBillingDataValidator,
   handler: async (ctx, args) => {
-    const portalAuth = await getPortalMemberships(ctx);
+    const portalAuth = await resolvePortalMemberships(ctx);
     const accessibleStudentRows = await getAccessibleStudentsAcrossPortalMemberships(ctx, portalAuth);
     const selectedStudentRow =
       args.studentId === undefined || args.studentId === null
@@ -834,13 +718,13 @@ export const getBillingData = query({
     if (
       args.studentId !== undefined &&
       args.studentId !== null &&
-      !selectedStudentRow &&
-      accessibleStudentRows.length > 0
+      !selectedStudentRow
     ) {
       throw new ConvexError("Student not found");
     }
 
-    const schoolId = selectedStudentRow?.student.schoolId ?? portalAuth.viewer.schoolId;
+    const fallbackMembership = portalAuth.memberships.find(entry => entry.isDefaultBranch) ?? portalAuth.memberships[0];
+    const schoolId = selectedStudentRow?.student.schoolId ?? fallbackMembership.user.schoolId;
     const school = selectedStudentRow?.school ?? (await ctx.db.get(schoolId));
     if (!school) {
       throw new ConvexError("School not found");
@@ -911,6 +795,7 @@ export const getBillingData = query({
       .sort((left: any, right: any) => right.issuedAt - left.issuedAt)
       .map((invoice: any) => ({
         invoiceId: invoice._id,
+        paymentInstructions: invoicePaymentInstructions(invoice),
         studentId: invoice.studentId,
         invoiceNumber: invoice.invoiceNumber,
         feePlanName: invoice.feePlanNameSnapshot,
@@ -966,11 +851,10 @@ export const resolvePortalInvoicePaymentContext = query({
   },
   returns: portalInvoicePaymentContextValidator,
   handler: async (ctx, args) => {
-    const portalAuth = await getPortalMemberships(ctx);
+    const portalAuth = await resolvePortalMemberships(ctx);
 
-    const [invoice, userRecord, accessibleStudentRows] = await Promise.all([
+    const [invoice, accessibleStudentRows] = await Promise.all([
       ctx.db.get(args.invoiceId),
-      ctx.db.get(portalAuth.viewer._id),
       getAccessibleStudentsAcrossPortalMemberships(ctx, portalAuth),
     ]);
 
@@ -978,14 +862,10 @@ export const resolvePortalInvoicePaymentContext = query({
       throw new ConvexError("Invoice not found");
     }
 
-    const accessibleStudentIds = new Set(
-      accessibleStudentRows.map((entry) => String(entry.student._id))
-    );
-    if (!accessibleStudentIds.has(String(invoice.studentId))) {
-      throw new ConvexError("Invoice not found");
-    }
+    const accessibleStudent = accessibleStudentRows.find(entry => entry.student._id === invoice.studentId);
+    if (!accessibleStudent) throw new ConvexError("Invoice not found");
 
-    const portalUserRecord = userRecord as any;
+    const portalUserRecord = accessibleStudent.portalMembership.user;
     const payerEmail =
       typeof portalUserRecord?.email === "string" ? portalUserRecord.email.trim().toLowerCase() : "";
     const payerName = normalizeHumanName(

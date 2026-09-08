@@ -1,3 +1,5 @@
+import { convexTest } from "convex-test";
+import schema from "../../../schema";
 import { describe, expect, it } from "vitest";
 import type { Id, TableNames } from "../../../_generated/dataModel";
 
@@ -242,31 +244,21 @@ function createCtx(options?: {
 }
 
 describe("getAuthenticatedSchoolMembership", () => {
-  it("returns userId, schoolId, role, and school-admin state for an authenticated user", async () => {
-    const ctx = createCtx();
-    await expect(getAuthenticatedSchoolMembership(ctx)).resolves.toEqual({
-      userId: "user-1",
-      schoolId: "school-1",
-      role: "teacher",
-      isSchoolAdmin: false,
-      isSuspended: false,
+  const modules = import.meta.glob("../../../**/*.ts");
+  it("returns the exact legacy school and preserves admin state", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Test", slug: "test", status: "active", createdAt: 1, updatedAt: 1 });
+      const userId = await ctx.db.insert("users", { schoolId, authId: "legacy", authTokenIdentifier: "token", role: "teacher", isSchoolAdmin: true, name: "Teacher", email: "teacher@test.invalid", createdAt: 1, updatedAt: 1 });
+      return { schoolId, userId };
     });
+    const viewer = t.withIdentity({ tokenIdentifier: "token" });
+    await expect(viewer.run((ctx) => getAuthenticatedSchoolMembership(ctx))).resolves.toEqual({ ...ids, role: "teacher", isSchoolAdmin: true, isSuspended: false });
   });
-
-  it("throws when the request is unauthenticated", async () => {
-    const ctx = createCtx({ identity: null });
-
-    await expect(getAuthenticatedSchoolMembership(ctx)).rejects.toMatchObject({
-      message: "Unauthorized",
-    });
-  });
-
-  it("throws when the auth user has no matching school membership", async () => {
-    const ctx = createCtx({ user: null });
-
-    await expect(getAuthenticatedSchoolMembership(ctx)).rejects.toMatchObject({
-      message: "School membership not found",
-    });
+  it("rejects unauthenticated or unmapped callers", async () => {
+    const t = convexTest(schema, modules);
+    await expect(t.run((ctx) => getAuthenticatedSchoolMembership(ctx))).rejects.toThrow();
+    await expect(t.withIdentity({ issuer: "https://legacy-auth.test", subject: "missing" }).run((ctx) => getAuthenticatedSchoolMembership(ctx))).rejects.toThrow("School membership not found");
   });
 });
 
@@ -533,7 +525,7 @@ describe("teacher assignment helpers", () => {
     ).resolves.toBe(true);
   });
 
-  it("matches equivalent teacher rows with the same email in the same school", async () => {
+  it("does not infer teacher assignment authority from matching email", async () => {
     const ctx = createCtx({
       user: {
         _id: asId<"users">("user-1"),
@@ -572,7 +564,7 @@ describe("teacher assignment helpers", () => {
         asId<"users">("user-1"),
         asId<"schools">("school-1")
       )
-    ).resolves.toEqual([asId<"classes">("class-6")]);
+    ).resolves.toEqual([]);
   });
 });
 

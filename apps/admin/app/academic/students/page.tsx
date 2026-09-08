@@ -33,8 +33,15 @@ import { AdminHeader } from "@/components/ui/AdminHeader";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { AttestationLetterModal } from "./components/AttestationLetterModal";
+import type { AdmissionCounterDecision } from "./components/AdmissionNumberGovernanceFields";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
+import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { useDraftConnection } from "@/useDraftConnection";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 import { GraduationConfirmationModal } from "./components/GraduationConfirmationModal";
 import { PromotionConfirmationModal } from "./components/PromotionConfirmationModal";
 import { StudentCreationForm } from "./components/StudentCreationForm";
@@ -54,6 +61,10 @@ import type {
 
 const MAX_PROMOTION_BATCH = 100;
 
+function newEnrollmentRequestKey() {
+  return globalThis.crypto.randomUUID();
+}
+
 export default function StudentsPage() {
   return (
     <Suspense fallback={<StudentsPageFallback />}>
@@ -71,12 +82,27 @@ function StudentsPageFallback() {
 }
 
 function StudentsPageContent() {
+  const { workspaceAccess, session } = useAuth();
+  const draftConnection = useDraftConnection();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? (workspaceAccess.branch.schoolId as Id<"schools">)
+    : undefined;
+  const canOverrideAdmissionNumber = Boolean(
+    workspaceAccess?.state === "ready" &&
+      workspaceAccess.effectiveCapabilities.includes(
+        "enrollment.admissions.override_number",
+      ),
+  );
   const classes = useQuery(
     "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
   const sessions = useQuery(
     "functions/academic/academicSetup:listSessions" as never
   ) as SessionSummary[] | undefined;
+  const transferWorkspace = useQuery(
+    "functions/academic/transfers:getTransferPilotAccess" as never,
+    schoolId ? ({ schoolId } as never) : ("skip" as never),
+  ) as { allowed: boolean } | undefined;
 
   const createStudent = useMutation(
     "functions/academic/studentEnrollment:createStudent" as never
@@ -110,6 +136,14 @@ function StudentsPageContent() {
   const [studentFirstName, setStudentFirstName] = useState("");
   const [studentLastName, setStudentLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [admissionNumberMode, setAdmissionNumberMode] = useState<
+    "automatic" | "manual"
+  >("automatic");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [overrideCounterDecision, setOverrideCounterDecision] =
+    useState<AdmissionCounterDecision>("");
+  const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [gender, setGender] = useState("");
   const [houseName, setHouseName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -161,6 +195,34 @@ function StudentsPageContent() {
   const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
   const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
   const [isDuplicateParentLinkConfirmOpen, setIsDuplicateParentLinkConfirmOpen] = useState(false);
+  const [enrollmentRequestKey, setEnrollmentRequestKey] = useState(newEnrollmentRequestKey);
+  const [familyDraftInstanceKey, setFamilyDraftInstanceKey] = useState(0);
+
+  const selectedClassLevel = classes?.find(
+    (classDoc) => classDoc._id === selectedClassId,
+  )?.level;
+  const admissionNumbering = useQuery(
+    "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
+    schoolId
+      ? ({
+          schoolId,
+          ...(selectedClassLevel ? { level: selectedClassLevel } : {}),
+        } as never)
+      : ("skip" as never),
+  ) as
+    | {
+        policy: { pattern: string } | null;
+        version: number;
+        formatVersion: string | null;
+        counter: { key: string; configVersion: number } | null;
+        activeSessionId: Id<"academicSessions"> | null;
+        resetPeriod: string | null;
+        preview: string | null;
+      }
+    | undefined;
+  const numberingPolicyConfigured = Boolean(admissionNumbering?.policy);
+  const useAutomaticAdmissionNumber =
+    numberingPolicyConfigured && admissionNumberMode === "automatic";
 
   const studentFormRef = useRef<HTMLDivElement>(null);
   const studentNameInputRef = useRef<HTMLInputElement>(null);
@@ -536,6 +598,11 @@ function StudentsPageContent() {
     setStudentFirstName("");
     setStudentLastName("");
     setAdmissionNumber("");
+    setAdmissionNumberMode("automatic");
+    setOverrideReason("");
+    setOverrideConfirmed(false);
+    setOverrideCounterDecision("");
+    setAdvanceCounterTo("");
     setGender("");
     setHouseName("");
     setDateOfBirth("");
@@ -550,9 +617,92 @@ function StudentsPageContent() {
     setIsParentPrimaryContact(true);
     setStudentPhotoFile(null);
     setStudentPhotoResetKey((key) => key + 1);
+    setEnrollmentRequestKey(newEnrollmentRequestKey());
   }, []);
 
+  const familyDraftData = useMemo<DraftPayload<"family_onboarding">>(() => ({
+    studentFirstName,
+    studentLastName,
+    admissionNumber,
+    admissionNumberMode,
+    overrideReason,
+    overrideConfirmed,
+    overrideCounterDecision,
+    advanceCounterTo,
+    gender,
+    classId: selectedClassId ?? "",
+    houseName,
+    dateOfBirth,
+    guardianName,
+    guardianPhone,
+    address,
+    parentFirstName,
+    parentLastName,
+    parentEmail,
+    parentPhone,
+    parentRelationship,
+    isParentPrimaryContact,
+    enrollmentRequestKey,
+  }), [address, admissionNumber, admissionNumberMode, advanceCounterTo, dateOfBirth, enrollmentRequestKey, gender, guardianName, guardianPhone, houseName, isParentPrimaryContact, overrideConfirmed, overrideCounterDecision, overrideReason, parentEmail, parentFirstName, parentLastName, parentPhone, parentRelationship, selectedClassId, studentFirstName, studentLastName]);
+  const familyDraftIsDirty = creationTab === "family" && (isSubmitting || Boolean(
+    studentFirstName || studentLastName || admissionNumber || admissionNumberMode !== "automatic" || overrideReason || overrideConfirmed || overrideCounterDecision || advanceCounterTo || gender || houseName || dateOfBirth || guardianName ||
+    guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone ||
+    parentRelationship || !isParentPrimaryContact || studentPhotoFile
+  ));
+  const familyDraft = usePersistentFormDraft({
+    formKey: "family_onboarding",
+    schoolId,
+    accountId: session?.user.id,
+    connection: draftConnection,
+    currentData: familyDraftData,
+    isDirty: familyDraftIsDirty,
+    instanceKey: familyDraftInstanceKey,
+    onRestore: (payload) => {
+      setStudentFirstName(payload.studentFirstName);
+      setStudentLastName(payload.studentLastName);
+      setAdmissionNumber(payload.admissionNumber);
+      setAdmissionNumberMode(payload.admissionNumberMode);
+      setOverrideReason(payload.overrideReason);
+      setOverrideConfirmed(payload.overrideConfirmed);
+      setOverrideCounterDecision(payload.overrideCounterDecision);
+      setAdvanceCounterTo(payload.advanceCounterTo);
+      setGender(payload.gender);
+      setSelectedClassId(payload.classId || null);
+      setHouseName(payload.houseName);
+      setDateOfBirth(payload.dateOfBirth);
+      setGuardianName(payload.guardianName);
+      setGuardianPhone(payload.guardianPhone);
+      setAddress(payload.address);
+      setParentFirstName(payload.parentFirstName);
+      setParentLastName(payload.parentLastName);
+      setParentEmail(payload.parentEmail);
+      setParentPhone(payload.parentPhone);
+      setParentRelationship(payload.parentRelationship);
+      setIsParentPrimaryContact(payload.isParentPrimaryContact);
+      setEnrollmentRequestKey(payload.enrollmentRequestKey ?? newEnrollmentRequestKey());
+      setStudentPhotoFile(null);
+      setCreationTab("family");
+    },
+  });
+
+  const creationIsDirty = isSubmitting || Boolean(studentFirstName || studentLastName || admissionNumber || admissionNumberMode !== "automatic" || overrideReason || overrideConfirmed || overrideCounterDecision || advanceCounterTo || gender || houseName || dateOfBirth || guardianName || guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship || !isParentPrimaryContact || studentPhotoFile);
+  const requestCreationDeparture = useDirtyForm({
+    name: creationTab === "family" ? "Family enrollment" : "Student enrollment",
+    isDirty: creationIsDirty,
+    save: creationTab === "family" ? familyDraft.retrySave : undefined,
+    discard: async () => {
+      if (isSubmitting) throw new Error("Wait for enrollment to finish before leaving.");
+      if (creationTab === "family") await familyDraft.handleDiscardDraft();
+      resetStudentCreationForm();
+      if (creationTab === "family") setFamilyDraftInstanceKey((key) => key + 1);
+    },
+  });
+  const closeCreationSheet = async () => {
+    if (await requestCreationDeparture({ kind: "close" })) setIsCreationSheetOpen(false);
+  };
+
   const submitStudent = async (confirmDuplicateLink = false) => {
+    if (isSubmitting) return;
     const normalizedStudentFirstName = humanNameFinalStrict(studentFirstName);
     const normalizedStudentLastName = humanNameFinalStrict(studentLastName);
     const normalizedStudentName = [normalizedStudentFirstName, normalizedStudentLastName].filter(Boolean).join(" ");
@@ -582,7 +732,8 @@ function StudentsPageContent() {
     if (
       !selectedClassId ||
       !normalizedStudentName ||
-      !admissionNumber.trim() ||
+      admissionNumbering === undefined ||
+      (!useAutomaticAdmissionNumber && !admissionNumber.trim()) ||
       !gender.trim()
     ) {
       return;
@@ -622,6 +773,20 @@ function StudentsPageContent() {
       }
     }
 
+    const isFamilySubmission = creationTab === "family";
+    let draftClosure: Awaited<ReturnType<typeof familyDraft.prepareSubmission>> = null;
+    if (isFamilySubmission) {
+      try {
+        draftClosure = await familyDraft.prepareSubmission();
+      } catch {
+        showNotice({
+          tone: "error",
+          message: "Save the recoverable family draft before submitting. Your current edits are still here.",
+        });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -631,8 +796,50 @@ function StudentsPageContent() {
           )
         : null;
       const createdStudentId = (await createStudent({
+        requestKey: enrollmentRequestKey,
         name: normalizedStudentName,
-        admissionNumber: admissionNumber.trim(),
+        admissionNumber: useAutomaticAdmissionNumber
+          ? ""
+          : admissionNumber.trim(),
+        numberingVersion: numberingPolicyConfigured
+          ? admissionNumbering?.version
+          : undefined,
+        numberingFormatVersion: numberingPolicyConfigured
+          ? admissionNumbering?.formatVersion ?? undefined
+          : undefined,
+        numberingCounterKey: numberingPolicyConfigured
+          ? admissionNumbering?.counter?.key
+          : undefined,
+        numberingCounterVersion: numberingPolicyConfigured
+          ? admissionNumbering?.counter?.configVersion
+          : undefined,
+        numberingSessionId: numberingPolicyConfigured
+          ? admissionNumbering?.activeSessionId ?? undefined
+          : undefined,
+        numberingResetPeriod: numberingPolicyConfigured
+          ? admissionNumbering?.resetPeriod ?? undefined
+          : undefined,
+        draftId: draftClosure?.draftId,
+        expectedDraftRevision: draftClosure?.expectedRevision,
+        draftFormKey: draftClosure ? "family_onboarding" : undefined,
+        overrideReason:
+          numberingPolicyConfigured && admissionNumberMode === "manual"
+            ? overrideReason.trim()
+            : undefined,
+        overrideConfirmed:
+          numberingPolicyConfigured && admissionNumberMode === "manual"
+            ? overrideConfirmed
+            : undefined,
+        overrideCounterDecision:
+          numberingPolicyConfigured && admissionNumberMode === "manual"
+            ? overrideCounterDecision || undefined
+            : undefined,
+        advanceCounterTo:
+          numberingPolicyConfigured &&
+          admissionNumberMode === "manual" &&
+          overrideCounterDecision === "advance"
+            ? Number(advanceCounterTo)
+            : undefined,
         classId: selectedClassId,
         gender,
         houseName: trimmedHouseName || null,
@@ -657,7 +864,10 @@ function StudentsPageContent() {
         confirmDuplicateLink: confirmDuplicateLink || undefined,
       } as never)) as string;
 
+      if (draftClosure) familyDraft.submissionSucceeded();
       resetStudentCreationForm();
+      setFamilyDraftInstanceKey((key) => key + 1);
+      setIsCreationSheetOpen(false);
       setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
       updateUrlParams({ studentId: createdStudentId });
@@ -672,6 +882,7 @@ function StudentsPageContent() {
         studentNameInputRef.current?.focus();
       }
     } catch (err) {
+      if (isFamilySubmission) familyDraft.submissionFailed();
       const message = getUserFacingErrorMessage(err, "Account creation failed.");
       if (message.includes("Review the duplicate-link details and confirm")) {
         setIsDuplicateParentLinkConfirmOpen(true);
@@ -965,6 +1176,22 @@ function StudentsPageContent() {
         }
       `}} />
 
+      {creationTab === "family" && (
+        <div className="relative z-20 px-4 pt-2">
+          <PersistentFormDraftControls
+            draft={familyDraft}
+            formTitle="family enrollment"
+            isDirty={familyDraftIsDirty}
+            excludedFieldsNotice="Drafts include approved student, enrollment, and family contact fields only. Photos and raw documents are not saved; reselect any photo after recovery."
+            onDiscard={async () => {
+              await familyDraft.handleDiscardDraft();
+              resetStudentCreationForm();
+              setFamilyDraftInstanceKey((key) => key + 1);
+            }}
+          />
+        </div>
+      )}
+
       {/* Unified Mobile Sheet - Rendered at Top level for avoid clipping issues */}
       <StudentUnifiedEditorSheet
         activeStudent={activeStudentForSheet}
@@ -1010,6 +1237,7 @@ function StudentsPageContent() {
                       ]}
                     />
                     <div className="flex items-center gap-2">
+                      {transferWorkspace?.allowed && <Link href="/academic/students/transfers" className="text-xs font-semibold underline">Within-group transfers</Link>}
                       <Link 
                         href="/students/import"
                         className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3.5 py-1.5 rounded-xl border border-indigo-200 transition-colors shadow-2xs"
@@ -1183,6 +1411,20 @@ function StudentsPageContent() {
                     onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
                     onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                     onAdmissionNumberChange={setAdmissionNumber}
+                    admissionNumberMode={admissionNumberMode}
+                    numberingPolicyConfigured={numberingPolicyConfigured}
+                    numberingPolicyLoading={admissionNumbering === undefined}
+                    numberingPreview={admissionNumbering?.preview ?? null}
+                    canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                    overrideReason={overrideReason}
+                    overrideConfirmed={overrideConfirmed}
+                    overrideCounterDecision={overrideCounterDecision}
+                    advanceCounterTo={advanceCounterTo}
+                    onAdmissionNumberModeChange={setAdmissionNumberMode}
+                    onOverrideReasonChange={setOverrideReason}
+                    onOverrideConfirmedChange={setOverrideConfirmed}
+                    onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                    onAdvanceCounterToChange={setAdvanceCounterTo}
                     onGenderChange={setGender}
                     onHouseNameChange={setHouseName}
                     onDateOfBirthChange={setDateOfBirth}
@@ -1211,6 +1453,20 @@ function StudentsPageContent() {
                     onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                     admissionNumber={admissionNumber}
                     onAdmissionNumberChange={setAdmissionNumber}
+                    admissionNumberMode={admissionNumberMode}
+                    numberingPolicyConfigured={numberingPolicyConfigured}
+                    numberingPolicyLoading={admissionNumbering === undefined}
+                    numberingPreview={admissionNumbering?.preview ?? null}
+                    canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                    overrideReason={overrideReason}
+                    overrideConfirmed={overrideConfirmed}
+                    overrideCounterDecision={overrideCounterDecision}
+                    advanceCounterTo={advanceCounterTo}
+                    onAdmissionNumberModeChange={setAdmissionNumberMode}
+                    onOverrideReasonChange={setOverrideReason}
+                    onOverrideConfirmedChange={setOverrideConfirmed}
+                    onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                    onAdvanceCounterToChange={setAdvanceCounterTo}
                     gender={gender}
                     onGenderChange={setGender}
                     parentFirstName={parentFirstName}
@@ -1228,6 +1484,8 @@ function StudentsPageContent() {
                     isParentPrimaryContact={isParentPrimaryContact}
                     onIsParentPrimaryContactChange={setIsParentPrimaryContact}
                     isSubmitting={isSubmitting}
+                    draftStatus={familyDraft.status}
+                    draftLastSavedAt={familyDraft.lastSavedAt}
                     onSubmit={handleCreateStudent}
                     inputRef={studentNameInputRef}
                   />
@@ -1262,7 +1520,7 @@ function StudentsPageContent() {
         <div className="fixed inset-0 z-[70]">
           <div 
             className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm animate-overlay-fade-in"
-            onClick={() => setIsCreationSheetOpen(false)}
+            onClick={() => void closeCreationSheet()}
           />
           <div className="absolute inset-x-0 bottom-0 top-12 flex flex-col rounded-t-[32px] bg-white shadow-2xl animate-sheet-slide-up ease-out">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-6">
@@ -1273,7 +1531,7 @@ function StudentsPageContent() {
                 </p>
               </div>
               <button 
-                onClick={() => setIsCreationSheetOpen(false)}
+                onClick={() => void closeCreationSheet()}
                 className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-400"
               >
                 <X className="h-5 w-5" />
@@ -1327,6 +1585,20 @@ function StudentsPageContent() {
                   onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
                   onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                   onAdmissionNumberChange={setAdmissionNumber}
+                  admissionNumberMode={admissionNumberMode}
+                  numberingPolicyConfigured={numberingPolicyConfigured}
+                  numberingPolicyLoading={admissionNumbering === undefined}
+                  numberingPreview={admissionNumbering?.preview ?? null}
+                  canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                  overrideReason={overrideReason}
+                  overrideConfirmed={overrideConfirmed}
+                  overrideCounterDecision={overrideCounterDecision}
+                  advanceCounterTo={advanceCounterTo}
+                  onAdmissionNumberModeChange={setAdmissionNumberMode}
+                  onOverrideReasonChange={setOverrideReason}
+                  onOverrideConfirmedChange={setOverrideConfirmed}
+                  onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                  onAdvanceCounterToChange={setAdvanceCounterTo}
                   onGenderChange={setGender}
                   onHouseNameChange={setHouseName}
                   onDateOfBirthChange={setDateOfBirth}
@@ -1336,10 +1608,7 @@ function StudentsPageContent() {
                   onPhotoChange={setStudentPhotoFile}
                   onRemovePhoto={() => setStudentPhotoFile(null)}
                   onPhotoValidationError={(m) => showNotice({ tone: "error", message: m })}
-                  onSubmit={async (e) => {
-                    await handleCreateStudent(e);
-                    setIsCreationSheetOpen(false);
-                  }}
+                  onSubmit={handleCreateStudent}
                   classes={classes}
                   selectedClassId={selectedClassId}
                   onClassIdChange={handleClassChange}
@@ -1358,6 +1627,20 @@ function StudentsPageContent() {
                   onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
                   admissionNumber={admissionNumber}
                   onAdmissionNumberChange={setAdmissionNumber}
+                  admissionNumberMode={admissionNumberMode}
+                  numberingPolicyConfigured={numberingPolicyConfigured}
+                  numberingPolicyLoading={admissionNumbering === undefined}
+                  numberingPreview={admissionNumbering?.preview ?? null}
+                  canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+                  overrideReason={overrideReason}
+                  overrideConfirmed={overrideConfirmed}
+                  overrideCounterDecision={overrideCounterDecision}
+                  advanceCounterTo={advanceCounterTo}
+                  onAdmissionNumberModeChange={setAdmissionNumberMode}
+                  onOverrideReasonChange={setOverrideReason}
+                  onOverrideConfirmedChange={setOverrideConfirmed}
+                  onOverrideCounterDecisionChange={setOverrideCounterDecision}
+                  onAdvanceCounterToChange={setAdvanceCounterTo}
                   gender={gender}
                   onGenderChange={setGender}
                   parentFirstName={parentFirstName}
@@ -1375,10 +1658,9 @@ function StudentsPageContent() {
                   isParentPrimaryContact={isParentPrimaryContact}
                   onIsParentPrimaryContactChange={setIsParentPrimaryContact}
                   isSubmitting={isSubmitting}
-                  onSubmit={async (e) => {
-                    await handleCreateStudent(e);
-                    setIsCreationSheetOpen(false);
-                  }}
+                  draftStatus={familyDraft.status}
+                  draftLastSavedAt={familyDraft.lastSavedAt}
+                  onSubmit={handleCreateStudent}
                   inputRef={studentNameInputRef}
                 />
               )}

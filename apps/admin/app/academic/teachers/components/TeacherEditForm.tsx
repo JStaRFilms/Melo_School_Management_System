@@ -16,6 +16,9 @@ interface TeacherEditFormProps {
   isResetting: boolean;
   isArchiveStatusLoading?: boolean;
   variant?: "default" | "sheet";
+  canEditProfile: boolean;
+  canResetPassword: boolean;
+  canArchive: boolean;
 }
 
 export function TeacherEditForm({
@@ -28,6 +31,9 @@ export function TeacherEditForm({
   isResetting,
   isArchiveStatusLoading = false,
   variant = "default",
+  canEditProfile,
+  canResetPassword,
+  canArchive,
 }: TeacherEditFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -70,7 +76,7 @@ export function TeacherEditForm({
         </div>
       )}
 
-      <form onSubmit={handleUpdate} className="space-y-3">
+      {canEditProfile && <form onSubmit={handleUpdate} className="space-y-3">
           <FormField label="Full Name">
             <input
               type="text"
@@ -100,10 +106,10 @@ export function TeacherEditForm({
             <Send className="h-3 w-3" />
             {isSaving ? "Saving..." : "Update Teacher"}
           </button>
-        </form>
+        </form>}
 
-        <div className="pt-4 border-t border-slate-100 space-y-3">
-          <FormField label="Reset Password">
+        {(canResetPassword || canArchive) && <div className="pt-4 border-t border-slate-100 space-y-3">
+          {canResetPassword && <FormField label="Reset Password">
             <div className="flex gap-2">
               <input
                 type={showResetPass ? "text" : "password"}
@@ -128,9 +134,9 @@ export function TeacherEditForm({
                 <KeyRound className="h-4 w-4" />
               </button>
             </div>
-          </FormField>
+          </FormField>}
 
-          {hasArchiveBlockers && (
+          {canArchive && hasArchiveBlockers && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Reassignment required</p>
               <p className="mt-1 text-[11px] font-medium leading-relaxed">
@@ -149,7 +155,7 @@ export function TeacherEditForm({
             </div>
           )}
 
-          <div className="flex justify-between items-center pt-2">
+          {canArchive && <div className="flex justify-between items-center pt-2">
             <div className="space-y-0.5">
               <span className="text-[10px] font-bold text-rose-500 uppercase tracking-[0.1em]">Danger Zone</span>
               <p className="text-[11px] text-slate-400 font-medium">Deactivate active access.</p>
@@ -170,8 +176,8 @@ export function TeacherEditForm({
               <Archive className="h-3 w-3" />
               {isArchiveStatusLoading ? "Checking..." : "Archive"}
             </button>
-          </div>
-      </div>
+          </div>}
+      </div>}
     </>
   );
 

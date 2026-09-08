@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { BookOpen, ShieldAlert, Sparkles, Users } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import type { Id } from "@school/convex/_generated/dataModel";
 
+import { useAuth } from "@/lib/AuthProvider";
 import { humanNameFinalStrict } from "@/lib/human-name";
 import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { StatGroup } from "@/lib/components/ui/StatGroup";
@@ -18,11 +20,15 @@ import type {
 } from "./components/types";
 
 export default function TeacherSubjectSelectionPage() {
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const sessions = useQuery(
-    "functions/academic/teacherSelectors:getTeacherSessions" as never
+    "functions/academic/teacherSelectors:getTeacherSessions" as never,
+    schoolId ? ({ schoolId } as never) : ("skip" as never),
   ) as SessionSummary[] | undefined;
   const classes = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
+    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never,
+    schoolId ? ({ schoolId } as never) : ("skip" as never),
   ) as ClassSummary[] | undefined;
 
   const setStudentSubjectSelections = useMutation(
@@ -35,7 +41,7 @@ export default function TeacherSubjectSelectionPage() {
   const matrix = useQuery(
     "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
     selectedClassId && selectedSessionId
-      ? ({ classId: selectedClassId, sessionId: selectedSessionId } as never)
+      ? ({ schoolId, classId: selectedClassId, sessionId: selectedSessionId } as never)
       : ("skip" as never)
   ) as EnrollmentMatrix | undefined;
 
@@ -85,6 +91,7 @@ export default function TeacherSubjectSelectionPage() {
 
       try {
         await setStudentSubjectSelections({
+          schoolId,
           studentId,
           classId: selectedClassId,
           sessionId: selectedSessionId,
@@ -104,7 +111,7 @@ export default function TeacherSubjectSelectionPage() {
         });
       }
     },
-    [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
+    [matrix, schoolId, selectedClassId, selectedSessionId, setStudentSubjectSelections]
   );
 
   const handleSetStudentSubjects = useCallback(
@@ -120,6 +127,7 @@ export default function TeacherSubjectSelectionPage() {
 
       try {
         await setStudentSubjectSelections({
+          schoolId,
           studentId,
           classId: selectedClassId,
           sessionId: selectedSessionId,
@@ -139,7 +147,7 @@ export default function TeacherSubjectSelectionPage() {
         });
       }
     },
-    [matrix, selectedClassId, selectedSessionId, setStudentSubjectSelections]
+    [matrix, schoolId, selectedClassId, selectedSessionId, setStudentSubjectSelections]
   );
 
   if (sessions === undefined || classes === undefined) {

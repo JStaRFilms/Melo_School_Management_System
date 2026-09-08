@@ -1,8 +1,14 @@
 "use client";
 
 import { Sparkles, Users } from "lucide-react";
-import type { FormEvent, RefObject } from "react";
-import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
+import { useId, type FormEvent, type RefObject } from "react";
+import { cleanEmailInput, cleanPhoneInput, MobileProgressIndicator } from "@school/shared";
+import type { DraftStatus } from "@school/shared/drafts";
+import {
+  AdmissionNumberGovernanceFields,
+  hasCompleteAdmissionNumberOverride,
+  type AdmissionCounterDecision,
+} from "./AdmissionNumberGovernanceFields";
 import type { ClassSummary } from "./types";
 
 interface FamilyOnboardingFormProps {
@@ -21,6 +27,20 @@ interface FamilyOnboardingFormProps {
   
   admissionNumber: string;
   onAdmissionNumberChange: (value: string) => void;
+  admissionNumberMode: "automatic" | "manual";
+  numberingPolicyConfigured: boolean;
+  numberingPolicyLoading: boolean;
+  numberingPreview: string | null;
+  canOverrideAdmissionNumber: boolean;
+  overrideReason: string;
+  overrideConfirmed: boolean;
+  overrideCounterDecision: AdmissionCounterDecision;
+  advanceCounterTo: string;
+  onAdmissionNumberModeChange: (value: "automatic" | "manual") => void;
+  onOverrideReasonChange: (value: string) => void;
+  onOverrideConfirmedChange: (value: boolean) => void;
+  onOverrideCounterDecisionChange: (value: AdmissionCounterDecision) => void;
+  onAdvanceCounterToChange: (value: string) => void;
   
   gender: string;
   onGenderChange: (value: string) => void;
@@ -46,6 +66,8 @@ interface FamilyOnboardingFormProps {
   onIsParentPrimaryContactChange: (value: boolean) => void;
   
   isSubmitting: boolean;
+  draftStatus: DraftStatus;
+  draftLastSavedAt: number | null;
   onSubmit: (event: FormEvent) => Promise<void>;
   inputRef: RefObject<HTMLInputElement>;
 }
@@ -63,6 +85,20 @@ export function FamilyOnboardingForm({
   onStudentLastNameBlur,
   admissionNumber,
   onAdmissionNumberChange,
+  admissionNumberMode,
+  numberingPolicyConfigured,
+  numberingPolicyLoading,
+  numberingPreview,
+  canOverrideAdmissionNumber,
+  overrideReason,
+  overrideConfirmed,
+  overrideCounterDecision,
+  advanceCounterTo,
+  onAdmissionNumberModeChange,
+  onOverrideReasonChange,
+  onOverrideConfirmedChange,
+  onOverrideCounterDecisionChange,
+  onAdvanceCounterToChange,
   gender,
   onGenderChange,
   parentFirstName,
@@ -80,11 +116,44 @@ export function FamilyOnboardingForm({
   isParentPrimaryContact,
   onIsParentPrimaryContactChange,
   isSubmitting,
+  draftStatus,
+  draftLastSavedAt,
   onSubmit,
   inputRef,
 }: FamilyOnboardingFormProps) {
+  const admissionNumberSourceName = useId();
+  const governedManualNumber =
+    numberingPolicyConfigured && admissionNumberMode === "manual";
+  const admissionNumberReady = numberingPolicyConfigured
+    ? admissionNumberMode === "automatic" ||
+      (Boolean(admissionNumber.trim()) &&
+        hasCompleteAdmissionNumberOverride({
+          canOverride: canOverrideAdmissionNumber,
+          confirmed: overrideConfirmed,
+          reason: overrideReason,
+          counterDecision: overrideCounterDecision,
+          advanceCounterTo,
+        }))
+    : Boolean(admissionNumber.trim());
+  const studentValid = Boolean(selectedClassId && studentFirstName.trim() && studentLastName.trim() && admissionNumberReady && gender.trim());
+  const hasFamilyDetails = Boolean(parentFirstName.trim() || parentLastName.trim() || parentEmail.trim() || parentPhone.trim() || parentRelationship.trim());
+  const familyValid = !hasFamilyDetails || Boolean(parentFirstName.trim() && parentLastName.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail.trim()));
+  const sections = [
+    { id: "student", title: "Student identity", isValid: studentValid, hasError: false },
+    { id: "family", title: "Family link", isValid: familyValid, hasError: hasFamilyDetails && !familyValid, optional: true },
+  ];
+  const currentStepIndex = studentValid ? 1 : 0;
+
   return (
     <form onSubmit={(event) => void onSubmit(event)} className="space-y-6">
+      <MobileProgressIndicator
+        mode="sections"
+        sections={sections}
+        currentStepIndex={currentStepIndex}
+        draftStatus={draftStatus}
+        lastSavedAt={draftLastSavedAt}
+        topOffset="top-0"
+      />
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
@@ -122,7 +191,7 @@ export function FamilyOnboardingForm({
 
       <section className="space-y-4 border-b border-slate-200/70 pb-5">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Student identity</p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">First Name</label>
             <input
@@ -149,17 +218,61 @@ export function FamilyOnboardingForm({
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Admission ID</label>
-            <input
-              type="text"
-              value={admissionNumber}
-              onChange={(event) => onAdmissionNumberChange(event.target.value)}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
-              placeholder="4A-0951"
-              required
-            />
+            {numberingPolicyLoading ? (
+              <p role="status" className="text-xs font-medium text-slate-500">Loading numbering policy…</p>
+            ) : numberingPolicyConfigured ? (
+              <fieldset className="space-y-2">
+                <legend className="sr-only">Admission number source</legend>
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                  <input
+                    type="radio"
+                    name={admissionNumberSourceName}
+                    checked={admissionNumberMode === "automatic"}
+                    onChange={() => onAdmissionNumberModeChange("automatic")}
+                  />
+                  Assign automatically on enrollment
+                </label>
+                <p className="rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs font-bold text-slate-800">
+                  {numberingPreview ?? "Number assigned in the enrollment transaction"}
+                </p>
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                  <input
+                    type="radio"
+                    name={admissionNumberSourceName}
+                    checked={admissionNumberMode === "manual"}
+                    disabled={!canOverrideAdmissionNumber}
+                    onChange={() => onAdmissionNumberModeChange("manual")}
+                  />
+                  Supply a historical or manual number
+                </label>
+                {admissionNumberMode === "manual" && (
+                  <input
+                    aria-label="Manual admission number"
+                    type="text"
+                    value={admissionNumber}
+                    onChange={(event) => onAdmissionNumberChange(event.target.value)}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                    placeholder="Historical admission number"
+                    required
+                  />
+                )}
+              </fieldset>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={admissionNumber}
+                  onChange={(event) => onAdmissionNumberChange(event.target.value)}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white/70 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/5"
+                  placeholder="4A-0951"
+                  required
+                />
+                <p className="text-[11px] text-slate-500">This branch still uses its existing manual-ID workflow.</p>
+              </>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Gender</label>
@@ -177,9 +290,24 @@ export function FamilyOnboardingForm({
         </div>
       </section>
 
+      {governedManualNumber && (
+        <AdmissionNumberGovernanceFields
+          canOverride={canOverrideAdmissionNumber}
+          confirmed={overrideConfirmed}
+          reason={overrideReason}
+          counterDecision={overrideCounterDecision}
+          advanceCounterTo={advanceCounterTo}
+          policyConfigured={numberingPolicyConfigured}
+          onConfirmedChange={onOverrideConfirmedChange}
+          onReasonChange={onOverrideReasonChange}
+          onCounterDecisionChange={onOverrideCounterDecisionChange}
+          onAdvanceCounterToChange={onAdvanceCounterToChange}
+        />
+      )}
+
       <section className="space-y-4">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Family link</p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Parent First Name</label>
             <input
@@ -213,7 +341,7 @@ export function FamilyOnboardingForm({
             placeholder="parent@example.com"
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</label>
             <input
@@ -249,7 +377,7 @@ export function FamilyOnboardingForm({
 
       <button
         type="submit"
-        disabled={isSubmitting || !studentFirstName.trim() || !studentLastName.trim() || !admissionNumber.trim() || !gender.trim() || !selectedClassId}
+        disabled={isSubmitting || numberingPolicyLoading || !studentFirstName.trim() || !studentLastName.trim() || !admissionNumberReady || !gender.trim() || !selectedClassId}
         className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
       >
         <Sparkles className="h-4 w-4 text-emerald-400" />

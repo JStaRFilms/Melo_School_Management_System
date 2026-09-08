@@ -1,6 +1,6 @@
 import { internalMutation, internalQuery } from "../../_generated/server";
 import type { MutationCtx } from "../../_generated/server";
-import type { Id, TableNames } from "../../_generated/dataModel";
+import type { Doc, Id, TableNames } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import {
   DEMO_BANDS,
@@ -16,6 +16,7 @@ import {
 } from "./demoData";
 import { populateJudgeCurriculumFixture } from "./judgeCurriculumSeed";
 import { populateJudgeLessonFixture } from "./judgeLessonSeed";
+import { assertStorageClaimedOnlyBy, assertStorageUnclaimed } from "./assetStorageBoundary";
 
 const DAY = 24 * 60 * 60 * 1000;
 const timestamp = (date: string) => Date.parse(`${date}T09:00:00.000Z`);
@@ -34,8 +35,11 @@ const DEMO_SCHOOL_TABLES = [
   "instructionArtifactSources", "instructionArtifactRevisions", "instructionArtifactDocuments", "instructionArtifacts", "instructionTemplates",
   "curriculumUnits", "curriculumImports",
   "knowledgeOcrJobs", "knowledgeMaterialChunks", "knowledgeMaterialClassBindings", "knowledgeMaterials", "knowledgeTopics",
+  "assetQuarantineLogs", "assetRetentionHolds", "assetStorageReconciliationIssues", "assetPurgeReceipts", "pdfCompressionCandidates", "assetUploadIntents", "schoolAssets", "assetPolicies",
+  "settlementLegs", "settlementLedgers", "subscriptionInvoices", "commercialContracts", "paymentMandates", "schoolSubscriptions",
+  "usageProviderCosts", "usageEvents", "usageQuotaReservations", "usageMeterAllocations",
   "paymentAllocations", "billingPaymentAttempts", "paymentGatewayEvents", "billingPayments", "studentInvoices", "feePlanApplications", "feePlans", "schoolPaymentProviderSecrets", "schoolPaymentProviders", "schoolBillingSettings",
-  "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
+  "issuedReportCards", "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
   "studentSubjectAggregationOptOuts", "studentSubjectSelections", "studentPromotions", "classSubjectAggregationComponents", "classSubjectAggregations", "teacherAssignments", "classSubjects",
   "academicTimelineAuditEvents", "academicTerms", "academicSessions", "schoolEvents",
@@ -46,9 +50,17 @@ function gradeFor(total: number) {
   return DEMO_BANDS.find((band) => total >= band.minScore && total <= band.maxScore) ?? DEMO_BANDS[0];
 }
 
-function storageIdsOnRow(row: object): Id<"_storage">[] {
+export function storageIdsOnRow(row: object): Id<"_storage">[] {
   const candidate = row as Record<string, unknown>;
-  const singular = ["photoStorageId", "logoStorageId", "storageId"].flatMap((key) =>
+  const singular = [
+    "photoStorageId",
+    "logoStorageId",
+    "schoolLogoStorageId",
+    "studentPhotoStorageId",
+    "storageId",
+    "rollbackStorageId",
+    "candidateStorageId",
+  ].flatMap((key) =>
     typeof candidate[key] === "string" ? [candidate[key] as Id<"_storage">] : []
   );
   const portraits = Array.isArray(candidate.portraitStorageIds)
@@ -95,6 +107,10 @@ export const getPendingDemoStorageCleanupInternal = internalQuery({
   handler: async (ctx, args) => {
     const profile = getSchoolSeedProfile(profileKey(args.seedProfile));
     const rows = await ctx.db.query("demoSeedStorageCleanup").withIndex("by_school_slug", (q) => q.eq("schoolSlug", profile.schoolSlug)).take(75);
+    await Promise.all(rows.map((row) => assertStorageClaimedOnlyBy(ctx, row.storageId, {
+      purpose: "demoSeedCleanup",
+      ownerId: String(row._id),
+    })));
     return [...new Set(rows.map((row) => String(row.storageId)))].map((storageId) => storageId as Id<"_storage">);
   },
 });
@@ -151,6 +167,44 @@ export const clearDemoSchoolBatchInternal = internalMutation({
       .withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug))
       .unique();
     if (!school) return { complete: true, deletedCount: 0, storageIds: [] };
+
+    // These child rows do not carry schoolId. Remove them in bounded batches
+    // before their school-scoped parents enter the generic reset loop.
+    const invoices = await ctx.db
+      .query("subscriptionInvoices")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .take(75);
+    const invoiceStudents: Doc<"subscriptionInvoiceStudents">[] = [];
+    const invoiceStudentBatchSize = 1000;
+    for (const invoice of invoices) {
+      const remaining = invoiceStudentBatchSize - invoiceStudents.length;
+      if (remaining === 0) break;
+      invoiceStudents.push(...await ctx.db
+        .query("subscriptionInvoiceStudents")
+        .withIndex("by_invoiceId", (q) => q.eq("invoiceId", invoice._id))
+        .take(remaining));
+    }
+    if (invoiceStudents.length > 0) {
+      for (const student of invoiceStudents) await ctx.db.delete(student._id);
+      return { complete: false, deletedCount: invoiceStudents.length, storageIds: [] };
+    }
+
+    const ownedShares = await ctx.db
+      .query("assetBranchShares")
+      .withIndex("by_owner", (q) => q.eq("ownerSchoolId", school._id))
+      .take(75);
+    if (ownedShares.length > 0) {
+      for (const share of ownedShares) await ctx.db.delete(share._id);
+      return { complete: false, deletedCount: ownedShares.length, storageIds: [] };
+    }
+    const receivedShares = await ctx.db
+      .query("assetBranchShares")
+      .withIndex("by_recipient", (q) => q.eq("recipientSchoolId", school._id))
+      .take(75);
+    if (receivedShares.length > 0) {
+      for (const share of receivedShares) await ctx.db.delete(share._id);
+      return { complete: false, deletedCount: receivedShares.length, storageIds: [] };
+    }
 
     for (const tableName of DEMO_SCHOOL_TABLES) {
       const rows = await ctx.db
@@ -230,6 +284,11 @@ export const startDemoSeedRunInternal = internalMutation({
   handler: async (ctx, args) => {
     const profile = getSchoolSeedProfile(profileKey(args.seedProfile));
     if (args.portraitStorageIds.length !== profile.students.length) throw new ConvexError(`Expected ${profile.students.length} portrait PNG assets.`);
+    const storageIds = [args.logoStorageId, ...args.portraitStorageIds];
+    if (new Set(storageIds).size !== storageIds.length) {
+      throw new ConvexError("Each demo storage object must have exactly one owning purpose");
+    }
+    await Promise.all(storageIds.map((storageId) => assertStorageUnclaimed(ctx, storageId)));
     const existing = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug)).unique();
     if (existing) throw new ConvexError(`${profile.schoolSlug} must be reset before a new seed run starts.`);
     const schoolId = await ctx.db.insert("schools", { name: profile.schoolName, slug: profile.schoolSlug, status: "active", logoStorageId: args.logoStorageId, logoFileName: `${profile.schoolSlug}-crest.png`, logoContentType: "image/png", logoUpdatedAt: profile.createdAt, createdAt: profile.createdAt, updatedAt: profile.createdAt });

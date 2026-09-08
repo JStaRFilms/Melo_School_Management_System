@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import {
   CalendarDays,
@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { useDepartureGuard, useDirtyForm } from "@school/shared/drafts";
 import { appToast } from "@school/shared/toast";
 import { ConfirmationModal } from "./ConfirmationModal";
 
@@ -52,6 +53,7 @@ function parseDateInputToTimestamp(dateStr: string) {
 }
 
 export function TermCard({ term, sessionName }: TermCardProps) {
+  const { requestDeparture } = useDepartureGuard();
   const activateTerm = useMutation("functions/academic/academicSetup:activateTerm" as never);
   const updateTermDates = useMutation("functions/academic/academicSetup:updateTermDates" as never);
   const updateCalculationMode = useMutation("functions/academic/academicSetup:updateTermCalculationMode" as never);
@@ -61,6 +63,12 @@ export function TermCard({ term, sessionName }: TermCardProps) {
   const [startDate, setStartDate] = useState(formatDateInput(term.startDate));
   const [endDate, setEndDate] = useState(formatDateInput(term.endDate));
   const [isSavingDates, setIsSavingDates] = useState(false);
+
+  useEffect(() => {
+    if (isEditingDates) return;
+    setStartDate(formatDateInput(term.startDate));
+    setEndDate(formatDateInput(term.endDate));
+  }, [isEditingDates, term.startDate, term.endDate]);
 
   // Modern In-App Confirmation Modals
   const [isActivateConfirmOpen, setIsActivateConfirmOpen] = useState(false);
@@ -128,10 +136,12 @@ export function TermCard({ term, sessionName }: TermCardProps) {
     setIsSaveDatesConfirmOpen(true);
   };
 
-  const handleConfirmSaveDates = async () => {
+  const saveDates = async () => {
     const startTs = parseDateInputToTimestamp(startDate);
     const endTs = parseDateInputToTimestamp(endDate);
-
+    if (Number.isNaN(startTs) || Number.isNaN(endTs) || startTs >= endTs) {
+      throw new Error("Term end date must be after a valid start date.");
+    }
     setIsSavingDates(true);
     try {
       await updateTermDates({
@@ -140,8 +150,15 @@ export function TermCard({ term, sessionName }: TermCardProps) {
         endDate: endTs,
         expectedUpdatedAt: term.updatedAt,
       } as never);
-
       setIsEditingDates(false);
+    } finally {
+      setIsSavingDates(false);
+    }
+  };
+
+  const handleConfirmSaveDates = async () => {
+    try {
+      await saveDates();
       appToast.success("Term dates updated", {
         description: "The date modification was recorded in the audit trail.",
       });
@@ -149,8 +166,6 @@ export function TermCard({ term, sessionName }: TermCardProps) {
       appToast.error("Date update failed", {
         description: getUserFacingErrorMessage(error, "Unable to update term dates"),
       });
-    } finally {
-      setIsSavingDates(false);
     }
   };
 
@@ -159,6 +174,28 @@ export function TermCard({ term, sessionName }: TermCardProps) {
     setEndDate(formatDateInput(term.endDate));
     setIsEditingDates(false);
   };
+
+  const toggleDateEditing = async () => {
+    if (!isEditingDates) {
+      setIsEditingDates(true);
+      return;
+    }
+    if (await requestDeparture({ kind: "close" })) setIsEditingDates(false);
+  };
+
+  const datesDirty = isEditingDates && (
+    startDate !== formatDateInput(term.startDate) ||
+    endDate !== formatDateInput(term.endDate)
+  );
+  useDirtyForm({
+    name: `Term dates for ${term.name}`,
+    isDirty: datesDirty,
+    save: saveDates,
+    discard: () => {
+      if (isSavingDates) throw new Error("Wait for the term date save to finish before discarding.");
+      cancelDateEditing();
+    },
+  });
 
   return (
     <>
@@ -200,7 +237,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
 
               <button
                 type="button"
-                onClick={() => setIsEditingDates(!isEditingDates)}
+                onClick={() => void toggleDateEditing()}
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer shrink-0"
                 title="Edit term dates"
               >
@@ -230,6 +267,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
                   <input
                     type="date"
                     value={startDate}
+                    disabled={isSavingDates}
                     onChange={(e) => setStartDate(e.target.value)}
                     className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-slate-900"
                   />
@@ -242,6 +280,7 @@ export function TermCard({ term, sessionName }: TermCardProps) {
                     type="date"
                     value={endDate}
                     min={startDate}
+                    disabled={isSavingDates}
                     onChange={(e) => setEndDate(e.target.value)}
                     className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-slate-900"
                   />

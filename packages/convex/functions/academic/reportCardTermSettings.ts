@@ -1,3 +1,4 @@
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { mutation, query } from "../../_generated/server";
@@ -7,6 +8,7 @@ import {
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
 import type { ReportCardCalculationMode } from "@school/shared";
+import { resolveDomainSetting } from "./groupSettings";
 
 type TermSettingGroupDoc = {
   _id: Id<"reportCardTermSettingGroups">;
@@ -163,7 +165,7 @@ export async function resolveEffectiveReportCardTermSettings(
     throw new ConvexError("Term not found");
   }
 
-  const [groupDocs, legacyClassAttendanceDocs, adjacentNextTerm] = await Promise.all([
+  const [groupDocs, legacyClassAttendanceDocs, adjacentNextTerm, sharedTemplate] = await Promise.all([
     ctx.db
       .query("reportCardTermSettingGroups")
       .withIndex("by_term", (q: any) => q.eq("termId", args.termId))
@@ -178,6 +180,7 @@ export async function resolveEffectiveReportCardTermSettings(
       )
       .collect(),
     resolveAdjacentNextTermInSession(ctx, args.schoolId, term.sessionId, args.termId),
+    resolveDomainSetting(ctx, args.schoolId, "report_card_template"),
   ]);
 
   const scopedGroups = groupDocs.filter(
@@ -210,10 +213,14 @@ export async function resolveEffectiveReportCardTermSettings(
       matchingGroup?.timesSchoolOpened ??
       legacyClassAttendance?.timesSchoolOpened ??
       term.defaultTimesSchoolOpened ??
+      sharedTemplate.value?.defaultTimesSchoolOpened ??
       null,
     resultCalculationMode:
-      (term.reportCardCalculationMode ??
-        "standalone") as ReportCardCalculationMode,
+      (sharedTemplate.mode === "legacy"
+        ? (term.reportCardCalculationMode ?? "standalone")
+        : (sharedTemplate.value?.resultCalculationMode ??
+          term.reportCardCalculationMode ??
+          "standalone")) as ReportCardCalculationMode,
     matchedGroup:
       matchingGroup
         ? {
@@ -242,7 +249,7 @@ export const getTermReportCardSettings = query({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const [term, groups] = await Promise.all([
@@ -298,7 +305,7 @@ export const saveTermReportCardDefaults = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -334,6 +341,7 @@ export const saveTermReportCardDefaults = mutation({
       startDate: term.startDate,
       endDate: term.endDate,
       isActive: term.isActive,
+      isArchived: term.isArchived,
       reportCardCalculationMode: args.resultCalculationMode,
       createdAt: term.createdAt,
       updatedAt: Date.now(),
@@ -381,7 +389,7 @@ export const saveTermReportCardSettingGroup = mutation({
   returns: v.id("reportCardTermSettingGroups"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -498,7 +506,7 @@ export const deleteTermReportCardSettingGroup = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const group = await ctx.db.get(args.groupId);

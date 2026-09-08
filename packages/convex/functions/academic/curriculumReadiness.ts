@@ -27,7 +27,7 @@ export const getAdminCurriculumReadiness = query({
   args: { subjectId: v.id("subjects"), termId: v.id("academicTerms"), level: v.string(), limit: v.optional(v.number()) },
   returns: v.object({ rows: v.array(rowValidator), counts: countsValidator, evidenceNotice: v.string() }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const [subject, term] = await Promise.all([ctx.db.get(args.subjectId), ctx.db.get(args.termId)]);
     if (!subject || subject.schoolId !== schoolId || subject.isArchived) throw new ConvexError("Subject not found");

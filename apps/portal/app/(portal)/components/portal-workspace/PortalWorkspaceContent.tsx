@@ -1,4 +1,6 @@
 "use client";
+import { InvoicePaymentInstructions } from "@school/shared";
+import { resolveGradeColor } from "@school/shared/exam-recording";
 
 import type {
 PortalBillingData,
@@ -248,6 +250,7 @@ function PortalGreetingBar({
                 key={student.studentId}
                 type="button"
                 onClick={() => onSelectStudent(student.studentId)}
+                aria-pressed={student.isActive}
                 className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors cursor-pointer ${
                   student.isActive
                     ? "bg-slate-900 text-white"
@@ -255,9 +258,9 @@ function PortalGreetingBar({
                 }`}
               >
                 <span>{student.name.split(" ")[0]}</span>
-                {student.schoolName !== workspace.school.name && (
-                  <span className="ml-1 text-[10px] opacity-80">· {student.schoolName}</span>
-                )}
+                <span className="ml-1 text-[10px] opacity-80">
+                  · {student.schoolName} · {student.enrollmentState === "active" ? "Current" : "History"}
+                </span>
               </button>
             ))}
           </div>
@@ -350,7 +353,7 @@ function DashboardView({
                   <tr key={result.subjectId} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-2.5 font-medium text-slate-700">{result.subjectName}</td>
                     <td className="px-4 py-2.5 text-right font-bold text-slate-900 tabular-nums">{formatScore(result.total)}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-slate-500">{result.gradeLetter}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold" style={{color: resolveGradeColor(result.gradeLetter, workspace.selectedReportCard?.gradingPolicy?.bands ?? [])}}>{result.gradeLetter}</td>
                   </tr>
                 ))}
               </tbody>
@@ -478,6 +481,7 @@ function PortalReportCardLayout({
                       <button
                         key={student.studentId}
                         onClick={() => onSelectStudent(student.studentId)}
+                        aria-pressed={student.isActive}
                         className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition text-sm ${
                           student.isActive
                             ? "border-slate-300 bg-slate-50 font-bold text-slate-900 shadow-sm"
@@ -487,7 +491,7 @@ function PortalReportCardLayout({
                         <span>
                           <span className="block">{student.name}</span>
                           <span className="mt-0.5 block text-xs font-medium text-slate-500">
-                            {student.schoolName} · {student.className}
+                            {student.schoolName} · {student.className} · {student.enrollmentState === "active" ? "Current enrollment" : "Historical enrollment"}
                           </span>
                         </span>
                       </button>
@@ -832,6 +836,7 @@ function BillingView({
               </div>
 
               {/* Pay button */}
+              <InvoicePaymentInstructions instructions={invoice.paymentInstructions} reference={invoice.invoiceNumber} payable={invoice.balanceDue > 0 && ["issued", "overdue", "partially_paid"].includes(invoice.status)} />
               {invoice.canPayOnline && invoice.balanceDue > 0 && (
                 <div className="border-t border-slate-100 px-5 py-4">
                   <button

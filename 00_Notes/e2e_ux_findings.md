@@ -400,6 +400,11 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Out of scope: Ghostscript / native binary compression, `sharp` image re-encoding (verify Convex Node runtime first), AV scanning, versioned assets.
 
 ### Architecture & Medium-Term Enhancements
+- [ ] **Centralize Product Modules and Per-School Entitlements** → see [docs/features/ProductWideModuleEntitlements.md](../docs/features/ProductWideModuleEntitlements.md)
+  - Implement each optional feature once across the shared Melo product, then enable it for selected schools or all schools through tenant configuration; do not create school-specific code forks.
+  - Establish one non-React module registry as the source for platform controls, route-impact descriptions, navigation visibility, direct-route guards, and default entitlement behavior.
+  - Keep module entitlement separate from user permission, and add authoritative Convex checks so disabled modules cannot be reached through direct backend calls.
+  - First align the currently inconsistent Billing, Curriculum, Knowledge Library, and Admissions route declarations and enforcement described in the linked architecture note.
 - [ ] **Migrate All AI Generation from Vercel to Convex — Reliability & Offline Resilience**
   - **Goal:** Move every OpenRouter AI generation currently in Vercel (`apps/teacher/app/api/planning/lesson-plans/generate/route.ts`, `apps/teacher/app/api/ai/question-bank/generate/route.ts` via `packages/ai/src/models.ts`) to **Convex actions** (like `packages/convex/functions/academic/curriculumGeneration.ts` via `packages/ai/src/runtime.ts`).
   - **Why:** Vercel routes are tied to the HTTP request lifecycle — if the user closes the tab, network drops, or Vercel hits its timeout (10–300s), generation is aborted and tokens are wasted. Convex actions survive client disconnect, run up to ~10 min, retry automatically, and persist results directly to `ctx.db` for the client to pick up via `useQuery` on reconnect.

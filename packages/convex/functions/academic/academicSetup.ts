@@ -1,4 +1,5 @@
-import { action, internalMutation, internalQuery, mutation, query } from "../../_generated/server";
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
+import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
@@ -7,7 +8,9 @@ import { createAuth } from "../../betterAuth";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
+  resolveActiveMembership,
 } from "./auth";
+import { getContextCapabilities } from "./rbac";
 import {
   formatClassDisplayName,
   normalizeClassGradeName,
@@ -23,16 +26,10 @@ import {
   getTeacherArchiveBlockers as readTeacherArchiveBlockers,
 } from "./archiveGuardrails";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
+import { finishFormDraft, recordFormDraftProvisionedAuth, releaseFormDraftReservation, reserveFormDraft } from "./drafts";
+import { resolveDomainSetting } from "./groupSettings";
 
 // ==================== TEACHER MANAGEMENT ====================
-
-async function readJsonSafe(response: Response) {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
 
 function normalizeTeacherEmail(email: string) {
   return email.trim().toLowerCase();
@@ -55,15 +52,15 @@ async function findSubjectsByCode(
 }
 
 async function findTeacherByEmailRecords(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   email: string
 ) {
   const normalizedEmail = normalizeTeacherEmail(email);
   return await ctx.db
     .query("users")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-    .filter((q: any) =>
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .filter((q) =>
       q.and(q.eq(q.field("role"), "teacher"), q.eq(q.field("email"), normalizedEmail))
     )
     .collect();
@@ -141,9 +138,14 @@ export const createTeacherRecordInternal = internalMutation({
     name: v.string(),
     email: v.string(),
     authId: v.string(),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.id("users"),
   handler: async (ctx, args) => {
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft closure requires both an ID and revision");
+    }
     const normalizedEmail = normalizeTeacherEmail(args.email);
     const teacherName = resolveStoredUserNameFields({
       name: args.name,
@@ -182,8 +184,81 @@ export const createTeacherRecordInternal = internalMutation({
       updatedAt: now,
     });
 
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+      await finishFormDraft(ctx, {
+        schoolId: args.schoolId,
+        draftId: args.draftId,
+        expectedRevision: args.expectedDraftRevision,
+        expectedFormKey: "staff_onboarding",
+        submissionLease: normalizedEmail,
+      }, "committed");
+    }
+
     return teacherId;
   },
+});
+
+export const reserveTeacherProvisioningInternal = internalMutation({
+  args: {
+    schoolId: v.id("schools"),
+    email: v.string(),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined))
+      throw new ConvexError("Draft closure requires both an ID and revision");
+    const normalizedEmail = normalizeTeacherEmail(args.email);
+    const existingUsers = await findTeacherByEmailRecords(ctx, args.schoolId, normalizedEmail);
+    if (existingUsers.some((user) => !user.isArchived))
+      throw new ConvexError("A user with this email already exists");
+    if (existingUsers.some((user) => user.isArchived))
+      throw new ConvexError(archivedRecordNotice("teacher"));
+    const reservation = args.draftId !== undefined && args.expectedDraftRevision !== undefined
+      ? await reserveFormDraft(ctx, {
+          schoolId: args.schoolId,
+          draftId: args.draftId,
+          expectedRevision: args.expectedDraftRevision,
+          expectedFormKey: "staff_onboarding",
+          submissionLease: normalizedEmail,
+        })
+      : null;
+    return { normalizedEmail, provisionedAuthId: reservation?.provisionedAuthId };
+  },
+});
+
+export const recordTeacherProvisionedAuthInternal = internalMutation({
+  args: {
+    schoolId: v.id("schools"),
+    email: v.string(),
+    authId: v.string(),
+    draftId: v.id("formDrafts"),
+    expectedDraftRevision: v.number(),
+  },
+  handler: (ctx, args) => recordFormDraftProvisionedAuth(ctx, {
+    schoolId: args.schoolId,
+    draftId: args.draftId,
+    expectedRevision: args.expectedDraftRevision,
+    expectedFormKey: "staff_onboarding",
+    submissionLease: normalizeTeacherEmail(args.email),
+    authId: args.authId,
+  }),
+});
+
+export const releaseTeacherProvisioningInternal = internalMutation({
+  args: {
+    schoolId: v.id("schools"),
+    email: v.string(),
+    draftId: v.id("formDrafts"),
+    expectedDraftRevision: v.number(),
+  },
+  handler: (ctx, args) => releaseFormDraftReservation(ctx, {
+    schoolId: args.schoolId,
+    draftId: args.draftId,
+    expectedRevision: args.expectedDraftRevision,
+    expectedFormKey: "staff_onboarding",
+    submissionLease: normalizeTeacherEmail(args.email),
+  }),
 });
 
 export const createTeacher = action({
@@ -192,6 +267,8 @@ export const createTeacher = action({
     email: v.string(),
     temporaryPassword: v.string(),
     origin: v.string(),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.object({
     teacherId: v.id("users"),
@@ -206,7 +283,10 @@ export const createTeacher = action({
       email: string;
       temporaryPassword: string;
   }> => {
-    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    if (args.draftId === undefined || args.expectedDraftRevision === undefined) {
+      throw new ConvexError("Teacher provisioning requires an active staff-onboarding draft");
+    }
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "staff.onboard" });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
@@ -215,66 +295,87 @@ export const createTeacher = action({
     }
 
     const schoolId = viewer.schoolId;
-    const normalizedEmail = normalizeTeacherEmail(args.email);
-
-    const duplicateTeacher = await ctx.runQuery(
-      (internal as any).functions.academic.academicSetup.findTeacherByEmailInternal,
+    const reservation = await ctx.runMutation(
+      internal.functions.academic.academicSetup.reserveTeacherProvisioningInternal,
       {
         schoolId,
-        email: normalizedEmail,
-      }
-    );
-
-    if (duplicateTeacher) {
-      throw new ConvexError(
-        duplicateTeacher.isArchived
-          ? archivedRecordNotice("teacher")
-          : "A teacher with this email already exists"
-      );
-    }
-
-    const authBaseUrl = process.env.CONVEX_SITE_URL?.trim();
-    if (!authBaseUrl) {
-      throw new ConvexError(
-        "CONVEX_SITE_URL is not configured on the Convex deployment."
-      );
-    }
-
-    const signUpResponse = await fetch(`${authBaseUrl}/api/auth/sign-up/email`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        origin: args.origin,
+        email: args.email,
+        draftId: args.draftId,
+        expectedDraftRevision: args.expectedDraftRevision,
       },
-      body: JSON.stringify({
-        name: normalizePersonName(args.name),
-        email: normalizedEmail,
-        password: args.temporaryPassword,
-      }),
-    });
+    ) as { normalizedEmail: string; provisionedAuthId?: string };
+    const normalizedEmail = reservation.normalizedEmail;
+    const auth = createAuth(ctx);
+    const authContext = await auth.$context;
+    let authId = reservation.provisionedAuthId ?? null;
+    let createdThisRun = false;
 
-    const signUpPayload = await readJsonSafe(signUpResponse);
-    if (!signUpResponse.ok || !signUpPayload?.user?.id) {
-      throw new ConvexError(
-        signUpPayload?.message ?? "Failed to provision teacher account"
-      );
-    }
-
-    const teacherId: Id<"users"> = await ctx.runMutation(
-      (internal as any).functions.academic.academicSetup.createTeacherRecordInternal,
-      {
-        schoolId,
-        name: normalizeHumanName(args.name),
-        email: normalizedEmail,
-        authId: signUpPayload.user.id,
+    try {
+      if (args.temporaryPassword.length < authContext.password.config.minPasswordLength || args.temporaryPassword.length > authContext.password.config.maxPasswordLength)
+        throw new ConvexError(`Temporary password must be ${authContext.password.config.minPasswordLength}–${authContext.password.config.maxPasswordLength} characters`);
+      const existingAuth = await authContext.internalAdapter.findUserByEmail(normalizedEmail, { includeAccounts: true });
+      if (authId) {
+        if (existingAuth?.user?.id !== authId)
+          throw new ConvexError("The reserved authentication account requires operator reconciliation");
+      } else {
+        if (existingAuth?.user?.id)
+          throw new ConvexError("An authentication account with this email already exists");
+        const created = await authContext.internalAdapter.createUser({
+          name: normalizePersonName(args.name),
+          email: normalizedEmail,
+          emailVerified: false,
+        });
+        if (!created?.id) throw new ConvexError("Failed to provision teacher account");
+        authId = created.id;
+        createdThisRun = true;
+        if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+          await ctx.runMutation(
+            internal.functions.academic.academicSetup.recordTeacherProvisionedAuthInternal,
+            { schoolId, email: normalizedEmail, authId, draftId: args.draftId, expectedDraftRevision: args.expectedDraftRevision },
+          );
+        }
       }
-    );
 
-    return {
-      teacherId,
-      email: normalizedEmail,
-      temporaryPassword: args.temporaryPassword,
-    };
+      const password = await authContext.password.hash(args.temporaryPassword);
+      await authContext.internalAdapter.updateUser(authId, { name: normalizePersonName(args.name), email: normalizedEmail });
+      if (existingAuth?.accounts?.length)
+        await authContext.internalAdapter.updatePassword(authId, password);
+      else
+        await authContext.internalAdapter.linkAccount({ userId: authId, providerId: "credential", accountId: authId, password });
+
+      const teacherId: Id<"users"> = await ctx.runMutation(
+        internal.functions.academic.academicSetup.createTeacherRecordInternal,
+        {
+          schoolId,
+          name: normalizeHumanName(args.name),
+          email: normalizedEmail,
+          authId,
+          draftId: args.draftId,
+          expectedDraftRevision: args.expectedDraftRevision,
+        },
+      );
+      return { teacherId, email: normalizedEmail, temporaryPassword: args.temporaryPassword };
+    } catch (error) {
+      let cleanupVerified = !createdThisRun;
+      if (createdThisRun && authId) {
+        await authContext.internalAdapter.deleteSessions(authId).catch(() => undefined);
+        await authContext.internalAdapter.deleteUser(authId).catch(() => undefined);
+        cleanupVerified = !(await authContext.internalAdapter.findUserByEmail(normalizedEmail).catch(() => ({ user: { id: authId } })))?.user?.id;
+      }
+      const shouldRelease = !reservation.provisionedAuthId && cleanupVerified;
+      if (shouldRelease && args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+        await ctx.runMutation(
+          internal.functions.academic.academicSetup.releaseTeacherProvisioningInternal,
+          { schoolId, email: normalizedEmail, draftId: args.draftId, expectedDraftRevision: args.expectedDraftRevision },
+        ).catch(() => undefined);
+      }
+      if (!cleanupVerified)
+        throw new ConvexError("Teacher provisioning needs operator reconciliation; the authentication rollback could not be verified");
+      if (error instanceof ConvexError) throw error;
+      throw new ConvexError(reservation.provisionedAuthId
+        ? "Teacher provisioning can be retried safely with the same draft"
+        : "Failed to provision teacher account; no authentication account was retained");
+    }
   },
 });
 
@@ -290,7 +391,7 @@ export const listTeachers = query({
   ),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "staff.list.view" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const teachers = await ctx.db
@@ -320,7 +421,7 @@ export const getTeacherArchiveBlockers = query({
   returns: v.array(v.string()),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "staff.account.suspend" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const teacher = await ctx.db.get(args.teacherId);
@@ -448,7 +549,7 @@ export const updateTeacherProfile = action({
     email: v.string(),
   }),
   handler: async (ctx, args) => {
-    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "staff.profiles.edit" });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
@@ -519,7 +620,7 @@ export const resetTeacherPassword = action({
     temporaryPassword: v.string(),
   }),
   handler: async (ctx, args) => {
-    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {});
+    const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "staff.password.reset" });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
@@ -563,7 +664,7 @@ export const archiveTeacher = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "staff.account.suspend" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const teacher = await ctx.db.get(args.teacherId);
@@ -600,7 +701,7 @@ export const restoreTeacher = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "staff.account.suspend" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const teacher = await ctx.db.get(args.teacherId);
@@ -649,11 +750,13 @@ export const createSession = mutation({
     endDate: v.number(),
     isActive: v.boolean(),
     autoGenerateTerms: v.optional(v.boolean()),
+    draftId: v.optional(v.id("formDrafts")),
+    expectedDraftRevision: v.optional(v.number()),
   },
   returns: v.id("academicSessions"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     if (args.endDate <= args.startDate) {
@@ -691,10 +794,33 @@ export const createSession = mutation({
     });
 
     if (args.autoGenerateTerms) {
-      const dynamicTerms = calculateDynamicTermSchedule(
-        args.startDate,
-        args.endDate
+      const calendar = await resolveDomainSetting(
+        ctx,
+        schoolId,
+        "calendar_template",
       );
+      const dynamicTerms =
+        calendar.mode === "legacy" || !calendar.value
+          ? calculateDynamicTermSchedule(args.startDate, args.endDate)
+          : calendar.value.terms.map((term, index) => ({
+              name: term.name,
+              startDate: args.startDate + term.startOffsetDays * 86_400_000,
+              endDate: args.startDate + term.endOffsetDays * 86_400_000,
+              isActive: index === 0,
+              resultCalculationMode: term.resultCalculationMode,
+            }));
+      if (
+        dynamicTerms.some(
+          (term) =>
+            term.startDate < args.startDate ||
+            term.endDate > args.endDate ||
+            term.endDate < term.startDate,
+        )
+      ) {
+        throw new ConvexError(
+          "The selected calendar template does not fit this branch session date range",
+        );
+      }
 
       // If session is active, deactivate existing active terms in the school
       if (args.isActive) {
@@ -729,6 +855,18 @@ export const createSession = mutation({
       }
     }
 
+    if ((args.draftId === undefined) !== (args.expectedDraftRevision === undefined)) {
+      throw new ConvexError("Draft identity and revision must be supplied together");
+    }
+    if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
+      await finishFormDraft(ctx, {
+        schoolId,
+        draftId: args.draftId,
+        expectedRevision: args.expectedDraftRevision,
+        expectedFormKey: "academic_setup",
+      }, "committed");
+    }
+
     return sessionId;
   },
 });
@@ -748,7 +886,7 @@ export const listSessions = query({
   ),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const sessions = await ctx.db
@@ -782,7 +920,7 @@ export const getSessionActivationWarnings = query({
   }),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const activeSession = await ctx.db
@@ -843,7 +981,7 @@ export const updateSession = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -902,7 +1040,7 @@ export const updateSessionDates = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -1011,7 +1149,7 @@ export const archiveSession = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -1058,7 +1196,7 @@ export const restoreSession = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -1115,7 +1253,7 @@ export const createTerm = mutation({
   returns: v.id("academicTerms"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -1181,7 +1319,7 @@ export const updateTermCalculationMode = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -1208,7 +1346,7 @@ export const updateTermDates = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -1290,7 +1428,7 @@ export const activateTerm = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -1360,7 +1498,7 @@ export const listAcademicTimelineAuditEvents = query({
   ),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const events = await ctx.db
@@ -1411,7 +1549,7 @@ export const listTermsBySession = query({
   ),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -1449,7 +1587,7 @@ export const createSubject = mutation({
   returns: v.id("subjects"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.subjects.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const existingSubjects = await findSubjectsByCode(ctx, schoolId, args.code);
@@ -1492,7 +1630,7 @@ export const listSubjects = query({
   ),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subjects = await ctx.db
@@ -1521,7 +1659,7 @@ export const updateSubject = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.subjects.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subject = await ctx.db.get(args.subjectId);
@@ -1564,7 +1702,7 @@ export const archiveSubject = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.subjects.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subject = await ctx.db.get(args.subjectId);
@@ -1596,7 +1734,7 @@ export const restoreSubject = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.subjects.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subject = await ctx.db.get(args.subjectId);
@@ -1649,7 +1787,7 @@ export const createClass = mutation({
   returns: v.id("classes"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     if (args.formTeacherId) {
@@ -1729,14 +1867,26 @@ export const listClasses = query({
       formTeacherId: v.optional(v.id("users")),
       formTeacherName: v.optional(v.string()),
       subjectNames: v.array(v.string()),
-      studentCount: v.number(),
+      studentCount: v.optional(v.number()),
       createdAt: v.number(),
     })
   ),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
+    const capabilities = await getContextCapabilities(
+      ctx,
+      await resolveActiveMembership(ctx, schoolId)
+    );
+    const canViewStaffProjection = capabilities.some(
+      (capability) =>
+        capability === "staff.list.view" ||
+        capability === "staff.assignments.manage"
+    );
+    const canViewStudentCount = capabilities.includes(
+      "enrollment.intakes.manage"
+    );
 
     const activeSession = await ctx.db
       .query("academicSessions")
@@ -1776,17 +1926,21 @@ export const listClasses = query({
             classDoc.formTeacherId;
 
           const [teacher, offerings, students] = await Promise.all([
-            effectiveTeacherId ? ctx.db.get(effectiveTeacherId) : null,
+            canViewStaffProjection && effectiveTeacherId
+              ? ctx.db.get(effectiveTeacherId)
+              : null,
             ctx.db
               .query("classSubjects")
               .withIndex("by_class", (q) => q.eq("classId", classDoc._id))
               .collect(),
-            ctx.db
-              .query("students")
-              .withIndex("by_school_and_class", (q) =>
-                q.eq("schoolId", schoolId).eq("classId", classDoc._id)
-              )
-              .collect(),
+            canViewStudentCount
+              ? ctx.db
+                  .query("students")
+                  .withIndex("by_school_and_class", (q) =>
+                    q.eq("schoolId", schoolId).eq("classId", classDoc._id)
+                  )
+                  .collect()
+              : [],
           ]);
 
           const subjectNames = (
@@ -1810,13 +1964,18 @@ export const listClasses = query({
             level: normalizeClassLevel(classDoc.level),
             gradeName: getStoredGradeName(classDoc),
             classLabel: getStoredClassLabel(classDoc),
-            formTeacherId: teacher?.isArchived ? undefined : effectiveTeacherId,
+            formTeacherId:
+              canViewStaffProjection && !teacher?.isArchived
+                ? effectiveTeacherId
+                : undefined,
             formTeacherName:
-              teacher?.name
+              canViewStaffProjection && teacher?.name
                 ? normalizePersonName(teacher.name)
                 : undefined,
             subjectNames,
-            studentCount: students.filter((student) => !student.isArchived).length,
+            studentCount: canViewStudentCount
+              ? students.filter((student) => !student.isArchived).length
+              : undefined,
             createdAt: classDoc.createdAt,
           };
         })
@@ -1835,7 +1994,7 @@ export const backfillClassNaming = mutation({
   }),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classes = await ctx.db
@@ -1888,7 +2047,7 @@ export const updateClass = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -2020,7 +2179,7 @@ export const archiveClass = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -2057,7 +2216,7 @@ export const restoreClass = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -2088,7 +2247,7 @@ export const setClassSubjects = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
@@ -2221,8 +2380,17 @@ export const getClassSubjects = query({
   ),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
+    const capabilities = await getContextCapabilities(
+      ctx,
+      await resolveActiveMembership(ctx, schoolId)
+    );
+    const canViewStaffProjection = capabilities.some(
+      (capability) =>
+        capability === "staff.list.view" ||
+        capability === "staff.assignments.manage"
+    );
 
     const classDoc = await ctx.db.get(args.classId);
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
@@ -2240,7 +2408,7 @@ export const getClassSubjects = query({
       if (!subject || subject.isArchived) continue;
 
       let teacherName: string | undefined;
-      if (offering.teacherId) {
+      if (canViewStaffProjection && offering.teacherId) {
         const teacher = await ctx.db.get(offering.teacherId);
         teacherName =
           teacher?.name && !teacher.isArchived
@@ -2271,7 +2439,7 @@ export const assignTeacherToClassSubject = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "staff.assignments.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);

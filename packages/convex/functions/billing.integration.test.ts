@@ -57,6 +57,33 @@ describe("billing registered functions", () => {
     })).rejects.toThrow(/Manual extra fee plans cannot target classes/);
   });
 
+  it("creates a fee plan and tombstones its exact private draft in one transaction", async () => {
+    const t = convexTest(schema, modules);
+    const schoolId = await t.run(async (ctx) => {
+      const now = Date.now();
+      const id = await ctx.db.insert("schools", { name: "Draft Billing School", slug: "draft-billing-school", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", { schoolId: id, authId: adminIdentity.subject, authTokenIdentifier: adminIdentity.tokenIdentifier, name: "Admin User", email: "admin@billing.test", role: "admin", isSchoolAdmin: true, createdAt: now, updatedAt: now });
+      return id;
+    });
+    const actor = t.withIdentity(adminIdentity);
+    const scope = { schoolId, formKey: "fee_plan_builder" };
+    const instance = await actor.mutation(api.functions.academic.drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+    const payload = { bankAccountId: "", name: "Recovered fees", description: "", currency: "NGN", billingMode: "class_default" as const, targetClassIds: [], installmentEnabled: false, installmentCount: "2", intervalDays: "30", firstDueDays: "14", lineItems: [{ label: "Tuition", amount: "5000", category: "tuition" as const, isOptional: false }] };
+    const saved = await actor.mutation(api.functions.academic.drafts.saveFormDraft, { schoolId, draftId: instance.draftId, expectedRevision: 0, schemaVersion: 1, payload });
+    const plan = await actor.mutation(api.functions.billing.createFeePlan, { name: payload.name, lineItems, draftId: instance.draftId, expectedDraftRevision: saved.revision });
+    expect(plan.name).toBe("Recovered fees");
+    expect(await actor.query(api.functions.academic.drafts.getFormDraft, scope)).toBeNull();
+    expect(await t.run(ctx => ctx.db.get(instance.draftId))).toMatchObject({ status: "committed", payload: {} });
+    await expect(actor.mutation(api.functions.academic.drafts.saveFormDraft, { schoolId, draftId: instance.draftId, expectedRevision: saved.revision, schemaVersion: 1, payload })).rejects.toThrow(/already/);
+
+    const stale = await actor.mutation(api.functions.academic.drafts.beginFormDraft, { ...scope, schemaVersion: 1 });
+    await actor.mutation(api.functions.academic.drafts.saveFormDraft, { schoolId, draftId: stale.draftId, expectedRevision: 0, schemaVersion: 1, payload: { ...payload, name: "Must roll back" } });
+    await expect(actor.mutation(api.functions.billing.createFeePlan, { name: "Must roll back", lineItems, draftId: stale.draftId, expectedDraftRevision: 0 })).rejects.toThrow(/Conflict/);
+    const rolledBackPlans = await t.run(ctx => ctx.db.query("feePlans").withIndex("by_school", q => q.eq("schoolId", schoolId)).collect());
+    expect(rolledBackPlans.map(row => row.name)).not.toContain("Must roll back");
+    expect(await actor.query(api.functions.academic.drafts.getFormDraft, scope)).toMatchObject({ draftId: stale.draftId, revision: 1 });
+  });
+
   it("snapshots overdue fee-plan issuance and skips fully waived invoices", async () => {
     const t = convexTest(schema, modules);
     const ids = await t.run(async (ctx) => {
@@ -78,6 +105,11 @@ describe("billing registered functions", () => {
         createdAt: now,
         updatedAt: now,
       });
+      const personId = await ctx.db.insert("persons", { name: "Billing Owner", email: "admin@snapshot-billing.test", authTokenIdentifier: adminIdentity.tokenIdentifier, status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.patch(adminId, { personId });
+      await ctx.db.insert("branchMemberships", { schoolId, personId, legacyUserId: adminId, isDefaultBranch: true, status: "active", joinedAt: now, updatedAt: now });
+      const groupId = await ctx.db.insert("schoolGroups", { name: "Synthetic group", slug: "synthetic-billing-group", proprietorPersonId: personId, status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("schoolGroupBranches", { schoolId, groupId, isHeadquarters: true, linkedAt: now });
       const classId = await ctx.db.insert("classes", {
         schoolId,
         name: "Primary 1",
@@ -317,6 +349,21 @@ describe("billing registered functions", () => {
       bankName: "First Bank",
       accountNumber: "0123456789",
     });
+    // Explicit alternate selection, not whichever account became default most recently.
+    const alternatePlan = await t.withIdentity(adminIdentity).mutation(api.functions.billing.createFeePlan, { name: "Synthetic alternate", billingMode: "manual_extra", lineItems });
+    const alternateInvoice = await t.withIdentity(adminIdentity).mutation(api.functions.billing.createInvoiceFromFeePlan, { feePlanId: alternatePlan._id, studentId: ids.studentIds[0], classId: ids.classId, sessionId: ids.sessionId, termId: ids.termId, bankAccountId: ids.firstBankId });
+    expect(alternateInvoice.paymentInstructions?.bankAccountId).toBe(ids.firstBankId);
+    await t.run(ctx => ctx.db.patch(ids.firstBankId, { accountNumber: "1111111111", status: "archived" }));
+    const immutable = await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: alternateInvoice._id });
+    expect(immutable.paymentInstructions?.accountNumber).toBe("0123456789");
+    await t.run(ctx => ctx.db.patch(draftInvoiceId, { status: "issued" }));
+    expect(await t.mutation(internal.functions.academic.bankAccounts.snapshotInvoicePaymentInstructions, { invoiceId: draftInvoiceId })).toBeNull();
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: draftInvoiceId })).paymentInstructions).toBeNull();
+    await t.run(ctx => ctx.db.patch(alternateInvoice._id, { status: "paid", balanceDue: 0, amountPaid: 5000 }));
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: alternateInvoice._id })).paymentInstructions).toBeNull();
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoiceReceipt, { invoiceId: directInvoice._id })).paymentInstructions).toBeNull();
+    expect((await t.withIdentity(adminIdentity).query(api.functions.academic.bankAccounts.getInvoicePaymentView, { invoiceId: waivedInvoice._id })).paymentInstructions).toBeNull();
+    await expect(t.withIdentity({ subject: "snapshot-student-1", tokenIdentifier: "https://auth.school.test|snapshot-student-1" }).query(api.functions.portal.resolvePortalInvoicePaymentContext, { invoiceId: directInvoice._id })).rejects.toThrow();
     expect(bulkInvoices).toHaveLength(2);
     for (const invoice of bulkInvoices) {
       expect(invoice.paymentInstructionsSnapshot).toMatchObject({

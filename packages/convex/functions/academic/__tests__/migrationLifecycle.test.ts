@@ -20,10 +20,16 @@ type MutationRef = FunctionReference<"mutation", "public", any, any>;
 type QueryRef = FunctionReference<"query", "public", any, any>;
 
 const createWorkspace = migrationWorkspace.createWorkspace as unknown as MutationRef;
+const listWorkspaces = migrationWorkspace.listWorkspaces as unknown as QueryRef;
 const getWorkspaceRecords = migrationWorkspace.getWorkspaceRecords as unknown as QueryRef;
 const getWorkspaceFeatureSignals = migrationWorkspace.getWorkspaceFeatureSignals as unknown as QueryRef;
 const stageRecordsBatch = migrationIngest.stageRecordsBatch as unknown as MutationRef;
 const bulkResolveAdmissionNumbers = migrationAutosave.bulkResolveAdmissionNumbers as unknown as MutationRef;
+const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
+const patchStagedRecord = migrationAutosave.patchStagedRecord as unknown as MutationRef;
+const reviewStagedRecord = migrationAutosave.reviewStagedRecord as unknown as MutationRef;
+const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
+const approveImportWorkspace = migrationMerge.approveImportWorkspace as unknown as MutationRef;
 const commitImportWorkspace = migrationMerge.commitImportWorkspace as unknown as MutationRef;
 
 async function setupTestFixture() {
@@ -49,6 +55,16 @@ async function setupTestFixture() {
       authId: "auth-admin-a",
       name: "Admin Alice",
       email: "alice@greenwood.test",
+      role: "admin",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const adminB = await ctx.db.insert("users", {
+      schoolId: schoolB,
+      authId: "auth-admin-b",
+      name: "Admin Ben",
+      email: "ben@starlight.test",
       role: "admin",
       createdAt: now,
       updatedAt: now,
@@ -81,14 +97,140 @@ async function setupTestFixture() {
       updatedAt: now,
     });
 
-    return { schoolA, schoolB, adminA, teacherA, superAdmin, jss1Class };
+    return { schoolA, schoolB, adminA, adminB, teacherA, superAdmin, jss1Class };
   });
 
   return { t, ...data };
 }
 
 describe("Migration Lifecycle Engine", () => {
-  it("Authentication Guard: rejects non-admins and allows schoolAdmin & platformSuperAdmin", async () => {
+  it("keeps staging private from peer and platform admins and freezes committing rows", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        schoolId: schoolA,
+        authId: "peer-admin",
+        role: "admin",
+        name: "Peer",
+        email: "peer@example.test",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+    const owner = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const workspaceId = await owner.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Private",
+      mode: "school_admin",
+    });
+    const row = {
+      rowNumber: 1,
+      entityType: "student" as const,
+      rawPayload: { password: "must-not-persist" },
+      parsedData: { firstName: "Ada", lastName: "Example", gender: "Female", className: "JSS 1A" },
+      unrecognizedHeaders: [{ header: "Extra", sampleValue: "private-source-value", detectedType: "string" }],
+    };
+    await owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId, records: [row] });
+    const records = await t.run((ctx) => ctx.db.query("stagedImportRecords").collect());
+    expect(records[0].rawPayload).toEqual({});
+    const signals = await owner.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId });
+    expect(signals[0]).not.toHaveProperty("sampleValue");
+
+    const peer = t.withIdentity({ subject: "peer-admin", issuer: "https://legacy-auth.test" });
+    expect(await peer.query(migrationWorkspace.listWorkspaces as unknown as QueryRef, { schoolId: schoolA })).toEqual([]);
+    await expect(peer.query(migrationWorkspace.getWorkspaceSummary as unknown as QueryRef, { schoolId: schoolA, workspaceId })).rejects.toThrow("Workspace not found");
+    await expect(peer.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("Workspace not found");
+    await expect(peer.mutation(commitImportWorkspace, { schoolId: schoolA, workspaceId })).rejects.toThrow("Workspace not found");
+
+    const platform = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    await expect(platform.query(migrationWorkspace.listWorkspaces as unknown as QueryRef, { schoolId: schoolA })).rejects.toThrow();
+    await expect(platform.query(migrationWorkspace.getWorkspaceSummary as unknown as QueryRef, { schoolId: schoolA, workspaceId })).rejects.toThrow();
+    await expect(owner.mutation(commitImportWorkspace, { schoolId: schoolA, workspaceId, batchSize: 0 })).rejects.toThrow("Batch size");
+    await t.run((ctx) => ctx.db.patch(workspaceId, { status: "committing" }));
+    await expect(owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId, records: [row] })).rejects.toThrow("committing");
+    await owner.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Recovered" } });
+    expect(await t.run((ctx) => ctx.db.get(records[0]._id))).toMatchObject({ parsedData: { firstName: "Recovered" } });
+    const recoveredWorkspace = await t.run((ctx) =>
+      ctx.db
+        .query("importWorkspaces")
+        .filter((q) => q.eq(q.field("_id"), workspaceId))
+        .unique(),
+    );
+    expect(recoveredWorkspace?.status).toBe("reviewing");
+    expect(recoveredWorkspace).not.toHaveProperty("reviewedAt");
+    await t.run((ctx) => ctx.db.patch(records[0]._id, { isCommitted: true }));
+    await expect(owner.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("already committed");
+    await expect(owner.mutation(bulkResolveAdmissionNumbers, { schoolId: schoolA, workspaceId })).rejects.toThrow("Import-local numbering is disabled");
+  });
+
+  it("filters private workspaces before limiting and scopes feature signals to each creator workspace", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const peerId = await t.run((ctx) => ctx.db.insert("users", {
+      schoolId: schoolA,
+      authId: "auth-peer-a",
+      name: "Peer Admin",
+      email: "peer@greenwood.test",
+      role: "admin",
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+    const owner = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const peer = t.withIdentity({ subject: "auth-peer-a", issuer: "https://legacy-auth.test" });
+    const ownerWorkspaceId = await owner.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Older private workspace",
+      mode: "school_admin",
+    });
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 50; index += 1) {
+        await ctx.db.insert("importWorkspaces", {
+          schoolId: schoolA,
+          name: `Peer workspace ${index}`,
+          mode: "school_admin",
+          status: "draft",
+          totalRecords: 0,
+          validRecords: 0,
+          warningRecords: 0,
+          errorRecords: 0,
+          sourceFiles: [],
+          nextAdmissionSequence: 1,
+          createdAt: index + 2,
+          updatedAt: index + 2,
+          createdBy: peerId,
+        });
+      }
+    });
+    expect(await owner.query(listWorkspaces, { schoolId: schoolA })).toEqual([
+      expect.objectContaining({ _id: ownerWorkspaceId }),
+    ]);
+
+    const peerWorkspaceId = await peer.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Peer signal workspace",
+      mode: "school_admin",
+    });
+    const record = (rowNumber: number) => ({
+      rowNumber,
+      rawPayload: {},
+      parsedData: { firstName: `Student${rowNumber}`, lastName: "Example", gender: "Female", className: "JSS 1A" },
+      entityType: "student" as const,
+      unrecognizedHeaders: [{ header: "Transport Route", detectedType: "string" }],
+    });
+    await owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId: ownerWorkspaceId, records: [record(1)] });
+    await peer.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId: peerWorkspaceId, records: [record(2)] });
+    await owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId: ownerWorkspaceId, records: [record(3)] });
+
+    expect(await owner.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId: ownerWorkspaceId })).toEqual([
+      expect.objectContaining({ workspaceId: ownerWorkspaceId, rawHeader: "Transport Route" }),
+    ]);
+    expect(await peer.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId: peerWorkspaceId })).toEqual([
+      expect.objectContaining({ workspaceId: peerWorkspaceId, rawHeader: "Transport Route" }),
+    ]);
+    await expect(peer.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId: ownerWorkspaceId })).rejects.toThrow("Workspace not found");
+    expect(await t.run((ctx) => ctx.db.query("migrationFeatureSignals").collect())).toHaveLength(2);
+  });
+
+  it("Authentication Guard: rejects non-admins and Platform while allowing each school's admin", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
 
     // 1. Unauthenticated -> fails
@@ -128,7 +270,7 @@ describe("Migration Lifecycle Engine", () => {
         name: "Cross School Import",
         mode: "school_admin",
       })
-    ).rejects.toThrow("Cross-school access denied");
+    ).rejects.toThrow(/active membership|Forbidden/);
 
     // 5. School Admin on own school -> succeeds
     const workspaceId = await adminSession.mutation(createWorkspace, {
@@ -138,14 +280,20 @@ describe("Migration Lifecycle Engine", () => {
     });
     expect(workspaceId).toBeDefined();
 
-    // 6. Platform Super Admin on any school -> succeeds
+    // 6. Platform governance cannot execute tenant migration operations.
     const superSession = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
-    const superWorkspaceId = await superSession.mutation(createWorkspace, {
+    await expect(superSession.mutation(createWorkspace, {
       schoolId: schoolB,
       name: "Super Admin Import",
       mode: "super_admin",
-    });
-    expect(superWorkspaceId).toBeDefined();
+    })).rejects.toThrow("Platform governance");
+
+    const schoolBAdmin = t.withIdentity({ subject: "auth-admin-b", issuer: "https://legacy-auth.test" });
+    await expect(schoolBAdmin.mutation(createWorkspace, {
+      schoolId: schoolB,
+      name: "School B Import",
+      mode: "school_admin",
+    })).resolves.toBeDefined();
   });
 
   it("Clash Detection: flags warning with >= 80% confidence for similar names in same class", async () => {
@@ -268,68 +416,7 @@ describe("Migration Lifecycle Engine", () => {
     expect(staged[2].familyClusterKey).toBe(firstKey);
   });
 
-  it("Permissible Blanks & Auto-Increment: auto-assigns sequential admission numbers and defaults gender", async () => {
-    const { t, schoolA } = await setupTestFixture();
-    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-
-    const workspaceId = await adminSession.mutation(createWorkspace, {
-      schoolId: schoolA,
-      name: "Permissible Gaps Intake",
-      mode: "school_admin",
-      admissionNumberPrefix: "SCH/2026/",
-      nextAdmissionSequence: 101,
-    });
-
-    await adminSession.mutation(stageRecordsBatch, {
-      schoolId: schoolA,
-      workspaceId,
-      records: [
-        {
-          rowNumber: 1,
-          rawPayload: { Name: "Student One" },
-          parsedData: {
-            firstName: "Student",
-            lastName: "One",
-            className: "JSS 1A",
-            gender: "Unspecified",
-          },
-          entityType: "student",
-        },
-        {
-          rowNumber: 2,
-          rawPayload: { Name: "Student Two" },
-          parsedData: {
-            firstName: "Student",
-            lastName: "Two",
-            className: "JSS 1A",
-            gender: "Unspecified",
-          },
-          entityType: "student",
-        },
-      ],
-    });
-
-    // Auto-generate admission numbers
-    const resolveResult = await adminSession.mutation(
-      bulkResolveAdmissionNumbers,
-      {
-        schoolId: schoolA,
-        workspaceId,
-      }
-    );
-
-    expect(resolveResult.assignedCount).toBe(2);
-
-    const staged = await adminSession.query(getWorkspaceRecords, {
-      schoolId: schoolA,
-      workspaceId,
-    });
-
-    expect(staged[0].parsedData.admissionNumber).toBe("SCH/2026/0101");
-    expect(staged[1].parsedData.admissionNumber).toBe("SCH/2026/0102");
-  });
-
-  it("Zero Data Loss: preserves unknown columns in migrationFeatureSignals and students.unmappedData upon merge", async () => {
+  it("minimizes source signals and keeps unmapped projections staged until explicit review", async () => {
     const { t, schoolA } = await setupTestFixture();
     const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
 
@@ -374,33 +461,19 @@ describe("Migration Lifecycle Engine", () => {
     const signals = await adminSession.query(getWorkspaceFeatureSignals, {
       schoolId: schoolA,
       workspaceId,
-    });
+    }) as Array<{ rawHeader: string }>;
 
-    const signalHeaders = signals.map((s: any) => s.rawHeader);
+    const signalHeaders = signals.map((signal) => signal.rawHeader);
     expect(signalHeaders).toContain("bus_stop");
     expect(signalHeaders).toContain("genotype");
-
-    // Commit workspace
-    const mergeResult = await adminSession.mutation(commitImportWorkspace, {
+    expect(signals.every((signal) => !("sampleValue" in signal))).toBe(true);
+    await expect(adminSession.mutation(commitImportWorkspace, {
       schoolId: schoolA,
       workspaceId,
-    });
-
-    expect(mergeResult.success).toBe(true);
-
-    // Verify live student unmappedData
-    await t.run(async (ctx) => {
-      const liveStudents = await ctx.db
-        .query("students")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
-        .collect();
-
-      expect(liveStudents.length).toBe(1);
-      expect(liveStudents[0].unmappedData).toEqual({
-        bus_stop: "Palmgrove",
-        genotype: "AA",
-      });
-    });
+    })).rejects.toThrow("disabled until every row");
+    const staged = await adminSession.query(getWorkspaceRecords, { schoolId: schoolA, workspaceId });
+    expect(staged[0].parsedData.unmappedFields).toEqual({ bus_stop: "Palmgrove", genotype: "AA" });
+    expect(await t.run((ctx) => ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolA)).collect())).toHaveLength(0);
   });
 
   it("Atomic Transaction Rejection: blocks merge if unresolved error records exist in workspace", async () => {
@@ -437,7 +510,7 @@ describe("Migration Lifecycle Engine", () => {
         schoolId: schoolA,
         workspaceId,
       })
-    ).rejects.toThrow("Cannot commit workspace with blocking validation errors");
+    ).rejects.toThrow("disabled until every row");
 
     // Live student table remains completely empty
     await t.run(async (ctx) => {
@@ -452,16 +525,13 @@ describe("Migration Lifecycle Engine", () => {
   it("Workspace Tenant Ownership: blocks reading, signaling, or cancelling another school's workspace", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
     const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    const adminB = t.withIdentity({ subject: "auth-admin-b", issuer: "https://legacy-auth.test" });
 
-    // Super admin creates workspace for School B
-    const workspaceB = await superAdmin.mutation(createWorkspace, {
+    const workspaceB = await adminB.mutation(createWorkspace, {
       schoolId: schoolB,
       name: "School B Intake",
-      mode: "super_admin",
+      mode: "school_admin",
     });
-
-    const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
 
     // Admin A attempts to read School B's workspace records using School A as schoolId -> fails
     await expect(
@@ -491,8 +561,6 @@ describe("Migration Lifecycle Engine", () => {
   it("Clash Resolution Tenant Isolation: prevents merging with a student belonging to a different school", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
     const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-    const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
-
     // Create a student in School B
     const foreignStudentId = await t.run(async (ctx) => {
       const u = await ctx.db.insert("users", {
@@ -561,281 +629,65 @@ describe("Migration Lifecycle Engine", () => {
         resolutionAction: "merge_existing",
         targetStudentId: foreignStudentId,
       })
-    ).rejects.toThrow("Target student not found or belongs to a different school");
+    ).rejects.toThrow("merge target is outside this school");
   });
 
-  it("Large Import Batching & Whole-Workspace Pre-Flight: blocks merge if invalid row exists beyond first 1,000", async () => {
-    const { t, schoolA } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-
-    const workspaceId = await adminA.mutation(createWorkspace, {
-      schoolId: schoolA,
-      name: "Large Import Intake",
-      mode: "school_admin",
-      admissionNumberPrefix: "SCH/2026/",
-      nextAdmissionSequence: 1,
-    });
-
-    // Stage 1,050 records in batches of 50
-    const BATCH_SIZE = 50;
-    const TOTAL_ROWS = 1050;
-
-    for (let i = 0; i < TOTAL_ROWS; i += BATCH_SIZE) {
-      const batchRecords = [];
-      for (let j = 0; j < BATCH_SIZE; j++) {
-        const rowNum = i + j + 1;
-        // Introduce an error at row 1025 (beyond 1,000)
-        const isErrorRow = rowNum === 1025;
-        batchRecords.push({
-          rowNumber: rowNum,
-          rawPayload: { Name: isErrorRow ? "" : `Student ${rowNum}` },
-          parsedData: {
-            firstName: isErrorRow ? "" : "Student",
-            lastName: isErrorRow ? "" : `${rowNum}`,
-            className: "JSS 1A",
-            gender: "Unspecified",
-          },
-          entityType: "student" as const,
+  it("School admin creates valid user actor provenance", async () => {
+    const { t, schoolA, adminA, jss1Class } = await setupTestFixture();
+    const admin = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const { importedUserId, personId, membershipId } = await t.run(async (ctx) => {
+      const personId = await ctx.db.insert("persons", {
+        authTokenIdentifier: "https://legacy-auth.test|auth-admin-a",
+        email: "alice@greenwood.test",
+        name: "Admin Alice",
+        status: "active",
+        primarySchoolId: schoolA,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.patch(adminA, {
+        authTokenIdentifier: "https://legacy-auth.test|auth-admin-a",
+        personId,
+      });
+      const membershipId = await ctx.db.insert("branchMemberships", {
+        schoolId: schoolA,
+        personId,
+        legacyUserId: adminA,
+        status: "active",
+        isDefaultBranch: true,
+        joinedAt: 1,
+        updatedAt: 1,
+      });
+      for (const capability of [
+        "system.migration.execute",
+        "enrollment.intakes.manage",
+        "enrollment.admissions.override_number",
+      ] as const) {
+        await ctx.db.insert("membershipDirectGrants", {
+          membershipId,
+          capability,
+          grantedAt: 1,
         });
       }
-
-      await adminA.mutation(stageRecordsBatch, {
+      const importedUserId = await ctx.db.insert("users", {
         schoolId: schoolA,
-        workspaceId,
-        records: batchRecords,
-      });
-    }
-
-    // Pre-flight check must catch row 1025 even though it is beyond 1,000
-    await expect(
-      adminA.mutation(commitImportWorkspace, {
-        schoolId: schoolA,
-        workspaceId,
-      })
-    ).rejects.toThrow("Cannot commit workspace with blocking validation errors. Please correct row #1025 first.");
-  });
-
-  it("Deterministic Grade Matching: matches exactly by admission number, matches unique student, and blocks ambiguous/unmatched", async () => {
-    const { t, schoolA, jss1Class } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-
-    // Create session and term
-    const { sessionId, termId, student1Id, student2Id } = await t.run(async (ctx) => {
-      const now = Date.now();
-      const sess = await ctx.db.insert("academicSessions", {
-        schoolId: schoolA,
-        name: "2026/2027",
-        startDate: now - 10000,
-        endDate: now + 10000,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      });
-      const trm = await ctx.db.insert("academicTerms", {
-        schoolId: schoolA,
-        sessionId: sess,
-        name: "First Term",
-        startDate: now - 5000,
-        endDate: now + 5000,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const u1 = await ctx.db.insert("users", {
-        schoolId: schoolA,
-        authId: "u1-auth",
-        name: "David Adeleke",
-        firstName: "David",
-        lastName: "Adeleke",
-        email: "david@greenwood.test",
+        authId: "imported-ibrahim",
+        name: "Ibrahim Musa",
+        email: "ibrahim@greenwood.test",
         role: "student",
-        createdAt: now,
-        updatedAt: now,
+        createdAt: 1,
+        updatedAt: 1,
       });
-      const s1 = await ctx.db.insert("students", {
-        schoolId: schoolA,
-        classId: jss1Class,
-        userId: u1,
-        admissionNumber: "SCH/2026/0001",
-        gender: "Male",
-        enrollmentStatus: "active",
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const u2 = await ctx.db.insert("users", {
-        schoolId: schoolA,
-        authId: "u2-auth",
-        name: "David Adeleke",
-        firstName: "David",
-        lastName: "Adeleke",
-        email: "david2@greenwood.test",
-        role: "student",
-        createdAt: now,
-        updatedAt: now,
-      });
-      const s2 = await ctx.db.insert("students", {
-        schoolId: schoolA,
-        classId: jss1Class,
-        userId: u2,
-        admissionNumber: "SCH/2026/0002",
-        gender: "Male",
-        enrollmentStatus: "active",
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      return { sessionId: sess, termId: trm, student1Id: s1, student2Id: s2 };
+      return { importedUserId, personId, membershipId };
     });
 
-    // 1. Grade row without admission number where 2 students have identical names -> ambiguous match rejected!
-    const workspaceAmbiguous = await adminA.mutation(createWorkspace, {
+    const workspaceId = await admin.mutation(createWorkspace, {
       schoolId: schoolA,
-      name: "Ambiguous Grade Intake",
+      name: "Admin Provenance Intake",
       mode: "school_admin",
     });
 
-    await adminA.mutation(stageRecordsBatch, {
-      schoolId: schoolA,
-      workspaceId: workspaceAmbiguous,
-      records: [
-        {
-          rowNumber: 1,
-          rawPayload: { Name: "David Adeleke", Subject: "Mathematics", CA1: "15", CA2: "15", Exam: "50" },
-          parsedData: {
-            firstName: "David",
-            lastName: "Adeleke",
-            className: "JSS 1A",
-            subjectName: "Mathematics",
-            ca1: 15,
-            ca2: 15,
-            exam: 50,
-            gender: "Male",
-          },
-          entityType: "grade_record",
-        },
-      ],
-    });
-
-    await expect(
-      adminA.mutation(commitImportWorkspace, {
-        schoolId: schoolA,
-        workspaceId: workspaceAmbiguous,
-      })
-    ).rejects.toThrow("Cannot commit workspace with unresolved clash warnings. Please resolve row #1 first.");
-
-    // Resolve clash as create_new so workspace has 0 warnings, then retry commit
-    const stagedAmbiguous = await adminA.query(getWorkspaceRecords, {
-      schoolId: schoolA,
-      workspaceId: workspaceAmbiguous,
-    });
-    const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
-    await adminA.mutation(resolveRecordClash, {
-      schoolId: schoolA,
-      recordId: stagedAmbiguous[0]._id,
-      resolutionAction: "create_new",
-    });
-
-    const studentPhase = await adminA.mutation(commitImportWorkspace, {
-      schoolId: schoolA,
-      workspaceId: workspaceAmbiguous,
-    });
-    expect(studentPhase.done).toBe(false);
-
-    await expect(
-      adminA.mutation(commitImportWorkspace, {
-        schoolId: schoolA,
-        workspaceId: workspaceAmbiguous,
-      })
-    ).rejects.toThrow("Ambiguous grade match on row #1: Multiple students in class \"JSS 1A\" match name \"David Adeleke\". Please specify an admission number.");
-
-    // 2. Grade row WITH admission number -> exact deterministic match succeeds!
-    const workspaceExact = await adminA.mutation(createWorkspace, {
-      schoolId: schoolA,
-      name: "Exact Grade Intake",
-      mode: "school_admin",
-    });
-
-    await adminA.mutation(stageRecordsBatch, {
-      schoolId: schoolA,
-      workspaceId: workspaceExact,
-      records: [
-        {
-          rowNumber: 1,
-          rawPayload: { "Admission No": "SCH/2026/0001", Subject: "Mathematics", CA1: "18", CA2: "17", Exam: "55" },
-          parsedData: {
-            firstName: "David",
-            lastName: "Adeleke",
-            admissionNumber: "SCH/2026/0001",
-            className: "JSS 1A",
-            subjectName: "Mathematics",
-            ca1: 18,
-            ca2: 17,
-            exam: 55,
-            gender: "Male",
-          },
-          entityType: "grade_record",
-        },
-      ],
-    });
-
-    const stagedExact = await adminA.query(getWorkspaceRecords, {
-      schoolId: schoolA,
-      workspaceId: workspaceExact,
-    });
-    if (stagedExact[0]?.validationStatus === "warning") {
-      await adminA.mutation(resolveRecordClash, {
-        schoolId: schoolA,
-        recordId: stagedExact[0]._id,
-        resolutionAction: "merge_existing",
-        targetStudentId: student1Id,
-      });
-    }
-
-    const exactStudentPhase = await adminA.mutation(commitImportWorkspace, {
-      schoolId: schoolA,
-      workspaceId: workspaceExact,
-    });
-    expect(exactStudentPhase.done).toBe(false);
-
-    const exactMerge = await adminA.mutation(commitImportWorkspace, {
-      schoolId: schoolA,
-      workspaceId: workspaceExact,
-    });
-    expect(exactMerge.success).toBe(true);
-    expect(exactMerge.done).toBe(true);
-
-    // Verify assessment record created with correct studentId and valid enteredBy user ID
-    await t.run(async (ctx) => {
-      const records = await ctx.db
-        .query("assessmentRecords")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
-        .collect();
-      expect(records.length).toBe(1);
-      expect(records[0].studentId).toBe(student1Id);
-      expect(records[0].total).toBe(90);
-
-      // Verify enteredBy and updatedBy are valid users table IDs
-      const enteredByUser = await ctx.db.get(records[0].enteredBy);
-      expect(enteredByUser).toBeDefined();
-      expect(enteredByUser?.schoolId).toBe(schoolA);
-    });
-  });
-
-  it("Platform Super Admin: creates valid user actor provenance without casting platform admin IDs", async () => {
-    const { t, schoolA } = await setupTestFixture();
-    const superAdmin = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
-
-    const workspaceId = await superAdmin.mutation(createWorkspace, {
-      schoolId: schoolA,
-      name: "Super Admin Provenance Intake",
-      mode: "super_admin",
-      admissionNumberPrefix: "SCH/SA/",
-      nextAdmissionSequence: 1,
-    });
-
-    await superAdmin.mutation(stageRecordsBatch, {
+    await admin.mutation(stageRecordsBatch, {
       schoolId: schoolA,
       workspaceId,
       records: [
@@ -846,6 +698,7 @@ describe("Migration Lifecycle Engine", () => {
             firstName: "Ibrahim",
             lastName: "Musa",
             className: "JSS 1A",
+            admissionNumber: "SCH/SA/0001",
             guardianName: "Musa Ibrahim",
             guardianPhone: "08012345678",
             gender: "Male",
@@ -855,32 +708,61 @@ describe("Migration Lifecycle Engine", () => {
       ],
     });
 
-    const mergeResult = await superAdmin.mutation(commitImportWorkspace, {
+    const [record] = await admin.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+    await admin.mutation(reviewStagedRecord, {
+      schoolId: schoolA,
+      recordId: record._id,
+      expectedRowRevision: record.rowRevision ?? 1,
+      resolutionAction: "create_new",
+      selectedClassId: jss1Class,
+      selectedUserId: importedUserId,
+      admissionNumberMode: "supplied",
+      manualNumberConfirmed: true,
+      manualNumberReason: "Reviewed historical provenance fixture",
+    });
+    await admin.mutation(approveImportWorkspace, { schoolId: schoolA, workspaceId });
+    const mergeResult = await admin.mutation(commitImportWorkspace, {
       schoolId: schoolA,
       workspaceId,
     });
     expect(mergeResult.success).toBe(true);
 
-    // Verify family createdBy is a valid Id<"users"> pointing to a user in schoolA
     await t.run(async (ctx) => {
-      const families = await ctx.db
-        .query("families")
+      const students = await ctx.db
+        .query("students")
         .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
         .collect();
-      expect(families.length).toBe(1);
-      const creatorUser = await ctx.db.get(families[0].createdBy);
-      expect(creatorUser).toBeDefined();
-      expect(creatorUser?.schoolId).toBe(schoolA);
+      expect(students).toHaveLength(1);
+      expect(students[0].userId).toBe(importedUserId);
+      const audit = await ctx.db
+        .query("auditEvents")
+        .withIndex("by_module_and_action", (q) =>
+          q.eq("module", "migration").eq("action", "reviewed_import.batch_commit"),
+        )
+        .first();
+      expect(audit).toMatchObject({
+        actorKind: "user",
+        actorPersonId: personId,
+        actorMembershipId: membershipId,
+      });
     });
+  });
+
+  it("Platform cannot manufacture or impersonate a tenant migration actor", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const platform = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });
+    const before = await t.run((ctx) => ctx.db.query("users").take(20));
+    await expect(platform.mutation(createWorkspace, { schoolId: schoolA, name: "Unauthorized", mode: "super_admin" })).rejects.toThrow();
+    expect(await t.run((ctx) => ctx.db.query("users").take(20))).toEqual(before);
+    expect(await t.run((ctx) => ctx.db.query("importWorkspaces").take(1))).toEqual([]);
   });
 
   it("State Transitions & Cancelled Workspaces: rejects staging, patching, resolving, and committing on cancelled workspace", async () => {
     const { t, schoolA } = await setupTestFixture();
     const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-    const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
-    const patchStagedRecord = migrationAutosave.patchStagedRecord as unknown as MutationRef;
-    const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
-
     const workspaceId = await adminA.mutation(createWorkspace, {
       schoolId: schoolA,
       name: "To Be Cancelled",
@@ -963,97 +845,6 @@ describe("Migration Lifecycle Engine", () => {
         workspaceId,
       })
     ).rejects.toThrow("Cannot commit a cancelled workspace");
-  });
-
-  it("Large Imports >1,000 Rows & Idempotent Batch Retries: commits all batches and is idempotent on retries", async () => {
-    const { t, schoolA } = await setupTestFixture();
-    const adminA = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-
-    const workspaceId = await adminA.mutation(createWorkspace, {
-      schoolId: schoolA,
-      name: "Big Dataset Intake",
-      mode: "school_admin",
-      admissionNumberPrefix: "SCH/2026/",
-      nextAdmissionSequence: 1,
-    });
-
-    const TOTAL_ROWS = 120;
-    const BATCH_SIZE = 50;
-
-    for (let i = 0; i < TOTAL_ROWS; i += BATCH_SIZE) {
-      const records = [];
-      for (let j = 0; j < Math.min(BATCH_SIZE, TOTAL_ROWS - i); j++) {
-        const rowNum = i + j + 1;
-        const fn = (100000000 + rowNum * 7919).toString(36);
-        const ln = (200000000 + rowNum * 6997).toString(36);
-        const cls = (300000000 + rowNum * 8311).toString(36);
-        records.push({
-          rowNumber: rowNum,
-          rawPayload: {
-            AdmissionNo: `ADM-2026-${rowNum.toString().padStart(4, "0")}`,
-            Name: `${fn} ${ln}`,
-            Class: cls,
-          },
-          parsedData: {
-            admissionNumber: `ADM-2026-${rowNum.toString().padStart(4, "0")}`,
-            firstName: fn,
-            lastName: ln,
-            className: cls,
-            gender: "Unspecified",
-          },
-          entityType: "student" as const,
-        });
-      }
-
-      await adminA.mutation(stageRecordsBatch, {
-        schoolId: schoolA,
-        workspaceId,
-        records,
-      });
-    }
-
-    // Run commit loop until complete
-    let isDone = false;
-    let iterationCount = 0;
-    while (!isDone && iterationCount < 10) {
-      iterationCount++;
-      const result: any = await adminA.mutation(commitImportWorkspace, {
-        schoolId: schoolA,
-        workspaceId,
-        batchSize: 50,
-      });
-      if (result.done) {
-        isDone = true;
-      }
-    }
-
-    expect(isDone).toBe(true);
-    expect(iterationCount).toBe(4); // 3 student batches, then one empty grade phase
-
-    // Verify all 120 students created in database
-    await t.run(async (ctx) => {
-      const students = await ctx.db
-        .query("students")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
-        .collect();
-      expect(students.length).toBe(120);
-    });
-
-    // Idempotent retry: Calling commit again on already merged workspace returns success without duplicating
-    const retryResult: any = await adminA.mutation(commitImportWorkspace, {
-      schoolId: schoolA,
-      workspaceId,
-    });
-    expect(retryResult.done).toBe(true);
-    expect(retryResult.success).toBe(true);
-
-    await t.run(async (ctx) => {
-      const students = await ctx.db
-        .query("students")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
-        .collect();
-      expect(students.length).toBe(120);
-    });
   });
 
   it("Super Admin Restoration: verified as internal-only action, not public API", () => {

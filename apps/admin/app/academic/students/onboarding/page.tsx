@@ -5,9 +5,16 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isValidEmailAddress } from "@school/auth";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
 
+import { useAuth } from "@/AuthProvider";
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { useDraftConnection } from "@/useDraftConnection";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 
+import type { AdmissionCounterDecision } from "../components/AdmissionNumberGovernanceFields";
 import { uploadStudentPhoto } from "../components/studentPhotoUpload";
 import type { ClassSummary, EnrollmentNotice } from "../components/types";
 import { StudentFirstOnboardingForm } from "./StudentFirstOnboardingForm";
@@ -24,7 +31,22 @@ type FamilyLinkResult = {
   familyMemberId: string;
 };
 
+function newEnrollmentRequestKey() {
+  return globalThis.crypto.randomUUID();
+}
+
 export default function StudentOnboardingPage() {
+  const { workspaceAccess, session } = useAuth();
+  const schoolId =
+    workspaceAccess?.state === "ready"
+      ? (workspaceAccess.branch.schoolId as Id<"schools">)
+      : undefined;
+  const canOverrideAdmissionNumber = Boolean(
+    workspaceAccess?.state === "ready" &&
+      workspaceAccess.effectiveCapabilities.includes(
+        "enrollment.admissions.override_number",
+      ),
+  );
   const classes = useQuery(
     "functions/academic/academicSetup:listClasses" as never
   ) as ClassSummary[] | undefined;
@@ -47,6 +69,14 @@ export default function StudentOnboardingPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [admissionNumberMode, setAdmissionNumberMode] = useState<
+    "automatic" | "manual"
+  >("automatic");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [overrideCounterDecision, setOverrideCounterDecision] =
+    useState<AdmissionCounterDecision>("");
+  const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [gender, setGender] = useState("");
   const [houseName, setHouseName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -54,6 +84,13 @@ export default function StudentOnboardingPage() {
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
+  const draftConnection = useDraftConnection();
+  const [reviewedNumbering, setReviewedNumbering] = useState<{
+    policyVersion: number;
+    formatVersion: string;
+    counterKey: string;
+    counterVersion: number;
+  } | null>(null);
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
   const [parentFirstName, setParentFirstName] = useState("");
@@ -72,7 +109,133 @@ export default function StudentOnboardingPage() {
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const selectedClassLevel = classes?.find(
+    (classDoc) => classDoc._id === selectedClassId,
+  )?.level;
+  const admissionNumbering = useQuery(
+    "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
+    schoolId
+      ? ({
+          schoolId,
+          ...(selectedClassLevel ? { level: selectedClassLevel } : {}),
+        } as never)
+      : ("skip" as never),
+  ) as
+    | {
+        policy: { pattern: string } | null;
+        version: number;
+        preview: string | null;
+        formatVersion: string | null;
+        counter: { key: string; configVersion: number } | null;
+        activeSessionId: Id<"academicSessions"> | null;
+        resetPeriod: string | null;
+      }
+    | undefined;
+  const numberingPolicyConfigured = Boolean(admissionNumbering?.policy);
+  const useAutomaticAdmissionNumber =
+    numberingPolicyConfigured && admissionNumberMode === "automatic";
+  const numberingReady =
+    admissionNumbering !== undefined &&
+    (!numberingPolicyConfigured ||
+      admissionNumberMode === "manual" ||
+      Boolean(admissionNumbering.preview));
+
   const firstNameInputRef = useRef<HTMLInputElement>(null);
+  const [enrollmentRequestKey, setEnrollmentRequestKey] = useState(newEnrollmentRequestKey);
+  const createdStudent = useRef<string | null>(null);
+  const uploadedPhotoMetadata = useRef<{
+    storageId: string;
+    fileName: string;
+    contentType: string;
+  } | null | undefined>(undefined);
+  const [followUpPending, setFollowUpPending] = useState(false);
+  const [draftInstanceKey, setDraftInstanceKey] = useState(0);
+  const draftData = useMemo<DraftPayload<"student_onboarding">>(() => ({
+    firstName,
+    lastName,
+    admissionNumber,
+    admissionNumberMode,
+    overrideReason,
+    overrideConfirmed,
+    overrideCounterDecision,
+    advanceCounterTo,
+    reviewedNumbering,
+    gender,
+    houseName,
+    dateOfBirth,
+    guardianName,
+    guardianPhone,
+    address,
+    classId: selectedClassId,
+    parentFirstName,
+    parentLastName,
+    parentEmail,
+    parentPhone,
+    parentRelationship,
+    isParentPrimaryContact,
+    provisionStudentPortalAccess,
+    provisionParentPortalAccess,
+    enrollmentRequestKey,
+  }), [address, admissionNumber, admissionNumberMode, advanceCounterTo, dateOfBirth, enrollmentRequestKey, firstName, gender, guardianName, guardianPhone, houseName, isParentPrimaryContact, lastName, overrideConfirmed, overrideCounterDecision, overrideReason, parentEmail, parentFirstName, parentLastName, parentPhone, parentRelationship, provisionParentPortalAccess, provisionStudentPortalAccess, reviewedNumbering, selectedClassId]);
+  const draftIsDirty = isSubmitting || followUpPending || Boolean(
+    firstName || lastName || admissionNumber || overrideReason || overrideConfirmed || advanceCounterTo ||
+    gender || houseName || dateOfBirth || guardianName || guardianPhone || address || selectedClassId ||
+    studentPhotoFile || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship ||
+    !isParentPrimaryContact || provisionStudentPortalAccess || provisionParentPortalAccess ||
+    studentTemporaryPassword !== "Student123!Pass" || parentTemporaryPassword !== "Parent123!Pass"
+  );
+  const draft = usePersistentFormDraft({
+    formKey: "student_onboarding",
+    schoolId,
+    accountId: session?.user.id,
+    connection: draftConnection,
+    currentData: draftData,
+    isDirty: draftIsDirty,
+    instanceKey: draftInstanceKey,
+    onRestore: (payload) => {
+      setFirstName(payload.firstName);
+      setLastName(payload.lastName);
+      setAdmissionNumber(payload.admissionNumber);
+      setAdmissionNumberMode(payload.admissionNumberMode);
+      setOverrideReason(payload.overrideReason);
+      setOverrideConfirmed(payload.overrideConfirmed);
+      setOverrideCounterDecision(payload.overrideCounterDecision);
+      setAdvanceCounterTo(payload.advanceCounterTo);
+      setReviewedNumbering(payload.reviewedNumbering);
+      setGender(payload.gender);
+      setHouseName(payload.houseName);
+      setDateOfBirth(payload.dateOfBirth);
+      setGuardianName(payload.guardianName);
+      setGuardianPhone(payload.guardianPhone);
+      setAddress(payload.address);
+      setSelectedClassId(payload.classId);
+      setParentFirstName(payload.parentFirstName);
+      setParentLastName(payload.parentLastName);
+      setParentEmail(payload.parentEmail);
+      setParentPhone(payload.parentPhone);
+      setParentRelationship(payload.parentRelationship);
+      setIsParentPrimaryContact(payload.isParentPrimaryContact);
+      setProvisionStudentPortalAccess(payload.provisionStudentPortalAccess);
+      setProvisionParentPortalAccess(payload.provisionParentPortalAccess);
+      setEnrollmentRequestKey(payload.enrollmentRequestKey ?? newEnrollmentRequestKey());
+      setStudentPhotoFile(null);
+      setStudentTemporaryPassword("");
+      setParentTemporaryPassword("");
+      setCredentialSummary(null);
+    },
+  });
+
+  const requestDeparture = useDirtyForm({
+    name: "Student enrollment",
+    isDirty: draftIsDirty,
+    save: draft.retrySave,
+    discard: async () => {
+      if (isSubmitting) throw new Error("Wait for the enrollment request to finish before leaving.");
+      await draft.handleDiscardDraft();
+      resetForm();
+      setCredentialSummary(null);
+    },
+  });
 
   useEffect(() => {
     firstNameInputRef.current?.focus();
@@ -125,9 +288,19 @@ export default function StudentOnboardingPage() {
   }
 
   const resetForm = () => {
+    createdStudent.current = null;
+    uploadedPhotoMetadata.current = undefined;
+    setFollowUpPending(false);
     setFirstName("");
     setLastName("");
     setAdmissionNumber("");
+    setAdmissionNumberMode("automatic");
+    setOverrideReason("");
+    setOverrideConfirmed(false);
+    setOverrideCounterDecision("");
+    setAdvanceCounterTo("");
+    setReviewedNumbering(null);
+    setEnrollmentRequestKey(newEnrollmentRequestKey());
     setGender("");
     setHouseName("");
     setDateOfBirth("");
@@ -151,6 +324,7 @@ export default function StudentOnboardingPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const normalizedFirstName = humanNameFinalStrict(firstName);
     const normalizedLastName = humanNameFinalStrict(lastName);
     const normalizedParentFirstName = humanNameFinalStrict(parentFirstName);
@@ -167,7 +341,8 @@ export default function StudentOnboardingPage() {
     if (
       !normalizedFirstName ||
       !normalizedLastName ||
-      !admissionNumber.trim() ||
+      admissionNumbering === undefined ||
+      (!useAutomaticAdmissionNumber && !admissionNumber.trim()) ||
       !gender.trim() ||
       !selectedClassId
     ) {
@@ -216,23 +391,85 @@ export default function StudentOnboardingPage() {
       return;
     }
 
+    let draftClosure: Awaited<ReturnType<typeof draft.prepareSubmission>>;
+    try {
+      draftClosure = await draft.prepareSubmission();
+    } catch {
+      showNotice({
+        tone: "error",
+        message: "Save the recoverable draft before submitting. Your current edits are still here.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
-    
     setCredentialSummary(null);
 
     let uploadedPhoto = false;
     try {
-      const uploadedPhotoMetadata = studentPhotoFile
-        ? await uploadStudentPhoto(studentPhotoFile, () =>
-            generateStudentPhotoUploadUrl({} as never) as Promise<string>
-          )
-        : null;
-      uploadedPhoto = Boolean(uploadedPhotoMetadata);
+      if (uploadedPhotoMetadata.current === undefined) {
+        uploadedPhotoMetadata.current = studentPhotoFile
+          ? await uploadStudentPhoto(studentPhotoFile, () =>
+              generateStudentPhotoUploadUrl({} as never) as Promise<string>
+            )
+          : null;
+      }
+      uploadedPhoto = Boolean(uploadedPhotoMetadata.current);
 
-      const createdStudentId = (await createStudent({
-        firstName: normalizedFirstName,
-        lastName: normalizedLastName,
-        admissionNumber: admissionNumber.trim(),
+      const createdStudentId =
+        createdStudent.current ??
+        ((await createStudent({
+          requestKey: enrollmentRequestKey,
+          firstName: normalizedFirstName,
+          lastName: normalizedLastName,
+          admissionNumber: useAutomaticAdmissionNumber
+            ? ""
+            : admissionNumber.trim(),
+          numberingVersion:
+            useAutomaticAdmissionNumber || overrideCounterDecision === "advance"
+              ? admissionNumbering.version
+              : undefined,
+          numberingFormatVersion:
+            useAutomaticAdmissionNumber || overrideCounterDecision === "advance"
+              ? admissionNumbering.formatVersion ?? undefined
+              : undefined,
+          numberingCounterKey:
+            useAutomaticAdmissionNumber || overrideCounterDecision === "advance"
+              ? admissionNumbering.counter?.key
+              : undefined,
+          numberingCounterVersion:
+            useAutomaticAdmissionNumber || overrideCounterDecision === "advance"
+              ? admissionNumbering.counter?.configVersion
+              : undefined,
+          numberingSessionId:
+            useAutomaticAdmissionNumber || overrideCounterDecision === "advance"
+              ? admissionNumbering.activeSessionId ?? undefined
+              : undefined,
+          numberingResetPeriod:
+            useAutomaticAdmissionNumber || overrideCounterDecision === "advance"
+              ? admissionNumbering.resetPeriod ?? undefined
+              : undefined,
+          draftId: draftClosure?.draftId,
+          expectedDraftRevision: draftClosure?.expectedRevision,
+          draftFormKey: draftClosure ? "student_onboarding" : undefined,
+          overrideReason:
+            numberingPolicyConfigured && admissionNumberMode === "manual"
+              ? overrideReason.trim()
+              : undefined,
+          overrideConfirmed:
+            numberingPolicyConfigured && admissionNumberMode === "manual"
+              ? overrideConfirmed
+              : undefined,
+          overrideCounterDecision:
+            numberingPolicyConfigured && admissionNumberMode === "manual"
+              ? overrideCounterDecision || undefined
+              : undefined,
+          advanceCounterTo:
+            numberingPolicyConfigured &&
+            admissionNumberMode === "manual" &&
+            overrideCounterDecision === "advance"
+              ? Number(advanceCounterTo)
+              : undefined,
         classId: selectedClassId,
         gender,
         houseName: houseName.trim() || null,
@@ -240,10 +477,12 @@ export default function StudentOnboardingPage() {
         guardianName: guardianName.trim() || null,
         guardianPhone: guardianPhone.trim() || null,
         address: address.trim() || null,
-        photoStorageId: uploadedPhotoMetadata?.storageId,
-        photoFileName: uploadedPhotoMetadata?.fileName,
-        photoContentType: uploadedPhotoMetadata?.contentType,
-      } as never)) as string;
+        photoStorageId: uploadedPhotoMetadata.current?.storageId,
+        photoFileName: uploadedPhotoMetadata.current?.fileName,
+        photoContentType: uploadedPhotoMetadata.current?.contentType,
+      } as never)) as string);
+      createdStudent.current = createdStudentId;
+      setFollowUpPending(true);
 
       let familyLinkResult: FamilyLinkResult | null = null;
       if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
@@ -292,21 +531,26 @@ export default function StudentOnboardingPage() {
           : null,
       });
 
+      draft.submissionSucceeded();
       resetForm();
+      setDraftInstanceKey((key) => key + 1);
       showNotice({
         tone: "success",
         message: `${normalizedFirstName} ${normalizedLastName} enrolled to ${selectedClassName}${shouldLinkParent ? " · parent linked" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? " · portal ready" : ""}.`,
       });
       firstNameInputRef.current?.focus();
     } catch (error) {
+      draft.submissionFailed();
       showNotice({
         tone: "error",
-        message: getUserFacingErrorMessage(
-          error,
-          uploadedPhoto
-            ? "The photo uploaded, but we couldn't finish creating the student."
-            : "We couldn't create the student right now."
-        ),
+        message: createdStudent.current
+          ? "The student was created. Family or portal setup is incomplete. Retry in this tab to finish setup for the same student; do not start a second enrollment."
+          : getUserFacingErrorMessage(
+              error,
+              uploadedPhoto
+                ? "The photo uploaded, but we couldn't finish creating the student."
+                : "We couldn't create the student right now.",
+            ),
       });
     } finally {
       setIsSubmitting(false);
@@ -314,12 +558,41 @@ export default function StudentOnboardingPage() {
   };
 
   return (
-    <StudentFirstOnboardingForm
+    <>
+      <section className="space-y-2 p-4">
+        <PersistentFormDraftControls
+          draft={draft}
+          formTitle="student enrollment"
+          isDirty={draftIsDirty}
+          excludedFieldsNotice="Drafts include approved enrollment and contact fields only. Photos are not saved; reselect the photo after recovery. Temporary passwords and credential results are never saved; re-enter them after resuming."
+          onDiscard={async () => {
+            await draft.handleDiscardDraft();
+            resetForm();
+            setDraftInstanceKey((key) => key + 1);
+          }}
+        />
+        {followUpPending && (
+          <p role="alert">
+            Student created; follow-up setup is pending. Retry uses the same
+            student. Identity edits here will not update that created record.
+          </p>
+        )}
+      </section>
+      <StudentFirstOnboardingForm
       classes={classes}
       selectedClassId={selectedClassId}
       firstName={firstName}
       lastName={lastName}
       admissionNumber={admissionNumber}
+      admissionNumberMode={admissionNumberMode}
+      numberingPolicyConfigured={numberingPolicyConfigured}
+      numberingPolicyLoading={admissionNumbering === undefined}
+      numberingPreview={admissionNumbering?.preview ?? null}
+      canOverrideAdmissionNumber={canOverrideAdmissionNumber}
+      overrideReason={overrideReason}
+      overrideConfirmed={overrideConfirmed}
+      overrideCounterDecision={overrideCounterDecision}
+      advanceCounterTo={advanceCounterTo}
       gender={gender}
       houseName={houseName}
       dateOfBirth={dateOfBirth}
@@ -340,12 +613,20 @@ export default function StudentOnboardingPage() {
       photoPreviewUrl={photoPreviewUrl}
       photoResetKey={studentPhotoResetKey}
       isSubmitting={isSubmitting}
+      numberingReady={numberingReady}
+      draftStatus={draft.status}
+      draftLastSavedAt={draft.lastSavedAt}
       firstNameInputRef={firstNameInputRef}
       onFirstNameChange={(value) => setFirstName(value)}
       onFirstNameBlur={(value) => setFirstName(humanNameFinalStrict(value))}
       onLastNameChange={(value) => setLastName(value)}
       onLastNameBlur={(value) => setLastName(humanNameFinalStrict(value))}
       onAdmissionNumberChange={setAdmissionNumber}
+      onAdmissionNumberModeChange={setAdmissionNumberMode}
+      onOverrideReasonChange={setOverrideReason}
+      onOverrideConfirmedChange={setOverrideConfirmed}
+      onOverrideCounterDecisionChange={setOverrideCounterDecision}
+      onAdvanceCounterToChange={setAdvanceCounterTo}
       onGenderChange={setGender}
       onHouseNameChange={setHouseName}
       onDateOfBirthChange={setDateOfBirth}
@@ -371,9 +652,18 @@ export default function StudentOnboardingPage() {
           message,
         })
       }
-      onReset={resetForm}
+      onReset={() => {
+        void requestDeparture({ kind: "close" }).then((approved) => {
+          if (!approved) return;
+          resetForm();
+          setCredentialSummary(null);
+          setDraftInstanceKey((key) => key + 1);
+        });
+      }}
       onSubmit={handleSubmit}
     />
+
+    </>
   );
 }
 

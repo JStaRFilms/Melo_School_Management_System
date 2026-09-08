@@ -11,7 +11,7 @@ import type {
   Id,
   GradingBandResponse,
 } from "@/types";
-import { getEffectiveValue, computeDerivedValues, getGradeColorClass } from "@/exam-helpers";
+import { getEffectiveValue, computeDerivedValues } from "@/exam-helpers";
 import { humanNameFinalStrict } from "@/human-name";
 
 interface AdminRosterGridRowProps {
@@ -160,7 +160,7 @@ export function AdminRosterGridRow({
       </td>
       <td className="text-center">
         <span
-          className={`font-black text-sm ${getGradeColorClass(derived.gradeLetter)}`}
+          className="font-black text-sm" style={{color: derived.gradeColor}}
         >
           {derived.gradeLetter ?? "--"}
         </span>

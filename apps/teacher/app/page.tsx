@@ -6,7 +6,7 @@ import { isConvexConfigured } from "@/lib/convex-runtime";
 import { MeloLoader } from "@school/shared";
 
 export default function HomePage() {
-  const { isAuthenticated, isLoading, session } = useAuth();
+  const { isAuthenticated, isLoading, session, workspaceAccess } = useAuth();
 
   if (isLoading) {
     return (
@@ -17,7 +17,7 @@ export default function HomePage() {
   }
 
   if (!isConvexConfigured) {
-    redirect("/assessments/exams/entry");
+    redirect("/planning");
   }
 
   if (!isAuthenticated) {
@@ -28,5 +28,16 @@ export default function HomePage() {
     redirect("/sign-in?error=unauthorized");
   }
 
-  redirect("/assessments/exams/entry");
+  if (workspaceAccess?.state === "ready") {
+    const capabilities = workspaceAccess.effectiveCapabilities;
+    if (capabilities.includes("academic.assessments.enter")) redirect("/assessments/exams/entry");
+    if (capabilities.includes("academic.report_cards.preview")) redirect("/assessments/report-cards");
+    if (
+      capabilities.includes("academic.planning.use") ||
+      capabilities.includes("academic.curriculum.manage")
+    ) redirect("/planning");
+    if (capabilities.includes("enrollment.intakes.manage")) redirect("/enrollment/subjects");
+  }
+
+  redirect("/sign-in?error=unauthorized");
 }

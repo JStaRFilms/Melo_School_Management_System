@@ -153,6 +153,9 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
     );
 
     expect(preview).toEqual(effective);
+    const candidate = { candidateRoleTemplateIds: [academicDirectorTemplateId], candidateDirectGrants: ["audit.view"], candidateDirectRestrictions: ["audit.branch.view"] };
+    expect(await leadSession.query(api.functions.academic.rbac.previewEffectiveCapabilities, { schoolId, membershipId, ...candidate })).toEqual(await t.run(ctx => evaluateEffectiveCapabilities(ctx, membershipId, candidate)));
+    expect(await leadSession.query(api.functions.academic.rbac.previewEffectiveCapabilities, { schoolId, membershipId, ...candidate })).not.toContain("audit.branch.view");
   });
 
   it("2. Anti-self-escalation: Manager cannot assign permissions to their own membership", async () => {
@@ -374,6 +377,16 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
       return await evaluateEffectiveCapabilities(ctx, staffMembershipId);
     });
     expect(daveEffective).toContain("academic.classes.manage");
+    const configuration = await carolSession.query(api.functions.academic.rbac.getMemberPermissionConfiguration, { schoolId, membershipId: staffMembershipId });
+    const saveArgs = { schoolId, targetMembershipId: staffMembershipId, expectedRevision: configuration.revision, displayTitle: "Vice Principal — cosmetic", roleTemplateIds: [], grants: [], restrictions: [], reason: "Remove temporary academic delegation" };
+    await carolSession.mutation(api.functions.academic.rbac.saveMemberPermissions, saveArgs);
+    expect(await t.run(ctx => evaluateEffectiveCapabilities(ctx, staffMembershipId))).toEqual([]);
+    await expect(carolSession.mutation(api.functions.academic.rbac.saveMemberPermissions, saveArgs)).rejects.toThrow("CONFLICT");
+    await expect(carolSession.mutation(api.functions.academic.rbac.grantDirectCapability, { schoolId, targetMembershipId: staffMembershipId, capability: "permissions.manage" })).rejects.toThrow("Delegation ceiling violation");
+    await t.run(ctx => ctx.db.insert("membershipDirectGrants", { membershipId: staffMembershipId, capability: "staff.permissions.manage", grantedAt: now }));
+    await expect(carolSession.mutation(api.functions.academic.rbac.restrictDirectCapability, { schoolId, targetMembershipId: staffMembershipId, capability: "academic.classes.manage" })).rejects.toThrow("superior or peer");
+    const managerRows = await t.run(ctx => ctx.db.query("membershipRoleAssignments").withIndex("by_membership", q => q.eq("membershipId", managerMembershipId)).collect());
+    expect(managerRows).toHaveLength(0);
   });
 
   it("4. No superior edit: Manager cannot alter permissions of School Proprietor", async () => {
@@ -476,6 +489,19 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
         capability: "academic.curriculum.manage",
       })
     ).rejects.toThrow("Forbidden: You cannot alter direct grants of the School Proprietor");
+    const owner = t.withIdentity({ tokenIdentifier: "https://auth.melo.test|proprietor-paula" });
+    const workspace = await owner.query(api.functions.academic.rbac.getPermissionWorkspace, { schoolId });
+    expect(workspace.factoryTemplates).toHaveLength(7);
+    const version = await owner.mutation(api.functions.academic.rbac.createRoleTemplateVersion, { schoolId, name: "Academic reviewer", capabilities: ["academic.classes.manage"], reason: "Reviewed branch template configuration" });
+    await owner.mutation(api.functions.academic.rbac.assignRoleToMembership, { schoolId, targetMembershipId: managerMembershipId, roleTemplateId: version.templateId });
+    await owner.mutation(api.functions.academic.rbac.setDelegationCeiling, { schoolId, targetMembershipId: managerMembershipId, allowedCapabilities: ["academic.classes.manage"] });
+    await expect(owner.mutation(api.functions.academic.rbac.setDelegationCeiling, { schoolId, targetMembershipId: proprietorMembershipId, allowedCapabilities: [] })).rejects.toThrow("Anti-self-edit");
+    const foreignTemplate = await t.run(async ctx => {
+      const foreign = await ctx.db.insert("schools", { name: "Foreign", slug: "foreign", status: "active", createdAt: now, updatedAt: now });
+      return ctx.db.insert("roleTemplates", { code: "foreign", name: "Foreign", scope: "branch", schoolId: foreign, capabilities: [], createdAt: now, updatedAt: now });
+    });
+    await expect(owner.query(api.functions.academic.rbac.previewEffectiveCapabilities, { schoolId, membershipId: managerMembershipId, candidateRoleTemplateIds: [foreignTemplate] })).rejects.toThrow("another scope");
+    await expect(owner.mutation(api.functions.academic.rbac.assignRoleToMembership, { schoolId, targetMembershipId: managerMembershipId, roleTemplateId: foreignTemplate })).rejects.toThrow("another scope");
   });
 
   it("5. Audit sanitization: Pre-write redaction masks bank account numbers and secrets", async () => {
@@ -575,7 +601,9 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
         updatedAt: now,
       });
 
-      // Give Paula audit.view capability
+      const groupId = await ctx.db.insert("schoolGroups", { name: "Paula group", slug: "paula-group", proprietorPersonId: personId, status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("schoolGroupBranches", { groupId, schoolId, isHeadquarters: true, linkedAt: now });
+      // Recorded proprietor receives untargeted/leadership critical alerts.
       await ctx.db.insert("membershipDirectGrants", {
         membershipId,
         capability: "audit.branch.view",
@@ -702,6 +730,7 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
         const aliceMembershipId = await ctx.db.insert("branchMemberships", {
           personId: alicePersonId,
           schoolId,
+          auditModules: ["academic"],
           status: "active",
           isDefaultBranch: true,
           joinedAt: now,

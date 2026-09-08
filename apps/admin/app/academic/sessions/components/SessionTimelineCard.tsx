@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { useDepartureGuard, useDirtyForm } from "@school/shared/drafts";
 import { appToast } from "@school/shared/toast";
 import { TermCard, type TermRecord } from "./TermCard";
 import { TermCreationModal } from "./TermCreationModal";
@@ -57,6 +58,7 @@ export function SessionTimelineCard({
   onArchive,
   defaultExpanded = true,
 }: SessionTimelineCardProps) {
+  const { requestDeparture } = useDepartureGuard();
   const terms = useQuery(
     "functions/academic/academicSetup:listTermsBySession" as never,
     { sessionId: session._id } as never
@@ -78,10 +80,11 @@ export function SessionTimelineCard({
   const [isSaveDatesConfirmOpen, setIsSaveDatesConfirmOpen] = useState(false);
 
   useEffect(() => {
+    if (isEditingDates) return;
     setSessionName(session.name);
     setStartDate(formatDateInput(session.startDate));
     setEndDate(formatDateInput(session.endDate));
-  }, [session.name, session.startDate, session.endDate]);
+  }, [isEditingDates, session.name, session.startDate, session.endDate]);
 
   // Modern Confirmation Modals
   const [isActivateSessionConfirmOpen, setIsActivateSessionConfirmOpen] = useState(false);
@@ -125,10 +128,12 @@ export function SessionTimelineCard({
     setIsSaveDatesConfirmOpen(true);
   };
 
-  const handleConfirmSaveDates = async () => {
+  const saveDates = async () => {
     const startTs = parseDateInputToTimestamp(startDate);
     const endTs = parseDateInputToTimestamp(endDate);
-
+    if (Number.isNaN(startTs) || Number.isNaN(endTs) || startTs >= endTs) {
+      throw new Error("Session end date must be after a valid start date.");
+    }
     setIsSavingDates(true);
     try {
       await updateSessionDates({
@@ -138,8 +143,15 @@ export function SessionTimelineCard({
         endDate: endTs,
         expectedUpdatedAt: session.updatedAt,
       } as never);
-
       setIsEditingDates(false);
+    } finally {
+      setIsSavingDates(false);
+    }
+  };
+
+  const handleConfirmSaveDates = async () => {
+    try {
+      await saveDates();
       appToast.success("Session dates updated", {
         description: "Session calendar boundaries updated and recorded in audit trail.",
       });
@@ -147,8 +159,6 @@ export function SessionTimelineCard({
       appToast.error("Date update failed", {
         description: getUserFacingErrorMessage(error, "Unable to update session dates"),
       });
-    } finally {
-      setIsSavingDates(false);
     }
   };
 
@@ -158,6 +168,29 @@ export function SessionTimelineCard({
     setEndDate(formatDateInput(session.endDate));
     setIsEditingDates(false);
   };
+
+  const toggleDateEditing = async () => {
+    if (!isEditingDates) {
+      setIsEditingDates(true);
+      return;
+    }
+    if (await requestDeparture({ kind: "close" })) setIsEditingDates(false);
+  };
+
+  const datesDirty = isEditingDates && (
+    sessionName !== session.name ||
+    startDate !== formatDateInput(session.startDate) ||
+    endDate !== formatDateInput(session.endDate)
+  );
+  useDirtyForm({
+    name: `Session dates for ${session.name}`,
+    isDirty: datesDirty,
+    save: saveDates,
+    discard: () => {
+      if (isSavingDates) throw new Error("Wait for the session date save to finish before discarding.");
+      cancelDateEditing();
+    },
+  });
 
   const handleAutoFillTerms = async () => {
     const yr = new Date(session.startDate).getFullYear();
@@ -274,7 +307,7 @@ export function SessionTimelineCard({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setIsEditingDates(!isEditingDates);
+                      void toggleDateEditing();
                     }}
                     className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer"
                     title="Edit session dates & name"
@@ -294,7 +327,7 @@ export function SessionTimelineCard({
             >
               <button
                 type="button"
-                onClick={() => setIsEditingDates(!isEditingDates)}
+                onClick={() => void toggleDateEditing()}
                 className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 active:scale-95 transition cursor-pointer whitespace-nowrap"
                 title="Edit session dates and name"
               >
@@ -367,6 +400,7 @@ export function SessionTimelineCard({
                   <input
                     type="text"
                     value={sessionName}
+                    disabled={isSavingDates}
                     onChange={(e) => setSessionName(e.target.value)}
                     className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
                     placeholder="e.g. 2026/2027"
@@ -379,6 +413,7 @@ export function SessionTimelineCard({
                   <input
                     type="date"
                     value={startDate}
+                    disabled={isSavingDates}
                     onChange={(e) => setStartDate(e.target.value)}
                     className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-800 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
                   />
@@ -391,6 +426,7 @@ export function SessionTimelineCard({
                     type="date"
                     value={endDate}
                     min={startDate}
+                    disabled={isSavingDates}
                     onChange={(e) => setEndDate(e.target.value)}
                     className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-800 outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900"
                   />
@@ -488,7 +524,7 @@ export function SessionTimelineCard({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setIsEditingDates(!isEditingDates);
+                    void toggleDateEditing();
                   }}
                   className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer"
                   title="Edit session dates & name"
@@ -509,7 +545,7 @@ export function SessionTimelineCard({
                 <div className="grid grid-cols-[auto_1fr] gap-2 w-full">
                   <button
                     type="button"
-                    onClick={() => setIsEditingDates(!isEditingDates)}
+                    onClick={() => void toggleDateEditing()}
                     className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 active:scale-95 transition"
                   >
                     <Pencil className="h-3.5 w-3.5 text-slate-500 shrink-0" />
@@ -537,7 +573,7 @@ export function SessionTimelineCard({
 
                   <button
                     type="button"
-                    onClick={() => setIsEditingDates(!isEditingDates)}
+                    onClick={() => void toggleDateEditing()}
                     className="flex items-center justify-center rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 hover:bg-slate-50 active:scale-95 transition"
                     title="Edit session dates & name"
                   >

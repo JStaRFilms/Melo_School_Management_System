@@ -31,7 +31,7 @@ export const reviewCurriculumUnit = mutation({
   args: { unitId: v.id("curriculumUnits"), reviewStatus: v.union(v.literal("proposed"), v.literal("rejected")), title: v.optional(v.string()), subtopics: v.optional(v.array(v.string())), learningObjectives: v.optional(v.array(v.string())), suggestedDuration: v.optional(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const unit = await ctx.db.get(args.unitId);
     if (!unit || unit.schoolId !== schoolId) throw new ConvexError("Curriculum unit not found");
@@ -53,7 +53,7 @@ export const approveCurriculumUnit = mutation({
   args: { unitId: v.id("curriculumUnits") },
   returns: v.id("knowledgeTopics"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const unit = await ctx.db.get(args.unitId);
     if (!unit || unit.schoolId !== schoolId) throw new ConvexError("Curriculum unit not found");
@@ -104,7 +104,7 @@ export const bulkApproveCurriculumUnits = mutation({
     topicIds: v.array(v.id("knowledgeTopics")),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     if (args.unitIds.length > MAX_BULK_REVIEW_UNITS) {
       throw new ConvexError(`Bulk approval is limited to ${MAX_BULK_REVIEW_UNITS} units per request`);
@@ -212,7 +212,7 @@ export const bulkRejectCurriculumUnits = mutation({
     rejectedCount: v.number(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     if (args.unitIds.length > MAX_BULK_REVIEW_UNITS) {
       throw new ConvexError(`Bulk rejection is limited to ${MAX_BULK_REVIEW_UNITS} units per request`);

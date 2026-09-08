@@ -23,6 +23,7 @@ import {
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
+import { useAuth } from "@/AuthProvider";
 
 type TeacherRecord = {
   _id: string;
@@ -137,18 +138,50 @@ function formatEventDate(timestamp: number, isAllDay: boolean) {
 }
 
 export default function AdminDashboardPage() {
-  const teachers = useQuery("functions/academic/academicSetup:listTeachers" as never) as TeacherRecord[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassRecord[] | undefined;
-  const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
-  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as SessionRecord[] | undefined;
-  const billing = useQuery("functions/billing:getBillingDashboard" as never, {} as never) as BillingDashboard | undefined;
+  const { workspaceAccess } = useAuth();
+  const capabilities =
+    workspaceAccess?.state === "ready"
+      ? workspaceAccess.effectiveCapabilities
+      : [];
+  const canViewDashboardDetails =
+    capabilities.includes("staff.list.view") &&
+    capabilities.includes("academic.classes.manage");
+  const canViewBilling = capabilities.includes("finance.reports.view");
+  const canViewEnrollment = capabilities.includes("enrollment.intakes.manage");
+  const canEnterAssessments = capabilities.includes("academic.assessments.enter");
+  const canOnboardStaff = capabilities.includes("staff.onboard");
+  const canManageSubjects = capabilities.includes("academic.subjects.manage");
+  const queryArgs = canViewDashboardDetails ? ({} as never) : ("skip" as never);
+  const teachers = useQuery(
+    "functions/academic/academicSetup:listTeachers" as never,
+    queryArgs,
+  ) as TeacherRecord[] | undefined;
+  const classes = useQuery(
+    "functions/academic/academicSetup:listClasses" as never,
+    queryArgs,
+  ) as ClassRecord[] | undefined;
+  const subjects = useQuery(
+    "functions/academic/academicSetup:listSubjects" as never,
+    canViewDashboardDetails && canManageSubjects ? ({} as never) : ("skip" as never),
+  ) as SubjectRecord[] | undefined;
+  const sessions = useQuery(
+    "functions/academic/academicSetup:listSessions" as never,
+    queryArgs,
+  ) as SessionRecord[] | undefined;
+  const billing = useQuery(
+    "functions/billing:getBillingDashboard" as never,
+    canViewBilling ? ({} as never) : ("skip" as never),
+  ) as BillingDashboard | undefined;
   const [eventsFromTimestamp] = useState(() => Date.now());
   const events = useQuery(
     "functions/academic/events:listEvents" as never,
-    { fromTimestamp: eventsFromTimestamp } as never
+    canViewDashboardDetails
+      ? ({ fromTimestamp: eventsFromTimestamp } as never)
+      : ("skip" as never),
   ) as SchoolEvent[] | undefined;
   const auditEvents = useQuery(
-    "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
+    "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never,
+    queryArgs,
   ) as TimelineAuditEvent[] | undefined;
 
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -164,8 +197,10 @@ export default function AdminDashboardPage() {
   const activeSubjects = useMemo(() => subjects?.filter((s) => !s.isArchived) ?? [], [subjects]);
 
   const totalEnrolledStudents = useMemo(
-    () => activeClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0),
-    [activeClasses]
+    () => canViewEnrollment
+      ? activeClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)
+      : null,
+    [activeClasses, canViewEnrollment]
   );
   const unassignedClasses = useMemo(
     () => activeClasses.filter((c) => !c.formTeacherId),
@@ -218,15 +253,18 @@ export default function AdminDashboardPage() {
         id: "students",
         title: "Student Body Enrollment",
         description:
-          totalEnrolledStudents > 0
+          (totalEnrolledStudents ?? 0) > 0
             ? `${totalEnrolledStudents} students enrolled`
             : "0 students enrolled",
-        status: totalEnrolledStudents > 0,
+        status: (totalEnrolledStudents ?? 0) > 0,
         href: "/academic/students",
         actionLabel: "Enroll Students",
       },
-    ];
-  }, [activeSession, activeClasses, activeSubjects, activeTeachers, unassignedClasses, totalEnrolledStudents]);
+    ].filter((milestone) =>
+      (milestone.id !== "students" || canViewEnrollment) &&
+      (milestone.id !== "subjects" || canManageSubjects),
+    );
+  }, [activeSession, activeClasses, activeSubjects, activeTeachers, unassignedClasses, totalEnrolledStudents, canViewEnrollment, canManageSubjects]);
 
   const completedMilestones = setupMilestones.filter((m) => m.status).length;
   const setupPercentage = Math.round((completedMilestones / setupMilestones.length) * 100);
@@ -262,10 +300,34 @@ export default function AdminDashboardPage() {
   const isLoaded =
     teachers !== undefined &&
     classes !== undefined &&
-    subjects !== undefined &&
+    (!canManageSubjects || subjects !== undefined) &&
     sessions !== undefined &&
-    billing !== undefined &&
+    (!canViewBilling || billing !== undefined) &&
     events !== undefined;
+
+  if (workspaceAccess?.state !== "ready") {
+    return <DashboardSkeleton />;
+  }
+
+  if (!canViewDashboardDetails) {
+    return (
+      <main className="min-h-screen bg-slate-50/50 px-4 py-8 md:px-8">
+        <section className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            School workspace
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-950">
+            Welcome to {workspaceAccess.branch.name}
+          </h1>
+          <p className="mt-3 text-sm text-slate-600">
+            Use the workspace navigation to open the areas assigned to you.
+            Operational dashboard details appear only for staff with academic
+            and directory access.
+          </p>
+        </section>
+      </main>
+    );
+  }
 
   if (!isLoaded) {
     return <DashboardSkeleton />;
@@ -552,12 +614,12 @@ export default function AdminDashboardPage() {
           <StatGroup
             variant="scroll"
             stats={[
-              {
+              ...(canViewEnrollment ? [{
                 label: "Student Roll",
-                value: String(totalEnrolledStudents),
+                value: String(totalEnrolledStudents ?? 0),
                 icon: <GraduationCap />,
                 description: `${activeClasses.length} Classes Populated`,
-              },
+              }] : []),
               {
                 label: "Teaching Staff",
                 value: String(activeTeachers.length),
@@ -567,18 +629,20 @@ export default function AdminDashboardPage() {
                     ? "Full Coverage"
                     : `${unassignedClasses.length} Unassigned Arm${unassignedClasses.length > 1 ? "s" : ""}`,
               },
-              {
+              ...(canManageSubjects ? [{
                 label: "Academic Structure",
                 value: `${activeClasses.length} / ${activeSubjects.length}`,
                 icon: <BookOpenText />,
                 description: "Classes / Subjects",
-              },
-              {
-                label: "Fee Balances",
-                value: formatMoney(outstandingBalance, currency),
-                icon: <Banknote />,
-                description: `${overdueInvoices} Overdue Invoices`,
-              },
+              }] : []),
+              ...(canViewBilling
+                ? [{
+                    label: "Fee Balances",
+                    value: formatMoney(outstandingBalance, currency),
+                    icon: <Banknote />,
+                    description: `${overdueInvoices} Overdue Invoices`,
+                  }]
+                : []),
             ]}
           />
         </section>
@@ -593,7 +657,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-            <Link
+            {canViewEnrollment && <Link
               href="/academic/students"
               className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
@@ -601,9 +665,9 @@ export default function AdminDashboardPage() {
                 <Plus className="h-3.5 w-3.5" />
               </div>
               <span className="text-xs font-bold text-slate-800 leading-tight">Enroll Student</span>
-            </Link>
+            </Link>}
 
-            <Link
+            {canOnboardStaff && <Link
               href="/academic/teachers"
               className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
@@ -611,9 +675,9 @@ export default function AdminDashboardPage() {
                 <Plus className="h-3.5 w-3.5" />
               </div>
               <span className="text-xs font-bold text-slate-800 leading-tight">Add Teacher</span>
-            </Link>
+            </Link>}
 
-            <Link
+            {canEnterAssessments && <Link
               href="/assessments/results/entry"
               className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
             >
@@ -621,17 +685,19 @@ export default function AdminDashboardPage() {
                 <ClipboardCheck className="h-3.5 w-3.5" />
               </div>
               <span className="text-xs font-bold text-slate-800 leading-tight">Enter Scores</span>
-            </Link>
+            </Link>}
 
-            <Link
-              href="/billing"
-              className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
-            >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
-                <Banknote className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs font-bold text-slate-800 leading-tight">Billing Hub</span>
-            </Link>
+            {canViewBilling && (
+              <Link
+                href="/billing"
+                className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all group"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-brand-primary group-hover:text-white transition-colors">
+                  <Banknote className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-xs font-bold text-slate-800 leading-tight">Billing Hub</span>
+              </Link>
+            )}
 
             <Link
               href="/academic/events"
@@ -704,7 +770,7 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
+                    {canViewEnrollment && <div className="flex items-center gap-3 shrink-0">
                       <div className="text-right">
                         <span className="text-xs font-black text-slate-900">{c.studentCount}</span>
                         <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Students</p>
@@ -716,7 +782,7 @@ export default function AdminDashboardPage() {
                       >
                         <ChevronRight className="h-3.5 w-3.5" />
                       </Link>
-                    </div>
+                    </div>}
                   </div>
                 ))}
               </div>

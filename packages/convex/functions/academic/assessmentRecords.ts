@@ -1,7 +1,7 @@
 import { query, mutation } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
-import { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import {
   getAuthenticatedSchoolMembership,
   assertTeacherAssignment,
@@ -16,11 +16,20 @@ import {
   normalizePersonName,
 } from "@school/shared/name-format";
 import { getActiveAggregationByUmbrellaSubject } from "./subjectAggregationHelpers";
+import { resolveEffectiveGradingBands } from "./gradingBands";
 import {
   assessmentEditingStateReturnValidator,
   getAssessmentEditingPolicy,
   getAssessmentEditingState,
 } from "./assessmentEditingPolicyHelpers";
+import { resolveEffectiveAcademicPolicy } from "./settings";
+
+function withoutImportPolicySnapshots(record: NonNullable<Doc<"assessmentRecords">>) {
+  const result = { ...record };
+  delete result.assessmentPolicySnapshot;
+  delete result.gradingPolicySnapshot;
+  return result;
+}
 
 function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>(
   docs: T[]
@@ -45,6 +54,7 @@ function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>
  */
 export const getExamEntrySheet = query({
   args: {
+    schoolId: v.optional(v.id("schools")),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
     classId: v.id("classes"),
@@ -85,26 +95,16 @@ export const getExamEntrySheet = query({
         ),
       })
     ),
-    settings: v.union(
-      v.object({
-        _id: v.id("schoolAssessmentSettings"),
-        _creationTime: v.number(),
-        schoolId: v.id("schools"),
-        examInputMode: v.union(
-          v.literal("raw40"),
-          v.literal("raw60_scaled_to_40")
-        ),
-        ca1Max: v.number(),
-        ca2Max: v.number(),
-        ca3Max: v.number(),
-        examContributionMax: v.number(),
-        isActive: v.boolean(),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        updatedBy: v.id("users"),
-      }),
-      v.null()
-    ),
+    settings: v.object({
+      examInputMode: v.union(
+        v.literal("raw40"),
+        v.literal("raw60_scaled_to_40"),
+      ),
+      ca1Max: v.number(),
+      ca2Max: v.number(),
+      ca3Max: v.number(),
+      examContributionMax: v.number(),
+    }),
     gradingBands: v.array(
       v.object({
         _id: v.id("gradingBands"),
@@ -123,9 +123,7 @@ export const getExamEntrySheet = query({
     editingState: assessmentEditingStateReturnValidator,
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
@@ -169,13 +167,8 @@ export const getExamEntrySheet = query({
       );
     }
 
-    const [settings, editingPolicy] = await Promise.all([
-      ctx.db
-        .query("schoolAssessmentSettings")
-        .withIndex("by_school_active", (q) =>
-          q.eq("schoolId", schoolId).eq("isActive", true)
-        )
-        .unique(),
+    const [effectiveSettings, editingPolicy] = await Promise.all([
+      resolveEffectiveAcademicPolicy(ctx, schoolId),
       getAssessmentEditingPolicy(ctx, {
         schoolId,
         sessionId: args.sessionId,
@@ -184,13 +177,8 @@ export const getExamEntrySheet = query({
     ]);
     const editingState = getAssessmentEditingState(editingPolicy, Date.now());
 
-    // Fetch active grading bands
-    const gradingBandsResult = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .collect();
+    // Use the same effective local/inherited policy as previews and issued reports.
+    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
 
     // Sort grading bands by minScore
     const sortedBands = [...gradingBandsResult].sort((a, b) => a.minScore - b.minScore);
@@ -272,17 +260,27 @@ export const getExamEntrySheet = query({
           const user = await ctx.db.get(student.userId);
           const studentName = normalizePersonName(user?.name ?? "Unknown");
 
+          const storedRecord = recordMap.get(String(student._id));
+          const assessmentRecord = storedRecord
+            ? withoutImportPolicySnapshots(storedRecord)
+            : null;
           return {
             studentId: student._id,
             studentName,
-            assessmentRecord: recordMap.get(String(student._id)) ?? null,
+            assessmentRecord,
           };
         })
     );
 
     return {
       roster,
-      settings,
+      settings: {
+        examInputMode: effectiveSettings.examInputMode,
+        ca1Max: effectiveSettings.ca1Max,
+        ca2Max: effectiveSettings.ca2Max,
+        ca3Max: effectiveSettings.ca3Max,
+        examContributionMax: effectiveSettings.examContributionMax,
+      },
       gradingBands: sortedBands,
       editingState,
     };
@@ -301,6 +299,7 @@ export const getExamEntrySheet = query({
  */
 export const upsertAssessmentRecordsBulk = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
     classId: v.id("classes"),
@@ -332,10 +331,8 @@ export const upsertAssessmentRecordsBulk = mutation({
       })
     ),
   }),
-  handler: async (ctx: any, args: { sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(
-      ctx
-    );
+  handler: async (ctx: any, args: { schoolId?: Id<"schools">; sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
@@ -389,25 +386,10 @@ export const upsertAssessmentRecordsBulk = mutation({
       throw new ConvexError(editingState.message);
     }
 
-    // Fetch school assessment settings
-    const settings = await ctx.db
-      .query("schoolAssessmentSettings")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .unique();
+    const settings = await resolveEffectiveAcademicPolicy(ctx, schoolId);
 
-    if (!settings) {
-      throw new ConvexError("School assessment settings not configured");
-    }
-
-    // Fetch active grading bands
-    const gradingBandsResult = await ctx.db
-      .query("gradingBands")
-      .withIndex("by_school_active", (q: any) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .collect();
+    // Use the same effective local/inherited policy as previews and issued reports.
+    const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
 
     if (gradingBandsResult.length === 0) {
       throw new ConvexError("Grading bands not configured");
@@ -428,7 +410,7 @@ export const upsertAssessmentRecordsBulk = mutation({
         updatedBy: band.updatedBy,
       }));
 
-    const examInputMode = settings.examInputMode as ExamInputMode;
+    const examInputMode: ExamInputMode = settings.examInputMode;
     const examRawMaxSnapshot =
       examInputMode === "raw40" ? 40 : 60;
 

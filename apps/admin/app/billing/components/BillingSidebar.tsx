@@ -24,6 +24,7 @@ import type {
 import { formatMoney } from "../utils";
 import { BulkApplicationForm } from "./forms/BulkApplicationForm";
 import { FeePlanForm } from "./forms/FeePlanForm";
+import type { DraftStatus } from "@school/shared/drafts";
 
 type BillingSidebarVariant = "arsenal" | "payment" | "invoice" | "application" | "link" | "plan";
 
@@ -44,6 +45,8 @@ interface BillingSidebarProps {
   feePlanDraft: FeePlanDraft;
   onFeePlanDraftChange: (draft: FeePlanDraft) => void;
   onCreateFeePlan: (e: React.FormEvent) => void;
+  feePlanDraftStatus?: DraftStatus;
+  feePlanDraftLastSavedAt?: number | null;
 
   feePlanApplicationDraft: FeePlanApplicationDraft;
   onFeePlanApplicationDraftChange: (draft: FeePlanApplicationDraft) => void;
@@ -55,6 +58,7 @@ interface BillingSidebarProps {
   sessions: SessionOption[];
   applicationTerms: TermOption[];
   feePlans: BillingDashboardData["feePlans"];
+  canManageFeePlans: boolean;
 }
 
 const labelCx = "text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500 font-display";
@@ -73,6 +77,8 @@ export function BillingSidebar({
   feePlanDraft,
   onFeePlanDraftChange,
   onCreateFeePlan,
+  feePlanDraftStatus,
+  feePlanDraftLastSavedAt,
   feePlanApplicationDraft,
   onFeePlanApplicationDraftChange,
   onApplyFeePlan,
@@ -82,6 +88,7 @@ export function BillingSidebar({
   sessions,
   applicationTerms,
   feePlans,
+  canManageFeePlans,
 }: BillingSidebarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -159,7 +166,7 @@ export function BillingSidebar({
               <svg className="h-4 w-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
             </button>
 
-            <button
+            {canManageFeePlans && <button
               onClick={() => onVariantChange?.("plan")}
               className="w-full flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50 transition-colors group text-left cursor-pointer"
             >
@@ -171,7 +178,7 @@ export function BillingSidebar({
                 <p className="text-[11px] text-slate-500 leading-snug">Define reusable class fee structures</p>
               </div>
               <svg className="h-4 w-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-            </button>
+            </button>}
           </div>
         </div>
       )}
@@ -285,12 +292,14 @@ export function BillingSidebar({
       )}
 
       {/* ── Plan Form: Clean self-contained scroll & pinned summary footer ──────── */}
-      {variant === "plan" && (
+      {variant === "plan" && canManageFeePlans && (
         <FeePlanForm
           draft={feePlanDraft}
           onChange={onFeePlanDraftChange}
           onSubmit={onCreateFeePlan}
           classes={classes}
+          draftStatus={feePlanDraftStatus}
+          draftLastSavedAt={feePlanDraftLastSavedAt}
         />
       )}
 

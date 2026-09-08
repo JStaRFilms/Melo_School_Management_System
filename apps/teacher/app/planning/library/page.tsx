@@ -5,6 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { appToast } from "@school/shared/toast";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { UsagePreflight } from "../lesson-plans/components/UsagePreflight";
 import { 
   Plus, 
   Sparkles, 
@@ -27,7 +29,6 @@ import {
   TeacherLibraryResponse, 
   TeacherLibrarySubject, 
   TeacherLibraryClassSummary,
-  UploadNotice,
   MaterialDraft,
   TeacherKnowledgeTopic,
   TeacherKnowledgeMaterialSourceProofResponse
@@ -44,10 +45,10 @@ import { MaterialPreviewInspector } from "../../../features/planning-library/com
 // UI Components
 import { TeacherSheet } from "@/lib/components/ui/TeacherSheet";
 import { StatGroup } from "@/lib/components/ui/StatGroup";
-import { cn } from "@/lib/utils";
 
 export default function TeacherLibraryPage() {
-  const { session } = useAuth();
+  const { session, workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -172,6 +173,10 @@ export default function TeacherLibraryPage() {
     }
     return true;
   }), [materials, subjectFilter, levelFilter, searchQuery]);
+
+  // Secure upload transport is externally gated. Capability alone must not
+  // imply that generic storage URLs establish provenance or reserve quota.
+  const canUploadMaterials = false;
 
   const summary = activeMaterialsData?.summary ?? {
     loaded: 0,
@@ -338,6 +343,7 @@ export default function TeacherLibraryPage() {
     subjects: subjects ?? [],
     levelOptions,
     subjectsReady: subjects ?? [],
+    canUpload: canUploadMaterials,
     onUpload: handleUpload,
     isUploading,
     isAdmin: session?.user?.role === "admin",
@@ -358,10 +364,6 @@ export default function TeacherLibraryPage() {
         material={materials.find(m => m._id === editingMaterialId) ?? null}
         onSave={handleSaveDraft}
         onPublish={async (id) => { await publishMaterial({ materialId: id as never } as never); }}
-        onRetry={async (id) => {
-          const material = materials.find((candidate) => candidate._id === id);
-          if (material) await handleRetryMaterial(material);
-        }}
         onArchive={handleArchive}
         isSaving={isSaving}
         topicCandidates={topicCandidates}
@@ -442,6 +444,8 @@ export default function TeacherLibraryPage() {
                 <h1 className="font-display text-2xl lg:text-3xl font-black tracking-tighter text-slate-950 uppercase">
                   Planning Library
                 </h1>
+                <p role="status" className="text-sm">Provider OCR dispatch remains unavailable. Upload limits are enforced separately. No OCR charge is initiated.</p>
+                {schoolId && activeMaterial && (activeMaterial.processingStatus === "ocr_needed" || activeMaterial.processingStatus === "failed") && <UsagePreflight schoolId={schoolId} task="provider_ocr" label="provider OCR" itemCount={activeMaterial.selectedPageNumbers?.length || 1} />}
               </div>
 
               <StatGroup
@@ -580,8 +584,9 @@ export default function TeacherLibraryPage() {
 
       {/* Primary Mobile Action */}
       <button
-        onClick={() => setIsMobileUploadOpen(true)}
-        className="lg:hidden fixed bottom-8 right-8 h-16 w-16 flex items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 hover:scale-105 active:scale-95 transition-all z-50"
+        disabled
+        aria-label="Upload unavailable — secure storage transport required"
+        className="lg:hidden fixed bottom-8 right-8 h-16 w-16 flex items-center justify-center rounded-full bg-slate-950 text-white opacity-50 shadow-2xl shadow-slate-950/40 z-50"
       >
         <Plus className="h-7 w-7" />
       </button>

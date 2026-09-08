@@ -9,6 +9,8 @@ export interface WizardSection {
   title: string;
   isValid: boolean;
   isCurrent?: boolean;
+  optional?: boolean;
+  hasError?: boolean;
 }
 
 export type MobileProgressMode = "scroll" | "sections";
@@ -37,6 +39,8 @@ export interface MobileProgressIndicatorProps {
    */
   topOffset?: string;
   className?: string;
+  /** Suppress a duplicate mobile stepper or a short form indicator. */
+  hidden?: boolean;
 }
 
 function formatStatusTime(timestamp?: number | Date | null): string {
@@ -66,19 +70,22 @@ export function MobileProgressIndicator({
   saveStatusText,
   topOffset = "top-14",
   className = "",
+  hidden = false,
 }: MobileProgressIndicatorProps) {
+  if (hidden) return null;
   let progressPercent = 0;
   let primaryLabel = "";
 
   if (mode === "scroll") {
-    progressPercent = Math.max(0, Math.min(100, Math.round(scrollPercentage)));
-    primaryLabel = `Page ${progressPercent}%`;
+    progressPercent = Number.isFinite(scrollPercentage) ? Math.max(0, Math.min(100, Math.round(scrollPercentage))) : 0;
+    primaryLabel = `Page position ${progressPercent}% (not completion)`;
   } else {
     // Mode B: Validated Section Completion
     if (sections && sections.length > 0) {
-      const validCount = sections.filter((s) => s.isValid).length;
+      const required = sections.filter(s => !s.optional);
+      const validCount = required.filter(s => s.isValid && !s.hasError).length;
       const total = sections.length;
-      progressPercent = Math.round((validCount / total) * 100);
+      progressPercent = required.length ? Math.round((validCount / required.length) * 100) : 0;
 
       const stepIdx = currentStepIndex + 1;
       const title = currentStepTitle || sections[currentStepIndex]?.title;
@@ -88,8 +95,8 @@ export function MobileProgressIndicator({
     } else {
       const total = totalSteps || 1;
       const stepIdx = currentStepIndex + 1;
-      // Progress percent based on validated progress or current step
-      progressPercent = Math.min(100, Math.round((stepIdx / total) * 100));
+      // Orientation alone is never evidence of validation.
+      progressPercent = 0;
       primaryLabel = currentStepTitle
         ? `Step ${stepIdx} of ${total}: ${currentStepTitle}`
         : `Step ${stepIdx} of ${total}`;
@@ -137,6 +144,10 @@ export function MobileProgressIndicator({
             Recovery pending
           </span>
         );
+      case "reauth_required":
+        return <span className="text-[10px] text-amber-800">Sign in again · Edits in memory</span>;
+      case "expired":
+        return <span className="text-[10px] text-amber-800">Draft expired or closed</span>;
       case "save_failed":
         return (
           <span className="inline-flex items-center gap-1 text-[10px] text-rose-700 font-medium">
@@ -169,20 +180,22 @@ export function MobileProgressIndicator({
         aria-valuenow={progressPercent}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={primaryLabel}
+        aria-label={mode === "scroll" ? "Page position, not completion" : "Required sections validated"}
+        aria-valuetext={mode === "scroll" ? primaryLabel : `${progressPercent}% of required sections validated`}
       >
         <div
-          className="h-full bg-[color:var(--school-primary,#0f172a)] transition-all duration-200 ease-out"
+          className="h-full bg-[color:var(--school-accent,#475569)] transition-all duration-200 ease-out motion-reduce:transition-none"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
 
+      {mode === "sections" && sections && <ol className="sr-only" aria-label="Section states">{sections.map((section, index) => <li key={section.id} aria-current={section.isCurrent || index === currentStepIndex ? "step" : undefined}>{section.title}: {section.hasError ? "error" : section.isValid ? "complete" : "incomplete"}{section.optional ? " (optional)" : ""}</li>)}</ol>}
       {/* 28px Content Line */}
       <div className="h-7 px-3 flex items-center justify-between gap-2">
         <span className="text-[11px] font-medium text-slate-800 truncate">
           {primaryLabel}
         </span>
-        <div className="shrink-0 flex items-center">{renderStatusPill()}</div>
+        <div className="shrink-0 flex items-center" role="status">{renderStatusPill()}</div>
       </div>
     </div>
   );

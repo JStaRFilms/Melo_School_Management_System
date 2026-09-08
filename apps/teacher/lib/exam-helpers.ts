@@ -1,3 +1,4 @@
+import { resolveGradeColor } from "@school/shared/exam-recording";
 import type { ExamInputMode } from "@school/shared";
 import {
 examScaledScore as computeExamScaledScore,
@@ -80,6 +81,7 @@ export function computeDerivedValues(
   examScaledScore: number | null;
   total: number | null;
   gradeLetter: string | null;
+  gradeColor?: string;
   remark: string | null;
 } {
   if (ca1 === null || ca2 === null || ca3 === null || examRaw === null) {
@@ -99,6 +101,7 @@ export function computeDerivedValues(
     minScore: b.minScore,
     maxScore: b.maxScore,
     gradeLetter: b.gradeLetter,
+    colorHex: b.colorHex ?? b.color,
     remark: b.remark,
     isActive: b.isActive,
     createdAt: b.createdAt,
@@ -112,6 +115,7 @@ export function computeDerivedValues(
       examScaledScore: scaled,
       total: totalVal,
       gradeLetter: gradeInfo.gradeLetter,
+      gradeColor: resolveGradeColor(gradeInfo.gradeLetter, gradingBands),
       remark: gradeInfo.remark,
     };
   } catch {

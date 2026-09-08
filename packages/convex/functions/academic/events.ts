@@ -45,7 +45,7 @@ export const listEvents = query({
   ),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const events = await ctx.db
@@ -85,7 +85,7 @@ export const createEvent = mutation({
   returns: v.id("schoolEvents"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const title = normalizeEventTitle(args.title);
@@ -123,7 +123,7 @@ export const updateEvent = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const event = await ctx.db.get(args.eventId);
@@ -164,7 +164,7 @@ export const archiveEvent = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const event = await ctx.db.get(args.eventId);
@@ -195,7 +195,7 @@ export const restoreEvent = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const event = await ctx.db.get(args.eventId);

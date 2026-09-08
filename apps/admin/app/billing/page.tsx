@@ -14,6 +14,11 @@ import type { Id } from "@school/convex/_generated/dataModel";
 import { appToast } from "@school/shared/toast";
 import { useQuery } from "convex/react";
 import { useEffect,useMemo,useState } from "react";
+import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { useDraftConnection } from "@/useDraftConnection";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
+import { feePlanSignature, feePlanValidation } from "./fee-plan-validation";
 
 // Local Components
 import { BillingHeader } from "./components/BillingHeader";
@@ -28,6 +33,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 
 // Hooks & Utils
 import { useBillingActions } from "./hooks/useBillingActions";
+import { useAuth } from "@/AuthProvider";
 import { useBillingData } from "./hooks/useBillingData";
 import { useBillingSortPreferences } from "./hooks/useBillingSortPreferences";
 import type {
@@ -85,6 +91,66 @@ export default function BillingPage() {
 
   // Drafts
   const [feePlanDraft, setFeePlanDraft] = useState<FeePlanDraft>(initialFeePlanDraft());
+  const [feePlanSubmitting, setFeePlanSubmitting] = useState(false);
+  const [feePlanDraftInstanceKey, setFeePlanDraftInstanceKey] = useState(0);
+  const [emptyFeePlanSignature] = useState(() => feePlanSignature(initialFeePlanDraft()));
+  const feePlanDirty = feePlanSignature(feePlanDraft) !== emptyFeePlanSignature;
+  const { session, workspaceAccess } = useAuth();
+  const canManageFeePlans = workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("finance.fee_plans.manage");
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
+  const draftConnection = useDraftConnection();
+  const feePlanDraftData = useMemo<DraftPayload<"fee_plan_builder">>(() => ({
+    bankAccountId: feePlanDraft.bankAccountId ?? "",
+    name: feePlanDraft.name,
+    description: feePlanDraft.description,
+    currency: feePlanDraft.currency,
+    billingMode: feePlanDraft.billingMode,
+    targetClassIds: feePlanDraft.targetClassIds,
+    installmentEnabled: feePlanDraft.installmentEnabled,
+    installmentCount: feePlanDraft.installmentCount,
+    intervalDays: feePlanDraft.intervalDays,
+    firstDueDays: feePlanDraft.firstDueDays,
+    lineItems: feePlanDraft.lineItems.map(({ label, amount, category, isOptional }) => ({
+      label, amount, category, isOptional: Boolean(isOptional),
+    })),
+  }), [feePlanDraft]);
+  const persistentFeePlanDraft = usePersistentFormDraft({
+    formKey: "fee_plan_builder",
+    schoolId,
+    accountId: session?.user.id,
+    connection: draftConnection,
+    currentData: feePlanDraftData,
+    isDirty: feePlanDirty,
+    instanceKey: feePlanDraftInstanceKey,
+    onRestore: (payload) => setFeePlanDraft({
+      bankAccountId: payload.bankAccountId || undefined,
+      name: payload.name,
+      description: payload.description,
+      currency: payload.currency,
+      billingMode: payload.billingMode,
+      targetClassIds: [...payload.targetClassIds],
+      installmentEnabled: payload.installmentEnabled,
+      installmentCount: payload.installmentCount,
+      intervalDays: payload.intervalDays,
+      firstDueDays: payload.firstDueDays,
+      lineItems: payload.lineItems.map((item) => ({ ...item, draftId: crypto.randomUUID() })),
+    }),
+  });
+  const requestFeeDeparture = useDirtyForm({
+    name: "Fee plan",
+    isDirty: feePlanDirty || feePlanSubmitting,
+    save: persistentFeePlanDraft.retrySave,
+    discard: async () => {
+      if (feePlanSubmitting) throw new Error("Wait for fee-plan creation to finish before leaving.");
+      await persistentFeePlanDraft.handleDiscardDraft();
+      setFeePlanDraft(initialFeePlanDraft());
+      setFeePlanDraftInstanceKey((key) => key + 1);
+    },
+  });
+  const closeFeeSidebar = async () => {
+    if (await requestFeeDeparture({ kind: "close" })) setSidebarOpen(false);
+  };
   const [feePlanApplicationDraft, setFeePlanApplicationDraft] = useState<FeePlanApplicationDraft>(initialFeePlanApplicationDraft());
   const [invoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>(initialPaymentDraft());
@@ -234,45 +300,63 @@ export default function BillingPage() {
 
   const handleCreateFeePlan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (feePlanSubmitting) return;
     const planName = feePlanDraft.name.trim();
-    if (!planName) {
-      appToast.error("Please enter a fee plan name");
+    const issue = feePlanValidation(feePlanDraft);
+    if (issue) {
+      appToast.error(issue);
       return;
     }
 
-    const validLineItems = feePlanDraft.lineItems
-      .filter((item) => item.label.trim().length > 0 && (Number(item.amount) || 0) > 0)
-      .map((item) => ({
-        label: item.label.trim(),
-        amount: Number(item.amount) || 0,
-        category: item.category,
-        isOptional: Boolean(item.isOptional),
-      }));
+    const validLineItems = feePlanDraft.lineItems.map((item) => ({
+      label: item.label.trim(),
+      amount: Number(item.amount),
+      category: item.category,
+      isOptional: Boolean(item.isOptional),
+    }));
 
-    if (validLineItems.length === 0) {
-      appToast.error("Please fill in at least one fee line item with a name and amount");
+    let closure;
+    try {
+      closure = await persistentFeePlanDraft.prepareSubmission();
+    } catch {
+      appToast.error("Save the recoverable fee-plan draft before creating the plan. Your edits are still here.");
       return;
     }
 
-    const success = await actions.runAction(async () => {
-      await actions.createFeePlan({
-        name: planName,
-        description: feePlanDraft.description?.trim() || undefined,
-        currency: feePlanDraft.currency || "NGN",
-        billingMode: feePlanDraft.billingMode,
-        targetClassIds: feePlanDraft.targetClassIds.length > 0 ? (feePlanDraft.targetClassIds as any) : undefined,
-        installmentPolicy: {
-          enabled: feePlanDraft.installmentEnabled,
-          installmentCount: feePlanDraft.installmentEnabled ? Math.max(2, Number(feePlanDraft.installmentCount) || 2) : 1,
-          intervalDays: feePlanDraft.installmentEnabled ? Math.max(1, Number(feePlanDraft.intervalDays) || 30) : 0,
-          firstDueDays: Number(feePlanDraft.firstDueDays) || 14,
-        },
-        lineItems: validLineItems,
-      } as never);
-    }, "Fee Plan Created", "Unable to create new fee plan.");
-    if (success) {
-      setFeePlanDraft(initialFeePlanDraft());
-      setSidebarOpen(false);
+    setFeePlanSubmitting(true);
+    try {
+      const success = await actions.runAction(async () => {
+        await actions.createFeePlan({
+          draftId: closure?.draftId,
+          expectedDraftRevision: closure?.expectedRevision,
+          bankAccountId: feePlanDraft.bankAccountId || undefined,
+          name: planName,
+          description: feePlanDraft.description?.trim() || undefined,
+          currency: feePlanDraft.currency || "NGN",
+          billingMode: feePlanDraft.billingMode,
+          targetClassIds: feePlanDraft.targetClassIds.length > 0 ? feePlanDraft.targetClassIds : undefined,
+          installmentPolicy: {
+            enabled: feePlanDraft.installmentEnabled,
+            installmentCount: feePlanDraft.installmentEnabled ? Number(feePlanDraft.installmentCount) : 1,
+            intervalDays: feePlanDraft.installmentEnabled ? Number(feePlanDraft.intervalDays) : 0,
+            firstDueDays: Number(feePlanDraft.firstDueDays),
+          },
+          lineItems: validLineItems,
+        } as never);
+      }, "Fee Plan Created", "Unable to create new fee plan.");
+      if (success) {
+        persistentFeePlanDraft.submissionSucceeded();
+        setFeePlanDraft(initialFeePlanDraft());
+        setFeePlanDraftInstanceKey((key) => key + 1);
+        setSidebarOpen(false);
+      } else {
+        persistentFeePlanDraft.submissionFailed();
+      }
+    } catch {
+      persistentFeePlanDraft.submissionFailed();
+      appToast.error("Unable to create the fee plan. Your edits and recovery draft are still available.");
+    } finally {
+      setFeePlanSubmitting(false);
     }
   };
 
@@ -284,6 +368,8 @@ export default function BillingPage() {
         classId: feePlanApplicationDraft.classId,
         sessionId: feePlanApplicationDraft.sessionId,
         termId: feePlanApplicationDraft.termId,
+        bankAccountId: feePlanApplicationDraft.bankAccountId || undefined,
+        notes: feePlanApplicationDraft.notes.trim() || undefined,
       } as never);
     }, "Invoices Generated", "Unable to distribute invoices for class.");
     if (success) {
@@ -431,6 +517,21 @@ export default function BillingPage() {
 
   return (
     <main className="lg:h-[calc(100vh-56px)] lg:max-h-[calc(100dvh-56px)] lg:overflow-hidden bg-slate-50/50 flex flex-col">
+      {(sidebarVariant === "plan" || persistentFeePlanDraft.serverDraft || persistentFeePlanDraft.memoryDraft) && (
+        <div className="shrink-0 p-2">
+          <PersistentFormDraftControls
+            draft={persistentFeePlanDraft}
+            formTitle="fee plan"
+            isDirty={feePlanDirty}
+            excludedFieldsNotice="The private draft stores fee-plan configuration and an optional bank-account record ID only. It never stores bank details, payment secrets, provider payloads, credentials, or raw documents."
+            onDiscard={async () => {
+              await persistentFeePlanDraft.handleDiscardDraft();
+              setFeePlanDraft(initialFeePlanDraft());
+              setFeePlanDraftInstanceKey((key) => key + 1);
+            }}
+          />
+        </div>
+      )}
       <div className="flex-1 flex lg:overflow-hidden min-h-0">
         {/* Main Content Area */}
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
@@ -530,7 +631,7 @@ export default function BillingPage() {
                      sortKey={sortPreferences.plans.key}
                      sortDirection={sortPreferences.plans.direction}
                      onSortChange={handleFeePlanSortChange}
-                     onNewPlan={() => openSidebar("plan")}
+                     onNewPlan={canManageFeePlans ? () => openSidebar("plan") : undefined}
                      onApplyPlan={(planId) => {
                        setFeePlanApplicationDraft((current) => ({
                          ...current,
@@ -628,7 +729,7 @@ export default function BillingPage() {
                 >
                   Bulk Invoicing
                 </button>
-                <button 
+                {canManageFeePlans && <button
                   type="button"
                   onClick={() => setSidebarVariant("plan")}
                   className={`w-full flex items-center justify-center gap-1.5 h-10 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-2xs transition-all cursor-pointer ${
@@ -638,14 +739,14 @@ export default function BillingPage() {
                   }`}
                 >
                   <Plus className="h-3 w-3" /> New Plan
-                </button>
+                </button>}
               </div>
             </div>
 
             <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
               <div className="absolute inset-0 bg-white/40 pointer-events-none" />
               <BillingSidebar 
-                onClose={() => setSidebarOpen(false)}
+                onClose={() => void closeFeeSidebar()}
                 variant={sidebarVariant}
                 onVariantChange={(v) => {
                   setSidebarVariant(v);
@@ -664,6 +765,8 @@ export default function BillingPage() {
                 feePlanDraft={feePlanDraft}
                 onFeePlanDraftChange={setFeePlanDraft}
                 onCreateFeePlan={handleCreateFeePlan}
+                feePlanDraftStatus={persistentFeePlanDraft.status}
+                feePlanDraftLastSavedAt={persistentFeePlanDraft.lastSavedAt}
                 feePlanApplicationDraft={feePlanApplicationDraft}
                 onFeePlanApplicationDraftChange={setFeePlanApplicationDraft}
                 onApplyFeePlan={handleApplyFeePlan}
@@ -673,6 +776,7 @@ export default function BillingPage() {
                 sessions={sessions ?? []}
                 applicationTerms={applicationTerms ?? []}
                 feePlans={data.feePlans}
+                canManageFeePlans={canManageFeePlans}
               />
             </div>
           </div>
@@ -682,11 +786,11 @@ export default function BillingPage() {
       {/* Mobile Sidebar */}
       <AdminSheet
         isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={() => void closeFeeSidebar()}
         title={sidebarTitles[sidebarVariant]}
       >
         <BillingSidebar 
-          onClose={() => setSidebarOpen(false)}
+          onClose={() => void closeFeeSidebar()}
           variant={sidebarVariant}
           onVariantChange={setSidebarVariant}
           paymentDraft={paymentDraft}
@@ -702,6 +806,8 @@ export default function BillingPage() {
           feePlanDraft={feePlanDraft}
           onFeePlanDraftChange={setFeePlanDraft}
           onCreateFeePlan={handleCreateFeePlan}
+          feePlanDraftStatus={persistentFeePlanDraft.status}
+          feePlanDraftLastSavedAt={persistentFeePlanDraft.lastSavedAt}
           feePlanApplicationDraft={feePlanApplicationDraft}
           onFeePlanApplicationDraftChange={setFeePlanApplicationDraft}
           onApplyFeePlan={handleApplyFeePlan}
@@ -711,6 +817,7 @@ export default function BillingPage() {
           sessions={sessions ?? []}
           applicationTerms={applicationTerms ?? []}
           feePlans={data.feePlans}
+          canManageFeePlans={canManageFeePlans}
         />
       </AdminSheet>
 

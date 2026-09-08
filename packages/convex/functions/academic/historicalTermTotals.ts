@@ -40,7 +40,7 @@ export const listHistoricalTermTotalsForClassTerm = query({
     })
   ),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.adjust" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const [session, term, classDoc] = await Promise.all([
@@ -99,7 +99,7 @@ export const saveHistoricalTermTotalsBulk = mutation({
     updated: v.number(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.adjust" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const [session, term, classDoc] = await Promise.all([

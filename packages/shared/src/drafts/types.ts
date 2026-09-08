@@ -9,7 +9,9 @@ export type DraftStatus =
   | "saved"
   | "connection_lost"
   | "save_failed"
-  | "conflict";
+  | "conflict"
+  | "reauth_required"
+  | "expired";
 
 export interface FormDraftSummary {
   draftId?: string;
@@ -21,6 +23,8 @@ export interface FormDraftSummary {
   completionSummary?: string;
   payload?: Record<string, unknown>;
   revision?: number;
+  expiresAt?: number;
+  schemaVersion?: number;
 }
 
 export interface DraftStatusConfig {
@@ -31,6 +35,8 @@ export interface DraftStatusConfig {
 }
 
 export const DRAFT_STATUS_CONFIGS: Record<DraftStatus, DraftStatusConfig> = {
+  reauth_required: { label: "Sign in again • Edits held in memory", description: "Sign in to the same account, then preview the latest draft or retry. Do not close this tab.", badgeClass: "bg-amber-50 text-amber-800 border-amber-300", truthfulOfflineClaim: false },
+  expired: { label: "Draft expired or closed", description: "This instance cannot be saved again. Keep your in-memory edits while starting a new draft explicitly.", badgeClass: "bg-amber-50 text-amber-800 border-amber-300", truthfulOfflineClaim: false },
   idle: {
     label: "Ready",
     badgeClass: "bg-slate-100 text-slate-600 border-slate-200",
@@ -51,7 +57,7 @@ export const DRAFT_STATUS_CONFIGS: Record<DraftStatus, DraftStatusConfig> = {
   connection_lost: {
     label: "Connection lost • Recovery pending",
     description:
-      "Changes are held in local browser memory. Do not close this browser tab. Server synchronization will resume when internet connectivity is restored.",
+      "Changes are held in local browser memory. Do not close this browser tab. Reconnect, then explicitly retry or preview the latest draft before saving.",
     badgeClass: "bg-amber-50 text-amber-800 border-amber-300",
     truthfulOfflineClaim: true, // Specifically flags zero false offline claims!
   },

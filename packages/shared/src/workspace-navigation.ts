@@ -1,3 +1,6 @@
+import type { WorkspaceAccessSummary } from "./workspace-access";
+import { getBranchScopedWorkspaceAccess, getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, isWorkspaceBranchScopedRoute, type WorkspaceFeatures } from "./workspace-route-access";
+
 export type WorkspaceKey = "admin" | "teacher" | "portal";
 
 export interface WorkspaceSection {
@@ -95,13 +98,17 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       },
 
       // 4. Finance & Invoicing
-      { href: "/billing", label: "Billing & Invoices", matchers: ["/billing"] },
+      { href: "/billing", label: "Billing & Invoices", matchers: ["/billing$"] },
+      { href: "/admin/group", label: "School group", matchers: ["/admin/group"] },
+      { href: "/admin/audit", label: "Audit", matchers: ["/admin/audit"] },
+      { href: "/admin/permissions", label: "Permissions", matchers: ["/admin/permissions"] },
 
       // 5. Setup & Settings
       { href: "/academic/sessions", label: "Sessions & Terms", matchers: ["/academic/sessions"] },
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
       { href: "/students/import", label: "Import Students", matchers: ["/students/import", "/academic/students/import"] },
+      { href: "/admin/settings/email-domains", label: "Institutional Email", matchers: ["/admin/settings/email-domains"] },
       { href: "/admin/settings", label: "School Settings", matchers: ["/admin/settings"] },
       { href: "/admin", label: "Admin Users", matchers: ["/admin"] },
       {
@@ -120,7 +127,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     key: "teacher",
     label: "Teacher",
     audience: "Classroom tools",
-    switchPath: "/assessments/exams/entry",
+    switchPath: "/",
     appBasePath: "/teacher",
     available: true,
     description: "Open teacher workflows for exam entry, planning, and enrollment edits.",
@@ -204,12 +211,29 @@ export function getWorkspaceSections(workspace: WorkspaceKey) {
   return workspaceDefinitions[workspace].sections;
 }
 
+/** Navigation uses the same legacy/module decision as the owning layout, not guessed RBAC mappings. */
+export function getAccessibleWorkspaceSections(
+  workspace: WorkspaceKey,
+  options: { access?: WorkspaceAccessSummary; features?: WorkspaceFeatures | null; userRole?: string | null; branchScopedOnly?: boolean; teacherHasAssignments?: boolean } = {},
+) {
+  if (workspace !== "portal" && options.access && !options.branchScopedOnly && getLegacyWorkspaceAccess(workspace, options.access).state !== "allowed") return [];
+  return getWorkspaceSections(workspace).filter(section =>
+    !(workspace === "teacher" && options.teacherHasAssignments === false) &&
+    (!options.branchScopedOnly || isWorkspaceBranchScopedRoute(workspace, section.href)) &&
+    !getWorkspaceModuleDenial(workspace, section.href, options.features) &&
+    (!options.access || (options.branchScopedOnly
+      ? getBranchScopedWorkspaceAccess(workspace, section.href, options.access).state === "allowed"
+      : !getWorkspaceCapabilityDenial(workspace, section.href, options.access))) &&
+    !(workspace === "portal" && section.href === "/learning/topics" && options.userRole !== "student")
+  );
+}
+
 export function isWorkspaceSectionActive(section: WorkspaceSection, pathname: string) {
   return section.matchers.some((matcher) => {
     if (matcher.endsWith("$")) {
       return pathname === matcher.slice(0, -1);
     }
-    return matcher === "/" ? pathname === "/" : pathname.startsWith(matcher);
+    return matcher === "/" ? pathname === "/" : pathname === matcher || pathname.startsWith(`${matcher}/`);
   });
 }
 

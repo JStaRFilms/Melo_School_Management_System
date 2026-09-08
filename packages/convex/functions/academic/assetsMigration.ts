@@ -13,7 +13,7 @@ const ALLOWED_MIME_TYPES = new Set([
 
 type StorageReconciliationIssueCode = "missing_storage" | "duplicate_storage_ownership";
 
-async function recordStorageReconciliationIssue(
+export async function recordStorageReconciliationIssue(
   ctx: MutationCtx,
   asset: Doc<"schoolAssets">,
   storageId: Id<"_storage">,

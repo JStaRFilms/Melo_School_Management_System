@@ -53,7 +53,7 @@ export function HouseholdReviewTab({ records }: HouseholdReviewTabProps) {
             {multiStudentFamilies.length}
           </div>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            Groups of 2+ students sharing guardian contacts
+            Suggestions only; no relationship is created automatically
           </p>
         </div>
 
@@ -124,7 +124,7 @@ export function HouseholdReviewTab({ records }: HouseholdReviewTabProps) {
 
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
                     <CheckCircle2 className="h-3 w-3" />
-                    Auto-Linked
+                    Review required
                   </span>
                 </div>
 
