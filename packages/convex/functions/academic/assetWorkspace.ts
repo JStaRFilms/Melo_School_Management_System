@@ -99,7 +99,7 @@ export const inspectAsset = query({
     const asset = await owned(ctx, args.schoolId, args.assetId);
     if (asset.isTrashed && !canViewTrash(actor.effectiveCapabilities))
       throw new ConvexError("Forbidden: Trash workspace authority required");
-    else if (asset.archivedAt !== undefined) await requireCapability(ctx, args.schoolId, "assets.archive.manage");
+    else if (!asset.isTrashed && asset.archivedAt !== undefined) await requireCapability(ctx, args.schoolId, "assets.archive.manage");
     const [holds, shares, candidates, owner] = await Promise.all([
       ctx.db.query("assetRetentionHolds").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51),
       ctx.db.query("assetBranchShares").withIndex("by_asset", q => q.eq("assetId", asset._id)).take(51),
