@@ -37,8 +37,17 @@ async function assertTransferPilotForSchool(
     .query("schoolGroupBranches")
     .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
     .unique();
-  const group = link ? await ctx.db.get(link.groupId) : null;
-  if (!link || group?.status !== "active" || group.studentTransfersEnabled !== true)
+  const [school, group] = await Promise.all([
+    ctx.db.get(schoolId),
+    link ? ctx.db.get(link.groupId) : Promise.resolve(null),
+  ]);
+  if (
+    !school ||
+    (school.status !== undefined && school.status !== "active") ||
+    !link ||
+    group?.status !== "active" ||
+    group.studentTransfersEnabled !== true
+  )
     throw new ConvexError("Within-group transfers are not enabled for this pilot group");
   return group._id;
 }
