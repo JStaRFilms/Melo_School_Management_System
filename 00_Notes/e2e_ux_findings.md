@@ -51,11 +51,14 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Protected read-only tenant slug badge.
 - [x] **Admission Numbering Policy UI Overhaul (`/admin/settings/admission-numbering`)**
   - Modernized unstyled raw developer form into a premium, card-based configuration center adhering to the Melo Slate/Indigo design system.
-  - Added real-time "Live Identifier Preview" banner highlighting dynamic tokens (`{SCHOOL}`, `{CAMPUS}`, `{LEVEL}`, `{YEAR}`, `{SEQ:4}`) and next-in-line sequence counters.
-  - Replaced naked input dumps and camelCase labels with clean descriptive form fields, token insertion pill buttons, and responsive grid layouts.
-  - Designed high-clarity safety confirmation callout guarding against accidental counter regression or duplicate admission IDs.
-  - Transformed unstyled bullet list of named sequences into structured status cards with level badges, active/paused indicators, quick edit actions, and clean empty states.
-  - Added enterprise group governance styling with inheritance badges and centralized format synchronization controls.
+  - Added real-time "Live Identifier Preview" card highlighting dynamic tokens (`{SCHOOL}`, `{CAMPUS}`, `{LEVEL}`, `{YEAR}`, `{SEQ:4}`) and next-in-line sequence counters without distracting AI/sparkle icons.
+  - Fixed edge-touching padding on preview cards and form inputs (`p-6` to `p-7`, `px-4 py-2.5`), providing generous breathing room.
+  - Implemented cursor-position token insertion: clicking `{SCHOOL}`, `{CAMPUS}`, `{LEVEL}`, `{YEAR}`, or `{SEQ:4}` splices the token at the exact cursor caret location and advances the cursor, rather than appending to the end of the input string.
+  - De-slopped developer word salad: removed dense "Branch Counter Governance" banner in favor of an optional collapsible help guide (`(?) How numbering works`), and replaced cryptic format debug strings with plain-English 10th-grade descriptions.
+  - Converted blocking "Academic Session Required" banner into an actionable setup card with a direct 1-click link to `/academic/sessions`.
+  - Streamlined sequence confirmation guard: renamed to **"Confirm Starting Number"** with plain 10th-grade English, green match indicator, and a 1-click `Match #[X]` autofill button to eliminate typing friction.
+  - Renamed "Named branch and level sequences" to **"Grade-Level & Custom Counters (Optional)"** with clear educational explanations of how section-specific numbering operates.
+  - Prevented runtime Convex `setDefaultAdmissionNumberSequence` crashes by disabling sequence selection until an initial policy is saved.
   - Protected `SettingsNavigationTabs` against null pathname values in test and SSR environments.
 - [x] **Route Protection for Disabled Tier Modules**
   - Added layout guards on `/billing` and `/academic/knowledge/*` with user-friendly "Module Inactive" screen.
