@@ -1,6 +1,8 @@
 import {
+  assertStorageUnclaimed,
   getUnboundStorageUrl,
   secureUploadUnavailable,
+  storageClaimedOnlyBy,
 } from "./assetStorageBoundary";
 import {
   action,
@@ -1166,6 +1168,193 @@ export const generateStudentPhotoUploadUrl = mutation({
       });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     return secureUploadUnavailable<string>();
+  },
+});
+
+const MAX_STUDENT_PHOTO_BYTES = 5 * 1024 * 1024;
+const STUDENT_PHOTO_CONTENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+] as const;
+
+function detectStudentPhotoContentType(bytes: Uint8Array): string | null {
+  const matches = (...expected: number[]) =>
+    expected.every((value, index) => bytes[index] === value);
+  if (matches(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    return "image/png";
+  if (matches(0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (
+    matches(0x52, 0x49, 0x46, 0x46) &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return "image/webp";
+  return null;
+}
+
+export const authorizeStudentPhotoUpload = internalQuery({
+  args: { studentId: v.id("students") },
+  returns: v.object({
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    studentId: v.id("students"),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } =
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: "enrollment.intakes.manage",
+      });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId || student.isArchived) {
+      throw new ConvexError("Student not found");
+    }
+    return { schoolId, userId, studentId: student._id };
+  },
+});
+
+export const applyStudentPhotoUpload = internalMutation({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    studentId: v.id("students"),
+    photoStorageId: v.id("_storage"),
+    photoFileName: v.string(),
+    photoContentType: v.string(),
+  },
+  returns: v.object({
+    deleteStorageId: v.optional(v.id("_storage")),
+  }),
+  handler: async (ctx, args) => {
+    const membership = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "enrollment.intakes.manage",
+    });
+    await assertAdminForSchool(
+      ctx,
+      membership.userId,
+      membership.schoolId,
+      membership.role,
+    );
+    const student = await ctx.db.get(args.studentId);
+    if (
+      membership.userId !== args.userId ||
+      membership.schoolId !== args.schoolId ||
+      !student ||
+      student.schoolId !== args.schoolId ||
+      student.isArchived
+    ) {
+      throw new ConvexError("Student photo access changed during upload");
+    }
+    await assertStorageUnclaimed(ctx, args.photoStorageId);
+
+    let deleteStorageId: Id<"_storage"> | undefined;
+    if (student.photoStorageId) {
+      const issuedReportReference = await ctx.db
+        .query("issuedReportCards")
+        .withIndex("by_student_photo_storage", (q) =>
+          q.eq("studentPhotoStorageId", student.photoStorageId),
+        )
+        .first();
+      if (!issuedReportReference && !student.photoRetentionHold) {
+        const exclusivelyOwned = await storageClaimedOnlyBy(
+          ctx,
+          student.photoStorageId,
+          {
+            purpose: "studentPhoto",
+            ownerId: String(student._id),
+          },
+        );
+        if (exclusivelyOwned) {
+          deleteStorageId = student.photoStorageId;
+        } else {
+          const sourceDocument = student.photoSourceDocumentId
+            ? await ctx.db.get(student.photoSourceDocumentId)
+            : null;
+          const heldBySourceApplication =
+            student.photoProvenance === "application_upload" &&
+            sourceDocument?.schoolId === student.schoolId &&
+            sourceDocument.storageId === student.photoStorageId;
+          if (!heldBySourceApplication) {
+            throw new ConvexError(
+              "Storage object has conflicting ownership and cannot be replaced",
+            );
+          }
+        }
+      }
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.studentId, {
+      photoStorageId: args.photoStorageId,
+      photoFileName: args.photoFileName,
+      photoContentType: args.photoContentType,
+      photoUpdatedAt: now,
+      photoProvenance: "school_upload",
+      photoSourceDocumentId: undefined,
+      updatedAt: now,
+    });
+    return { deleteStorageId };
+  },
+});
+
+export const saveStudentPhoto = action({
+  args: {
+    studentId: v.id("students"),
+    bytes: v.bytes(),
+    photoFileName: v.string(),
+    photoContentType: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const authorization = await ctx.runQuery(
+      internal.functions.academic.studentEnrollment.authorizeStudentPhotoUpload,
+      { studentId: args.studentId },
+    );
+    const fileName = args.photoFileName.trim();
+    if (!fileName || fileName.length > 160) {
+      throw new ConvexError("Use a photo file name between 1 and 160 characters");
+    }
+    if (
+      args.bytes.byteLength === 0 ||
+      args.bytes.byteLength > MAX_STUDENT_PHOTO_BYTES
+    ) {
+      throw new ConvexError("Student photos must be 5 MB or smaller");
+    }
+    if (
+      !STUDENT_PHOTO_CONTENT_TYPES.includes(
+        args.photoContentType as (typeof STUDENT_PHOTO_CONTENT_TYPES)[number],
+      ) ||
+      detectStudentPhotoContentType(new Uint8Array(args.bytes)) !==
+        args.photoContentType
+    ) {
+      throw new ConvexError("Use a valid PNG, JPEG, or WebP student photo");
+    }
+
+    const storageId = await ctx.storage.store(
+      new Blob([args.bytes], { type: args.photoContentType }),
+    );
+    let result: { deleteStorageId?: Id<"_storage"> };
+    try {
+      result = await ctx.runMutation(
+        internal.functions.academic.studentEnrollment.applyStudentPhotoUpload,
+        {
+          ...authorization,
+          photoStorageId: storageId,
+          photoFileName: fileName,
+          photoContentType: args.photoContentType,
+        },
+      );
+    } catch (error) {
+      await ctx.storage.delete(storageId);
+      throw error;
+    }
+    if (result.deleteStorageId) {
+      await ctx.storage.delete(result.deleteStorageId);
+    }
+    return null;
   },
 });
 

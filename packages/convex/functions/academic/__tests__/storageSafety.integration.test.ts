@@ -13,6 +13,9 @@ const modules = Object.fromEntries(
   ]),
 );
 const a = api.functions.academic;
+const validPngBytes = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -146,7 +149,32 @@ it("keeps authorized historical logo and student-photo reads while rejecting con
   expect(await f.t.run((ctx) => ctx.db.get(f.schoolId))).toMatchObject({ logoStorageId: f.historicalLogoStorageId });
 });
 
-it("preserves logo storage referenced by an immutable issued report", async () => {
+it("securely replaces a student photo and deletes its exclusively owned predecessor", async () => {
+  const f = await fixture();
+
+  await expect(f.operator.action(a.studentEnrollment.saveStudentPhoto, {
+    studentId: f.studentId,
+    bytes: validPngBytes.buffer,
+    photoFileName: "replacement.png",
+    photoContentType: "image/png",
+  })).resolves.toBeNull();
+
+  const student = await f.t.run((ctx) => ctx.db.get(f.studentId));
+  expect(student).toMatchObject({
+    photoFileName: "replacement.png",
+    photoContentType: "image/png",
+    photoProvenance: "school_upload",
+    photoUpdatedAt: expect.any(Number),
+  });
+  expect(student).not.toHaveProperty("photoSourceDocumentId");
+  expect(student?.photoStorageId).not.toBe(f.historicalPhotoStorageId);
+  expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.historicalPhotoStorageId)))).toBe(false);
+  const replacementPhotoStorageId = student?.photoStorageId;
+  if (!replacementPhotoStorageId) throw new Error("Replacement photo was not stored");
+  expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(replacementPhotoStorageId)))).toBe(true);
+});
+
+it("preserves logo and student-photo storage referenced by an immutable issued report", async () => {
   const f = await fixture();
   const report = await f.operator.query(a.reportCards.getStudentReportCard, {
     studentId: f.studentId,
@@ -168,15 +196,23 @@ it("preserves logo storage referenced by an immutable issued report", async () =
   }));
 
   await expect(f.operator.mutation(a.schoolBranding.removeSchoolLogo, {})).resolves.toBeNull();
+  await expect(f.operator.action(a.studentEnrollment.saveStudentPhoto, {
+    studentId: f.studentId,
+    bytes: validPngBytes.buffer,
+    photoFileName: "current.png",
+    photoContentType: "image/png",
+  })).resolves.toBeNull();
   expect((await f.t.run((ctx) => ctx.db.get(f.schoolId)))?.logoStorageId).toBeUndefined();
+  expect((await f.t.run((ctx) => ctx.db.get(f.studentId)))?.photoStorageId).not.toBe(f.historicalPhotoStorageId);
   expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.historicalLogoStorageId)))).toBe(true);
+  expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.historicalPhotoStorageId)))).toBe(true);
   expect(await f.operator.query(a.reportCards.getStudentReportCard, {
     studentId: f.studentId,
     classId: f.classId,
     sessionId: f.sessionId,
     termId: f.termId,
   })).toMatchObject({ schoolLogoUrl: expect.stringMatching(/^https?:/) });
-});
+}, 20_000);
 
 it("fails closed before URL issuance, intent or shell creation even when quota exists", async () => {
   const f = await fixture();
@@ -214,6 +250,12 @@ it("rejects every unsafe finalizer before a generic storage ID can cross purpose
     logoFileName: "generic.png",
     logoContentType: "image/png",
   })).rejects.toThrow("valid PNG, JPEG, or WebP");
+  await expect(f.operator.action(a.studentEnrollment.saveStudentPhoto, {
+    studentId: f.studentId,
+    bytes: new TextEncoder().encode("not an image").buffer,
+    photoFileName: "generic.png",
+    photoContentType: "image/png",
+  })).rejects.toThrow("valid PNG, JPEG, or WebP");
   await expect(f.operator.mutation(a.studentEnrollment.updateStudent, { studentId: f.studentId, photoStorageId: f.genericStorageId, photoFileName: "generic.png", photoContentType: "image/png" })).rejects.toThrow(unavailable);
   await expect(f.operator.mutation(a.lessonKnowledgeIngestion.finalizeKnowledgeMaterialUpload, { materialId: f.materialId, storageId: f.genericStorageId })).rejects.toThrow(unavailable);
   await expect(f.student.mutation(a.lessonKnowledgePortal.finalizePortalSupplementalUpload, { materialId: f.portalMaterialId, storageId: f.genericStorageId, studentId: f.studentId })).rejects.toThrow(unavailable);
@@ -224,13 +266,48 @@ it("rejects every unsafe finalizer before a generic storage ID can cross purpose
   await expect(f.t.run((ctx) => assertStorageUnclaimed(ctx, f.genericStorageId))).resolves.toBeNull();
 });
 
+it("deletes a newly stored photo when the student patch cannot safely replace the old claim", async () => {
+  const f = await fixture();
+  await f.t.run((ctx) => ctx.db.patch(f.studentId, {
+    photoStorageId: f.historicalLogoStorageId,
+  }));
+  const beforeStorageIds = await f.t.run(async (ctx) =>
+    (await ctx.db.system.query("_storage").take(100)).map((row) => row._id),
+  );
+
+  await expect(f.operator.action(a.studentEnrollment.saveStudentPhoto, {
+    studentId: f.studentId,
+    bytes: validPngBytes.buffer,
+    photoFileName: "rejected.png",
+    photoContentType: "image/png",
+  })).rejects.toThrow("conflicting ownership");
+
+  const afterStorageIds = await f.t.run(async (ctx) =>
+    (await ctx.db.system.query("_storage").take(100)).map((row) => row._id),
+  );
+  expect(afterStorageIds).toEqual(beforeStorageIds);
+  expect(await f.t.run((ctx) => ctx.db.get(f.studentId))).toMatchObject({
+    photoStorageId: f.historicalLogoStorageId,
+  });
+});
+
 it("keeps authorization terminal before unavailable transport for cross-tenant and revoked callers", async () => {
   const crossTenant = await fixture();
   await expect(crossTenant.operator.mutation(a.assets.createAssetUploadIntent, { schoolId: crossTenant.otherSchoolId })).rejects.toThrow("authorized");
   await crossTenant.t.run(async (ctx) => {
+    await ctx.db.patch(crossTenant.studentId, { schoolId: crossTenant.otherSchoolId });
     await ctx.db.patch(crossTenant.materialId, { schoolId: crossTenant.otherSchoolId });
     await ctx.db.patch(crossTenant.portalMaterialId, { schoolId: crossTenant.otherSchoolId });
   });
+  await expect(crossTenant.operator.action(a.studentEnrollment.saveStudentPhoto, {
+    studentId: crossTenant.studentId,
+    bytes: validPngBytes.buffer,
+    photoFileName: "cross-tenant.png",
+    photoContentType: "image/png",
+  })).rejects.toThrow("Student not found");
+  await crossTenant.t.run((ctx) =>
+    ctx.db.patch(crossTenant.studentId, { schoolId: crossTenant.schoolId }),
+  );
   await expect(crossTenant.operator.mutation(a.lessonKnowledgeIngestion.finalizeKnowledgeMaterialUpload, {
     materialId: crossTenant.materialId,
     storageId: crossTenant.genericStorageId,
@@ -242,8 +319,17 @@ it("keeps authorization terminal before unavailable transport for cross-tenant a
   })).rejects.toThrow("school");
 
   const revoked = await fixture();
-  await revoked.t.run((ctx) => ctx.db.insert("membershipDirectRestrictions", { membershipId: revoked.membershipId, capability: "assets.upload", restrictedAt: Date.now() }));
+  await revoked.t.run(async (ctx) => {
+    await ctx.db.insert("membershipDirectRestrictions", { membershipId: revoked.membershipId, capability: "assets.upload", restrictedAt: Date.now() });
+    await ctx.db.insert("membershipDirectRestrictions", { membershipId: revoked.membershipId, capability: "enrollment.intakes.manage", restrictedAt: Date.now() });
+  });
   await expect(revoked.operator.mutation(a.assets.createAssetUploadIntent, { schoolId: revoked.schoolId })).rejects.toThrow("Forbidden");
+  await expect(revoked.operator.action(a.studentEnrollment.saveStudentPhoto, {
+    studentId: revoked.studentId,
+    bytes: validPngBytes.buffer,
+    photoFileName: "revoked.png",
+    photoContentType: "image/png",
+  })).rejects.toThrow("Forbidden");
   await expect(revoked.operator.mutation(a.lessonKnowledgeIngestion.requestKnowledgeMaterialUploadUrl, {
     title: "Revoked", subjectId: null, level: "JSS 1", topicLabel: "Safety", sourceType: "imported_curriculum",
   })).rejects.toThrow("Forbidden");
