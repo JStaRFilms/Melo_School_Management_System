@@ -265,6 +265,24 @@ export function DataMigrationWorkbench({
     }
   };
 
+  const clashCandidateRecord = clashModalRecord?.clashCandidateId
+    ? stagedRecords.find((record) => record._id === clashModalRecord.clashCandidateId)
+    : undefined;
+  const existingStudentOption = clashModalRecord?.existingStudentId
+    ? reviewOptions?.students.find(
+        (student) => student.id === clashModalRecord.existingStudentId,
+      )
+    : undefined;
+  const existingStudentMatch = existingStudentOption
+    ? {
+        fullName: existingStudentOption.name,
+        admissionNumber: existingStudentOption.admissionNumber,
+        className: reviewOptions?.classes.find(
+          (classOption) => classOption.id === existingStudentOption.classId,
+        )?.name,
+      }
+    : undefined;
+
   if (workspaces === undefined) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -508,6 +526,8 @@ export function DataMigrationWorkbench({
       {clashModalRecord && (
         <ClashResolutionModal
           record={clashModalRecord}
+          candidateRecord={clashCandidateRecord}
+          existingStudentMatch={existingStudentMatch}
           onClose={() => setClashModalRecord(null)}
           onResolve={handleResolveClash}
           isResolving={isResolvingClash}

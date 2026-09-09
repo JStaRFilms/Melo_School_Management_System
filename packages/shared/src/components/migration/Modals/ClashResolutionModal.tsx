@@ -25,6 +25,11 @@ export interface StagedRecordItem {
 export interface ClashResolutionModalProps {
   record: StagedRecordItem | null;
   candidateRecord?: StagedRecordItem | null;
+  existingStudentMatch?: {
+    fullName: string;
+    className?: string;
+    admissionNumber?: string;
+  } | null;
   onClose: () => void;
   onResolve: (action: "create_new" | "merge_existing" | "ignore") => void;
   isResolving?: boolean;
@@ -33,6 +38,7 @@ export interface ClashResolutionModalProps {
 export function ClashResolutionModal({
   record,
   candidateRecord,
+  existingStudentMatch,
   onClose,
   onResolve,
   isResolving,
@@ -55,7 +61,7 @@ export function ClashResolutionModal({
       ]
         .filter(Boolean)
         .join(" ")
-    : "Existing School Student Profile";
+    : existingStudentMatch?.fullName ?? "Match details unavailable";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
@@ -130,7 +136,11 @@ export function ClashResolutionModal({
           {/* Candidate Match */}
           <div className="space-y-3 pl-6">
             <div className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              {candidateRecord ? `Matched Row #${candidateRecord.rowNumber}` : "Database Match"}
+              {candidateRecord
+                ? `Matched Row #${candidateRecord.rowNumber}`
+                : existingStudentMatch
+                  ? "Existing Student"
+                  : "Match details unavailable"}
             </div>
             <div className="space-y-2 text-xs">
               <div>
@@ -140,25 +150,29 @@ export function ClashResolutionModal({
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Class</span>
                 <span className="font-medium text-slate-800">
-                  {candidateRecord?.parsedData.className || "Live Class"}
+                  {candidateRecord?.parsedData.className ||
+                    existingStudentMatch?.className ||
+                    "Not available"}
                 </span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Gender</span>
                 <span className="font-medium text-slate-800">
-                  {candidateRecord?.parsedData.gender || "Unspecified"}
+                  {candidateRecord?.parsedData.gender || "Not available"}
                 </span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Guardian Phone</span>
                 <span className="font-mono text-slate-800">
-                  {candidateRecord?.parsedData.guardianPhone || record.parsedData.guardianPhone || "N/A"}
+                  {candidateRecord?.parsedData.guardianPhone || "Not available"}
                 </span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Admission No</span>
                 <span className="font-mono text-slate-800">
-                  {candidateRecord?.parsedData.admissionNumber || "Existing Student"}
+                  {candidateRecord?.parsedData.admissionNumber ||
+                    existingStudentMatch?.admissionNumber ||
+                    "Not available"}
                 </span>
               </div>
             </div>
@@ -184,20 +198,22 @@ export function ClashResolutionModal({
               </div>
             </button>
 
-            <button
-              type="button"
-              disabled={isResolving}
-              onClick={() => onResolve("merge_existing")}
-              className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-emerald-400 hover:bg-emerald-50/30 transition-all shadow-2xs group"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                <UserCheck className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Merge with Existing</div>
-                <div className="text-[11px] text-slate-500">Reconcile this row; imported text will not overwrite identity or placement</div>
-              </div>
-            </button>
+            {existingStudentMatch && (
+              <button
+                type="button"
+                disabled={isResolving}
+                onClick={() => onResolve("merge_existing")}
+                className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-emerald-400 hover:bg-emerald-50/30 transition-all shadow-2xs group"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <UserCheck className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900 leading-tight">Merge with Existing</div>
+                  <div className="text-[11px] text-slate-500">Reconcile this row; imported text will not overwrite identity or placement</div>
+                </div>
+              </button>
+            )}
 
             <button
               type="button"

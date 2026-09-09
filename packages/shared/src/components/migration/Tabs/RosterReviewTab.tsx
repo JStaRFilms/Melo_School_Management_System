@@ -15,6 +15,7 @@ export interface StagedStudentRow {
   selectedSessionId?: string;
   selectedTermId?: string;
   existingStudentId?: string;
+  clashCandidateId?: string;
   admissionNumberMode?: "supplied" | "official_generated";
   manualNumberConfirmed?: boolean;
   manualNumberReason?: string;

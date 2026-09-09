@@ -106,6 +106,7 @@ export function matchHeaderToField(header: string): string | null {
   // Admission Number / ID
   if (
     norm === "admissionnumber" ||
+    norm === "admissionid" ||
     norm === "admissionno" ||
     norm === "admno" ||
     norm === "regno" ||

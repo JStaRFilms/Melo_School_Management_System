@@ -266,7 +266,35 @@ export const stageRecordsBatch = mutation({
         admissionNumber: data.admissionNumber,
       };
 
-      // Check against existing live students
+      type ClashMatch =
+        | {
+            kind: "live";
+            id: Id<"students">;
+            confidence: number;
+            reason: string;
+            stableKey: string;
+          }
+        | {
+            kind: "staged";
+            id: Id<"stagedImportRecords">;
+            confidence: number;
+            reason: string;
+            stableKey: string;
+          };
+      let strongestMatch: ClashMatch | undefined;
+      const considerMatch = (match: ClashMatch) => {
+        if (
+          !strongestMatch ||
+          match.confidence > strongestMatch.confidence ||
+          (match.confidence === strongestMatch.confidence &&
+            match.stableKey < strongestMatch.stableKey)
+        ) {
+          strongestMatch = match;
+        }
+      };
+
+      // Evaluate every bounded live and staged candidate. A canonical live
+      // student wins an equal-score tie; remaining ties use stable IDs/rows.
       for (const live of liveStudents) {
         const u = userMap.get(String(live.userId));
         const evalResult = evaluateClash(candidate, {
@@ -278,33 +306,46 @@ export const stageRecordsBatch = mutation({
           admissionNumber: live.admissionNumber,
         });
 
-        if (evalResult.isWarning || evalResult.isClash) {
-          existingStudentId = live._id;
-          clashConfidence = evalResult.confidence;
-          clashReason = `Live student match: ${evalResult.reason}`;
-          break;
+        if (evalResult.isWarning) {
+          considerMatch({
+            kind: "live",
+            id: live._id,
+            confidence: evalResult.confidence,
+            reason: `Live student match: ${evalResult.reason}`,
+            stableKey: `0:${String(live._id)}`,
+          });
         }
       }
 
-      // Check against earlier staged rows in this workspace or current batch
-      if (!existingStudentId) {
-        for (const prev of [...existingStaged, ...newlyStaged]) {
-          const evalResult = evaluateClash(candidate, {
-            firstName: prev.parsedData.firstName,
-            lastName: prev.parsedData.lastName,
-            middleName: prev.parsedData.middleName,
-            className: prev.parsedData.className,
-            guardianPhone: prev.parsedData.guardianPhone,
-            gender: prev.parsedData.gender,
-            admissionNumber: prev.parsedData.admissionNumber,
-          });
+      for (const prev of [...existingStaged, ...newlyStaged]) {
+        const evalResult = evaluateClash(candidate, {
+          firstName: prev.parsedData.firstName,
+          lastName: prev.parsedData.lastName,
+          middleName: prev.parsedData.middleName,
+          className: prev.parsedData.className,
+          guardianPhone: prev.parsedData.guardianPhone,
+          gender: prev.parsedData.gender,
+          admissionNumber: prev.parsedData.admissionNumber,
+        });
 
-          if (evalResult.isWarning || evalResult.isClash) {
-            clashCandidateId = prev._id ?? undefined;
-            clashConfidence = evalResult.confidence;
-            clashReason = `Staged duplicate (Row #${prev.rowNumber}): ${evalResult.reason}`;
-            break;
-          }
+        if (evalResult.isWarning) {
+          considerMatch({
+            kind: "staged",
+            id: prev._id,
+            confidence: evalResult.confidence,
+            reason: `Staged duplicate (Row #${prev.rowNumber}): ${evalResult.reason}`,
+            stableKey: `1:${String(prev.rowNumber).padStart(12, "0")}:${String(prev._id)}`,
+          });
+        }
+      }
+
+      if (strongestMatch) {
+        clashConfidence = strongestMatch.confidence;
+        clashReason = strongestMatch.reason;
+        if (strongestMatch.kind === "live") {
+          existingStudentId = strongestMatch.id;
+        } else {
+          clashCandidateId = strongestMatch.id;
         }
       }
 

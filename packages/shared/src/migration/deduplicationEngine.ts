@@ -130,7 +130,7 @@ export function computeNameSimilarity(
  * - Class name match: weight +0.35 (+35 pts)
  * - Gender match: weight +0.10 (+10 pts)
  *
- * Thresholds:
+ * Thresholds after meaningful identity evidence qualifies the candidate:
  * - >= 85%: High-confidence clash / duplicate candidate
  * - 50% - 84%: Ambiguous match -> warning requiring review
  * - < 50%: Distinct individual
@@ -205,8 +205,14 @@ export function evaluateClash(
   }
 
   const confidence = Math.min(100, Math.round(score));
-  const isHighConfidenceClash = confidence >= 85;
-  const isWarning = confidence >= 50;
+  // Class and gender are contextual evidence, not identity evidence. Requiring
+  // a strong name match, or a phone match backed by a moderate name match,
+  // prevents classmates and weak household similarities from becoming candidates.
+  const hasMeaningfulIdentityEvidence =
+    nameSim >= 0.8 || (hasPhoneMatch && nameSim >= 0.65);
+  const isHighConfidenceClash =
+    hasMeaningfulIdentityEvidence && confidence >= 85;
+  const isWarning = hasMeaningfulIdentityEvidence && confidence >= 50;
 
   return {
     isClash: isHighConfidenceClash,

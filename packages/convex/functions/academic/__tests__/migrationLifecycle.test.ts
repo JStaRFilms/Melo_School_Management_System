@@ -351,6 +351,70 @@ describe("Migration Lifecycle Engine", () => {
     expect(secondRow?.isResolved).toBe(false);
   });
 
+  it("Clash Detection: retains the strongest staged candidate instead of the first warning", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const workspaceId = await adminSession.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Strongest Match Intake",
+      mode: "school_admin",
+    });
+
+    await adminSession.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId,
+      records: [
+        {
+          rowNumber: 1,
+          rawPayload: {},
+          parsedData: {
+            firstName: "Jon",
+            lastName: "Smith",
+            className: "JSS 1A",
+            gender: "Male",
+            guardianPhone: "08011111111",
+          },
+          entityType: "student",
+        },
+        {
+          rowNumber: 2,
+          rawPayload: {},
+          parsedData: {
+            firstName: "Jonathan",
+            lastName: "Smith",
+            className: "JSS 1A",
+            gender: "Male",
+            guardianPhone: "08022222222",
+          },
+          entityType: "student",
+        },
+        {
+          rowNumber: 3,
+          rawPayload: {},
+          parsedData: {
+            firstName: "Jonathan",
+            lastName: "Smith",
+            className: "JSS 1A",
+            gender: "Male",
+            guardianPhone: "+2348022222222",
+          },
+          entityType: "student",
+        },
+      ],
+    });
+
+    const staged = await adminSession.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+    const secondRow = staged.find((record: any) => record.rowNumber === 2);
+    const thirdRow = staged.find((record: any) => record.rowNumber === 3);
+
+    expect(thirdRow?.clashCandidateId).toBe(secondRow?._id);
+    expect(thirdRow?.clashConfidence).toBe(100);
+    expect(thirdRow?.clashReason).toContain("Row #2");
+  });
+
   it("Sibling Household Grouping: clusters students with identical guardian phones under same familyClusterKey", async () => {
     const { t, schoolA } = await setupTestFixture();
     const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });

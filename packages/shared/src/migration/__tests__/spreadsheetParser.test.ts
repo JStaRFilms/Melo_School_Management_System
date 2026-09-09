@@ -32,6 +32,15 @@ Chioma,Okafor,JSS 1B,Female,08099887766,Maryland,AS`;
     expect(result.unrecognizedHeaders.map((h) => h.header)).toContain("Genotype");
   });
 
+  it("maps Admission ID to the canonical admission number field", () => {
+    const result = parseSpreadsheetContent(`First Name,Last Name,Class,Admission ID
+Chidi,Okafor,Primary 2,OBCA/26/1002`);
+
+    expect(matchHeaderToField("Admission ID")).toBe("admissionNumber");
+    expect(result.rows[0].parsedData.admissionNumber).toBe("OBCA/26/1002");
+    expect(result.unrecognizedHeaders).toEqual([]);
+  });
+
   it("handles full name column when separate first/last names are not provided", () => {
     const csv = `Student Name,Class,Gender
 "ADEYEMI, Babatunde Tunde",JSS 1A,M`;
