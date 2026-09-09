@@ -4,6 +4,7 @@ import {
   screen,
   waitFor,
   cleanup,
+  act,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
@@ -26,6 +27,18 @@ const mockPolicyState = {
 };
 
 const mocks = vi.hoisted(() => ({ allowed: true, save: vi.fn() }));
+const mockToast = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+  dismiss: vi.fn(),
+}));
+
+vi.mock("@school/shared/toast", () => ({
+  appToast: mockToast,
+}));
+
 vi.mock("@/AuthProvider", () => ({
   useAuth: () => ({
     workspaceAccess: { state: "ready", branch: { schoolId: "school" } },
@@ -51,6 +64,8 @@ afterEach(() => {
   cleanup();
   mocks.allowed = true;
   mocks.save.mockReset();
+  mockToast.error.mockReset();
+  mockToast.success.mockReset();
   mockPolicyState.branchCounter = null;
 });
 it("shows explicit denied settings without mounting sensitive inputs", () => {
@@ -87,11 +102,17 @@ it("submits the reviewed numbering version and exact next sequence and preserves
   expect((screen.getByLabelText("schoolCode") as HTMLInputElement).value).toBe(
     "SYN",
   );
-  await waitFor(() =>
-    expect(screen.getByRole("status").textContent).toContain("Policy changed"),
-  );
+  await waitFor(() => {
+    expect(screen.getByRole("status").textContent).toContain("Policy changed");
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Policy updated elsewhere",
+      expect.objectContaining({
+        description: expect.stringContaining("Policy changed"),
+      }),
+    );
+  });
 });
-it("cleans raw Convex errors into human-friendly messages and offers sequence reset", async () => {
+it("cleans raw Convex errors into human-friendly messages and offers sequence reset in toast", async () => {
   mockPolicyState.branchCounter = {
     nextSequence: 1000,
     configVersion: 1,
@@ -123,14 +144,23 @@ it("cleans raw Convex errors into human-friendly messages and offers sequence re
     expect(status.textContent).not.toContain("[CONVEX");
     expect(status.textContent).not.toContain("Request ID");
     expect(status.textContent).not.toContain("Called by client");
+
+    // Ensure the unified toast was triggered with human-friendly title, description, and action
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "Sequence cannot be moved backwards",
+      expect.objectContaining({
+        description: expect.stringContaining("cannot be set lower than #1000"),
+        action: expect.objectContaining({
+          label: "Reset to #1000",
+        }),
+      }),
+    );
   });
 
-  // Verify the reset button is offered and resets draft
-  const resetButton = screen.getByRole("button", {
-    name: /Reset sequence to #1000/i,
-  });
-  expect(resetButton).toBeTruthy();
-  fireEvent.click(resetButton);
+  // Verify invoking the toast action button resets draft sequence to minimum
+  const toastAction = mockToast.error.mock.calls[0]?.[1]?.action;
+  expect(toastAction?.label).toBe("Reset to #1000");
+  act(() => { toastAction?.onClick(); });
   expect(
     (screen.getByLabelText("Next sequence") as HTMLInputElement).value,
   ).toBe("1000");
@@ -159,6 +189,12 @@ it("prevents submitting when the next sequence is set below the active counter",
   expect(
     (screen.getByLabelText("Confirm next sequence") as HTMLInputElement).value,
   ).toBe("450");
+
+  // Click inline reset to return to minimum allowed counter
+  const resetBtn = screen.getByRole("button", { name: /Reset to #500/i });
+  fireEvent.click(resetBtn);
+  expect((nextSeqInput as HTMLInputElement).value).toBe("500");
+  expect(submitButton.disabled).toBe(false);
 });
 it("requires bank confirmation, sends full values only to authorized save and retains errors", async () => {
   mocks.save.mockRejectedValue(new Error("Save unavailable"));
