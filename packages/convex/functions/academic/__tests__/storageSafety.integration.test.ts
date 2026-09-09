@@ -209,7 +209,11 @@ it("rejects every unsafe finalizer before a generic storage ID can cross purpose
   const f = await fixture();
   const unavailable = SECURE_UPLOAD_UNAVAILABLE_MESSAGE.slice(0, 35);
   await expect(f.operator.mutation(a.assets.finalizeAssetUpload, { schoolId: f.schoolId, uploadIntentId: f.uploadIntentId, storageId: f.genericStorageId, fileName: "generic.png", category: "General" })).rejects.toThrow(unavailable);
-  await expect(f.operator.mutation(a.schoolBranding.saveSchoolLogo, { logoStorageId: f.genericStorageId, logoFileName: "generic.png", logoContentType: "image/png" })).rejects.toThrow(unavailable);
+  await expect(f.operator.action(a.schoolBranding.saveSchoolLogo, {
+    bytes: new TextEncoder().encode("not an image").buffer,
+    logoFileName: "generic.png",
+    logoContentType: "image/png",
+  })).rejects.toThrow("valid PNG, JPEG, or WebP");
   await expect(f.operator.mutation(a.studentEnrollment.updateStudent, { studentId: f.studentId, photoStorageId: f.genericStorageId, photoFileName: "generic.png", photoContentType: "image/png" })).rejects.toThrow(unavailable);
   await expect(f.operator.mutation(a.lessonKnowledgeIngestion.finalizeKnowledgeMaterialUpload, { materialId: f.materialId, storageId: f.genericStorageId })).rejects.toThrow(unavailable);
   await expect(f.student.mutation(a.lessonKnowledgePortal.finalizePortalSupplementalUpload, { materialId: f.portalMaterialId, storageId: f.genericStorageId, studentId: f.studentId })).rejects.toThrow(unavailable);

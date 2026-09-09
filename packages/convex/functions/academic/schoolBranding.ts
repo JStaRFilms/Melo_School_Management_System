@@ -1,10 +1,19 @@
 import {
-  assertStorageClaimedOnlyBy,
+  assertStorageUnclaimed,
   getUnboundStorageUrl,
+  isSharedActiveGroupLogo,
   secureUploadUnavailable,
+  storageClaimedOnlyBy,
 } from "./assetStorageBoundary";
 import type { Id } from "../../_generated/dataModel";
-import { mutation, query } from "../../_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "../../_generated/server";
+import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
 import {
   assertAdminForSchool,
@@ -177,20 +186,163 @@ export const generateSchoolLogoUploadUrl = mutation({
   },
 });
 
-export const saveSchoolLogo = mutation({
-  args: {
-    logoStorageId: v.id("_storage"),
-    logoFileName: v.string(),
-    logoContentType: v.string(),
-  },
-  returns: v.null(),
+const MAX_SCHOOL_LOGO_BYTES = 768 * 1024;
+const SCHOOL_LOGO_CONTENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+] as const;
+
+function detectSchoolLogoContentType(bytes: Uint8Array): string | null {
+  const matches = (...expected: number[]) =>
+    expected.every((value, index) => bytes[index] === value);
+  if (matches(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+    return "image/png";
+  if (matches(0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (
+    matches(0x52, 0x49, 0x46, 0x46) &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return "image/webp";
+  return null;
+}
+
+export const authorizeSchoolLogoUpload = internalQuery({
+  args: {},
+  returns: v.object({
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+  }),
   handler: async (ctx) => {
     const { userId, schoolId, role } =
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "settings.branding.manage",
       });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-    return secureUploadUnavailable<null>();
+    return { schoolId, userId };
+  },
+});
+
+export const applySchoolLogoUpload = internalMutation({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    logoStorageId: v.id("_storage"),
+    logoFileName: v.string(),
+    logoContentType: v.string(),
+  },
+  returns: v.object({
+    deleteStorageId: v.optional(v.id("_storage")),
+  }),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    const school = await ctx.db.get(args.schoolId);
+    if (
+      !user ||
+      user.schoolId !== args.schoolId ||
+      user.isArchived ||
+      (user.role !== "admin" && user.isSchoolAdmin !== true) ||
+      !school
+    ) {
+      throw new ConvexError("School branding access changed during upload");
+    }
+    await assertStorageUnclaimed(ctx, args.logoStorageId);
+
+    let deleteStorageId: Id<"_storage"> | undefined;
+    if (school.logoStorageId) {
+      const issuedReportReference = await ctx.db
+        .query("issuedReportCards")
+        .withIndex("by_school_logo_storage", (q) =>
+          q.eq("schoolLogoStorageId", school.logoStorageId),
+        )
+        .first();
+      if (!issuedReportReference) {
+        const exclusivelyOwned = await storageClaimedOnlyBy(
+          ctx,
+          school.logoStorageId,
+          {
+            purpose: "schoolLogo",
+            ownerId: String(school._id),
+          },
+        );
+        if (exclusivelyOwned) {
+          deleteStorageId = school.logoStorageId;
+        } else if (!(await isSharedActiveGroupLogo(ctx, school.logoStorageId))) {
+          throw new ConvexError(
+            "Storage object has conflicting ownership and cannot be replaced",
+          );
+        }
+      }
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.schoolId, {
+      logoStorageId: args.logoStorageId,
+      logoFileName: args.logoFileName,
+      logoContentType: args.logoContentType,
+      logoUpdatedAt: now,
+      updatedAt: now,
+    });
+    return { deleteStorageId };
+  },
+});
+
+export const saveSchoolLogo = action({
+  args: {
+    bytes: v.bytes(),
+    logoFileName: v.string(),
+    logoContentType: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const authorization = await ctx.runQuery(
+      internal.functions.academic.schoolBranding.authorizeSchoolLogoUpload,
+      {},
+    );
+    const fileName = args.logoFileName.trim();
+    if (!fileName || fileName.length > 160) {
+      throw new ConvexError("Use a logo file name between 1 and 160 characters");
+    }
+    if (
+      args.bytes.byteLength === 0 ||
+      args.bytes.byteLength > MAX_SCHOOL_LOGO_BYTES
+    ) {
+      throw new ConvexError("School crests must be smaller than 768 KB");
+    }
+    if (
+      !SCHOOL_LOGO_CONTENT_TYPES.includes(
+        args.logoContentType as (typeof SCHOOL_LOGO_CONTENT_TYPES)[number],
+      ) ||
+      detectSchoolLogoContentType(new Uint8Array(args.bytes)) !==
+        args.logoContentType
+    ) {
+      throw new ConvexError("Use a valid PNG, JPEG, or WebP school crest");
+    }
+
+    const storageId = await ctx.storage.store(
+      new Blob([args.bytes], { type: args.logoContentType }),
+    );
+    try {
+      const result = await ctx.runMutation(
+        internal.functions.academic.schoolBranding.applySchoolLogoUpload,
+        {
+          ...authorization,
+          logoStorageId: storageId,
+          logoFileName: fileName,
+          logoContentType: args.logoContentType,
+        },
+      );
+      if (result.deleteStorageId) {
+        await ctx.storage.delete(result.deleteStorageId);
+      }
+      return null;
+    } catch (error) {
+      await ctx.storage.delete(storageId);
+      throw error;
+    }
   },
 });
 
@@ -217,11 +369,21 @@ export const removeSchoolLogo = mutation({
         .withIndex("by_school_logo_storage", (q) => q.eq("schoolLogoStorageId", school.logoStorageId))
         .first();
       if (!issuedReportReference) {
-        await assertStorageClaimedOnlyBy(ctx, school.logoStorageId, {
-          purpose: "schoolLogo",
-          ownerId: String(school._id),
-        });
-        deleteStorageId = school.logoStorageId;
+        const exclusivelyOwned = await storageClaimedOnlyBy(
+          ctx,
+          school.logoStorageId,
+          {
+            purpose: "schoolLogo",
+            ownerId: String(school._id),
+          },
+        );
+        if (exclusivelyOwned) {
+          deleteStorageId = school.logoStorageId;
+        } else if (!(await isSharedActiveGroupLogo(ctx, school.logoStorageId))) {
+          throw new ConvexError(
+            "Storage object has conflicting ownership and cannot be removed",
+          );
+        }
       }
     }
 

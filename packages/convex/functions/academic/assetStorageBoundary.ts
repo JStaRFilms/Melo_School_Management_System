@@ -47,7 +47,7 @@ async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Pr
   const [admissions, siteAssets, schools, students, materials, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
     ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(2),
+    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(101),
     ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(2),
     ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("assetUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
@@ -127,6 +127,44 @@ export async function assertStorageNotBoundToAsset(ctx: Context, storageId: Id<"
   }
 }
 
+export async function isSharedActiveGroupLogo(
+  ctx: Context,
+  storageId: Id<"_storage">,
+): Promise<boolean> {
+  const claims = await collectStorageClaims(ctx, storageId);
+  const schools = await ctx.db
+    .query("schools")
+    .withIndex("by_logo_storage", (q) => q.eq("logoStorageId", storageId))
+    .take(101);
+  if (
+    schools.length < 2 ||
+    schools.length > 100 ||
+    claims.some(
+      (claim) =>
+        claim.purpose !== "schoolLogo" &&
+        claim.purpose !== "issuedReportLogoReference",
+    )
+  ) {
+    return false;
+  }
+  const links = await Promise.all(
+    schools.map((school) =>
+      ctx.db
+        .query("schoolGroupBranches")
+        .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+        .unique(),
+    ),
+  );
+  const groupIds = new Set(
+    links.map((link) => link?.groupId).filter((groupId) => groupId !== undefined),
+  );
+  const [groupId] = groupIds;
+  const group = groupIds.size === 1 && groupId
+    ? await ctx.db.get(groupId)
+    : null;
+  return links.every((link) => link !== null) && group?.status === "active";
+}
+
 /** Compatibility-only read path; this does not establish new upload provenance. */
 export async function getUnboundStorageUrl(ctx: Context, storageId: Id<"_storage">) {
   await assertStorageNotBoundToAsset(ctx, storageId);
@@ -146,30 +184,10 @@ export async function getUnboundStorageUrl(ctx: Context, storageId: Id<"_storage
     students[0].photoProvenance === "application_upload" &&
     students[0].photoSourceDocumentId === admissions[0]._id &&
     students[0].schoolId === admissions[0].schoolId;
-  let acceptedGroupLogoReference = false;
-  if (
+  const acceptedGroupLogoReference =
     schools.length > 1 &&
-    schools.length <= 100 &&
-    claimCount === schools.length
-  ) {
-    const links = await Promise.all(
-      schools.map((school) =>
-        ctx.db
-          .query("schoolGroupBranches")
-          .withIndex("by_school", (q) => q.eq("schoolId", school._id))
-          .unique(),
-      ),
-    );
-    const groupIds = new Set(
-      links.map((link) => link?.groupId).filter((groupId) => groupId !== undefined),
-    );
-    const [groupId] = groupIds;
-    const group = groupIds.size === 1 && groupId
-      ? await ctx.db.get(groupId)
-      : null;
-    acceptedGroupLogoReference =
-      links.every((link) => link !== null) && group?.status === "active";
-  }
+    claimCount === schools.length &&
+    (await isSharedActiveGroupLogo(ctx, storageId));
   if (
     cleanup.length ||
     (claimCount > 1 &&
