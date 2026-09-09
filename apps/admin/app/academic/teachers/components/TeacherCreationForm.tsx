@@ -164,25 +164,25 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
 
   return (
     <AdminSurface intensity="medium" rounded="lg" className="p-4 space-y-4">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
-        <div className="space-y-0.5">
+      <div className="border-b border-slate-100 pb-3 space-y-1">
+        <div className="flex items-center justify-between gap-2 min-h-6">
           <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
-          <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
+          {draftContext && (
+            <PersistentFormDraftControls
+              draft={draft}
+              formTitle="teacher onboarding"
+              isDirty={draftIsDirty}
+              variant="compact"
+              excludedFieldsNotice="The draft saves only the teacher name and email. Temporary passwords and provisioning results are never saved; enter a new temporary password after recovery."
+              onDiscard={async () => {
+                await draft.handleDiscardDraft();
+                resetForm();
+                setDraftInstanceKey((key) => key + 1);
+              }}
+            />
+          )}
         </div>
-        {draftContext && (
-          <PersistentFormDraftControls
-            draft={draft}
-            formTitle="teacher onboarding"
-            isDirty={draftIsDirty}
-            variant="compact"
-            excludedFieldsNotice="The draft saves only the teacher name and email. Temporary passwords and provisioning results are never saved; enter a new temporary password after recovery."
-            onDiscard={async () => {
-              await draft.handleDiscardDraft();
-              resetForm();
-              setDraftInstanceKey((key) => key + 1);
-            }}
-          />
-        )}
+        <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">

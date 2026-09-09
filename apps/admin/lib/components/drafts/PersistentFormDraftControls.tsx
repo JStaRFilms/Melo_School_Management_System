@@ -40,12 +40,12 @@ export function PersistentFormDraftControls({
         <span
           tabIndex={0}
           role="button"
-          aria-label="Draft info"
+          aria-label="Draft policy info"
           className="inline-flex items-center justify-center text-slate-400 hover:text-slate-600 focus:text-slate-600 cursor-help p-0.5 rounded transition"
         >
-          <Info className="h-3.5 w-3.5" />
+          <Info className="h-3 w-3" />
         </span>
-        <div className="pointer-events-none absolute right-0 top-full mt-1.5 hidden group-hover:block group-focus:block group-focus-within:block z-30 w-64 rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-[11px] leading-relaxed font-normal text-slate-100 shadow-xl">
+        <div className="pointer-events-none absolute right-0 top-full mt-1.5 hidden group-hover:block group-focus:block group-focus-within:block z-30 w-64 rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-[11px] leading-relaxed font-normal text-slate-100 shadow-xl whitespace-normal">
           {excludedFieldsNotice}
         </div>
       </div>
@@ -55,22 +55,23 @@ export function PersistentFormDraftControls({
   if (variant === "compact") {
     return (
       <>
-        <div className={`flex items-center gap-2 ${className}`}>
+        <div className={`flex items-center gap-1.5 shrink-0 ${className}`}>
           {(draft.status === "conflict" || draft.status === "expired") && (
             <button
               type="button"
               onClick={draft.previewLatest}
-              className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition cursor-pointer"
+              className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-100 transition cursor-pointer whitespace-nowrap"
             >
-              Preview latest draft
+              Preview draft
             </button>
           )}
           <DraftStatusIndicator
             status={draft.status}
             lastSavedAt={draft.lastSavedAt}
             onRetry={() => void draft.retrySave().catch(() => {})}
+            className="whitespace-nowrap shrink-0 [&_div]:whitespace-nowrap [&_div]:text-[10px] [&_div]:py-0.5 [&_div]:px-2.5 [&_div]:leading-tight [&_div.absolute]:right-0 [&_div.absolute]:left-auto"
           />
-          {renderNoticeTooltip()}
+          {draft.status !== "connection_lost" && renderNoticeTooltip()}
         </div>
 
         {draft.serverDraft && (
@@ -111,8 +112,9 @@ export function PersistentFormDraftControls({
               status={draft.status}
               lastSavedAt={draft.lastSavedAt}
               onRetry={() => void draft.retrySave().catch(() => {})}
+              className="whitespace-nowrap shrink-0 [&_div]:whitespace-nowrap [&_div]:text-[11px] [&_div]:py-0.5 [&_div]:px-2.5"
             />
-            {renderNoticeTooltip()}
+            {draft.status !== "connection_lost" && renderNoticeTooltip()}
           </div>
 
           <div className="flex items-center gap-2">
@@ -120,7 +122,7 @@ export function PersistentFormDraftControls({
               <button
                 type="button"
                 onClick={() => void draft.retrySave().catch(() => {})}
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer"
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer whitespace-nowrap"
               >
                 Save draft
               </button>
@@ -129,7 +131,7 @@ export function PersistentFormDraftControls({
               <button
                 type="button"
                 onClick={draft.previewLatest}
-                className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition cursor-pointer"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition cursor-pointer whitespace-nowrap"
               >
                 Preview latest draft
               </button>
