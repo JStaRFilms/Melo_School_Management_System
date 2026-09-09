@@ -148,7 +148,7 @@ export function SessionCreationModal({
   const parseLocalDate = (value: string) => {
     const [year, month, day] = value.split("-").map(Number);
     if (!year || !month || !day) return Number.NaN;
-    return new Date(year, month - 1, day, 12, 0, 0).getTime();
+    return Date.UTC(year, month - 1, day, 12, 0, 0);
   };
 
   const handleApplyPreset = (yearOffset: number) => {

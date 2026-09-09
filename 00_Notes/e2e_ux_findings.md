@@ -322,6 +322,22 @@ This document tracks all observations, issues, UX refinements, completed changes
 ---
 
 ### 11. Admin & Staff Workspace Header Optimization & Branch Switcher Slop Removal
+
+### 12. Admission Numbering Intentional Confirmation & Session Creation Date Normalization
+- [x] **Admission Numbering Intentional Confirmation Safeguard (`/admin/settings/admission-numbering`)**
+  - Reverted the 1-click `Match #[X]` auto-fill shortcut button so users deliberately type the starting sequence into the confirmation input, preventing accidental skips or unintentional changes.
+  - Maintained instant visual feedback (emerald border, confirmed badge) once the entered number matches the draft sequence.
+- [x] **Academic Session Creation Timezone Normalization (`/academic/sessions`)**
+  - Diagnosed root cause of `"Session creation failed: The selected calendar template does not fit this branch session date range"`:
+    - In client timezones ahead of UTC (e.g., WAT / UTC+1 in Nigeria), `parseLocalDate` produced local noon timestamps (11:00 UTC).
+    - On Convex Cloud (running in UTC), `toDayStartNoon` calculated term end bounds at 12:00 UTC, which exceeded the session end timestamp by 1 hour (3,600,000 ms).
+    - This triggered Convex's strict `term.endDate > args.endDate` inequality check, throwing a cryptic error regarding calendar templates even for schools without a template.
+  - Standardized `SessionCreationModal.tsx`, `TermCreationModal.tsx`, `TermCard.tsx`, and `SessionTimelineCard.tsx` on `Date.UTC(year, month - 1, day, 12, 0, 0)` and UTC-based date formatting.
+  - Verified 100% test pass rate across 35 test files and 154 tests in `@school/admin` and TypeScript check with 0 errors.
+
+---
+
+
 - [x] **Zero Vertical Screen Waste & Dedicated Header Slot (`WorkspaceNavbar.tsx`)**
   - Completely eliminated the full-width white banner strip (`border-b border-slate-200 bg-white px-4 py-2`) previously rendered below the top navigation across every single admin and teacher page.
   - Relocated the branch selector directly into the top header bar (`h-16`) right alongside the user profile session dropdown.

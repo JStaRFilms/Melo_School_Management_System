@@ -49,7 +49,7 @@ function formatDateRange(start: number, end: number) {
 
 function parseDateInputToTimestamp(dateStr: string) {
   const [year, month, day] = dateStr.split("-").map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0).getTime();
+  return Date.UTC(year, month - 1, day, 12, 0, 0);
 }
 
 export function SessionTimelineCard({
@@ -193,7 +193,7 @@ export function SessionTimelineCard({
   });
 
   const handleAutoFillTerms = async () => {
-    const yr = new Date(session.startDate).getFullYear();
+    const yr = new Date(session.startDate).getUTCFullYear();
     const nextYr = yr + 1;
 
     setIsAutoFilling(true);

@@ -630,14 +630,6 @@ export default function AdmissionNumberingPage() {
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}
               />
-              <button
-                type="button"
-                onClick={() => setConfirmation(String(value.currentSequence))}
-                className="shrink-0 rounded-xl border border-amber-300/80 bg-white px-3 py-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-100/50 transition-all cursor-pointer shadow-2xs"
-                title="Automatically fill with starting number"
-              >
-                Match #{value.currentSequence}
-              </button>
             </div>
             {isConfirmationMatching && (
               <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 pt-0.5">
