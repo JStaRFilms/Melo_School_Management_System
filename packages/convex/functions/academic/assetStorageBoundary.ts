@@ -131,7 +131,7 @@ export async function assertStorageNotBoundToAsset(ctx: Context, storageId: Id<"
 export async function getUnboundStorageUrl(ctx: Context, storageId: Id<"_storage">) {
   await assertStorageNotBoundToAsset(ctx, storageId);
   const [schools, students, materials, admissions, siteAssets, cleanup] = await Promise.all([
-    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(2),
+    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(101),
     ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(2),
     ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
@@ -146,7 +146,36 @@ export async function getUnboundStorageUrl(ctx: Context, storageId: Id<"_storage
     students[0].photoProvenance === "application_upload" &&
     students[0].photoSourceDocumentId === admissions[0]._id &&
     students[0].schoolId === admissions[0].schoolId;
-  if (cleanup.length || (claimCount > 1 && !acceptedApplicationPhotoReference)) {
+  let acceptedGroupLogoReference = false;
+  if (
+    schools.length > 1 &&
+    schools.length <= 100 &&
+    claimCount === schools.length
+  ) {
+    const links = await Promise.all(
+      schools.map((school) =>
+        ctx.db
+          .query("schoolGroupBranches")
+          .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+          .unique(),
+      ),
+    );
+    const groupIds = new Set(
+      links.map((link) => link?.groupId).filter((groupId) => groupId !== undefined),
+    );
+    const [groupId] = groupIds;
+    const group = groupIds.size === 1 && groupId
+      ? await ctx.db.get(groupId)
+      : null;
+    acceptedGroupLogoReference =
+      links.every((link) => link !== null) && group?.status === "active";
+  }
+  if (
+    cleanup.length ||
+    (claimCount > 1 &&
+      !acceptedApplicationPhotoReference &&
+      !acceptedGroupLogoReference)
+  ) {
     throw new ConvexError("Storage object has conflicting ownership and cannot be served");
   }
   return ctx.storage.getUrl(storageId);
