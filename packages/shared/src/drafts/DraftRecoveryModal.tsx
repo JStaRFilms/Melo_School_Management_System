@@ -2,7 +2,7 @@
 
 import React, { useId, useState } from "react";
 import { useDialogFocus } from "./useDialogFocus";
-import { FileText, Clock, User, CheckSquare, Eye, EyeOff, Trash2, ArrowRight, Loader2, Info } from "lucide-react";
+import { Clock, User, CheckSquare, Eye, EyeOff, Trash2, ArrowRight, Loader2, Info, FileText } from "lucide-react";
 
 export interface DraftRecoveryModalProps {
   isOpen: boolean;
@@ -29,8 +29,7 @@ function formatDate(dateOrTimestamp: number | Date): string {
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
   });
 }
@@ -92,94 +91,102 @@ export function DraftRecoveryModal({
       ref={ref}
       tabIndex={-1}
       aria-busy={busy || isDiscarding}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-sm p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
     >
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 duration-150 space-y-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl border border-slate-100 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 duration-150 space-y-3.5">
         {/* Header */}
-        <div className="flex items-start gap-3.5">
-          <div className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-xs">
-            <FileText className="h-5 w-5 text-slate-100" />
+        <div className="flex items-start gap-3">
+          <div className="h-9 w-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+            <FileText className="h-4.5 w-4.5" />
           </div>
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 font-display">
-              Unfinished Draft Detected
-            </span>
+          <div className="min-w-0 flex-1">
             <h2
               id={titleId}
-              className="text-base font-bold text-slate-950 tracking-tight mt-0.5"
+              className="text-sm font-bold text-slate-950 tracking-tight leading-snug"
             >
               Resume editing {formTitle}?
             </h2>
+            <p
+              id={descriptionId}
+              className="text-xs text-slate-500 mt-0.5 leading-relaxed"
+            >
+              We found an unfinished draft. Do you want to restore your edits?
+            </p>
           </div>
         </div>
 
-        {/* Description */}
-        <p
-          id={descriptionId}
-          className="text-xs text-slate-500 leading-relaxed"
-        >
-          We found an unfinished draft from your session. You can restore your work or discard it to start fresh.
-        </p>
-
-        {/* Excluded Fields Callout */}
+        {/* Excluded Fields Note */}
         {excludedFieldsNotice && (
-          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 p-3 text-xs leading-relaxed text-amber-900 flex items-start gap-2.5">
-            <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-[11px] leading-relaxed font-medium">{excludedFieldsNotice}</p>
+          <div className="rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-1.5 text-[11px] text-slate-500 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span className="leading-snug">{excludedFieldsNotice}</span>
           </div>
         )}
 
         {/* Metadata Card */}
-        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5 space-y-2 text-xs text-slate-600">
-          <div className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-1.5 text-slate-400 font-medium shrink-0">
-              <Clock className="h-3.5 w-3.5" />
-              Last Modified:
+        <div className="rounded-xl bg-slate-50/80 border border-slate-100 p-2.5 space-y-1.5 text-xs">
+          <div className="flex items-center justify-between text-slate-500">
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <Clock className="h-3 w-3 text-slate-400" />
+              Last saved:
             </span>
-            <span className="font-semibold text-slate-800 truncate">{formatDate(lastSavedAt)}</span>
+            <span className="font-semibold text-slate-800 text-[11px]">{formatDate(lastSavedAt)}</span>
           </div>
 
           {subjectName && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-slate-400 font-medium shrink-0">Draft Subject:</span>
-              <strong className="text-slate-900 font-semibold truncate">{subjectName}</strong>
+            <div className="flex items-center justify-between text-slate-500 text-[11px]">
+              <span>Subject:</span>
+              <strong className="font-semibold text-slate-900 truncate max-w-[180px]">{subjectName}</strong>
             </div>
           )}
 
           {authorName && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-1.5 text-slate-400 font-medium shrink-0">
-                <User className="h-3.5 w-3.5" />
+            <div className="flex items-center justify-between text-slate-500 text-[11px]">
+              <span className="flex items-center gap-1.5">
+                <User className="h-3 w-3 text-slate-400" />
                 Author:
               </span>
-              <span className="text-slate-800 font-medium truncate">{authorName}</span>
+              <span className="font-medium text-slate-800 truncate max-w-[180px]">{authorName}</span>
             </div>
           )}
 
           {completionSummary && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-1.5 text-slate-400 font-medium shrink-0">
-                <CheckSquare className="h-3.5 w-3.5" />
+            <div className="flex items-center justify-between text-slate-500 text-[11px]">
+              <span className="flex items-center gap-1.5">
+                <CheckSquare className="h-3 w-3 text-slate-400" />
                 Progress:
               </span>
-              <span className="text-slate-800 font-medium">{completionSummary}</span>
+              <span className="font-medium text-slate-800">{completionSummary}</span>
             </div>
           )}
         </div>
 
-        {/* Expandable Preview Drawer */}
+        {/* Human-Readable Draft Preview */}
         {showInternalPreview && payload && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 text-slate-200 p-3.5 text-xs font-mono max-h-48 overflow-y-auto">
-            <div className="text-[10px] text-slate-400 uppercase font-sans font-bold tracking-wider mb-2">
-              Draft Payload Preview
+          <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs max-h-48 overflow-y-auto space-y-2 shadow-inner">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Draft Preview
             </div>
-            <pre className="whitespace-pre-wrap break-all text-[11px] leading-relaxed text-slate-300">
-              {JSON.stringify(payload, null, 2)}
-            </pre>
+            <div className="divide-y divide-slate-100">
+              {Object.entries(payload).map(([key, val]) => {
+                if (val === null || val === undefined || val === "") return null;
+                const displayVal = typeof val === "object" ? JSON.stringify(val) : String(val);
+                const label = key
+                  .replace(/([A-Z])/g, " $1")
+                  .replace(/_/g, " ")
+                  .replace(/^\w/, (c) => c.toUpperCase());
+                return (
+                  <div key={key} className="flex items-start justify-between gap-3 py-1.5 text-xs">
+                    <span className="text-slate-500 font-medium shrink-0">{label}:</span>
+                    <span className="font-semibold text-slate-900 text-right break-words">{displayVal}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -187,74 +194,72 @@ export function DraftRecoveryModal({
 
         {/* Action Controls */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
-          {/* Primary & Preview Actions */}
-          <div className="flex items-center gap-2">
-            {payload && (
-              <button
-                type="button"
-                disabled={busy || isDiscarding}
-                aria-expanded={showInternalPreview}
-                onClick={handleTogglePreview}
-                className="h-10 px-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer whitespace-nowrap active:scale-[0.98]"
-              >
-                {showInternalPreview ? (
-                  <>
-                    <EyeOff className="h-3.5 w-3.5 text-slate-500" />
-                    Hide Preview
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-3.5 w-3.5 text-slate-500" />
-                    Preview Draft
-                  </>
-                )}
-              </button>
-            )}
+          <button
+            type="button"
+            disabled={busy || isDiscarding}
+            onClick={() => {
+              try {
+                onResume();
+              } catch {
+                setError("This draft cannot be resumed with current form schema.");
+              }
+            }}
+            className="w-full h-9 rounded-xl bg-slate-950 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 transition active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            Resume Editing Draft
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
 
-            <button
-              type="button"
-              disabled={busy || isDiscarding}
-              onClick={() => {
-                try {
-                  onResume();
-                } catch {
-                  setError("This draft cannot be resumed with the current form schema. Keep your current edits or discard the draft.");
-                }
-              }}
-              className="flex-1 h-10 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:bg-slate-800 transition active:scale-[0.98] cursor-pointer whitespace-nowrap"
-            >
-              Resume Editing Draft
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* Secondary / Destructive Actions */}
-          <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex items-center justify-between gap-2 pt-0.5">
             <button
               type="button"
               disabled={busy || isDiscarding}
               onClick={() => void discard()}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 transition cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline disabled:opacity-50 transition cursor-pointer"
             >
               {isDiscarding ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                <Trash2 className="h-3 w-3 text-rose-500" />
               )}
               Discard Draft & Start Fresh
             </button>
 
-            {onStay && (
-              <button
-                type="button"
-                data-dialog-initial
-                disabled={busy || isDiscarding}
-                onClick={onStay}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap"
-              >
-                Keep current edits
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {payload && (
+                <button
+                  type="button"
+                  disabled={busy || isDiscarding}
+                  aria-expanded={showInternalPreview}
+                  onClick={handleTogglePreview}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 hover:text-slate-950 transition cursor-pointer"
+                >
+                  {showInternalPreview ? (
+                    <>
+                      <EyeOff className="h-3 w-3" />
+                      Hide Preview
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-3 w-3" />
+                      Preview Draft
+                    </>
+                  )}
+                </button>
+              )}
+
+              {onStay && (
+                <button
+                  type="button"
+                  data-dialog-initial
+                  disabled={busy || isDiscarding}
+                  onClick={onStay}
+                  className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                >
+                  Keep current edits
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

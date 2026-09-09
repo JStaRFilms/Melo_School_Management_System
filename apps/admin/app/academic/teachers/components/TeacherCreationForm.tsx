@@ -173,7 +173,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
               formTitle="teacher onboarding"
               isDirty={draftIsDirty}
               variant="compact"
-              excludedFieldsNotice="The draft saves only the teacher name and email. Temporary passwords and provisioning results are never saved; enter a new temporary password after recovery."
+              excludedFieldsNotice="Passwords are not stored in drafts for security."
               onDiscard={async () => {
                 await draft.handleDiscardDraft();
                 resetForm();
