@@ -2,7 +2,7 @@
 
 import React, { useId, useState } from "react";
 import { useDialogFocus } from "./useDialogFocus";
-import { FileText, Clock, User, CheckSquare, Eye, EyeOff, Trash2, ArrowRight, Loader2 } from "lucide-react";
+import { FileText, Clock, User, CheckSquare, Eye, EyeOff, Trash2, ArrowRight, Loader2, Info } from "lucide-react";
 
 export interface DraftRecoveryModalProps {
   isOpen: boolean;
@@ -27,7 +27,7 @@ function formatDate(dateOrTimestamp: number | Date): string {
       : dateOrTimestamp;
 
   return date.toLocaleDateString(undefined, {
-    month: "long",
+    month: "short",
     day: "numeric",
     year: "numeric",
     hour: "2-digit",
@@ -36,7 +36,7 @@ function formatDate(dateOrTimestamp: number | Date): string {
 }
 
 /**
- * DraftRecoveryModal prompts returning users when an active server draft exists.
+ * DraftRecoveryModal prompts returning users when an active draft exists.
  *
  * Governing Invariant (D-04 §1.3 I3 & §7.3):
  * A draft NEVER silently overwrites a fresh blank form.
@@ -57,15 +57,25 @@ export function DraftRecoveryModal({
   onStay,
   excludedFieldsNotice,
 }: DraftRecoveryModalProps) {
-  const titleId = useId(); const descriptionId = useId();
+  const titleId = useId();
+  const descriptionId = useId();
   const [showInternalPreview, setShowInternalPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ref = useDialogFocus(isOpen, () => { if (!busy && !isDiscarding) onStay?.(); });
+  const ref = useDialogFocus(isOpen, () => {
+    if (!busy && !isDiscarding) onStay?.();
+  });
+
   const discard = async () => {
-    setBusy(true); setError(null);
-    try { await onDiscard(); } catch { setError("Discard failed. Your draft is still available; please retry."); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError(null);
+    try {
+      await onDiscard();
+    } catch {
+      setError("Discard failed. Your draft is still available; please retry.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -82,72 +92,80 @@ export function DraftRecoveryModal({
       ref={ref}
       tabIndex={-1}
       aria-busy={busy || isDiscarding}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
     >
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 duration-150">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 duration-150 space-y-4">
         {/* Header */}
-        <div className="flex items-start gap-3.5 mb-4">
-          <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200/60 text-blue-600 shrink-0">
-            <FileText className="h-6 w-6" />
+        <div className="flex items-start gap-3.5">
+          <div className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <FileText className="h-5 w-5 text-slate-100" />
           </div>
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 font-display">
               Unfinished Draft Detected
             </span>
             <h2
               id={titleId}
-              className="text-lg font-bold text-slate-900 mt-0.5"
+              className="text-base font-bold text-slate-950 tracking-tight mt-0.5"
             >
               Resume editing {formTitle}?
             </h2>
           </div>
         </div>
 
-        {/* Description & Invariant notice */}
+        {/* Description */}
         <p
           id={descriptionId}
-          className="text-sm text-slate-600 leading-relaxed mb-4"
+          className="text-xs text-slate-500 leading-relaxed"
         >
-          We found an unfinished draft. Resume replaces the current form only when you choose it; stay here to keep current edits.
+          We found an unfinished draft from your session. You can restore your work or discard it to start fresh.
         </p>
 
+        {/* Excluded Fields Callout */}
         {excludedFieldsNotice && (
-          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
-            {excludedFieldsNotice}
-          </p>
+          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 p-3 text-xs leading-relaxed text-amber-900 flex items-start gap-2.5">
+            <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed font-medium">{excludedFieldsNotice}</p>
+          </div>
         )}
 
         {/* Metadata Card */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2.5 text-xs text-slate-700 mb-5">
+        <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5 space-y-2 text-xs text-slate-600">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-slate-400 font-medium shrink-0">
+              <Clock className="h-3.5 w-3.5" />
+              Last Modified:
+            </span>
+            <span className="font-semibold text-slate-800 truncate">{formatDate(lastSavedAt)}</span>
+          </div>
+
           {subjectName && (
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-500 w-24 shrink-0">Draft Subject:</span>
-              <strong className="text-slate-900 font-medium truncate">{subjectName}</strong>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-slate-400 font-medium shrink-0">Draft Subject:</span>
+              <strong className="text-slate-900 font-semibold truncate">{subjectName}</strong>
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-            <span className="font-semibold text-slate-500 w-24 shrink-0">Last Modified:</span>
-            <span className="text-slate-800 font-mono">{formatDate(lastSavedAt)}</span>
-          </div>
-
           {authorName && (
-            <div className="flex items-center gap-2">
-              <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-              <span className="font-semibold text-slate-500 w-24 shrink-0">Author:</span>
-              <span className="text-slate-800 truncate">{authorName}</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1.5 text-slate-400 font-medium shrink-0">
+                <User className="h-3.5 w-3.5" />
+                Author:
+              </span>
+              <span className="text-slate-800 font-medium truncate">{authorName}</span>
             </div>
           )}
 
           {completionSummary && (
-            <div className="flex items-center gap-2">
-              <CheckSquare className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-              <span className="font-semibold text-slate-500 w-24 shrink-0">Progress:</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1.5 text-slate-400 font-medium shrink-0">
+                <CheckSquare className="h-3.5 w-3.5" />
+                Progress:
+              </span>
               <span className="text-slate-800 font-medium">{completionSummary}</span>
             </div>
           )}
@@ -155,42 +173,29 @@ export function DraftRecoveryModal({
 
         {/* Expandable Preview Drawer */}
         {showInternalPreview && payload && (
-          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-900 text-slate-100 p-3.5 text-xs font-mono max-h-48 overflow-y-auto">
+          <div className="rounded-xl border border-slate-800 bg-slate-950 text-slate-200 p-3.5 text-xs font-mono max-h-48 overflow-y-auto">
             <div className="text-[10px] text-slate-400 uppercase font-sans font-bold tracking-wider mb-2">
               Draft Payload Preview
             </div>
-            <pre className="whitespace-pre-wrap break-all text-[11px] leading-relaxed">
+            <pre className="whitespace-pre-wrap break-all text-[11px] leading-relaxed text-slate-300">
               {JSON.stringify(payload, null, 2)}
             </pre>
           </div>
         )}
 
-        {error && <p role="alert" className="mb-3 text-sm text-rose-700">{error}</p>}
-        {onStay && <button type="button" data-dialog-initial disabled={busy || isDiscarding} onClick={onStay} className="min-h-11 px-3">Keep current edits</button>}
-        {/* Action Buttons */}
-        <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
-          <button
-            type="button"
-            disabled={busy || isDiscarding}
-            onClick={() => void discard()}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50 transition"
-          >
-            {isDiscarding ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-            )}
-            Discard Draft & Start Fresh
-          </button>
+        {error && <p role="alert" className="text-xs font-semibold text-rose-600">{error}</p>}
 
-          <div className="flex items-center gap-2 sm:justify-end">
+        {/* Action Controls */}
+        <div className="space-y-2 pt-2 border-t border-slate-100">
+          {/* Primary & Preview Actions */}
+          <div className="flex items-center gap-2">
             {payload && (
               <button
                 type="button"
                 disabled={busy || isDiscarding}
                 aria-expanded={showInternalPreview}
                 onClick={handleTogglePreview}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                className="h-10 px-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer whitespace-nowrap active:scale-[0.98]"
               >
                 {showInternalPreview ? (
                   <>
@@ -209,12 +214,47 @@ export function DraftRecoveryModal({
             <button
               type="button"
               disabled={busy || isDiscarding}
-              onClick={() => { try { onResume(); } catch { setError("This draft cannot be resumed with the current form schema. Keep your current edits or discard the draft."); } }}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[color:var(--school-primary,#0f172a)] text-xs font-semibold text-white hover:opacity-95 shadow-sm transition"
+              onClick={() => {
+                try {
+                  onResume();
+                } catch {
+                  setError("This draft cannot be resumed with the current form schema. Keep your current edits or discard the draft.");
+                }
+              }}
+              className="flex-1 h-10 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 text-xs font-bold uppercase tracking-wider text-white shadow-xs hover:bg-slate-800 transition active:scale-[0.98] cursor-pointer whitespace-nowrap"
             >
               Resume Editing Draft
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
+          </div>
+
+          {/* Secondary / Destructive Actions */}
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <button
+              type="button"
+              disabled={busy || isDiscarding}
+              onClick={() => void discard()}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50 transition cursor-pointer whitespace-nowrap"
+            >
+              {isDiscarding ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+              )}
+              Discard Draft & Start Fresh
+            </button>
+
+            {onStay && (
+              <button
+                type="button"
+                data-dialog-initial
+                disabled={busy || isDiscarding}
+                onClick={onStay}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer whitespace-nowrap"
+              >
+                Keep current edits
+              </button>
+            )}
           </div>
         </div>
       </div>

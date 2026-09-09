@@ -89,11 +89,13 @@ export function PersistentFormDraftControls({
         {draft.memoryDraft && (
           <DraftRecoveryModal
             isOpen
-            formTitle={`${formTitle} (this tab)`}
+            formTitle={formTitle}
+            subjectName="Unsaved session edits"
             lastSavedAt={draft.memoryDraft.capturedAt}
             payload={memoryPreview}
             onResume={draft.resumeMemoryDraft}
             onDiscard={draft.discardMemoryDraft}
+            onStay={draft.dismissRecoveryModal}
             excludedFieldsNotice={excludedFieldsNotice}
           />
         )}
@@ -155,11 +157,13 @@ export function PersistentFormDraftControls({
       {draft.memoryDraft && (
         <DraftRecoveryModal
           isOpen
-          formTitle={`${formTitle} (this tab)`}
+          formTitle={formTitle}
+          subjectName="Unsaved session edits"
           lastSavedAt={draft.memoryDraft.capturedAt}
           payload={memoryPreview}
           onResume={draft.resumeMemoryDraft}
           onDiscard={draft.discardMemoryDraft}
+          onStay={draft.dismissRecoveryModal}
           excludedFieldsNotice={excludedFieldsNotice}
         />
       )}
