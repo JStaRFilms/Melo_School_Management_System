@@ -353,6 +353,18 @@ This document tracks all observations, issues, UX refinements, completed changes
 
 ---
 
+- [x] **Independent Vertical Scroll Container on Data Migration Workbench (`DataMigrationWorkbench.tsx`)**
+  - Diagnosed root cause of vertical scrolling lock on `/students/import` and `/academic/students/import`:
+    - `WorkspaceNavbar` applies `lg:overflow-hidden h-full` to `<main>` when `fullBleed={true}`, expecting child workbench views to manage their own inner scrolling.
+    - `DataMigrationWorkbench` was wrapped in an unbounded `min-h-screen pb-20` without `overflow-y-auto` or flex bounding, causing rows #10 through #36 to be clipped offscreen behind the fixed bottom action bar and making the page appear "frozen" / locked.
+  - Refactored `DataMigrationWorkbench.tsx` to follow the canonical 3-tier workbench pattern:
+    1. **Pinned Header (`shrink-0`):** Workspace breadcrumb, name, and action buttons remain pinned at top.
+    2. **Scrollable Body (`flex-1 min-h-0 overflow-y-auto custom-scrollbar`):** Roster table, clash review, household tabs, and academic results scroll freely up and down with ample `pb-24` clearance.
+    3. **Pinned Action Bar (`shrink-0`):** Review metrics and commit buttons remain anchored at the viewport base.
+  - Updated test assertions in `migration-workbench.test.tsx` and verified 100% green test passes across both `@school/admin` and `@school/shared`.
+
+---
+
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
 
 *Whenever core schemas and shared workflows are modified, downstream modules may be affected. Use this checklist during subsequent testing passes:*

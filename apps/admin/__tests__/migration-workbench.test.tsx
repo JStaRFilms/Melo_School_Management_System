@@ -117,18 +117,18 @@ it("truthfully gates commit until explicit row review and plan approval", async 
   fireEvent.click(screen.getByRole("button", { name: "Review row" }));
   expect(
     screen.getByText(
-      /Imported text is reference data, never a database instruction/,
+      /This decision is saved for the final import/,
     ),
   ).toBeTruthy();
   fireEvent.change(
-    screen.getByLabelText("Existing un-enrolled student identity"),
+    screen.getByLabelText("Prepared student identity (required)"),
     { target: { value: "user" } },
   );
-  fireEvent.change(screen.getByLabelText("Existing class placement"), {
+  fireEvent.change(screen.getByLabelText("Class placement (required)"), {
     target: { value: "class" },
   });
   fireEvent.click(
-    screen.getByRole("button", { name: "Save reviewed decision" }),
+    screen.getByRole("button", { name: "Save decision for final import" }),
   );
   await waitFor(() =>
     expect(mocks.review).toHaveBeenCalledWith(
