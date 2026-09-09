@@ -809,6 +809,9 @@ export const createSession = mutation({
               isActive: index === 0,
               resultCalculationMode: term.resultCalculationMode,
             }));
+      if (calendar.mode === "legacy") {
+        dynamicTerms[2].endDate = Math.min(dynamicTerms[2].endDate, args.endDate);
+      }
       if (
         dynamicTerms.some(
           (term) =>
@@ -818,7 +821,9 @@ export const createSession = mutation({
         )
       ) {
         throw new ConvexError(
-          "The selected calendar template does not fit this branch session date range",
+          calendar.mode === "legacy"
+            ? "The generated term dates fall outside the session start and end boundaries."
+            : "The selected calendar template does not fit this branch session date range",
         );
       }
 
