@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { deriveSchoolTheme, normalizeThemeColor } from "@school/shared/theme";
@@ -53,6 +53,9 @@ interface SchoolBrandingData {
   };
 }
 
+const MAX_LOGO_BYTES = 768 * 1024;
+const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+
 const PRESET_PALETTES = [
   { name: "Slate Navy & Amber Gold", primary: "#0f172a", accent: "#d97706" },
   { name: "Royal Blue & Gold", primary: "#1e3a8a", accent: "#f59e0b" },
@@ -78,10 +81,7 @@ export default function SchoolSettingsPage() {
   const updateProfile = useMutation(
     "functions/academic/schoolBranding:updateSchoolProfile" as never
   );
-  const generateLogoUploadUrl = useMutation(
-    "functions/academic/schoolBranding:generateSchoolLogoUploadUrl" as never
-  );
-  const saveSchoolLogo = useMutation(
+  const saveSchoolLogo = useAction(
     "functions/academic/schoolBranding:saveSchoolLogo" as never
   );
   const removeSchoolLogo = useMutation(
@@ -194,20 +194,15 @@ export default function SchoolSettingsPage() {
     try {
       // 1. Upload logo if new file chosen
       if (logoFile && canManageBranding) {
-        const uploadUrl = (await generateLogoUploadUrl({} as never)) as string;
-        const uploadResponse = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": logoFile.type },
-          body: logoFile,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error("Logo upload failed");
+        if (!ALLOWED_LOGO_TYPES.includes(logoFile.type as (typeof ALLOWED_LOGO_TYPES)[number])) {
+          throw new Error("Use a valid PNG, JPEG, or WebP school crest.");
+        }
+        if (logoFile.size > MAX_LOGO_BYTES) {
+          throw new Error("School crests must be smaller than 768 KB.");
         }
 
-        const payload = (await uploadResponse.json()) as { storageId: string };
         await saveSchoolLogo({
-          logoStorageId: payload.storageId as never,
+          bytes: await logoFile.arrayBuffer(),
           logoFileName: logoFile.name,
           logoContentType: logoFile.type,
         } as never);
@@ -428,28 +423,46 @@ export default function SchoolSettingsPage() {
             <div className="md:col-span-2 space-y-3">
               <div>
                 <h4 className="text-xs font-bold text-slate-900">Upload Institution Crest</h4>
-                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                  New crest uploads are unavailable until storage can prove tenant ownership, reserve purchased quota, and clean up abandoned uploads. Existing authorized crests remain visible and removable.
+                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                  Supported formats: PNG, JPEG, or WebP up to 768 KB. High-resolution square or crest dimensions recommended.
                 </p>
               </div>
 
               <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <label
-                  className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white opacity-50 shadow-xs sm:w-auto"
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold shadow-xs sm:w-auto transition-colors ${
+                    canManageBranding && !isSaving
+                      ? "cursor-pointer bg-slate-900 text-white hover:bg-slate-800"
+                      : "cursor-not-allowed bg-slate-900 text-white opacity-50"
+                  }`}
                 >
                   <Upload className="h-3.5 w-3.5" />
                   <span>Choose Image</span>
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                    disabled
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={!canManageBranding || isSaving}
                     className="sr-only"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       e.target.value = "";
-                      if (file) {
-                        setLogoFile(file);
+                      if (!file) return;
+
+                      if (!ALLOWED_LOGO_TYPES.includes(file.type as (typeof ALLOWED_LOGO_TYPES)[number])) {
+                        appToast.warning("Invalid image format", {
+                          description: "Please select a PNG, JPEG, or WebP image.",
+                        });
+                        return;
                       }
+
+                      if (file.size > MAX_LOGO_BYTES) {
+                        appToast.warning("File too large", {
+                          description: "School crest image must be smaller than 768 KB.",
+                        });
+                        return;
+                      }
+
+                      setLogoFile(file);
                     }}
                   />
                 </label>
@@ -459,7 +472,7 @@ export default function SchoolSettingsPage() {
                     type="button"
                     onClick={() => setLogoFile(null)}
                     disabled={isSaving}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Discard selected image
@@ -470,8 +483,8 @@ export default function SchoolSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setIsLogoRemovalOpen(true)}
-                    disabled={isSaving}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    disabled={isSaving || !canManageBranding}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Remove current logo
