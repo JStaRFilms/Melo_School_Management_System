@@ -2,7 +2,7 @@
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameFinalStrict } from "@/human-name";
-import { Check,Copy,Send } from "lucide-react";
+import { Check, Copy, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useDirtyForm, type DraftConnection, type DraftPayload } from "@school/shared/drafts";
 import type { Id } from "@school/convex/_generated/dataModel";
@@ -138,7 +138,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
           </div>
           <button 
             onClick={copyToClipboard}
-            className="w-full flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-600 text-[10px] font-bold uppercase tracking-widest text-white transition-opacity hover:opacity-90 active:scale-95"
+            className="w-full flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-600 text-[10px] font-bold uppercase tracking-widest text-white transition-opacity hover:opacity-90 active:scale-95 cursor-pointer"
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             {copied ? "Copied" : "Copy Credentials"}
@@ -154,7 +154,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
               }
             });
           }}
-          className="w-full h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+          className="w-full h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
         >
           Provision Another
         </button>
@@ -164,25 +164,26 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
 
   return (
     <AdminSurface intensity="medium" rounded="lg" className="p-4 space-y-4">
-      <div className="space-y-0.5">
-        <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
-        <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
-        <p className="text-xs text-slate-500">Institutional address review remains separate; onboarding does not create an inbox.</p>
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+        <div className="space-y-0.5">
+          <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
+          <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
+        </div>
+        {draftContext && (
+          <PersistentFormDraftControls
+            draft={draft}
+            formTitle="teacher onboarding"
+            isDirty={draftIsDirty}
+            variant="compact"
+            excludedFieldsNotice="The draft saves only the teacher name and email. Temporary passwords and provisioning results are never saved; enter a new temporary password after recovery."
+            onDiscard={async () => {
+              await draft.handleDiscardDraft();
+              resetForm();
+              setDraftInstanceKey((key) => key + 1);
+            }}
+          />
+        )}
       </div>
-
-      {draftContext && (
-        <PersistentFormDraftControls
-          draft={draft}
-          formTitle="teacher onboarding"
-          isDirty={draftIsDirty}
-          excludedFieldsNotice="The draft saves only the teacher name and email. Temporary passwords and provisioning results are never saved; enter a new temporary password after recovery."
-          onDiscard={async () => {
-            await draft.handleDiscardDraft();
-            resetForm();
-            setDraftInstanceKey((key) => key + 1);
-          }}
-        />
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-3">
         <FormField label="Name">
@@ -222,11 +223,15 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
         <button
           type="submit"
           disabled={isSubmitting || !name || !email}
-          className="mt-2 w-full flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-slate-800 disabled:opacity-50 active:scale-[0.98]"
+          className="mt-2 w-full flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-slate-800 disabled:opacity-50 active:scale-[0.98] cursor-pointer"
         >
           <Send className="h-3.5 w-3.5" />
           {isSubmitting ? "Creating..." : "Create Teacher Account"}
         </button>
+
+        <p className="text-[11px] leading-relaxed text-slate-400 text-center pt-1">
+          Institutional address review remains separate; onboarding does not create an inbox.
+        </p>
 
         {submitError && (
           <p className="text-[11px] font-bold text-rose-500">{submitError}</p>

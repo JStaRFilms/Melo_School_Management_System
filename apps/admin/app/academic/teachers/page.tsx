@@ -54,11 +54,23 @@ function getTeacherArchiveBlockerMessage(blockers: string[]) {
 export default function TeachersPage() {
   const { workspaceAccess, session } = useAuth();
   const draftConnection = useDraftConnection();
-  const capabilities = workspaceAccess?.state === "ready" ? workspaceAccess.effectiveCapabilities : [];
-  const canOnboard = capabilities.includes("staff.onboard");
-  const canEditProfile = capabilities.includes("staff.profiles.edit");
-  const canResetPassword = capabilities.includes("staff.password.reset");
-  const canArchive = capabilities.includes("staff.account.suspend");
+  const isReady = workspaceAccess?.state === "ready";
+  const capabilities = isReady ? workspaceAccess.effectiveCapabilities : [];
+  const isProprietor = isReady && Boolean(workspaceAccess.membership?.isProprietor);
+  const isSchoolAdmin =
+    isReady &&
+    (workspaceAccess.compatibility.legacyIsSchoolAdmin === true || isProprietor);
+  const isPermissionManaged =
+    isReady && workspaceAccess.compatibility.permissionManaged === true;
+
+  // Unmanaged workspaces preserve full school admin parity; managed workspaces honor explicit capabilities & proprietor authority.
+  const hasAdminParity = isReady && (!isPermissionManaged && isSchoolAdmin);
+
+  const canOnboard = hasAdminParity || isProprietor || capabilities.includes("staff.onboard");
+  const canEditProfile = hasAdminParity || isProprietor || capabilities.includes("staff.profiles.edit");
+  const canResetPassword = hasAdminParity || isProprietor || capabilities.includes("staff.password.reset");
+  const canArchive = hasAdminParity || isProprietor || capabilities.includes("staff.account.suspend");
+
   const schoolId = workspaceAccess?.state === "ready"
     ? (workspaceAccess.branch.schoolId as Id<"schools">)
     : undefined;
@@ -121,24 +133,18 @@ export default function TeachersPage() {
 
   useEffect(() => {
     if (selectedTeacherId && isMobile) {
-      const scrollTimer = setTimeout(() => {
-        const element = document.getElementById(`teacher-${selectedTeacherId}`);
-        if (element) {
-          const yOffset = -120;
-          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
-          window.scrollTo({ top: y, behavior: "smooth" });
-        }
-      }, 100);
-      return () => clearTimeout(scrollTimer);
+      const el = document.getElementById("teacher-builder-section");
+      el?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [isMobile, selectedTeacherId]);
+  }, [selectedTeacherId, isMobile]);
 
   const filteredTeachers = useMemo(() => {
     if (!teachers) return [];
-    const query = deferredSearch.trim().toLowerCase();
-    if (!query) return teachers;
+    if (!deferredSearch) return teachers;
     return teachers.filter(
-      (t) => t.name.toLowerCase().includes(query) || t.email.toLowerCase().includes(query)
+      (t) =>
+        t.name.toLowerCase().includes(deferredSearch.toLowerCase()) ||
+        t.email.toLowerCase().includes(deferredSearch.toLowerCase())
     );
   }, [deferredSearch, teachers]);
 
@@ -146,7 +152,7 @@ export default function TeachersPage() {
     setIsSubmitting(true);
     try {
       const response = await createTeacher({
-        name,
+        name: name.trim(),
         email: email.trim().toLowerCase(),
         temporaryPassword: password.trim(),
         origin: window.location.origin,
@@ -157,10 +163,13 @@ export default function TeachersPage() {
       showNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
       return response;
     } catch (err) {
+      const message = getUserFacingErrorMessage(err, "Failed to provision account.");
       showNotice({
         tone: "error",
-        title: "Provisioning Failed",
-        message: getUserFacingErrorMessage(err, "Account creation failed.")
+        title: message.toLowerCase().includes("already registered") || message.toLowerCase().includes("unique")
+          ? "Account Exists"
+          : "Provision Failed",
+        message,
       });
       throw err;
     } finally {
@@ -177,7 +186,7 @@ export default function TeachersPage() {
       showNotice({
         tone: "error",
         title: "Update Failed",
-        message: getUserFacingErrorMessage(err, "Failed to save changes.")
+        message: getUserFacingErrorMessage(err, "Failed to update record."),
       });
     } finally {
       setIsSaving(false);
@@ -193,7 +202,7 @@ export default function TeachersPage() {
       showNotice({
         tone: "error",
         title: "Update Failed",
-        message: getUserFacingErrorMessage(err, "Failed to update password.")
+        message: getUserFacingErrorMessage(err, "Failed to reset password."),
       });
     } finally {
       setIsResetting(false);
@@ -227,7 +236,7 @@ export default function TeachersPage() {
       const message = getUserFacingErrorMessage(err, "Failed to deactivate record.");
       showNotice({
         tone: "error",
-        title: message.startsWith("Reassign this teacher")
+        title: message.toLowerCase().includes("reassign") || message.toLowerCase().includes("link")
           ? "Reassignment Required"
           : "Archive Failed",
         message,

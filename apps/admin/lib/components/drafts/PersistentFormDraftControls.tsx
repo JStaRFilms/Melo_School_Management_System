@@ -5,6 +5,7 @@ import {
   DraftStatusIndicator,
 } from "@school/shared/drafts";
 import type { PersistentFormDraftController } from "@/usePersistentFormDraft";
+import { Info } from "lucide-react";
 
 interface PersistentFormDraftControlsProps {
   draft: PersistentFormDraftController;
@@ -14,6 +15,7 @@ interface PersistentFormDraftControlsProps {
   onDiscard: () => Promise<void>;
   /** "compact" renders a clean inline draft indicator without the defensive text box */
   variant?: "default" | "compact";
+  className?: string;
 }
 
 export function PersistentFormDraftControls({
@@ -23,6 +25,7 @@ export function PersistentFormDraftControls({
   excludedFieldsNotice,
   onDiscard,
   variant = "default",
+  className = "",
 }: PersistentFormDraftControlsProps) {
   const memoryPayload = draft.memoryDraft?.payload;
   const memoryPreview =
@@ -30,10 +33,29 @@ export function PersistentFormDraftControls({
       ? (memoryPayload as Record<string, unknown>)
       : undefined;
 
+  const renderNoticeTooltip = () => {
+    if (!excludedFieldsNotice) return null;
+    return (
+      <div className="group relative inline-flex items-center">
+        <span
+          tabIndex={0}
+          role="button"
+          aria-label="Draft info"
+          className="inline-flex items-center justify-center text-slate-400 hover:text-slate-600 focus:text-slate-600 cursor-help p-0.5 rounded transition"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </span>
+        <div className="pointer-events-none absolute right-0 top-full mt-1.5 hidden group-hover:block group-focus:block group-focus-within:block z-30 w-64 rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-[11px] leading-relaxed font-normal text-slate-100 shadow-xl">
+          {excludedFieldsNotice}
+        </div>
+      </div>
+    );
+  };
+
   if (variant === "compact") {
     return (
       <>
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-2 ${className}`}>
           {(draft.status === "conflict" || draft.status === "expired") && (
             <button
               type="button"
@@ -48,6 +70,7 @@ export function PersistentFormDraftControls({
             lastSavedAt={draft.lastSavedAt}
             onRetry={() => void draft.retrySave().catch(() => {})}
           />
+          {renderNoticeTooltip()}
         </div>
 
         {draft.serverDraft && (
@@ -77,34 +100,42 @@ export function PersistentFormDraftControls({
     );
   }
 
+  const hasActiveStatus = draft.status !== "idle" || isDirty;
+
   return (
-    <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          disabled={!isDirty || draft.status === "saving"}
-          onClick={() => void draft.retrySave().catch(() => {})}
-          className="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-bold text-slate-700 disabled:opacity-50"
-        >
-          Save draft
-        </button>
-        {(draft.status === "conflict" || draft.status === "expired") && (
-          <button
-            type="button"
-            onClick={draft.previewLatest}
-            className="min-h-10 rounded-lg border border-amber-300 px-3 text-xs font-bold text-amber-800"
-          >
-            Preview latest draft
-          </button>
-        )}
-        <DraftStatusIndicator
-          status={draft.status}
-          lastSavedAt={draft.lastSavedAt}
-          onRetry={() => void draft.retrySave().catch(() => {})}
-        />
-      </div>
-      {excludedFieldsNotice && (
-        <p className="text-[11px] leading-relaxed text-slate-600">{excludedFieldsNotice}</p>
+    <div className={`space-y-2 ${className}`}>
+      {hasActiveStatus && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-xs transition-all">
+          <div className="flex items-center gap-2">
+            <DraftStatusIndicator
+              status={draft.status}
+              lastSavedAt={draft.lastSavedAt}
+              onRetry={() => void draft.retrySave().catch(() => {})}
+            />
+            {renderNoticeTooltip()}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isDirty && draft.status !== "saving" && (
+              <button
+                type="button"
+                onClick={() => void draft.retrySave().catch(() => {})}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer"
+              >
+                Save draft
+              </button>
+            )}
+            {(draft.status === "conflict" || draft.status === "expired") && (
+              <button
+                type="button"
+                onClick={draft.previewLatest}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition cursor-pointer"
+              >
+                Preview latest draft
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {draft.serverDraft && (
