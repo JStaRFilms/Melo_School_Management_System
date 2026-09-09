@@ -112,17 +112,53 @@ export function getWorkspaceCapabilityDenial(workspace: WorkspaceKey, path: stri
     : null;
 }
 
-/** Only existing, verified module gates; not the illustrative platform route catalog. */
+/** The same module contract hides navigation and blocks direct routes before child content mounts. */
 export function getWorkspaceModuleDenial(
   workspace: WorkspaceKey,
   path: string,
   features?: WorkspaceFeatures | null,
 ): WorkspaceRouteDecision | null {
-  if (workspace !== "admin") return null;
-  const disabled = (within(path, "/billing") && features?.billing === false) ||
-    (["/academic/knowledge/curriculum-import", "/academic/knowledge/curriculum-readiness"].some(prefix => within(path, prefix)) && features?.curriculum === false) ||
-    (within(path, "/academic/knowledge/library") && features?.knowledgeLibrary === false);
-  return disabled ? { state: "module_disabled", message: "This module is disabled in your school's workspace configuration. Contact your platform manager to request activation." } : null;
+  const billingDisabled =
+    (workspace === "admin" || workspace === "portal") &&
+    within(path, "/billing") &&
+    features?.billing === false;
+  const curriculumDisabled =
+    features?.curriculum === false &&
+    ((workspace === "admin" &&
+      [
+        "/academic/knowledge/curriculum-import",
+        "/academic/knowledge/curriculum-readiness",
+        "/academic/knowledge/templates",
+        "/academic/knowledge/assessment-profiles",
+      ].some((prefix) => within(path, prefix))) ||
+      (workspace === "teacher" &&
+        (path === "/planning" || within(path, "/planning/lesson-plans"))));
+  const knowledgeLibraryDisabled =
+    features?.knowledgeLibrary === false &&
+    ((workspace === "admin" && within(path, "/academic/knowledge/library")) ||
+      (workspace === "teacher" &&
+        ["/planning/library", "/planning/question-bank", "/planning/videos"].some(
+          (prefix) => within(path, prefix),
+        )));
+  const admissionsDisabled =
+    workspace === "admin" &&
+    features?.admissions === false &&
+    [
+      "/academic/students/onboarding",
+      "/academic/students/import",
+      "/students/import",
+    ].some((prefix) => within(path, prefix));
+
+  return billingDisabled ||
+    curriculumDisabled ||
+    knowledgeLibraryDisabled ||
+    admissionsDisabled
+    ? {
+        state: "module_disabled",
+        message:
+          "This module is disabled in your school's workspace configuration. Contact your platform manager to request activation.",
+      }
+    : null;
 }
 
 export const LEGACY_BRANCH_SWITCH_REASON = "Branch switching is unavailable on this route: its data calls still use your default school. Scoped domain adapters and unsaved-work protection must be ready before switching.";

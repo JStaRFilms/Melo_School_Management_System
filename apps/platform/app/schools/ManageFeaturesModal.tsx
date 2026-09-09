@@ -196,7 +196,7 @@ export function ManageFeaturesModal({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {m.controlledRoutes.map((r) => (
                       <div
-                        key={r.path}
+                        key={`${r.workspace}:${r.path}`}
                         className={`flex items-center gap-2 p-1.5 px-2 rounded-lg text-[10px] min-w-0 transition-colors ${
                           isEnabled
                             ? "bg-white text-slate-800 border border-slate-200/80 shadow-2xs"

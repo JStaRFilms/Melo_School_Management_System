@@ -150,18 +150,55 @@ describe("selected branch route adapters", () => {
 });
 
 describe("module navigation and deep links", () => {
-  it("uses the same module rule for hidden sections and nested URLs", () => {
-    const features = { billing: false, curriculum: false, knowledgeLibrary: false };
-    const sections = getAccessibleWorkspaceSections("admin", { access: ready, features });
-    for (const path of ["/billing", "/academic/knowledge/curriculum-import", "/academic/knowledge/curriculum-readiness", "/academic/knowledge/library"]) {
-      expect(sections.some(section => section.href === path)).toBe(false);
-      expect(getWorkspaceModuleDenial("admin", `${path}/details`, features)?.state).toBe("module_disabled");
+  it("uses the same module rules for real Admin and Teacher routes", () => {
+    const features = {
+      billing: false,
+      curriculum: false,
+      knowledgeLibrary: false,
+      admissions: false,
+    };
+    const adminSections = getAccessibleWorkspaceSections("admin", {
+      access: ready,
+      features,
+    });
+    for (const path of [
+      "/billing",
+      "/academic/knowledge/curriculum-import",
+      "/academic/knowledge/curriculum-readiness",
+      "/academic/knowledge/templates",
+      "/academic/knowledge/assessment-profiles",
+      "/academic/knowledge/library",
+      "/students/import",
+    ]) {
+      expect(adminSections.some((section) => section.href === path)).toBe(false);
+      expect(
+        getWorkspaceModuleDenial("admin", `${path}/details`, features)?.state,
+      ).toBe("module_disabled");
     }
-    expect(sections.some(section => section.href === "/students/import")).toBe(true);
+    for (const path of [
+      "/planning",
+      "/planning/lesson-plans",
+      "/planning/library",
+      "/planning/question-bank",
+      "/planning/videos",
+    ]) {
+      expect(getWorkspaceModuleDenial("teacher", path, features)?.state).toBe(
+        "module_disabled",
+      );
+    }
+    expect(
+      getWorkspaceModuleDenial("admin", "/academic/students/onboarding", features)
+        ?.state,
+    ).toBe("module_disabled");
+    expect(
+      getWorkspaceModuleDenial("admin", "/academic/students", features),
+    ).toBeNull();
     expect(getWorkspaceModuleDenial("admin", "/billing-other", features)).toBeNull();
   });
   it("keeps Portal family navigation separate from staff capabilities", () => {
     expect(getAccessibleWorkspaceSections("portal", { access: { state: "forbidden", message: "No staff membership" }, userRole: "parent" }).map(section => section.href)).toContain("/billing");
+    expect(getAccessibleWorkspaceSections("portal", { features: { billing: false }, userRole: "parent" }).map(section => section.href)).not.toContain("/billing");
+    expect(getWorkspaceModuleDenial("portal", "/billing/invoice", { billing: false })?.state).toBe("module_disabled");
     expect(getAccessibleWorkspaceSections("portal", { userRole: "parent" }).map(section => section.href)).not.toContain("/learning/topics");
     expect(getAccessibleWorkspaceSections("portal", { userRole: "student" }).map(section => section.href)).toContain("/learning/topics");
   });

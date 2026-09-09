@@ -6,7 +6,13 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Id } from "@school/convex/_generated/dataModel";
-import { AuthoritativeForbiddenView, WorkspaceNavbar, MeloLoader, SchoolSuspendedLockScreen } from "@school/shared";
+import {
+  AuthoritativeForbiddenView,
+  WorkspaceNavbar,
+  MeloLoader,
+  SchoolSuspendedLockScreen,
+  getWorkspaceModuleDenial,
+} from "@school/shared";
 import { authClient } from "@/auth-client";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -55,6 +61,12 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
     contactPhone?: string;
     address?: string;
     theme: { primaryColor: string; accentColor: string };
+    features: {
+      billing: boolean;
+      curriculum: boolean;
+      knowledgeLibrary: boolean;
+      admissions: boolean;
+    };
   } | undefined;
 
   useEffect(() => {
@@ -102,6 +114,12 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
     );
   }
 
+  const moduleDenial = getWorkspaceModuleDenial(
+    "portal",
+    pathname,
+    schoolBranding?.features,
+  );
+
   return (
     <WorkspaceNavbar
       workspace="portal"
@@ -124,7 +142,16 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
         );
       }}
     >
-      {children}
+      {moduleDenial?.state === "module_disabled" ? (
+        <AuthoritativeForbiddenView
+          moduleTitle="This module"
+          state="module_disabled"
+          message={moduleDenial.message}
+          onReturnToDashboard={() => router.push("/")}
+        />
+      ) : (
+        children
+      )}
     </WorkspaceNavbar>
   );
 }
