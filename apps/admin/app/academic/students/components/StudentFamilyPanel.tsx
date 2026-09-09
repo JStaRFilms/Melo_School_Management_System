@@ -46,7 +46,7 @@ interface ParentEmailReview {
     name: string;
     email: string;
     phone: string | null;
-    role: "student" | "parent" | "teacher" | "admin";
+    role: "student" | "parent" | "teacher" | "staff" | "admin";
     isArchived: boolean;
     families: Array<{
       _id: string;

@@ -248,6 +248,45 @@ async function assertTemplatesAvailableForAssignment(
   ) throw new ConvexError("Role template is not available under the branch setting");
 }
 
+export async function getAssignableRoleTemplateForSchool(
+  ctx: Context,
+  roleTemplateId: Id<"roleTemplates">,
+  schoolId: Id<"schools">,
+) {
+  const template = await templateForSchool(ctx, roleTemplateId, schoolId);
+  await assertTemplatesAvailableForAssignment(ctx, schoolId, [template]);
+  return template;
+}
+
+export async function ensureFactoryRoleTemplateForAssignment(
+  ctx: MutationCtx,
+  code: "principal" | "staff_administrator",
+) {
+  const definition = FACTORY_ROLE_DEFINITIONS[code];
+  const matches = (await ctx.db
+    .query("roleTemplates")
+    .withIndex("by_code", (q) => q.eq("code", code))
+    .take(101))
+    .filter((template) => template.scope === "global" && template.isSystem);
+  if (matches.length > 1)
+    throw new ConvexError("Factory role template requires review");
+  if (matches[0]) return matches[0];
+  const now = Date.now();
+  const roleTemplateId = await ctx.db.insert("roleTemplates", {
+    code,
+    name: definition.name,
+    description: definition.description,
+    scope: "global",
+    capabilities: definition.capabilities,
+    isSystem: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const template = await ctx.db.get(roleTemplateId);
+  if (!template) throw new ConvexError("Unable to create factory role template");
+  return template;
+}
+
 async function permissionRows(
   ctx: Context,
   membershipId: Id<"branchMemberships">,

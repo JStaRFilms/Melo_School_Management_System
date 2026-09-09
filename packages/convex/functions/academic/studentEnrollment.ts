@@ -272,6 +272,7 @@ export const getPortalUserInternal = internalQuery({
         v.literal("student"),
         v.literal("parent"),
         v.literal("teacher"),
+        v.literal("staff"),
         v.literal("admin"),
       ),
       isArchived: v.union(v.boolean(), v.null()),
@@ -3277,7 +3278,7 @@ type PortalUserRecord = {
   name: string;
   email: string;
   authId: string;
-  role: "student" | "parent" | "teacher" | "admin";
+  role: "student" | "parent" | "teacher" | "staff" | "admin";
   isArchived: boolean | null;
 };
 

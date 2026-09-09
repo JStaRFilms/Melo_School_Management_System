@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./workspace-access": "./src/workspace-access.ts",
     "./group-settings": "./src/group-settings.ts",
+    "./group-branch-access": "./src/group-branch-access.ts",
     "./name-format": "./src/name-format.ts",
     "./planning-context": "./src/planning-context.ts",
     "./planning-routes": "./src/planning-routes.ts",

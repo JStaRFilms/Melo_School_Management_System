@@ -9,7 +9,11 @@ import {
 import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
 import { resolveActiveMembership, resolveLegacyViewer } from "./auth";
-import { requireCapability } from "./rbac";
+import {
+  ensureFactoryRoleTemplateForAssignment,
+  getAssignableRoleTemplateForSchool,
+  requireCapability,
+} from "./rbac";
 import { isTrustedLegacySubjectIssuer } from "./identityResolver";
 
 import { schoolThemeValidator } from "../foundation/brandingContract";
@@ -441,6 +445,551 @@ export const listLinkableSchools = query({
         })),
       ),
     };
+  },
+});
+
+type GroupManager =
+  | { kind: "platform_admin"; platformAdmin: Doc<"platformAdmins"> }
+  | {
+      kind: "user";
+      person: Doc<"persons">;
+      membership: Doc<"branchMemberships">;
+    };
+
+type GroupBranch = {
+  school: Doc<"schools">;
+  link: Doc<"schoolGroupBranches">;
+};
+
+async function requireGroupManager(
+  ctx: Context,
+  group: Doc<"schoolGroups">,
+): Promise<GroupManager> {
+  const platformAdmin = await resolveGroupPlatformOperator(ctx);
+  if (platformAdmin?.isActive)
+    return { kind: "platform_admin", platformAdmin };
+
+  const person = await currentPerson(ctx);
+  if (!person || person._id !== group.proprietorPersonId)
+    throw new ConvexError(
+      "Forbidden: Platform or Group Proprietor authority required",
+    );
+  const memberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_status", (q) =>
+      q.eq("personId", person._id).eq("status", "active"),
+    )
+    .take(101);
+  if (memberships.length > 100)
+    throw new ConvexError("Group authority requires a bounded membership review");
+  for (const membership of memberships) {
+    const link = await ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", membership.schoolId))
+      .unique();
+    if (link?.groupId === group._id)
+      return { kind: "user", person, membership };
+  }
+  throw new ConvexError("Forbidden: Proprietor has no active group membership");
+}
+
+async function requireActiveGroupBranch(
+  ctx: Context,
+  groupId: Id<"schoolGroups">,
+  schoolId: Id<"schools">,
+): Promise<GroupBranch> {
+  const [school, link] = await Promise.all([
+    ctx.db.get(schoolId),
+    ctx.db
+      .query("schoolGroupBranches")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .unique(),
+  ]);
+  if (
+    !school ||
+    school.status !== "active" ||
+    !link ||
+    link.groupId !== groupId
+  )
+    throw new ConvexError("School is not an active branch of this group");
+  return { school, link };
+}
+
+function managerAuditFields(manager: GroupManager) {
+  return manager.kind === "platform_admin"
+    ? {
+        actorKind: "platform_admin" as const,
+        actorPlatformAdminId: manager.platformAdmin._id,
+        actorEmailSnapshot: manager.platformAdmin.email,
+      }
+    : {
+        actorKind: "user" as const,
+        actorPersonId: manager.person._id,
+        actorMembershipId: manager.membership._id,
+        actorEmailSnapshot: manager.person.email,
+      };
+}
+
+async function requireGroupAndManager(ctx: Context, groupId: Id<"schoolGroups">) {
+  const group = await ctx.db.get(groupId);
+  if (!group || group.status !== "active")
+    throw new ConvexError("School group is not active");
+  return { group, manager: await requireGroupManager(ctx, group) };
+}
+
+export const listGroupStaffCandidates = query({
+  args: {
+    groupId: v.id("schoolGroups"),
+    sourceSchoolId: v.id("schools"),
+    targetSchoolId: v.id("schools"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    if (args.paginationOpts.numItems > 50)
+      throw new ConvexError("Request at most 50 staff candidates per page");
+    const { group } = await requireGroupAndManager(ctx, args.groupId);
+    const [source, target] = await Promise.all([
+      requireActiveGroupBranch(ctx, group._id, args.sourceSchoolId),
+      requireActiveGroupBranch(ctx, group._id, args.targetSchoolId),
+    ]);
+    if (source.school._id === target.school._id)
+      throw new ConvexError("Choose two different group branches");
+
+    const page = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_school_and_status", (q) =>
+        q.eq("schoolId", source.school._id).eq("status", "active"),
+      )
+      .paginate(args.paginationOpts);
+    const candidates = [];
+    for (const membership of page.page) {
+      const [person, sourceUser, targetMembership] = await Promise.all([
+        ctx.db.get(membership.personId),
+        membership.legacyUserId ? ctx.db.get(membership.legacyUserId) : null,
+        ctx.db
+          .query("branchMemberships")
+          .withIndex("by_person_and_school", (q) =>
+            q
+              .eq("personId", membership.personId)
+              .eq("schoolId", target.school._id),
+          )
+          .unique(),
+      ]);
+      if (
+        !person ||
+        person.status !== "active" ||
+        !person.authTokenIdentifier ||
+        person.identityReconciliationState === "reconciliation_required" ||
+        !sourceUser ||
+        sourceUser.isArchived ||
+        sourceUser.personId !== person._id ||
+        sourceUser.schoolId !== source.school._id ||
+        sourceUser.authTokenIdentifier !== person.authTokenIdentifier ||
+        sourceUser.role === "student" ||
+        sourceUser.role === "parent" ||
+        targetMembership?.status === "active"
+      )
+        continue;
+      candidates.push({
+        personId: person._id,
+        name: person.name,
+        email: person.email,
+        sourceSchoolId: source.school._id,
+        sourceSchoolName: source.school.name,
+        currentRole: sourceUser.role,
+        targetMembershipStatus: targetMembership?.status ?? null,
+      });
+    }
+    return { ...page, page: candidates };
+  },
+});
+
+export const listGroupAssignableRoleTemplates = query({
+  args: {
+    groupId: v.id("schoolGroups"),
+    targetSchoolId: v.id("schools"),
+  },
+  handler: async (ctx, args) => {
+    const { group } = await requireGroupAndManager(ctx, args.groupId);
+    await requireActiveGroupBranch(ctx, group._id, args.targetSchoolId);
+    const [globalTemplates, groupTemplates, branchTemplates] = await Promise.all([
+      ctx.db
+        .query("roleTemplates")
+        .withIndex("by_scope_and_school", (q) => q.eq("scope", "global"))
+        .take(101),
+      ctx.db
+        .query("roleTemplates")
+        .withIndex("by_group", (q) => q.eq("groupId", group._id))
+        .take(101),
+      ctx.db
+        .query("roleTemplates")
+        .withIndex("by_scope_and_school", (q) =>
+          q.eq("scope", "branch").eq("schoolId", args.targetSchoolId),
+        )
+        .take(101),
+    ]);
+    if ([globalTemplates, groupTemplates, branchTemplates].some((rows) => rows.length > 100))
+      throw new ConvexError("Role template directory requires review");
+    const templates = [...globalTemplates, ...groupTemplates, ...branchTemplates];
+    const unique = new Map(templates.map((template) => [template._id, template]));
+    const results = [];
+    for (const template of unique.values()) {
+      if (template.code === "proprietor") continue;
+      try {
+        await getAssignableRoleTemplateForSchool(
+          ctx,
+          template._id,
+          args.targetSchoolId,
+        );
+      } catch {
+        continue;
+      }
+      results.push({
+        roleTemplateId: template._id,
+        code: template.code,
+        name: template.name,
+        scope: template.scope,
+      });
+    }
+    return results.sort((left, right) => left.name.localeCompare(right.name));
+  },
+});
+
+export const listGroupBranchStaff = query({
+  args: {
+    groupId: v.id("schoolGroups"),
+    schoolId: v.id("schools"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    if (args.paginationOpts.numItems > 50)
+      throw new ConvexError("Request at most 50 staff memberships per page");
+    const { group } = await requireGroupAndManager(ctx, args.groupId);
+    const branch = await requireActiveGroupBranch(ctx, group._id, args.schoolId);
+    const page = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_school_and_status", (q) =>
+        q.eq("schoolId", branch.school._id).eq("status", "active"),
+      )
+      .paginate(args.paginationOpts);
+    const staff = [];
+    for (const membership of page.page) {
+      const [person, user, activeMemberships] = await Promise.all([
+        ctx.db.get(membership.personId),
+        membership.legacyUserId ? ctx.db.get(membership.legacyUserId) : null,
+        ctx.db
+          .query("branchMemberships")
+          .withIndex("by_person_and_status", (q) =>
+            q.eq("personId", membership.personId).eq("status", "active"),
+          )
+          .take(2),
+      ]);
+      if (
+        !person ||
+        !user ||
+        user.isArchived ||
+        user.role === "student" ||
+        user.role === "parent"
+      )
+        continue;
+      staff.push({
+        membershipId: membership._id,
+        personId: person._id,
+        name: person.name,
+        email: person.email,
+        role: user.role,
+        displayTitle: membership.displayTitle ?? null,
+        isDefaultBranch: membership.isDefaultBranch,
+        isProprietor: group.proprietorPersonId === person._id,
+        hasOtherBranch: activeMemberships.length > 1,
+      });
+    }
+    return { ...page, page: staff };
+  },
+});
+
+async function clearMembershipPermissionConfiguration(
+  ctx: MutationCtx,
+  membershipId: Id<"branchMemberships">,
+) {
+  const [roles, grants, restrictions, ceiling] = await Promise.all([
+    ctx.db
+      .query("membershipRoleAssignments")
+      .withIndex("by_membership", (q) => q.eq("membershipId", membershipId))
+      .take(101),
+    ctx.db
+      .query("membershipDirectGrants")
+      .withIndex("by_membership", (q) => q.eq("membershipId", membershipId))
+      .take(101),
+    ctx.db
+      .query("membershipDirectRestrictions")
+      .withIndex("by_membership", (q) => q.eq("membershipId", membershipId))
+      .take(101),
+    ctx.db
+      .query("delegationCeilings")
+      .withIndex("by_membership", (q) => q.eq("membershipId", membershipId))
+      .unique(),
+  ]);
+  if ([roles, grants, restrictions].some((rows) => rows.length > 100))
+    throw new ConvexError("Permission configuration requires review");
+  for (const row of [...roles, ...grants, ...restrictions])
+    await ctx.db.delete(row._id);
+  if (ceiling) await ctx.db.delete(ceiling._id);
+}
+
+export const assignUserToBranch = mutation({
+  args: {
+    groupId: v.id("schoolGroups"),
+    sourceSchoolId: v.id("schools"),
+    targetSchoolId: v.id("schools"),
+    personId: v.id("persons"),
+    role: v.union(
+      v.literal("admin"),
+      v.literal("teacher"),
+      v.literal("staff"),
+    ),
+    roleTemplateId: v.optional(v.id("roleTemplates")),
+    displayTitle: v.optional(v.string()),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { group, manager } = await requireGroupAndManager(ctx, args.groupId);
+    const [source, target, person] = await Promise.all([
+      requireActiveGroupBranch(ctx, group._id, args.sourceSchoolId),
+      requireActiveGroupBranch(ctx, group._id, args.targetSchoolId),
+      ctx.db.get(args.personId),
+    ]);
+    if (source.school._id === target.school._id)
+      throw new ConvexError("Choose two different group branches");
+    if (args.confirmation !== target.school.slug)
+      throw new ConvexError("Confirm the target branch slug");
+    if (
+      !person ||
+      person.status !== "active" ||
+      !person.authTokenIdentifier ||
+      person.identityReconciliationState === "reconciliation_required"
+    )
+      throw new ConvexError("Selected identity requires review");
+    const [sourceMembership, targetMembership, personUsers] = await Promise.all([
+      ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_school", (q) =>
+          q.eq("personId", person._id).eq("schoolId", source.school._id),
+        )
+        .unique(),
+      ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_school", (q) =>
+          q.eq("personId", person._id).eq("schoolId", target.school._id),
+        )
+        .unique(),
+      ctx.db
+        .query("users")
+        .withIndex("by_person", (q) => q.eq("personId", person._id))
+        .take(101),
+    ]);
+    if (personUsers.length > 100)
+      throw new ConvexError("Identity projections require a bounded review");
+    if (!sourceMembership || sourceMembership.status !== "active")
+      throw new ConvexError("Person is not active in the selected source branch");
+    if (targetMembership?.status === "active")
+      return { success: true, membershipId: targetMembership._id, alreadyActive: true };
+
+    const sourceUser = sourceMembership.legacyUserId
+      ? await ctx.db.get(sourceMembership.legacyUserId)
+      : null;
+    if (
+      !sourceUser ||
+      sourceUser.isArchived ||
+      sourceUser.schoolId !== source.school._id ||
+      sourceUser.personId !== person._id ||
+      sourceUser.authTokenIdentifier !== person.authTokenIdentifier ||
+      sourceUser.role === "student" ||
+      sourceUser.role === "parent"
+    )
+      throw new ConvexError("Source staff projection requires identity review");
+
+    const targetUsers = personUsers.filter(
+      (user) => user.schoolId === target.school._id,
+    );
+    if (targetUsers.length > 1)
+      throw new ConvexError("Target branch has ambiguous identity projections");
+    const emailConflicts = await ctx.db
+      .query("users")
+      .withIndex("by_school_and_email", (q) =>
+        q.eq("schoolId", target.school._id).eq("email", person.email),
+      )
+      .take(2);
+    if (emailConflicts.some((user) => user.personId !== person._id))
+      throw new ConvexError("Target branch email belongs to another identity");
+
+    const roleTemplate = args.roleTemplateId
+      ? await getAssignableRoleTemplateForSchool(
+          ctx,
+          args.roleTemplateId,
+          target.school._id,
+        )
+      : args.role === "admin"
+        ? await ensureFactoryRoleTemplateForAssignment(ctx, "principal")
+        : args.role === "staff"
+          ? await ensureFactoryRoleTemplateForAssignment(
+              ctx,
+              "staff_administrator",
+            )
+          : null;
+    if (roleTemplate?.code === "proprietor")
+      throw new ConvexError("Proprietorship requires a separate transfer workflow");
+
+    const now = Date.now();
+    const existingTargetUser = targetUsers[0];
+    const targetUserId = existingTargetUser?._id ??
+      (await ctx.db.insert("users", {
+        schoolId: target.school._id,
+        authId: sourceUser.authId,
+        authTokenIdentifier: person.authTokenIdentifier,
+        personId: person._id,
+        name: person.name,
+        firstName: sourceUser.firstName,
+        lastName: sourceUser.lastName,
+        email: person.email,
+        phone: sourceUser.phone,
+        role: args.role,
+        isSchoolAdmin: args.role === "admin",
+        managerUserId: null,
+        createdAt: now,
+        updatedAt: now,
+      }));
+    if (existingTargetUser) {
+      await ctx.db.patch(existingTargetUser._id, {
+        authId: sourceUser.authId,
+        authTokenIdentifier: person.authTokenIdentifier,
+        name: person.name,
+        email: person.email,
+        role: args.role,
+        isSchoolAdmin: args.role === "admin",
+        isArchived: false,
+        archivedAt: undefined,
+        archivedBy: undefined,
+        updatedAt: now,
+      });
+    }
+
+    let membershipId: Id<"branchMemberships">;
+    if (targetMembership) {
+      await clearMembershipPermissionConfiguration(ctx, targetMembership._id);
+      await ctx.db.patch(targetMembership._id, {
+        status: "active",
+        displayTitle: args.displayTitle?.trim() || undefined,
+        permissionsManagedAt: now,
+        isDefaultBranch: false,
+        legacyUserId: targetUserId,
+        updatedAt: now,
+      });
+      membershipId = targetMembership._id;
+    } else {
+      membershipId = await ctx.db.insert("branchMemberships", {
+        personId: person._id,
+        schoolId: target.school._id,
+        status: "active",
+        displayTitle: args.displayTitle?.trim() || undefined,
+        permissionsManagedAt: now,
+        isDefaultBranch: false,
+        legacyUserId: targetUserId,
+        joinedAt: now,
+        updatedAt: now,
+      });
+    }
+    if (roleTemplate) {
+      await ctx.db.insert("membershipRoleAssignments", {
+        membershipId,
+        roleTemplateId: roleTemplate._id,
+        roleTemplateKey: roleTemplate.code,
+        assignedBy:
+          manager.kind === "user" ? manager.person._id : undefined,
+        assignedAt: now,
+      });
+    }
+    await recordAuditEventHelper(ctx, {
+      schoolId: target.school._id,
+      groupId: group._id,
+      ...managerAuditFields(manager),
+      module: "groups",
+      action: "membership.branch_assigned",
+      targetType: "branchMemberships",
+      targetId: membershipId,
+      outcome: "success",
+      safeSummary: `Assigned person ${person._id} to branch ${target.school._id} as ${args.role}`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier1_critical",
+    });
+    return { success: true, membershipId, alreadyActive: false };
+  },
+});
+
+export const revokeUserBranchMembership = mutation({
+  args: {
+    groupId: v.id("schoolGroups"),
+    schoolId: v.id("schools"),
+    personId: v.id("persons"),
+    reason: v.string(),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { group, manager } = await requireGroupAndManager(ctx, args.groupId);
+    const branch = await requireActiveGroupBranch(ctx, group._id, args.schoolId);
+    if (args.confirmation !== branch.school.slug)
+      throw new ConvexError("Confirm the branch slug");
+    const reason = args.reason.trim();
+    if (reason.length < 8 || reason.length > 500)
+      throw new ConvexError("Provide a revocation reason between 8 and 500 characters");
+    if (args.personId === group.proprietorPersonId)
+      throw new ConvexError("Group proprietorship requires a separate transfer workflow");
+
+    const membership = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_person_and_school", (q) =>
+        q.eq("personId", args.personId).eq("schoolId", branch.school._id),
+      )
+      .unique();
+    if (!membership || membership.status !== "active")
+      throw new ConvexError("Active branch membership not found");
+    if (membership.isDefaultBranch)
+      throw new ConvexError("Choose another default branch before revoking this membership");
+    const otherMemberships = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_person_and_status", (q) =>
+        q.eq("personId", args.personId).eq("status", "active"),
+      )
+      .take(2);
+    if (otherMemberships.length < 2)
+      throw new ConvexError("The final branch must be removed through account archiving");
+
+    const now = Date.now();
+    await ctx.db.patch(membership._id, { status: "suspended", updatedAt: now });
+    if (membership.legacyUserId) {
+      const user = await ctx.db.get(membership.legacyUserId);
+      if (user && user.schoolId === branch.school._id && user.personId === args.personId)
+        await ctx.db.patch(user._id, {
+          isArchived: true,
+          archivedAt: now,
+          updatedAt: now,
+        });
+    }
+    await recordAuditEventHelper(ctx, {
+      schoolId: branch.school._id,
+      groupId: group._id,
+      ...managerAuditFields(manager),
+      module: "groups",
+      action: "membership.branch_revoked",
+      targetType: "branchMemberships",
+      targetId: membership._id,
+      outcome: "success",
+      safeSummary: `Suspended branch membership for person ${args.personId}; reason recorded`,
+      afterSummary: `Reason: ${reason}`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier1_critical",
+    });
+    return { success: true };
   },
 });
 

@@ -1301,6 +1301,7 @@ export default defineSchema({
       v.literal("student"),
       v.literal("parent"),
       v.literal("teacher"),
+      v.literal("staff"),
       v.literal("admin")
     ),
     isSchoolAdmin: v.optional(v.boolean()),

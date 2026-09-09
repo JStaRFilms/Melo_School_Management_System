@@ -8,6 +8,7 @@ import type { Id } from "../../../../packages/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
 import { isConvexConfigured } from "@/convex-runtime";
 import { getErrorMessage } from "@school/shared/toast";
+import GroupBranchAccess from "./GroupBranchAccess";
 import {
   Building2,
   CheckCircle2,
@@ -522,6 +523,14 @@ function GroupWorkbench() {
                   )}
                 </div>
               </div>
+              {overview && (
+                <GroupBranchAccess
+                  key={`access:${groupId}`}
+                  groupId={groupId}
+                  groupSlug={overview.group.slug}
+                  branches={overview.branches}
+                />
+              )}
             </div>
           ) : (
             /* Group Creation Form */
@@ -620,7 +629,7 @@ function GroupWorkbench() {
                 {schoolId && (
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Group Proprietor / Primary Administrator <span className="text-rose-500">*</span>
+                      Group Proprietor <span className="text-rose-500">*</span>
                     </label>
                     <select
                       required

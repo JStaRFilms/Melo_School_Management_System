@@ -4,6 +4,7 @@ import Link from "next/link";
 import GroupBranding from "./GroupBranding";
 import GroupDomainDefaults from "./GroupDomainDefaults";
 import OperationalOverview from "./OperationalOverview";
+import GroupBranchAccess from "./GroupBranchAccess";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePaginatedQuery, useQuery } from "convex/react";
@@ -134,8 +135,8 @@ export default function GroupPage() {
                   {new Date(b.linkedAt).toLocaleDateString()}
                 </p>
                 <p className="mt-2 text-sm text-slate-600">
-                  Operational branch switching remains unavailable until scoped
-                  routes are approved.
+                  Branch switching is available on approved scoped routes; other
+                  routes remain locked to the current workspace.
                 </p>
               </li>
             ))}
@@ -144,6 +145,12 @@ export default function GroupPage() {
       )}
       {overview && groupId && isProprietor && (
         <>
+          <GroupBranchAccess
+            key={`access:${groupId}`}
+            groupId={groupId}
+            groupSlug={overview.group.slug}
+            branches={overview.branches}
+          />
           <GroupBranding
             key={`branding:${groupId}`}
             groupId={groupId}
