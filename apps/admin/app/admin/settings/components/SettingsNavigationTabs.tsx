@@ -35,6 +35,7 @@ const SETTINGS_TABS: SettingsNavTab[] = [
 
 export function SettingsNavigationTabs() {
   const pathname = usePathname();
+  const currentPath = pathname ?? "";
 
   return (
     <nav
@@ -44,8 +45,8 @@ export function SettingsNavigationTabs() {
       {SETTINGS_TABS.map((tab) => {
         const isActive =
           tab.href === "/admin/settings"
-            ? pathname === "/admin/settings"
-            : pathname.startsWith(tab.href);
+            ? currentPath === "/admin/settings"
+            : currentPath.startsWith(tab.href);
         const Icon = tab.icon;
 
         return (
