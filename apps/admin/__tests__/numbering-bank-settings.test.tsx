@@ -9,6 +9,22 @@ import { afterEach, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import NumberingPage from "../app/admin/settings/admission-numbering/page";
 import { BankAccountsPanel } from "../app/billing/components/BankAccountsPanel";
+
+const mockPolicyState = {
+  policy: null as unknown,
+  branchCounter: null as { nextSequence: number; configVersion: number; resetFrequency: "continuous"; status: "active" } | null,
+  version: 0,
+  nextSequence: 1,
+  sessionYear: 2025,
+  preview: null,
+  effectiveFormat: null,
+  formatSource: "branch",
+  formatVersion: null,
+  governance: null,
+  counter: null,
+  sequences: [],
+};
+
 const mocks = vi.hoisted(() => ({ allowed: true, save: vi.fn() }));
 vi.mock("@/AuthProvider", () => ({
   useAuth: () => ({
@@ -25,21 +41,9 @@ vi.mock("convex/react", () => ({
     const name = getFunctionName(reference);
     if (name.endsWith("hasViewerCapability")) return mocks.allowed;
     if (name.endsWith("listBankAccounts")) return [];
-    if (name.endsWith("getAdmissionNumberPolicy"))
-      return {
-        policy: null,
-        branchCounter: null,
-        version: 0,
-        nextSequence: 1,
-        sessionYear: 2025,
-        preview: null,
-        effectiveFormat: null,
-        formatSource: "branch",
-        formatVersion: null,
-        governance: null,
-        counter: null,
-        sequences: [],
-      };
+    if (name.endsWith("getAdmissionNumberPolicy")) {
+      return mockPolicyState;
+    }
     return undefined;
   },
 }));
@@ -47,6 +51,7 @@ afterEach(() => {
   cleanup();
   mocks.allowed = true;
   mocks.save.mockReset();
+  mockPolicyState.branchCounter = null;
 });
 it("shows explicit denied settings without mounting sensitive inputs", () => {
   mocks.allowed = false;
@@ -85,6 +90,75 @@ it("submits the reviewed numbering version and exact next sequence and preserves
   await waitFor(() =>
     expect(screen.getByRole("status").textContent).toContain("Policy changed"),
   );
+});
+it("cleans raw Convex errors into human-friendly messages and offers sequence reset", async () => {
+  mockPolicyState.branchCounter = {
+    nextSequence: 1000,
+    configVersion: 1,
+    resetFrequency: "continuous",
+    status: "active",
+  };
+  const rawConvexError =
+    "[CONVEX M(functions/academic/admissionNumbers:updateAdmissionNumberPolicy)] [Request ID: 16ee4c8bc41a0216] Server Error Uncaught ConvexError: The next sequence cannot be moved backwards Called by client";
+  mocks.save.mockRejectedValue(new Error(rawConvexError));
+
+  render(<NumberingPage />);
+
+  fireEvent.change(screen.getByLabelText("schoolCode"), {
+    target: { value: "MCA" },
+  });
+  fireEvent.change(screen.getByLabelText("campusCode"), {
+    target: { value: "MAIN" },
+  });
+  fireEvent.change(screen.getByLabelText("Confirm next sequence"), {
+    target: { value: "1000" },
+  });
+  fireEvent.click(screen.getByText("Save prospective policy"));
+
+  await waitFor(() => {
+    const status = screen.getByRole("status");
+    expect(status.textContent).toContain("Sequence cannot be moved backwards");
+    expect(status.textContent).toContain("cannot be set lower than #1000");
+    // Ensure raw Convex debug metadata is completely scrubbed
+    expect(status.textContent).not.toContain("[CONVEX");
+    expect(status.textContent).not.toContain("Request ID");
+    expect(status.textContent).not.toContain("Called by client");
+  });
+
+  // Verify the reset button is offered and resets draft
+  const resetButton = screen.getByRole("button", {
+    name: /Reset sequence to #1000/i,
+  });
+  expect(resetButton).toBeTruthy();
+  fireEvent.click(resetButton);
+  expect(
+    (screen.getByLabelText("Next sequence") as HTMLInputElement).value,
+  ).toBe("1000");
+});
+it("prevents submitting when the next sequence is set below the active counter", () => {
+  mockPolicyState.branchCounter = {
+    nextSequence: 500,
+    configVersion: 1,
+    resetFrequency: "continuous",
+    status: "active",
+  };
+  render(<NumberingPage />);
+
+  const nextSeqInput = screen.getByLabelText("Next sequence");
+  fireEvent.change(nextSeqInput, { target: { value: "450" } });
+
+  expect(screen.getByText("Cannot be lower than #500")).toBeTruthy();
+  const submitButton = screen.getByRole("button", {
+    name: /Save prospective policy/i,
+  }) as HTMLButtonElement;
+  expect(submitButton.disabled).toBe(true);
+
+  // Click match button to quickly align confirmation
+  const matchButton = screen.getByRole("button", { name: /Match #450/i });
+  fireEvent.click(matchButton);
+  expect(
+    (screen.getByLabelText("Confirm next sequence") as HTMLInputElement).value,
+  ).toBe("450");
 });
 it("requires bank confirmation, sends full values only to authorized save and retains errors", async () => {
   mocks.save.mockRejectedValue(new Error("Save unavailable"));

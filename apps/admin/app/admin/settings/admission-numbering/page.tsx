@@ -7,6 +7,7 @@ import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
 import { SettingsNavigationTabs } from "../components/SettingsNavigationTabs";
+import { getUserFacingErrorMessage } from "@school/shared";
 import {
   Hash,
   Save,
@@ -56,6 +57,13 @@ type SequenceDraft = {
   status: Status;
   expectedConfigVersion: number;
 };
+
+type FeedbackState = {
+  type: "success" | "error";
+  title: string;
+  message: string;
+  action?: "resetSequence" | "reload";
+} | null;
 
 const FREQUENCY_LABELS: Record<Frequency, { label: string; desc: string }> = {
   continuous: {
@@ -122,9 +130,8 @@ export default function AdmissionNumberingPage() {
   const [sequenceDraft, setSequenceDraft] = useState<SequenceDraft | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [groupConfirmation, setGroupConfirmation] = useState("");
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [pending, setPending] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   if (allowed === false) {
@@ -159,16 +166,20 @@ export default function AdmissionNumberingPage() {
     );
   }
 
+  const minSequenceAllowed = data.branchCounter?.nextSequence ?? 1;
+
   const value: PolicyDraft = draft ?? {
     pattern: data.policy?.pattern ?? "{SCHOOL}-{YEAR}-{SEQ:4}",
     schoolCode: data.policy?.schoolCode ?? "",
     campusCode: data.policy?.campusCode ?? "",
-    currentSequence: data.branchCounter?.nextSequence ?? 1,
+    currentSequence: minSequenceAllowed,
     expectedVersion: data.version,
     expectedCounterVersion: data.branchCounter?.configVersion ?? 0,
     resetFrequency: data.branchCounter?.resetFrequency ?? "continuous",
     counterStatus: data.branchCounter?.status ?? "active",
   };
+
+  const isSequenceMovedBackwards = value.currentSequence < minSequenceAllowed;
 
   const preview = value.pattern
     .replaceAll("{SCHOOL}", value.schoolCode || "MCA")
@@ -207,27 +218,78 @@ export default function AdmissionNumberingPage() {
     });
   };
 
+  const formatFeedback = (error: unknown) => {
+    const rawMsg =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "Action failed";
+
+    if (rawMsg.includes("Policy changed")) {
+      return {
+        title: "Policy updated elsewhere",
+        message:
+          "Policy changed; please reload to review latest settings before saving.",
+        action: "reload" as const,
+      };
+    }
+
+    if (rawMsg.includes("The next sequence cannot be moved backwards")) {
+      return {
+        title: "Sequence cannot be moved backwards",
+        message: `The next admission sequence number cannot be set lower than #${minSequenceAllowed}. Moving the sequence backwards could cause duplicate student admission IDs.`,
+        action: "resetSequence" as const,
+      };
+    }
+
+    if (rawMsg.includes("Confirm the exact next sequence")) {
+      return {
+        title: "Confirmation mismatch",
+        message:
+          "The starting number and confirmation number must match before saving.",
+      };
+    }
+
+    if (rawMsg.includes("Counter configuration changed")) {
+      return {
+        title: "Counter updated",
+        message:
+          "Counter configuration changed; please reload to review latest counter settings.",
+        action: "reload" as const,
+      };
+    }
+
+    const cleaned = getUserFacingErrorMessage(
+      error,
+      "An unexpected error occurred while saving the numbering policy.",
+    );
+    return {
+      title: "Action failed",
+      message: cleaned,
+    };
+  };
+
   const run = async (operation: () => Promise<unknown>, success: string) => {
     setPending(true);
-    setMessage("");
-    setIsSuccess(false);
+    setFeedback(null);
     try {
       await operation();
-      setMessage(success);
-      setIsSuccess(true);
+      setFeedback({
+        type: "success",
+        title: "Success",
+        message: success,
+      });
       setDraft(null);
       setConfirmation("");
       setGroupConfirmation("");
       setSequenceDraft(null);
     } catch (error) {
-      const rawMsg = error instanceof Error ? error.message : "Action failed";
-      // Ensure "Policy changed" is preserved for test contracts while remaining helpful
-      if (rawMsg.includes("Policy changed")) {
-        setMessage("Policy changed; please reload to review latest settings before saving.");
-      } else {
-        setMessage(rawMsg);
-      }
-      setIsSuccess(false);
+      const formatted = formatFeedback(error);
+      setFeedback({
+        type: "error",
+        ...formatted,
+      });
     } finally {
       setPending(false);
     }
@@ -324,27 +386,72 @@ export default function AdmissionNumberingPage() {
       )}
 
       {/* Status Banner */}
-      {message && (
+      {feedback && (
         <div
           role="status"
-          className={`flex items-center justify-between gap-3 rounded-2xl border p-4 text-xs font-semibold shadow-2xs transition-all ${
-            isSuccess
-              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-              : "border-rose-200 bg-rose-50 text-rose-900"
+          className={`flex items-start justify-between gap-3 rounded-2xl border p-4 text-xs shadow-2xs transition-all ${
+            feedback.type === "success"
+              ? "border-emerald-200 bg-emerald-50/90 text-emerald-950"
+              : "border-rose-200 bg-rose-50/90 text-rose-950"
           }`}
         >
-          <div className="flex items-center gap-2.5">
-            {isSuccess ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            {feedback.type === "success" ? (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 shrink-0" />
             ) : (
-              <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+              <AlertCircle className="mt-0.5 h-4 w-4 text-rose-600 shrink-0" />
             )}
-            <span>{message}</span>
+            <div className="space-y-1 min-w-0 flex-1">
+              <p className="font-bold text-xs">
+                {feedback.title}
+              </p>
+              <p
+                className={`text-[12px] leading-relaxed ${
+                  feedback.type === "success"
+                    ? "text-emerald-800"
+                    : "text-rose-800"
+                }`}
+              >
+                {feedback.message}
+              </p>
+              {feedback.action === "resetSequence" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft({
+                      ...value,
+                      currentSequence: minSequenceAllowed,
+                    });
+                    setConfirmation(String(minSequenceAllowed));
+                    setFeedback(null);
+                  }}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-rose-700 transition cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Reset sequence to #{minSequenceAllowed}</span>
+                </button>
+              )}
+              {feedback.action === "reload" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(null);
+                    setConfirmation("");
+                    setFeedback(null);
+                  }}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3 text-slate-500" />
+                  <span>Reload latest policy</span>
+                </button>
+              )}
+            </div>
           </div>
           <button
             type="button"
-            onClick={() => setMessage("")}
-            className="rounded-lg p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50"
+            onClick={() => setFeedback(null)}
+            aria-label="Dismiss message"
+            className="rounded-lg p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition cursor-pointer shrink-0"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -355,6 +462,15 @@ export default function AdmissionNumberingPage() {
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          if (isSequenceMovedBackwards) {
+            setFeedback({
+              type: "error",
+              title: "Sequence cannot be moved backwards",
+              message: `The next sequence cannot be less than #${minSequenceAllowed} to prevent duplicate student admission IDs.`,
+              action: "resetSequence",
+            });
+            return;
+          }
           void run(
             () =>
               savePolicy({
@@ -577,9 +693,13 @@ export default function AdmissionNumberingPage() {
             <input
               id="nextSequence"
               aria-label="Next sequence"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-mono text-sm font-bold text-slate-900 focus:border-indigo-600 focus:outline-none"
+              className={`w-full rounded-xl border px-4 py-2.5 font-mono text-sm font-bold focus:outline-none transition-colors ${
+                isSequenceMovedBackwards
+                  ? "border-rose-300 bg-rose-50/30 text-rose-950 focus:border-rose-500"
+                  : "border-slate-200 bg-white text-slate-900 focus:border-indigo-600"
+              }`}
               type="number"
-              min="1"
+              min={minSequenceAllowed}
               max="999999999"
               step="1"
               value={value.currentSequence}
@@ -590,9 +710,29 @@ export default function AdmissionNumberingPage() {
                 })
               }
             />
-            <p className="text-[11px] text-slate-400">
-              The number assigned to the next new student.
-            </p>
+            {isSequenceMovedBackwards ? (
+              <div className="flex items-center justify-between gap-2 pt-1 text-[11px] font-semibold text-rose-600">
+                <span className="flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  <span>Cannot be lower than #{minSequenceAllowed}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft({ ...value, currentSequence: minSequenceAllowed });
+                    setConfirmation(String(minSequenceAllowed));
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Reset to #{minSequenceAllowed}</span>
+                </button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400">
+                The number assigned to the next new student (minimum #{minSequenceAllowed}).
+              </p>
+            )}
           </div>
         </div>
 
@@ -605,7 +745,7 @@ export default function AdmissionNumberingPage() {
           <p className="text-xs text-amber-800 leading-relaxed">
             To prevent accidental skips or duplicate student IDs, please re-type your starting number below to confirm.
           </p>
-          <div className="space-y-2 max-w-sm">
+          <div className="space-y-2 max-w-md">
             <label
               htmlFor="confirmationSequence"
               className="block text-xs font-bold uppercase tracking-wider text-amber-900"
@@ -630,6 +770,15 @@ export default function AdmissionNumberingPage() {
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}
               />
+              {!isConfirmationMatching && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmation(String(value.currentSequence))}
+                  className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-100/70 px-3 py-2.5 text-xs font-bold text-amber-900 hover:bg-amber-200/80 transition cursor-pointer shrink-0"
+                >
+                  <span>Match #{value.currentSequence}</span>
+                </button>
+              )}
             </div>
             {isConfirmationMatching && (
               <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 pt-0.5">
@@ -658,7 +807,12 @@ export default function AdmissionNumberingPage() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={pending || data.sessionYear === null}
+              disabled={pending || data.sessionYear === null || isSequenceMovedBackwards}
+              title={
+                isSequenceMovedBackwards
+                  ? `Next sequence cannot be less than #${minSequenceAllowed}`
+                  : undefined
+              }
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
             >
               {pending ? (
@@ -675,6 +829,7 @@ export default function AdmissionNumberingPage() {
               onClick={() => {
                 setDraft(null);
                 setConfirmation("");
+                setFeedback(null);
               }}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-all cursor-pointer"
             >
