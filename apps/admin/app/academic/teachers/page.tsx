@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState, useEffect } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Search, GraduationCap, Sparkles, UserPlus } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
+import { getUserFacingErrorMessage, hasEffectiveCapability } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
@@ -54,22 +54,10 @@ function getTeacherArchiveBlockerMessage(blockers: string[]) {
 export default function TeachersPage() {
   const { workspaceAccess, session } = useAuth();
   const draftConnection = useDraftConnection();
-  const isReady = workspaceAccess?.state === "ready";
-  const capabilities = isReady ? workspaceAccess.effectiveCapabilities : [];
-  const isProprietor = isReady && Boolean(workspaceAccess.membership?.isProprietor);
-  const isSchoolAdmin =
-    isReady &&
-    (workspaceAccess.compatibility.legacyIsSchoolAdmin === true || isProprietor);
-  const isPermissionManaged =
-    isReady && workspaceAccess.compatibility.permissionManaged === true;
-
-  // Unmanaged workspaces preserve full school admin parity; managed workspaces honor explicit capabilities & proprietor authority.
-  const hasAdminParity = isReady && (!isPermissionManaged && isSchoolAdmin);
-
-  const canOnboard = hasAdminParity || isProprietor || capabilities.includes("staff.onboard");
-  const canEditProfile = hasAdminParity || isProprietor || capabilities.includes("staff.profiles.edit");
-  const canResetPassword = hasAdminParity || isProprietor || capabilities.includes("staff.password.reset");
-  const canArchive = hasAdminParity || isProprietor || capabilities.includes("staff.account.suspend");
+  const canOnboard = hasEffectiveCapability(workspaceAccess, "staff.onboard");
+  const canEditProfile = hasEffectiveCapability(workspaceAccess, "staff.profiles.edit");
+  const canResetPassword = hasEffectiveCapability(workspaceAccess, "staff.password.reset");
+  const canArchive = hasEffectiveCapability(workspaceAccess, "staff.account.suspend");
 
   const schoolId = workspaceAccess?.state === "ready"
     ? (workspaceAccess.branch.schoolId as Id<"schools">)

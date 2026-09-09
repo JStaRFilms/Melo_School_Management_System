@@ -7,6 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
+import { hasEffectiveCapability } from "@school/shared";
 import { getErrorMessage } from "@school/shared/toast";
 
 const rbac = api.functions.academic.rbac;
@@ -26,10 +27,7 @@ export default function PermissionsPage() {
     workspaceAccess?.state === "ready"
       ? (workspaceAccess.branch.schoolId as Id<"schools">)
       : undefined;
-  const capabilities =
-    workspaceAccess?.state === "ready"
-      ? workspaceAccess.effectiveCapabilities
-      : [];
+
   const allowed = useQuery(
     rbac.hasViewerCapability,
     schoolId ? { schoolId, capability: "staff.permissions.manage" } : "skip",
@@ -37,18 +35,18 @@ export default function PermissionsPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <nav className="flex flex-wrap gap-4 text-sm">
-        {capabilities.includes("staff.list.view") && (
+        {hasEffectiveCapability(workspaceAccess, "staff.list.view") && (
           <Link href="/admin" className="underline">
             Administration
           </Link>
         )}
-        {capabilities.includes("audit.group.view") && (
+        {hasEffectiveCapability(workspaceAccess, "audit.group.view") && (
           <Link href="/admin/group" className="underline">
             School group
           </Link>
         )}
-        {(capabilities.includes("audit.branch.view") ||
-          capabilities.includes("audit.view")) && (
+        {(hasEffectiveCapability(workspaceAccess, "audit.branch.view") ||
+          hasEffectiveCapability(workspaceAccess, "audit.view")) && (
           <Link href="/admin/audit" className="underline">
             Audit
           </Link>

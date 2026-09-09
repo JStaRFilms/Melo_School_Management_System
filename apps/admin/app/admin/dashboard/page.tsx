@@ -24,6 +24,7 @@ import {
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { useAuth } from "@/AuthProvider";
+import { hasEffectiveCapability } from "@school/shared";
 
 type TeacherRecord = {
   _id: string;
@@ -139,18 +140,14 @@ function formatEventDate(timestamp: number, isAllDay: boolean) {
 
 export default function AdminDashboardPage() {
   const { workspaceAccess } = useAuth();
-  const capabilities =
-    workspaceAccess?.state === "ready"
-      ? workspaceAccess.effectiveCapabilities
-      : [];
   const canViewDashboardDetails =
-    capabilities.includes("staff.list.view") &&
-    capabilities.includes("academic.classes.manage");
-  const canViewBilling = capabilities.includes("finance.reports.view");
-  const canViewEnrollment = capabilities.includes("enrollment.intakes.manage");
-  const canEnterAssessments = capabilities.includes("academic.assessments.enter");
-  const canOnboardStaff = capabilities.includes("staff.onboard");
-  const canManageSubjects = capabilities.includes("academic.subjects.manage");
+    hasEffectiveCapability(workspaceAccess, "staff.list.view") &&
+    hasEffectiveCapability(workspaceAccess, "academic.classes.manage");
+  const canViewBilling = hasEffectiveCapability(workspaceAccess, "finance.reports.view");
+  const canViewEnrollment = hasEffectiveCapability(workspaceAccess, "enrollment.intakes.manage");
+  const canEnterAssessments = hasEffectiveCapability(workspaceAccess, "academic.assessments.enter");
+  const canOnboardStaff = hasEffectiveCapability(workspaceAccess, "staff.onboard");
+  const canManageSubjects = hasEffectiveCapability(workspaceAccess, "academic.subjects.manage");
   const queryArgs = canViewDashboardDetails ? ({} as never) : ("skip" as never);
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never,

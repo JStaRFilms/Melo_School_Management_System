@@ -15,6 +15,7 @@ import {
   AuditExplorerView,
   EMPTY_AUDIT_FILTERS,
   exportAudit,
+  hasEffectiveCapability,
   type AuditFilters,
 } from "@school/shared";
 import { useAuth } from "@/AuthProvider";
@@ -30,10 +31,7 @@ export default function AuditPage() {
     workspaceAccess?.state === "ready"
       ? (workspaceAccess.branch.schoolId as Id<"schools">)
       : undefined;
-  const capabilities =
-    workspaceAccess?.state === "ready"
-      ? workspaceAccess.effectiveCapabilities
-      : [];
+
   const allowed = useQuery(
     api.functions.academic.rbac.hasViewerCapability,
     schoolId ? { schoolId, capability: "audit.branch.view" } : "skip",
@@ -41,18 +39,18 @@ export default function AuditPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <nav className="flex flex-wrap gap-4 text-sm">
-        {capabilities.includes("staff.list.view") && (
+        {hasEffectiveCapability(workspaceAccess, "staff.list.view") && (
           <Link href="/admin" className="underline">
             Administration
           </Link>
         )}
-        {capabilities.includes("audit.group.view") && (
+        {hasEffectiveCapability(workspaceAccess, "audit.group.view") && (
           <Link href="/admin/group" className="underline">
             School group
           </Link>
         )}
-        {(capabilities.includes("staff.permissions.manage") ||
-          capabilities.includes("permissions.manage")) && (
+        {(hasEffectiveCapability(workspaceAccess, "staff.permissions.manage") ||
+          hasEffectiveCapability(workspaceAccess, "permissions.manage")) && (
           <Link href="/admin/permissions" className="underline">
             Permissions
           </Link>

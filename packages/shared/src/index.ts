@@ -3,6 +3,7 @@
 export * from "./name-format";
 export * from "./errors";
 export * from "./workspace-navigation";
+export * from "./workspace-access";
 export * from "./workspace-route-access";
 export * from "./audit-export";
 export * from "./components/AuditExplorerView";
@@ -56,6 +57,3 @@ export * from "./academic-timeline";
 export * from "./migration";
 export * from "./components/migration";
 export * from "./components/InvoicePaymentInstructions";
-
-
-

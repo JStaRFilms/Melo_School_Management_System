@@ -11,6 +11,7 @@ import type { Id } from "@school/convex/_generated/dataModel";
 import { BranchBrandingEditor } from "../group/GroupBranding";
 import { SettingsNavigationTabs } from "./components/SettingsNavigationTabs";
 import { useAuth } from "@/AuthProvider";
+import { hasEffectiveCapability } from "@school/shared";
 import {
   Building2,
   Upload,
@@ -68,10 +69,8 @@ const PRESET_PALETTES = [
 export default function SchoolSettingsPage() {
   const isConfigured = isConvexConfigured();
   const { workspaceAccess } = useAuth();
-  const capabilities =
-    workspaceAccess?.state === "ready" ? workspaceAccess.effectiveCapabilities : [];
-  const canEditProfile = capabilities.includes("settings.general.edit");
-  const canManageBranding = capabilities.includes("settings.branding.manage");
+  const canEditProfile = hasEffectiveCapability(workspaceAccess, "settings.general.edit");
+  const canManageBranding = hasEffectiveCapability(workspaceAccess, "settings.branding.manage");
 
   const branding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { TeacherEditForm } from "../app/academic/teachers/components/TeacherEditForm";
-import type { TeacherRecord } from "../types";
+import type { TeacherRecord } from "../lib/types";
 
 const mockTeacher: TeacherRecord = {
   _id: "teacher-123",
   name: "Dr. Tariq Adeleke",
   email: "t.adeleke@meridiancrest.org",
-  role: "teacher",
   archiveBlockers: [],
+  createdAt: 1725890000000,
 };
 
 describe("TeacherEditForm Identity & Password Reset Controls", () => {

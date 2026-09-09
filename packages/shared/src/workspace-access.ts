@@ -33,3 +33,33 @@ export type WorkspaceAccessSummary =
         legacyTeacherId: string | null;
       };
     };
+
+/**
+ * Resolves whether an active workspace user holds unmanaged administrative parity
+ * or institutional proprietor authority.
+ *
+ * In unmanaged workspaces (permissionManaged === false), school administrators
+ * and proprietors hold full operational parity across school settings, rosters, and staff.
+ * In permission-managed workspaces, only proprietors hold universal parity;
+ * delegated staff roles must hold explicit capabilities.
+ */
+export function hasAdminWorkspaceParity(access?: WorkspaceAccessSummary | null): boolean {
+  if (!access || access.state !== "ready") return false;
+  const isProprietor = Boolean(access.membership?.isProprietor);
+  const isSchoolAdmin = access.compatibility?.legacyIsSchoolAdmin === true || isProprietor;
+  const isPermissionManaged = access.compatibility?.permissionManaged === true;
+  return isProprietor || (!isPermissionManaged && isSchoolAdmin);
+}
+
+/**
+ * Evaluates whether an active workspace user holds a specific capability,
+ * granting full operational access to school administrators whenever RBAC is unmanaged.
+ */
+export function hasEffectiveCapability(
+  access: WorkspaceAccessSummary | undefined | null,
+  capability: string,
+): boolean {
+  if (!access || access.state !== "ready") return false;
+  if (hasAdminWorkspaceParity(access)) return true;
+  return access.effectiveCapabilities.includes(capability);
+}

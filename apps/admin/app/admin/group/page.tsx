@@ -11,16 +11,14 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
+import { hasEffectiveCapability } from "@school/shared";
 import { useDepartureGuard } from "@school/shared/drafts";
 
 export default function GroupPage() {
   const { selectSchool, workspaceAccess } = useAuth();
   const { requestDeparture } = useDepartureGuard();
   const router = useRouter();
-  const capabilities =
-    workspaceAccess?.state === "ready"
-      ? workspaceAccess.effectiveCapabilities
-      : [];
+
   const isProprietor =
     workspaceAccess?.state === "ready" &&
     workspaceAccess.membership?.isProprietor === true;
@@ -37,17 +35,17 @@ export default function GroupPage() {
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
       <nav className="flex flex-wrap gap-4 text-sm">
-        {capabilities.includes("staff.list.view") && (
+        {hasEffectiveCapability(workspaceAccess, "staff.list.view") && (
           <Link href="/admin" className="underline">
             Administration
           </Link>
         )}
-        {capabilities.includes("staff.permissions.manage") && (
+        {hasEffectiveCapability(workspaceAccess, "staff.permissions.manage") && (
           <Link href="/admin/permissions" className="underline">
             Permissions
           </Link>
         )}
-        {capabilities.includes("audit.branch.view") && (
+        {hasEffectiveCapability(workspaceAccess, "audit.branch.view") && (
           <Link href="/admin/audit" className="underline">
             Audit
           </Link>
