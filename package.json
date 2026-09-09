@@ -9,6 +9,8 @@
   "scripts": {
     "build": "turbo build --concurrency=1",
     "dev": "turbo dev",
+    "prestart": "node scripts/kill-ports.mjs",
+    "kill:ports": "node scripts/kill-ports.mjs",
     "start": "pnpm --parallel --filter @school/www --filter @school/teacher --filter @school/admin --filter @school/portal --filter @school/platform --filter @school/sites start",
     "start:www": "pnpm --filter @school/www start",
     "start:teacher": "pnpm --filter @school/teacher start",
