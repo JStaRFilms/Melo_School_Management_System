@@ -88,19 +88,6 @@ export function ImportRowReviewDialog({
 }: Props) {
   const grade = record.entityType === "grade_record";
   const supplied = Boolean(record.parsedData.admissionNumber?.trim());
-  const importedName = [
-    record.parsedData.firstName,
-    record.parsedData.middleName,
-    record.parsedData.lastName,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim()
-    .toLowerCase();
-  const matchingUsers = options.availableStudentUsers.filter(
-    (user) => user.name.trim().toLowerCase() === importedName,
-  );
-  const suggestedUserId = matchingUsers.length === 1 ? matchingUsers[0]?.id ?? "" : "";
   const [action, setAction] = useState<
     "create_new" | "merge_existing" | "ignore"
   >(
@@ -115,9 +102,6 @@ export function ImportRowReviewDialog({
   const [subjectId, setSubjectId] = useState(record.selectedSubjectId ?? "");
   const [studentId, setStudentId] = useState(
     record.selectedStudentId ?? record.existingStudentId ?? "",
-  );
-  const [userId, setUserId] = useState(
-    record.selectedUserId ?? suggestedUserId,
   );
   const [familyId, setFamilyId] = useState(record.selectedFamilyId ?? "");
   const [sessionId, setSessionId] = useState(record.selectedSessionId ?? "");
@@ -161,7 +145,7 @@ export function ImportRowReviewDialog({
         Boolean(studentId && classId && subjectId && sessionId && termId)
       : action === "merge_existing"
         ? Boolean(studentId)
-        : Boolean(classId && userId) &&
+        : Boolean(classId) &&
           (supplied
             ? confirmed && reason.trim().length >= 8 && validAdvance
             : !generatedUnavailable));
@@ -182,7 +166,7 @@ export function ImportRowReviewDialog({
             selectedClassId: classId || undefined,
             selectedSubjectId: subjectId || undefined,
             selectedStudentId: studentId || undefined,
-            selectedUserId: userId || undefined,
+            selectedUserId: undefined,
             selectedFamilyId: familyId || undefined,
             selectedSessionId: sessionId || undefined,
             selectedTermId: termId || undefined,
@@ -298,17 +282,8 @@ export function ImportRowReviewDialog({
           {action === "create_new" && !grade && (
             <>
               <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
-                Every student enrollment must link to a prepared school identity. Spreadsheet text does not create or grant a login account. A class or identity is preselected only when there is one exact existing match; confirm both before saving.
+                A new internal student profile will be created when the approved import is committed. No login, password, invitation, or portal access will be created.
               </p>
-              <Select
-                label="Prepared student identity (required)"
-                value={userId}
-                onChange={setUserId}
-                options={options.availableStudentUsers.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                }))}
-              />
               <Select
                 label="Class placement (required)"
                 value={classId}

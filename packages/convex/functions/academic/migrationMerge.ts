@@ -1,6 +1,7 @@
 import { mutation } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { MutationCtx } from "../../_generated/server";
 import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import { validateReviewedRecord } from "./migrationAutosave";
 import {
@@ -22,6 +23,55 @@ function validateBatchSize(value: number | undefined): number {
     throw new ConvexError("Batch size must be an integer between 1 and 50");
   }
   return batchSize;
+}
+
+async function createImportedStudentIdentity(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  record: Doc<"stagedImportRecords">,
+): Promise<Id<"users">> {
+  const now = Date.now();
+  const name = [
+    record.parsedData.firstName,
+    record.parsedData.middleName,
+    record.parsedData.lastName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const opaqueIdentity = `migration:${String(schoolId)}:${String(record._id)}`;
+  const email = `${String(record._id)}@student-import.invalid`;
+  const personId = await ctx.db.insert("persons", {
+    name,
+    email,
+    status: "active",
+    primarySchoolId: schoolId,
+    identityReconciliationState: "reconciliation_required",
+    createdAt: now,
+    updatedAt: now,
+  });
+  const userId = await ctx.db.insert("users", {
+    schoolId,
+    personId,
+    authId: opaqueIdentity,
+    name,
+    firstName: record.parsedData.firstName,
+    lastName: record.parsedData.lastName,
+    email,
+    role: "student",
+    isArchived: false,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await ctx.db.insert("branchMemberships", {
+    personId,
+    schoolId,
+    legacyUserId: userId,
+    status: "active",
+    isDefaultBranch: true,
+    joinedAt: now,
+    updatedAt: now,
+  });
+  return userId;
 }
 
 /**
@@ -476,7 +526,7 @@ export const commitImportWorkspace = mutation({
         continue;
       }
       if (record.entityType === "student") {
-        if (!record.selectedClassId || !record.selectedUserId)
+        if (!record.selectedClassId)
           throw new ConvexError(
             `Row #${record.rowNumber} has incomplete placement`,
           );
@@ -532,17 +582,27 @@ export const commitImportWorkspace = mutation({
             expectedResetPeriod: record.expectedNumberResetPeriod,
           });
         }
+        const userId =
+          record.selectedUserId ??
+          (await createImportedStudentIdentity(
+            ctx,
+            args.schoolId,
+            record,
+          ));
         const studentId = await ctx.db.insert("students", {
           schoolId: args.schoolId,
           classId: record.selectedClassId,
-          userId: record.selectedUserId,
+          userId,
           familyId: record.selectedFamilyId,
           admissionNumber,
           gender: record.parsedData.gender || "Unspecified",
           dateOfBirth: record.parsedData.dateOfBirth,
           guardianName: record.parsedData.guardianName,
           guardianPhone: record.parsedData.guardianPhone,
+          guardianEmail: record.parsedData.guardianEmail,
           address: record.parsedData.address,
+          customAttributes: record.parsedData.customAttributes,
+          unmappedData: record.parsedData.unmappedFields,
           enrollmentStatus: "active",
           createdAt: now,
           updatedAt: now,

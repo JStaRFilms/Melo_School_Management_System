@@ -51,6 +51,7 @@ export function DataMigrationWorkbench({
   const [isReviewing, setIsReviewing] = useState(false);
   const [isColumnMappingOpen, setIsColumnMappingOpen] = useState(false);
   const [isResolvingClash, setIsResolvingClash] = useState(false);
+  const [isReviewingReadyRows, setIsReviewingReadyRows] = useState(false);
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null);
 
   // Queries
@@ -221,6 +222,76 @@ export function DataMigrationWorkbench({
       appToast.error(getErrorMessage(error, "Row review failed"));
     } finally {
       setIsReviewing(false);
+    }
+  };
+
+  const readyStudentRows = stagedRecords.filter((record) => {
+    if (
+      record.entityType !== "student" ||
+      record.reviewStatus === "approved" ||
+      record.validationStatus !== "valid" ||
+      !record.parsedData.matchedClassId
+    ) {
+      return false;
+    }
+    const classOption = reviewOptions?.classes.find(
+      (item) => item.id === record.parsedData.matchedClassId,
+    );
+    if (!classOption) return false;
+    if (record.parsedData.admissionNumber?.trim()) return true;
+    return reviewOptions?.numberingByLevel?.find((item) => item.level === classOption.level)
+      ?.numbering.available ?? reviewOptions?.numbering.available ?? false;
+  });
+
+  const handleReviewReadyRows = async () => {
+    if (!reviewOptions || readyStudentRows.length === 0) return;
+    const suppliedCount = readyStudentRows.filter((record) =>
+      record.parsedData.admissionNumber?.trim(),
+    ).length;
+    if (!window.confirm(
+      `Review ${readyStudentRows.length} clean student rows as new enrollments? ${suppliedCount} supplied admission IDs will be preserved after backend uniqueness checks. Nothing is committed yet.`,
+    )) return;
+    setIsReviewingReadyRows(true);
+    try {
+      for (const record of readyStudentRows) {
+        const classOption = reviewOptions.classes.find(
+          (item) => item.id === record.parsedData.matchedClassId,
+        );
+        if (!classOption) continue;
+        const numbering = reviewOptions.numberingByLevel?.find(
+          (item) => item.level === classOption.level,
+        )?.numbering ?? reviewOptions.numbering;
+        const supplied = Boolean(record.parsedData.admissionNumber?.trim());
+        await reviewStagedRecord({
+          schoolId,
+          recordId: record._id,
+          expectedRowRevision: record.rowRevision ?? 1,
+          resolutionAction: "create_new",
+          selectedClassId: classOption.id,
+          admissionNumberMode: supplied ? "supplied" : "official_generated",
+          manualNumberConfirmed: supplied ? true : undefined,
+          manualNumberReason: supplied
+            ? "Historical identifier preserved during reviewed bulk import"
+            : undefined,
+          expectedNumberPolicyVersion:
+            !supplied && numbering.available ? numbering.policyVersion : undefined,
+          expectedNumberFormatVersion:
+            !supplied && numbering.available ? numbering.formatVersion : undefined,
+          expectedNumberCounterKey:
+            !supplied && numbering.available ? numbering.counterKey : undefined,
+          expectedNumberCounterVersion:
+            !supplied && numbering.available ? numbering.counterVersion : undefined,
+          expectedNumberSessionId:
+            !supplied && numbering.available ? numbering.sessionId : undefined,
+          expectedNumberResetPeriod:
+            !supplied && numbering.available ? numbering.resetPeriod : undefined,
+        } as never);
+      }
+      appToast.success(`Reviewed ${readyStudentRows.length} clean student rows`);
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Bulk row review stopped; completed decisions remain saved"));
+    } finally {
+      setIsReviewingReadyRows(false);
     }
   };
 
@@ -530,6 +601,9 @@ export function DataMigrationWorkbench({
                   onPatchField={handlePatchField}
                   onOpenClashModal={(rec) => setClashModalRecord(rec)}
                   onReview={setReviewRecord}
+                  readyRowCount={readyStudentRows.length}
+                  isReviewingReadyRows={isReviewingReadyRows}
+                  onReviewReadyRows={handleReviewReadyRows}
                 />
               )}
 

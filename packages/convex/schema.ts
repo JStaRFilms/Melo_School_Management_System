@@ -1384,6 +1384,7 @@ export default defineSchema({
     dateOfBirth: v.optional(v.number()),
     guardianName: v.optional(v.string()),
     guardianPhone: v.optional(v.string()),
+    guardianEmail: v.optional(v.string()),
     address: v.optional(v.string()),
     photoStorageId: v.optional(v.id("_storage")),
     photoFileName: v.optional(v.string()),

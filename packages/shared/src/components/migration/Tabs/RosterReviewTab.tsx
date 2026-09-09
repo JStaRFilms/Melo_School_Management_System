@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, AlertTriangle, AlertCircle, CheckCircle2, SlidersHorizontal } from "lucide-react";
+import { Search, AlertTriangle, AlertCircle, CheckCircle2, Loader2, SlidersHorizontal } from "lucide-react";
 
 export interface StagedStudentRow {
   _id: string;
@@ -53,9 +53,12 @@ export interface RosterReviewTabProps {
   onPatchField: (recordId: string, patch: Record<string, unknown>) => Promise<void>;
   onOpenClashModal: (record: StagedStudentRow) => void;
   onReview: (record: StagedStudentRow) => void;
+  readyRowCount?: number;
+  isReviewingReadyRows?: boolean;
+  onReviewReadyRows?: () => void;
 }
 
-export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onReview }: RosterReviewTabProps) {
+export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onReview, readyRowCount = 0, isReviewingReadyRows = false, onReviewReadyRows }: RosterReviewTabProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "error" | "warning" | "valid">("all");
 
@@ -84,7 +87,7 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
   return (
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-slate-600">
-        <strong>Review row</strong> records what should happen when you commit the import. A <strong>clash</strong> is a possible duplicate found from identity evidence; nothing is merged automatically.
+        <strong>Review row</strong> records what should happen when you commit the import. A <strong>possible duplicate</strong> is suggested only from identity evidence; nothing is merged automatically.
       </p>
 
       {/* Controls Bar */}
@@ -100,7 +103,19 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
           />
         </div>
 
-        <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {readyRowCount > 0 && onReviewReadyRows && (
+            <button
+              type="button"
+              disabled={isReviewingReadyRows}
+              onClick={onReviewReadyRows}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+            >
+              {isReviewingReadyRows && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Review {readyRowCount} clean {readyRowCount === 1 ? "row" : "rows"}
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200">
           {(["all", "error", "warning", "valid"] as const).map((filter) => (
             <button
               key={filter}
@@ -112,9 +127,10 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
-              {filter === "all" ? "All Rows" : filter}
+              {filter === "all" ? "All Rows" : filter === "valid" ? "No issues" : filter}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -262,7 +278,7 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
                         <CheckCircle2 className="h-3 w-3" />
-                        Valid
+                        No detected issues
                       </span>
                     )}
                     </div>

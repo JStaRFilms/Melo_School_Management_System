@@ -798,10 +798,10 @@ describe("Migration Lifecycle Engine", () => {
     ).rejects.toThrow("merge target is outside this school");
   });
 
-  it("School admin creates valid user actor provenance", async () => {
+  it("School admin creates a non-login student identity with valid actor provenance", async () => {
     const { t, schoolA, adminA, jss1Class } = await setupTestFixture();
     const admin = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
-    const { importedUserId, personId, membershipId } = await t.run(async (ctx) => {
+    const { personId, membershipId } = await t.run(async (ctx) => {
       const personId = await ctx.db.insert("persons", {
         authTokenIdentifier: "https://legacy-auth.test|auth-admin-a",
         email: "alice@greenwood.test",
@@ -835,16 +835,7 @@ describe("Migration Lifecycle Engine", () => {
           grantedAt: 1,
         });
       }
-      const importedUserId = await ctx.db.insert("users", {
-        schoolId: schoolA,
-        authId: "imported-ibrahim",
-        name: "Ibrahim Musa",
-        email: "ibrahim@greenwood.test",
-        role: "student",
-        createdAt: 1,
-        updatedAt: 1,
-      });
-      return { importedUserId, personId, membershipId };
+      return { personId, membershipId };
     });
 
     const workspaceId = await admin.mutation(createWorkspace, {
@@ -867,6 +858,9 @@ describe("Migration Lifecycle Engine", () => {
             admissionNumber: "SCH/SA/0001",
             guardianName: "Musa Ibrahim",
             guardianPhone: "08012345678",
+            guardianEmail: "guardian@example.test",
+            customAttributes: { genotype: "AA" },
+            unmappedFields: { "Legacy House": "Blue" },
             gender: "Male",
           },
           entityType: "student",
@@ -884,7 +878,6 @@ describe("Migration Lifecycle Engine", () => {
       expectedRowRevision: record.rowRevision ?? 1,
       resolutionAction: "create_new",
       selectedClassId: jss1Class,
-      selectedUserId: importedUserId,
       admissionNumberMode: "supplied",
       manualNumberConfirmed: true,
       manualNumberReason: "Reviewed historical provenance fixture",
@@ -902,7 +895,40 @@ describe("Migration Lifecycle Engine", () => {
         .withIndex("by_school", (q) => q.eq("schoolId", schoolA))
         .collect();
       expect(students).toHaveLength(1);
-      expect(students[0].userId).toBe(importedUserId);
+      expect(students[0]).toMatchObject({
+        guardianEmail: "guardian@example.test",
+        customAttributes: { genotype: "AA" },
+        unmappedData: { "Legacy House": "Blue" },
+      });
+      const importedUser = await ctx.db.get(students[0].userId);
+      expect(importedUser).toMatchObject({
+        schoolId: schoolA,
+        name: "Ibrahim Musa",
+        role: "student",
+        isArchived: false,
+      });
+      expect(importedUser).not.toHaveProperty("authTokenIdentifier");
+      const importedPerson = importedUser?.personId
+        ? await ctx.db.get(importedUser.personId)
+        : null;
+      expect(importedPerson).toMatchObject({
+        name: "Ibrahim Musa",
+        primarySchoolId: schoolA,
+        identityReconciliationState: "reconciliation_required",
+      });
+      expect(importedPerson).not.toHaveProperty("authTokenIdentifier");
+      const importedMembership = importedPerson
+        ? await ctx.db
+            .query("branchMemberships")
+            .withIndex("by_person_and_school", (q) =>
+              q.eq("personId", importedPerson._id).eq("schoolId", schoolA),
+            )
+            .unique()
+        : null;
+      expect(importedMembership).toMatchObject({
+        legacyUserId: students[0].userId,
+        status: "active",
+      });
       const audit = await ctx.db
         .query("auditEvents")
         .withIndex("by_module_and_action", (q) =>

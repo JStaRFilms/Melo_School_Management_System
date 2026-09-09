@@ -299,59 +299,59 @@ export async function validateReviewedRecord(
       return;
     }
 
-    if (!record.selectedClassId || !record.selectedUserId) {
+    if (!record.selectedClassId) {
       throw new ConvexError(
-        `Row #${record.rowNumber} requires an existing class and un-enrolled student identity`,
+        `Row #${record.rowNumber} requires an existing class`,
       );
     }
-    const [selectedClass, selectedUser] = await Promise.all([
-      ctx.db.get(record.selectedClassId),
-      ctx.db.get(record.selectedUserId),
-    ]);
+    const selectedClass = await ctx.db.get(record.selectedClassId);
     if (!selectedClass || selectedClass.schoolId !== schoolId) {
       throw new ConvexError(
         `Row #${record.rowNumber} class is outside this school`,
       );
     }
-    if (
-      !selectedUser ||
-      selectedUser.schoolId !== schoolId ||
-      selectedUser.role !== "student" ||
-      selectedUser.isArchived
-    ) {
-      throw new ConvexError(
-        `Row #${record.rowNumber} identity must be an active student user in this school`,
-      );
-    }
-    const enrollment = await ctx.db
-      .query("students")
-      .withIndex("by_school_and_user", (q) =>
-        q.eq("schoolId", schoolId).eq("userId", selectedUser._id),
-      )
-      .first();
-    if (enrollment)
-      throw new ConvexError(
-        `Row #${record.rowNumber} selected identity is already enrolled`,
-      );
-    const duplicateUsers = await ctx.db
-      .query("stagedImportRecords")
-      .withIndex("by_workspaceId_and_selectedUserId", (q) =>
-        q
-          .eq("workspaceId", record.workspaceId)
-          .eq("selectedUserId", selectedUser._id),
-      )
-      .take(2);
-    if (
-      duplicateUsers.some(
-        (candidate) =>
-          candidate._id !== record._id &&
-          candidate.reviewStatus === "approved" &&
-          candidate.resolutionAction === "create_new",
-      )
-    ) {
-      throw new ConvexError(
-        `Identity selected by row #${record.rowNumber} is already used by another reviewed row`,
-      );
+    if (record.selectedUserId) {
+      const selectedUser = await ctx.db.get(record.selectedUserId);
+      if (
+        !selectedUser ||
+        selectedUser.schoolId !== schoolId ||
+        selectedUser.role !== "student" ||
+        selectedUser.isArchived
+      ) {
+        throw new ConvexError(
+          `Row #${record.rowNumber} identity must be an active student user in this school`,
+        );
+      }
+      const enrollment = await ctx.db
+        .query("students")
+        .withIndex("by_school_and_user", (q) =>
+          q.eq("schoolId", schoolId).eq("userId", selectedUser._id),
+        )
+        .first();
+      if (enrollment)
+        throw new ConvexError(
+          `Row #${record.rowNumber} selected identity is already enrolled`,
+        );
+      const duplicateUsers = await ctx.db
+        .query("stagedImportRecords")
+        .withIndex("by_workspaceId_and_selectedUserId", (q) =>
+          q
+            .eq("workspaceId", record.workspaceId)
+            .eq("selectedUserId", selectedUser._id),
+        )
+        .take(2);
+      if (
+        duplicateUsers.some(
+          (candidate) =>
+            candidate._id !== record._id &&
+            candidate.reviewStatus === "approved" &&
+            candidate.resolutionAction === "create_new",
+        )
+      ) {
+        throw new ConvexError(
+          `Identity selected by row #${record.rowNumber} is already used by another reviewed row`,
+        );
+      }
     }
     if (record.selectedFamilyId) {
       const family = await ctx.db.get(record.selectedFamilyId);

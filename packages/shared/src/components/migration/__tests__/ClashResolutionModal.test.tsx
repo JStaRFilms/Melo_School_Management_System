@@ -22,7 +22,7 @@ const importedRecord: StagedRecordItem = {
 };
 
 describe("ImportRowReviewDialog", () => {
-  it("preselects one exact prepared identity and the matched existing class", () => {
+  it("explains new profile creation and preselects the matched existing class", () => {
     const record: StagedStudentRow = {
       _id: "row-5",
       rowNumber: 5,
@@ -43,7 +43,7 @@ describe("ImportRowReviewDialog", () => {
       subjects: [],
       families: [],
       students: [],
-      availableStudentUsers: [{ id: "identity-1", name: "Emeka Eze" }],
+      availableStudentUsers: [],
       sessions: [],
       numbering: {
         available: true,
@@ -68,8 +68,9 @@ describe("ImportRowReviewDialog", () => {
       />,
     );
 
-    expect(html).toContain('value="identity-1" selected=""');
     expect(html).toContain('value="class-1" selected=""');
+    expect(html).toContain("A new internal student profile will be created");
+    expect(html).not.toContain("Prepared student identity");
     expect(html).toContain("Save decision for final import");
   });
 });
@@ -126,6 +127,30 @@ describe("ClashResolutionModal", () => {
     expect(html).toContain("Review needed");
     expect(html).not.toContain("Possible duplicate (");
     expect(html).not.toContain("Clash (");
+  });
+
+  it("offers bulk review for clean resolved roster rows", () => {
+    const cleanRecord: StagedStudentRow = {
+      ...importedRecord,
+      entityType: "student",
+      validationStatus: "valid",
+      validationErrors: [],
+      clashConfidence: undefined,
+      clashReason: undefined,
+    };
+    const html = renderToStaticMarkup(
+      <RosterReviewTab
+        records={[cleanRecord]}
+        onPatchField={async () => undefined}
+        onOpenClashModal={vi.fn()}
+        onReview={vi.fn()}
+        readyRowCount={1}
+        onReviewReadyRows={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("Review 1 clean row");
+    expect(html).toContain("No detected issues");
   });
 
   it("shows only known live-student details without copying the imported phone", () => {
