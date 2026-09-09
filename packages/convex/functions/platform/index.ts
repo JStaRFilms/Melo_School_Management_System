@@ -7,10 +7,128 @@ import {
 } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { v, ConvexError } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { MutationCtx } from "../../_generated/server";
 import { getAuthenticatedPlatformAdmin } from "./auth";
 import { provisionSchoolAdminAuthUser } from "./provisioningHelpers";
 import { createAuth } from "../../betterAuth";
+
+function getBetterAuthTokenIdentifier(authId: string): string {
+  const issuer = process.env.CONVEX_SITE_URL?.trim();
+  if (!issuer) {
+    throw new ConvexError("Authentication issuer is not configured");
+  }
+  return `${issuer}|${authId}`;
+}
+
+async function ensureVerifiedSchoolAdminIdentity(
+  ctx: MutationCtx,
+  user: Doc<"users">,
+  authTokenIdentifier: string,
+): Promise<Id<"persons">> {
+  if (
+    user.isArchived ||
+    (user.role !== "admin" && user.isSchoolAdmin !== true)
+  ) {
+    throw new ConvexError("An active school administrator is required");
+  }
+  if (
+    user.authTokenIdentifier &&
+    user.authTokenIdentifier !== authTokenIdentifier
+  ) {
+    throw new ConvexError("Administrator identity requires manual review");
+  }
+
+  const tokenMatches = await ctx.db
+    .query("persons")
+    .withIndex("by_token_identifier", (q) =>
+      q.eq("authTokenIdentifier", authTokenIdentifier),
+    )
+    .take(2);
+  if (tokenMatches.length > 1) {
+    throw new ConvexError("Administrator identity requires manual review");
+  }
+
+  const linkedPerson = user.personId ? await ctx.db.get(user.personId) : null;
+  if (user.personId && !linkedPerson) {
+    throw new ConvexError("Administrator identity requires manual review");
+  }
+  if (
+    linkedPerson?.authTokenIdentifier &&
+    linkedPerson.authTokenIdentifier !== authTokenIdentifier
+  ) {
+    throw new ConvexError("Administrator identity requires manual review");
+  }
+  if (
+    linkedPerson &&
+    tokenMatches[0] &&
+    linkedPerson._id !== tokenMatches[0]._id
+  ) {
+    throw new ConvexError("Administrator identity requires manual review");
+  }
+
+  const now = Date.now();
+  const personId =
+    linkedPerson?._id ??
+    tokenMatches[0]?._id ??
+    (await ctx.db.insert("persons", {
+      authTokenIdentifier,
+      identityReconciliationState: "resolved",
+      email: user.email,
+      name: user.name,
+      status: "active",
+      primarySchoolId: user.schoolId,
+      createdAt: user.createdAt,
+      updatedAt: now,
+    }));
+
+  await ctx.db.patch(personId, {
+    authTokenIdentifier,
+    identityReconciliationState: "resolved",
+    email: user.email,
+    name: user.name,
+    status: "active",
+    updatedAt: now,
+  });
+  await ctx.db.patch(user._id, {
+    personId,
+    authTokenIdentifier,
+    updatedAt: now,
+  });
+
+  const memberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_school", (q) =>
+      q.eq("personId", personId).eq("schoolId", user.schoolId),
+    )
+    .take(2);
+  if (memberships.length > 1) {
+    throw new ConvexError("Administrator membership requires manual review");
+  }
+  const membership = memberships[0];
+  if (!membership) {
+    await ctx.db.insert("branchMemberships", {
+      personId,
+      schoolId: user.schoolId,
+      status: "active",
+      isDefaultBranch: true,
+      legacyUserId: user._id,
+      joinedAt: user.createdAt,
+      updatedAt: now,
+    });
+  } else {
+    if (membership.legacyUserId && membership.legacyUserId !== user._id) {
+      throw new ConvexError("Administrator membership requires manual review");
+    }
+    await ctx.db.patch(membership._id, {
+      status: "active",
+      legacyUserId: user._id,
+      updatedAt: now,
+    });
+  }
+
+  return personId;
+}
 
 /**
  * List all schools with status and assigned-admin summary.
@@ -134,6 +252,7 @@ export const assignSchoolAdminInternal = internalMutation({
     adminName: v.string(),
     adminEmail: v.string(),
     authId: v.string(),
+    authTokenIdentifier: v.string(),
   },
   handler: async (ctx, args) => {
     const school = await ctx.db.get(args.schoolId);
@@ -163,6 +282,7 @@ export const assignSchoolAdminInternal = internalMutation({
     const adminUserId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.authId,
+      authTokenIdentifier: args.authTokenIdentifier,
       name: args.adminName,
       email: args.adminEmail,
       role: "admin",
@@ -171,6 +291,16 @@ export const assignSchoolAdminInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+
+    const adminUser = await ctx.db.get(adminUserId);
+    if (!adminUser) {
+      throw new ConvexError("School administrator provisioning failed");
+    }
+    await ensureVerifiedSchoolAdminIdentity(
+      ctx,
+      adminUser,
+      args.authTokenIdentifier,
+    );
 
     await ctx.runMutation(
       internal.functions.academic.adminLeadershipHelpers.ensureSchoolLeadAdminInternal,
@@ -305,6 +435,7 @@ export const provisionSchoolAdmin = action({
       adminName,
       adminPassword,
     });
+    const authTokenIdentifier = getBetterAuthTokenIdentifier(authId);
 
     // Call internal mutation to create user row and transition school
     const result: {
@@ -318,6 +449,7 @@ export const provisionSchoolAdmin = action({
         adminName,
         adminEmail,
         authId,
+        authTokenIdentifier,
       }
     );
 
@@ -353,6 +485,86 @@ export const updateSchoolFeatures = mutation({
     });
 
     return { success: true };
+  },
+});
+
+export const inspectSchoolAdminIdentityInternal = internalQuery({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+  },
+  returns: v.object({
+    userId: v.id("users"),
+    authId: v.string(),
+    email: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (
+      !user ||
+      user.schoolId !== args.schoolId ||
+      user.isArchived ||
+      (user.role !== "admin" && user.isSchoolAdmin !== true)
+    ) {
+      throw new ConvexError("Active school administrator not found");
+    }
+    return { userId: user._id, authId: user.authId, email: user.email };
+  },
+});
+
+export const reconcileSchoolAdminIdentityInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    authTokenIdentifier: v.string(),
+  },
+  returns: v.id("persons"),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new ConvexError("School administrator not found");
+    return await ensureVerifiedSchoolAdminIdentity(
+      ctx,
+      user,
+      args.authTokenIdentifier,
+    );
+  },
+});
+
+export const reconcileSchoolAdminIdentity = action({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+  },
+  returns: v.object({ personId: v.id("persons") }),
+  handler: async (ctx, args): Promise<{ personId: Id<"persons"> }> => {
+    await ctx.runQuery(
+      internal.functions.platform.auth.requirePlatformAdminInternal,
+      {},
+    );
+    const admin = await ctx.runQuery(
+      internal.functions.platform.index.inspectSchoolAdminIdentityInternal,
+      args,
+    );
+
+    const auth = createAuth(ctx);
+    const authContext = await auth.$context;
+    const existingAuth = (await authContext.internalAdapter.findUserByEmail(
+      admin.email.trim().toLowerCase(),
+      { includeAccounts: false },
+    )) as { user: { id: string } } | null;
+    if (!existingAuth?.user || existingAuth.user.id !== admin.authId) {
+      throw new ConvexError(
+        "Administrator authentication account requires manual review",
+      );
+    }
+
+    const personId = await ctx.runMutation(
+      internal.functions.platform.index.reconcileSchoolAdminIdentityInternal,
+      {
+        userId: admin.userId,
+        authTokenIdentifier: getBetterAuthTokenIdentifier(admin.authId),
+      },
+    );
+    return { personId };
   },
 });
 

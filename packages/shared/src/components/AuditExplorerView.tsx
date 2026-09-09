@@ -54,7 +54,7 @@ export function AuditExplorerView({
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
   const control =
-    "mt-1 w-full min-w-0 rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500";
+    "mt-1 w-full min-w-0 rounded-lg border border-slate-300 bg-white p-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 font-medium placeholder:text-slate-400";
   const exportFormat = async (format: "csv" | "pdf") => {
     setExporting(true);
     setMessage("");
@@ -77,23 +77,26 @@ export function AuditExplorerView({
   };
   return (
     <section className="space-y-5">
-      <div className="rounded-lg border bg-slate-50 p-4 text-sm text-slate-700">
-        <p>{scopeNote}</p>
-        <p className="mt-1">
-          Events are append-only. Before/after values are safe summaries, not
-          full records. Actor identifiers are canonical IDs; private email
-          snapshots are not displayed.
-        </p>
-      </div>
+      {scopeNote && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 shadow-xs flex items-start sm:items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 text-sm">
+            ℹ️
+          </div>
+          <div className="space-y-0.5">
+            <p className="font-semibold text-slate-800">{scopeNote}</p>
+            <p className="text-[11px] text-slate-500">
+              Audit records are immutable and append-only. Sensitive credentials and private emails are redacted.
+            </p>
+          </div>
+        </div>
+      )}
       {!scopeConfigured && (
-        <p role="alert" className="rounded-lg border p-4 text-sm">
-          No audit module scope is configured. Ask the proprietor to assign
-          explicit visibility. An audit-view capability alone does not grant
-          every department’s history.
+        <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 font-medium">
+          No audit module scope is configured. Contact the system administrator to assign explicit audit visibility.
         </p>
       )}
       <form
-        className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+        className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
         onSubmit={(e) => {
           e.preventDefault();
           if (
@@ -113,8 +116,8 @@ export function AuditExplorerView({
           disabled={exporting}
           className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
-          <legend className="mb-3 font-semibold">Filter audit history</legend>
-          <label className="block min-w-0 text-sm font-medium sm:col-span-2">
+          <legend className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-700">Filter audit history</legend>
+          <label className="block min-w-0 text-xs font-bold text-slate-700 sm:col-span-2">
             Search safe summaries
             <input
               className={control}
@@ -126,7 +129,7 @@ export function AuditExplorerView({
               placeholder="Summary, action or affected record"
             />
           </label>
-          <label className="block min-w-0 text-sm font-medium">
+          <label className="block min-w-0 text-xs font-bold text-slate-700">
             Module
             <select
               className={control}
@@ -143,7 +146,7 @@ export function AuditExplorerView({
               ))}
             </select>
           </label>
-          <label className="block min-w-0 text-sm font-medium">
+          <label className="block min-w-0 text-xs font-bold text-slate-700">
             Action contains
             <input
               className={control}
@@ -152,9 +155,10 @@ export function AuditExplorerView({
               onChange={(e) =>
                 setFilters({ ...filters, action: e.target.value })
               }
+              placeholder="e.g. create, update"
             />
           </label>
-          <label className="block min-w-0 text-sm font-medium">
+          <label className="block min-w-0 text-xs font-bold text-slate-700">
             From (UTC)
             <input
               type="date"
@@ -165,7 +169,7 @@ export function AuditExplorerView({
               }
             />
           </label>
-          <label className="block min-w-0 text-sm font-medium">
+          <label className="block min-w-0 text-xs font-bold text-slate-700">
             Through (UTC)
             <input
               type="date"
@@ -176,7 +180,7 @@ export function AuditExplorerView({
               }
             />
           </label>
-          <label className="block min-w-0 text-sm font-medium">
+          <label className="block min-w-0 text-xs font-bold text-slate-700">
             Actor ID contains
             <input
               className={control}
@@ -185,9 +189,10 @@ export function AuditExplorerView({
               onChange={(e) =>
                 setFilters({ ...filters, actor: e.target.value })
               }
+              placeholder="User or admin ID"
             />
           </label>
-          <label className="block min-w-0 text-sm font-medium">
+          <label className="block min-w-0 text-xs font-bold text-slate-700">
             Affected record contains
             <input
               className={control}
@@ -196,20 +201,21 @@ export function AuditExplorerView({
               onChange={(e) =>
                 setFilters({ ...filters, target: e.target.value })
               }
+              placeholder="Record ID or reference"
             />
           </label>
         </fieldset>
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             disabled={exporting}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-xs"
           >
             Apply filters
           </button>
           <button
             type="button"
             disabled={exporting}
-            className="rounded-lg border px-4 py-2 text-sm"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
             onClick={() => {
               setFilters(EMPTY_AUDIT_FILTERS);
               onApply(EMPTY_AUDIT_FILTERS);
@@ -221,10 +227,10 @@ export function AuditExplorerView({
         </div>
       </form>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
           Matching events{" "}
-          <span className="text-sm font-normal text-slate-500">
-            {rows.length} loaded
+          <span className="text-xs font-normal text-slate-400">
+            ({rows.length} loaded)
           </span>
         </h2>
         <div className="flex flex-wrap gap-2">
@@ -232,7 +238,7 @@ export function AuditExplorerView({
             <button
               disabled={exporting || loading || !scopeConfigured}
               onClick={() => void exportFormat("csv")}
-              className="rounded-lg border bg-white px-3 py-2 text-sm disabled:opacity-50"
+              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors shadow-xs disabled:opacity-50"
             >
               Export CSV
             </button>
@@ -241,51 +247,60 @@ export function AuditExplorerView({
             <button
               disabled={exporting || loading || !scopeConfigured}
               onClick={() => void exportFormat("pdf")}
-              className="rounded-lg border bg-white px-3 py-2 text-sm disabled:opacity-50"
+              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors shadow-xs disabled:opacity-50"
             >
               Printable PDF
             </button>
           )}
         </div>
       </div>
-      <p className="text-xs text-slate-500">
-        Exports use the applied filters, not only loaded rows. Maximum 5,000
-        matching events / 200 source pages; larger searches fail explicitly
-        without a partial file.
+      <p className="text-[11px] text-slate-400">
+        Exports reflect all matching events (up to 5,000 rows) according to applied filters.
       </p>
       {exporting && (
-        <p role="status" className="text-sm">
-          Revalidating access and preparing all matching pages…
+        <p role="status" className="text-xs font-medium text-slate-600">
+          Preparing audit log export…
         </p>
       )}
       {message && (
-        <p role={failed ? "alert" : "status"} className="break-words text-sm">
+        <p role={failed ? "alert" : "status"} className={`break-words text-xs p-3 rounded-lg border font-medium ${failed ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
           {message}
         </p>
       )}
       {loading ? (
-        <p role="status">Loading audit history…</p>
+        <p role="status" className="py-8 text-center text-xs text-slate-400">Loading audit history…</p>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border bg-white p-6">
-          <h3 className="font-semibold">
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-xs">
+          <h3 className="text-sm font-bold text-slate-800">
             {canLoadMore ? "No matches in scanned pages" : "No matching events"}
           </h3>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-1 text-xs text-slate-500">
             {canLoadMore
-              ? "Continue searching older pages. This is not a claim that the entire history is empty."
-              : "Try different filters or check your delegated module scope."}
+              ? "Continue searching older events, or refine your search filters."
+              : "No audit events match the selected criteria."}
           </p>
         </div>
       ) : (
-        <ol className="divide-y rounded-xl border border-slate-200 bg-white">
+        <ol className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-xs">
           {rows.map((row) => (
-            <li className="p-4 sm:p-5" key={row.id}>
+            <li className="p-4 sm:p-5 hover:bg-slate-50/50 transition-colors" key={row.id}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {row.module} · {row.outcome}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
+                    {row.module}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                      row.outcome === "success"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-rose-50 text-rose-700 border border-rose-200"
+                    }`}
+                  >
+                    {row.outcome}
+                  </span>
+                </div>
                 <time
-                  className="text-xs text-slate-500"
+                  className="text-xs text-slate-400 font-mono"
                   dateTime={new Date(row.timestamp).toISOString()}
                 >
                   {new Date(row.timestamp)
@@ -294,33 +309,35 @@ export function AuditExplorerView({
                     .replace(".000Z", " UTC")}
                 </time>
               </div>
-              <h3 className="mt-2 break-words font-semibold">{row.action}</h3>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">
+              <h3 className="mt-2 text-sm font-bold text-slate-900 break-words">{row.action}</h3>
+              <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-600">
                 {row.summary}
               </p>
-              <details className="mt-3">
-                <summary className="cursor-pointer text-sm underline">
+              <details className="mt-3 group">
+                <summary className="cursor-pointer text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline">
                   Inspect context and before / after
                 </summary>
-                <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
-                  {[
-                    ["Actor", row.actor],
-                    ["Branch", row.schoolId],
-                    ["Target", `${row.targetType} · ${row.targetId}`],
-                    ["Correlation", row.correlationId],
-                    ["Before", row.before ?? "Not recorded"],
-                    ["After", row.after ?? "Not recorded"],
-                    ["Group snapshot", row.groupId ?? "Not recorded"],
-                    ["Retention", row.retentionClass],
-                  ].map(([label, value]) => (
-                    <div key={label}>
-                      <dt className="font-semibold text-slate-500">{label}</dt>
-                      <dd className="mt-1 whitespace-pre-wrap break-words">
-                        {value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                  <dl className="grid gap-2 text-xs sm:grid-cols-2">
+                    {[
+                      ["Actor", row.actor],
+                      ["Branch", row.schoolId],
+                      ["Target", `${row.targetType} · ${row.targetId}`],
+                      ["Correlation", row.correlationId],
+                      ["Before", row.before ?? "Not recorded"],
+                      ["After", row.after ?? "Not recorded"],
+                      ["Group snapshot", row.groupId ?? "Not recorded"],
+                      ["Retention", row.retentionClass],
+                    ].map(([label, value]) => (
+                      <div key={label} className="bg-white p-2 rounded border border-slate-100">
+                        <dt className="font-bold text-[10px] uppercase tracking-wider text-slate-400">{label}</dt>
+                        <dd className="mt-0.5 whitespace-pre-wrap break-words text-slate-700 font-mono text-[11px]">
+                          {value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
               </details>
             </li>
           ))}
@@ -330,7 +347,7 @@ export function AuditExplorerView({
         <button
           disabled={loadingMore || exporting}
           onClick={onLoadMore}
-          className="rounded-lg border bg-white px-4 py-2 text-sm disabled:opacity-50"
+          className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 shadow-xs disabled:opacity-50 transition-colors"
         >
           {loadingMore ? "Searching older pages…" : "Search next page"}
         </button>

@@ -448,29 +448,48 @@ export const listProprietorCandidates = query({
   args: { schoolId: v.id("schools") },
   handler: async (ctx, args) => {
     await requirePlatform(ctx);
-    const memberships = await ctx.db
-      .query("branchMemberships")
-      .withIndex("by_school_and_status", (q) =>
-        q.eq("schoolId", args.schoolId).eq("status", "active"),
-      )
+    const users = await ctx.db
+      .query("users")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
       .take(101);
-    if (memberships.length > 100)
+    if (users.length > 100)
       throw new ConvexError(
-        "Candidate directory requires a bounded support review",
+        "Administrator directory requires a bounded support review",
       );
-    const people = await Promise.all(
-      memberships.map((m) => ctx.db.get(m.personId)),
+
+    const admins = users.filter(
+      (user) =>
+        !user.isArchived &&
+        (user.role === "admin" || user.isSchoolAdmin === true),
     );
-    return people
-      .filter((p): p is Doc<"persons"> =>
-        Boolean(
-          p &&
-          p.status === "active" &&
-          p.authTokenIdentifier &&
-          p.identityReconciliationState !== "reconciliation_required",
-        ),
-      )
-      .map((p) => ({ personId: p._id, name: p.name }));
+    return await Promise.all(
+      admins.map(async (user) => {
+        const person = user.personId ? await ctx.db.get(user.personId) : null;
+        const membership = person
+          ? await ctx.db
+              .query("branchMemberships")
+              .withIndex("by_person_and_school", (q) =>
+                q.eq("personId", person._id).eq("schoolId", args.schoolId),
+              )
+              .unique()
+          : null;
+        const identityReady = Boolean(
+          person &&
+            person.status === "active" &&
+            person.authTokenIdentifier &&
+            person.identityReconciliationState !==
+              "reconciliation_required" &&
+            membership?.status === "active" &&
+            (!membership.legacyUserId || membership.legacyUserId === user._id),
+        );
+        return {
+          userId: user._id,
+          personId: identityReady ? person?._id : undefined,
+          name: user.name,
+          identityReady,
+        };
+      }),
+    );
   },
 });
 
