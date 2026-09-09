@@ -288,6 +288,42 @@ This document tracks all observations, issues, UX refinements, completed changes
 
 ---
 
+### 10. Platform Super Admin Unified Navigation, School Groups & Audit Explorer De-Slopping
+- [x] **Unified Platform Navigation System (`PlatformLayoutClient.tsx`, `layout.tsx`)**
+  - Designed and implemented a universal Super Admin top navigation bar shared across `/schools`, `/groups`, and `/audit`.
+  - Replaced floating, unstyled blue hyperlinks with an integrated segmented navigation tab bar (`Schools`, `School Groups`, `Audit Explorer`) complete with active tab styling and icons.
+  - Streamlined account actions into the top bar (Platform Admin user pill, Change Password modal trigger, Sign Out action).
+  - Wrapped all 3 platform route groups (`app/schools`, `app/groups`, `app/audit`) in the unified layout.
+- [x] **School Groups Mental Model Clarification & Two-Column Workbench (`apps/platform/app/groups/page.tsx`)**
+  - Resolved user confusion around multi-school hierarchy: clarified that campuses are created first as independent schools, then grouped under an HQ campus and assigned proprietor.
+  - Eliminated robotic, defensive AI slop jargon (e.g., *"statutory group ownership"*, *"canonical identity review"*, *"reviewed intended proprietor"*).
+  - Designed a high-synergy 2-column layout:
+    - **Left Column (Directory):** Group list with slug badges, active status indicators, and group counts.
+    - **Right Column (Workspace):**
+      - **Selected Group View:** Clear Headquarters campus highlight card, list of linked branch campuses with status, and a smooth `+ Link Another Branch` drawer.
+      - **Group Creation View:** Clean form with real-time automatic slug generation from group name, HQ school selector, administrator candidate selector with auto-selection when only 1 admin exists, and fallback link to assign school admins.
+  - Removed high-friction manual slug confirmation typing (the selected school's slug is now verified and supplied automatically by the UI upon submission).
+- [x] **Audit Explorer Modernization & De-Slopping (`apps/platform/app/audit/page.tsx`, `AuditExplorerView.tsx`)**
+  - Removed disconnected breadcrumbs and defensive legalistic disclaimers.
+  - Transformed the School Filter scope into a clean, modern card selector.
+  - Upgraded `@school/shared/components/AuditExplorerView.tsx` with clean badge indicators for modules and outcomes (emerald for success, rose for failures/denials), human-readable timestamps, elegant collapsible event details, and polished export controls, while preserving all accessibility and test contracts.
+
+---
+
+### 11. Admin & Staff Workspace Header Optimization & Branch Switcher Slop Removal
+- [x] **Zero Vertical Screen Waste & Dedicated Header Slot (`WorkspaceNavbar.tsx`)**
+  - Completely eliminated the full-width white banner strip (`border-b border-slate-200 bg-white px-4 py-2`) previously rendered below the top navigation across every single admin and teacher page.
+  - Relocated the branch selector directly into the top header bar (`h-16`) right alongside the user profile session dropdown.
+- [x] **Developer Slop Removal & Clean Multi-Campus Control (`BranchSwitcher.tsx`)**
+  - Removed the hardcoded developer technical-debt text (*"Branch switching is unavailable on this route: its data calls still use your default school. Scoped domain adapters and unsaved-work protection must be ready before switching."*).
+  - Configured intelligent rendering: when a school organization has only 1 branch (or when branch switching is not enabled for the route), the switcher returns `null` and renders zero visual clutter, giving 100% of vertical screen space back to actual dashboard and workspace content.
+  - When a user has multiple active campuses on a switchable route, renders a compact, elegant `[ 🏫 Campus ▾ ]` select pill inline in the header.
+- [x] **Verification & Test Alignment (`workspace-shell.test.tsx`)**
+  - Updated admin workspace shell tests to assert that defensive slop copy is eliminated while ensuring all accessibility roles and switching guards remain fully intact.
+  - Verified 100% green test suite across both `@school/admin` (35/35 test suites, 154 tests passing) and `@school/shared` (23/23 test suites, 168 tests passing).
+
+---
+
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
 
 *Whenever core schemas and shared workflows are modified, downstream modules may be affected. Use this checklist during subsequent testing passes:*

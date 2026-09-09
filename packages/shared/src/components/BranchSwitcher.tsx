@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Building2, ChevronDown } from "lucide-react";
 
 export interface BranchSummary {
   schoolId: string;
@@ -24,44 +25,62 @@ export interface BranchSwitcherProps {
 }
 
 export function BranchSwitcher({
-  currentBranch, availableBranches, onSelectBranch, disabled = false,
-  disabledReason, className = "",
+  currentBranch,
+  availableBranches,
+  onSelectBranch,
+  disabled = false,
+  className = "",
 }: BranchSwitcherProps) {
   const id = useId();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const branches = availableBranches.filter(branch => branch.status === "active");
-  const canSelect = !disabled && !pending && !!onSelectBranch && branches.length > 1 &&
+
+  const canSelect =
+    !disabled &&
+    !!onSelectBranch &&
+    branches.length > 1 &&
     branches.some(branch => branch.schoolId === currentBranch.schoolId);
+
+  // If there are no other active branches to switch to, or if switching is disabled on this route,
+  // do not render any switcher or disclaimer clutter.
+  if (!canSelect) {
+    return null;
+  }
+
   return (
-    <div className={`min-w-0 ${className}`}>
-      {canSelect ? (
-        <>
-          <label htmlFor={id} className="text-xs font-semibold text-slate-700">Active branch</label>
-          <select
-            id={id}
-            value={currentBranch.schoolId}
-            className="mt-1 min-h-11 w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:outline focus-visible:outline-2"
-            disabled={pending}
-            onChange={event => {
-              const target = branches.find(branch => branch.schoolId === event.target.value);
-              if (!target || target.schoolId === currentBranch.schoolId || !onSelectBranch) return;
-              setPending(true);
-              setError(null);
-              void Promise.resolve(onSelectBranch(target))
-                .catch(() => setError("Branch switch failed. Your current workspace remains open."))
-                .finally(() => setPending(false));
-            }}
-          >
-            {branches.map(branch => <option key={branch.schoolId} value={branch.schoolId}>{branch.name}</option>)}
-          </select>
-        </>
-      ) : (
-        <p className="break-words text-xs font-semibold text-slate-700">Active branch: {currentBranch.name}</p>
-      )}
-      {pending && <p role="status" className="mt-1 text-xs text-slate-600">Checking target branch…</p>}
-      {error && <p role="alert" className="mt-1 text-xs text-rose-700">{error}</p>}
-      {disabledReason && <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-500">{disabledReason}</p>}
+    <div className={`relative flex items-center min-w-0 ${className}`}>
+      <label htmlFor={id} className="sr-only">
+        Active branch
+      </label>
+      <div className="relative flex items-center">
+        <Building2 className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-slate-400" />
+        <select
+          id={id}
+          aria-label="Active branch"
+          value={currentBranch.schoolId}
+          disabled={pending}
+          className="h-8 max-w-[210px] truncate rounded-lg border border-slate-200 bg-slate-50 pl-7 pr-7 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none shadow-2xs"
+          onChange={event => {
+            const target = branches.find(branch => branch.schoolId === event.target.value);
+            if (!target || target.schoolId === currentBranch.schoolId || !onSelectBranch) return;
+            setPending(true);
+            setError(null);
+            void Promise.resolve(onSelectBranch(target))
+              .catch(() => setError("Branch switch failed."))
+              .finally(() => setPending(false));
+          }}
+        >
+          {branches.map(branch => (
+            <option key={branch.schoolId} value={branch.schoolId}>
+              {branch.name} {branch.isHeadquarters ? "(HQ)" : ""}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3 text-slate-400" />
+      </div>
+      {pending && <span role="status" className="ml-1.5 text-[10px] text-slate-500 font-medium animate-pulse">Switching…</span>}
+      {error && <span role="alert" className="ml-1.5 text-[10px] text-rose-600 font-medium">{error}</span>}
     </div>
   );
 }

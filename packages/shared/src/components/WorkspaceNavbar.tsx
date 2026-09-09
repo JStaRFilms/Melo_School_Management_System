@@ -691,6 +691,7 @@ export function WorkspaceNavbar({
           )}
 
           <div className="flex items-center gap-3">
+            {branchSwitcher}
             <div className="relative" ref={profileRef}>
               <button
                 aria-label="Account menu"
@@ -754,7 +755,7 @@ export function WorkspaceNavbar({
           </div>
         </header>
 
-        {branchSwitcher && <div className="rc-no-print shrink-0 border-b border-slate-200 bg-white px-4 py-2 sm:px-6">{branchSwitcher}</div>}
+        
         {leadershipAlerts && <div className="rc-no-print shrink-0 px-4 py-2 sm:px-6">{leadershipAlerts}</div>}
         {departureError && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{departureError}</p>}
 

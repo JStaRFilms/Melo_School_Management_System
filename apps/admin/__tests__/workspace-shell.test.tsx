@@ -117,7 +117,7 @@ describe("default-school shell", () => {
     expect(screen.queryByText("Private invoices")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Billing & Invoices" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Import Students" })).toHaveAttribute("href", "/students/import");
-    expect(screen.getByText(/Branch switching is unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText(/Branch switching is unavailable/)).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
   it("switches only on a scoped route after guard approval and scopes branding to the target", async () => {
