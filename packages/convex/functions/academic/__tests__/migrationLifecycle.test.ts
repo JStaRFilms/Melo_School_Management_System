@@ -29,6 +29,7 @@ const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as Mu
 const patchStagedRecord = migrationAutosave.patchStagedRecord as unknown as MutationRef;
 const reviewStagedRecord = migrationAutosave.reviewStagedRecord as unknown as MutationRef;
 const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
+const deleteWorkspace = migrationWorkspace.deleteWorkspace as unknown as MutationRef;
 const approveImportWorkspace = migrationMerge.approveImportWorkspace as unknown as MutationRef;
 const commitImportWorkspace = migrationMerge.commitImportWorkspace as unknown as MutationRef;
 
@@ -230,6 +231,61 @@ describe("Migration Lifecycle Engine", () => {
     expect(await t.run((ctx) => ctx.db.query("migrationFeatureSignals").collect())).toHaveLength(2);
   });
 
+  it("deletes abandoned workspaces in bounded batches but preserves commit evidence", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const workspaceId = await adminSession.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Disposable Intake",
+      mode: "school_admin",
+    });
+    await adminSession.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId,
+      records: [{
+        rowNumber: 1,
+        rawPayload: {},
+        parsedData: {
+          firstName: "Temporary",
+          lastName: "Student",
+          className: "JSS 1A",
+          gender: "Unspecified",
+        },
+        entityType: "student",
+        unrecognizedHeaders: [{ header: "Temporary Column", detectedType: "string" }],
+      }],
+    });
+
+    let done = false;
+    while (!done) {
+      const result = await adminSession.mutation(deleteWorkspace, {
+        schoolId: schoolA,
+        workspaceId,
+        confirmation: "DELETE",
+      });
+      done = result.done;
+    }
+
+    expect(await t.run((ctx) => ctx.db.get(workspaceId))).toBeNull();
+    expect(await t.run((ctx) => ctx.db.query("stagedImportRecords").take(1))).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.query("migrationFeatureSignals").take(1))).toEqual([]);
+
+    const protectedWorkspaceId = await adminSession.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Approved Intake",
+      mode: "school_admin",
+    });
+    await t.run((ctx) => ctx.db.patch(protectedWorkspaceId, {
+      status: "ready",
+      reviewApprovalReceiptId: "receipt-1",
+    }));
+    await expect(adminSession.mutation(deleteWorkspace, {
+      schoolId: schoolA,
+      workspaceId: protectedWorkspaceId,
+      confirmation: "DELETE",
+    })).rejects.toThrow("cannot be deleted");
+  });
+
   it("Authentication Guard: rejects non-admins and Platform while allowing each school's admin", async () => {
     const { t, schoolA, schoolB } = await setupTestFixture();
 
@@ -294,6 +350,52 @@ describe("Migration Lifecycle Engine", () => {
       name: "School B Import",
       mode: "school_admin",
     })).resolves.toBeDefined();
+  });
+
+  it("keeps a valid row valid when its optional admission number is removed", async () => {
+    const { t, schoolA } = await setupTestFixture();
+    const adminSession = t.withIdentity({ subject: "auth-admin-a", issuer: "https://legacy-auth.test" });
+    const workspaceId = await adminSession.mutation(createWorkspace, {
+      schoolId: schoolA,
+      name: "Admission Edit Intake",
+      mode: "school_admin",
+    });
+    await adminSession.mutation(stageRecordsBatch, {
+      schoolId: schoolA,
+      workspaceId,
+      records: [{
+        rowNumber: 1,
+        rawPayload: {},
+        parsedData: {
+          firstName: "Damilola",
+          lastName: "Bello",
+          admissionNumber: "OBCA/26/1003",
+          className: "JSS 1A",
+          gender: "Male",
+        },
+        entityType: "student",
+      }],
+    });
+    const [record] = await adminSession.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+
+    const result = await adminSession.mutation(patchStagedRecord, {
+      schoolId: schoolA,
+      recordId: record._id,
+      parsedDataPatch: { admissionNumber: "" },
+    });
+    const [updated] = await adminSession.query(getWorkspaceRecords, {
+      schoolId: schoolA,
+      workspaceId,
+    });
+
+    expect(result.validationStatus).toBe("valid");
+    expect(updated.validationStatus).toBe("valid");
+    expect(updated).not.toHaveProperty("clashConfidence");
+    expect(updated).not.toHaveProperty("clashCandidateId");
+    expect(updated).not.toHaveProperty("existingStudentId");
   });
 
   it("Clash Detection: flags warning with >= 80% confidence for similar names in same class", async () => {

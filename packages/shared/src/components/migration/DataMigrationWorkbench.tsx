@@ -9,6 +9,7 @@ import {
   Plus,
   ArrowLeft,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { WorkspaceUploadCard } from "./WorkspaceUploadCard";
 import { RosterReviewTab, StagedStudentRow } from "./Tabs/RosterReviewTab";
@@ -50,6 +51,7 @@ export function DataMigrationWorkbench({
   const [isReviewing, setIsReviewing] = useState(false);
   const [isColumnMappingOpen, setIsColumnMappingOpen] = useState(false);
   const [isResolvingClash, setIsResolvingClash] = useState(false);
+  const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null);
 
   // Queries
   const workspaces = useQuery(
@@ -92,6 +94,7 @@ export function DataMigrationWorkbench({
 
   // Mutations
   const createWorkspace = useMutation("functions/academic/migrationWorkspace:createWorkspace" as never);
+  const deleteWorkspace = useMutation("functions/academic/migrationWorkspace:deleteWorkspace" as never);
   const stageRecordsBatch = useMutation("functions/academic/migrationIngest:stageRecordsBatch" as never);
   const patchStagedRecord = useMutation("functions/academic/migrationAutosave:patchStagedRecord" as never);
   const resolveRecordClash = useMutation("functions/academic/migrationAutosave:resolveRecordClash" as never);
@@ -178,6 +181,27 @@ export function DataMigrationWorkbench({
       appToast.error(getErrorMessage(err, "Failed to resolve clash"));
     } finally {
       setIsResolvingClash(false);
+    }
+  };
+
+  const handleDeleteWorkspace = async (workspaceId: string, name: string) => {
+    if (!window.confirm(`Delete the abandoned import workspace "${name}" and all of its staged rows? This cannot be undone.`)) return;
+    setDeletingWorkspaceId(workspaceId);
+    try {
+      let done = false;
+      while (!done) {
+        const result = await deleteWorkspace({
+          schoolId,
+          workspaceId,
+          confirmation: "DELETE",
+        } as never) as { done: boolean };
+        done = result.done;
+      }
+      appToast.success(`Deleted import workspace "${name}"`);
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Could not delete import workspace"));
+    } finally {
+      setDeletingWorkspaceId(null);
     }
   };
 
@@ -393,6 +417,24 @@ export function DataMigrationWorkbench({
                           {new Date(ws.createdAt).toLocaleDateString()}
                         </span>
                       </div>
+                      {["draft", "analyzing", "reviewing", "failed", "cancelled"].includes(ws.status) && (
+                        <button
+                          type="button"
+                          disabled={deletingWorkspaceId !== null}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteWorkspace(ws._id, ws.name);
+                          }}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-700 hover:text-rose-800 disabled:opacity-50"
+                        >
+                          {deletingWorkspaceId === ws._id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          {deletingWorkspaceId === ws._id ? "Deleting…" : "Delete workspace"}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

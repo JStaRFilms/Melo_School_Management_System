@@ -74,7 +74,7 @@ export function ClashResolutionModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 leading-tight">
-                Duplicate & Name Clash Resolution
+                Possible Duplicate Review
               </h3>
               <p className="text-xs text-slate-500 font-medium">
                 Row #{record.rowNumber} • Match Confidence:{" "}
@@ -90,6 +90,10 @@ export function ClashResolutionModal({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        <p className="border-b border-slate-100 px-6 py-3 text-xs leading-relaxed text-slate-600">
+          A possible duplicate means this row resembles another student record. Nothing is merged automatically—compare both sides and choose what the final import should do.
+        </p>
 
         {/* Reason Alert */}
         {record.clashReason && (
@@ -193,8 +197,8 @@ export function ClashResolutionModal({
                 <UserPlus className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Create New Student</div>
-                <div className="text-[11px] text-slate-500">Continue to identity, class, family and numbering review</div>
+                <div className="text-xs font-bold text-slate-900 leading-tight">Continue as New Student</div>
+                <div className="text-[11px] text-slate-500">Keep this as a separate student, then review identity, class, family, and admission ID</div>
               </div>
             </button>
 
@@ -225,8 +229,8 @@ export function ClashResolutionModal({
                 <CopyMinus className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Ignore Row</div>
-                <div className="text-[11px] text-slate-500">Exclude from final merge</div>
+                <div className="text-xs font-bold text-slate-900 leading-tight">Skip This Row</div>
+                <div className="text-[11px] text-slate-500">Import nothing from this spreadsheet row</div>
               </div>
             </button>
           </div>

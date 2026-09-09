@@ -2,6 +2,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ClashResolutionModal, type StagedRecordItem } from "../Modals/ClashResolutionModal";
+import { RosterReviewTab, type StagedStudentRow } from "../Tabs/RosterReviewTab";
+import { ImportRowReviewDialog, type ImportReviewOptions } from "../Modals/ImportRowReviewDialog";
 
 const importedRecord: StagedRecordItem = {
   _id: "imported",
@@ -18,6 +20,59 @@ const importedRecord: StagedRecordItem = {
   clashReason: 'Staged duplicate (Row #4): Same class: "Secondary 3"',
   isResolved: false,
 };
+
+describe("ImportRowReviewDialog", () => {
+  it("preselects one exact prepared identity and the matched existing class", () => {
+    const record: StagedStudentRow = {
+      _id: "row-5",
+      rowNumber: 5,
+      entityType: "student",
+      parsedData: {
+        firstName: "Emeka",
+        lastName: "Eze",
+        gender: "Female",
+        className: "Nursery 1",
+        matchedClassId: "class-1",
+      },
+      validationStatus: "valid",
+      validationErrors: [],
+      isResolved: false,
+    };
+    const options: ImportReviewOptions = {
+      classes: [{ id: "class-1", name: "Nursery 1", level: "Nursery 1" }],
+      subjects: [],
+      families: [],
+      students: [],
+      availableStudentUsers: [{ id: "identity-1", name: "Emeka Eze" }],
+      sessions: [],
+      numbering: {
+        available: true,
+        nextNumber: "MCAA_MAIN-2026-1001",
+        nextSequence: 1001,
+        policyVersion: 1,
+        formatVersion: "v1",
+        counterKey: "default",
+        counterVersion: 1,
+        sessionId: "session-1",
+        resetPeriod: "session",
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      <ImportRowReviewDialog
+        record={record}
+        options={options}
+        saving={false}
+        onClose={vi.fn()}
+        onSave={async () => undefined}
+      />,
+    );
+
+    expect(html).toContain('value="identity-1" selected=""');
+    expect(html).toContain('value="class-1" selected=""');
+    expect(html).toContain("Save decision for final import");
+  });
+});
 
 describe("ClashResolutionModal", () => {
   it("shows the actual staged candidate and does not offer an existing-student merge", () => {
@@ -49,6 +104,28 @@ describe("ClashResolutionModal", () => {
     expect(html).toContain("+234800000102");
     expect(html).not.toContain("Database Match");
     expect(html).not.toContain("Merge with Existing");
+  });
+
+  it("does not present a warning without a candidate as a zero-percent clash", () => {
+    const warningRecord: StagedStudentRow = {
+      ...importedRecord,
+      entityType: "student",
+      validationStatus: "warning",
+      validationErrors: [],
+      clashConfidence: undefined,
+    };
+    const html = renderToStaticMarkup(
+      <RosterReviewTab
+        records={[warningRecord]}
+        onPatchField={async () => undefined}
+        onOpenClashModal={vi.fn()}
+        onReview={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("Review needed");
+    expect(html).not.toContain("Possible duplicate (");
+    expect(html).not.toContain("Clash (");
   });
 
   it("shows only known live-student details without copying the imported phone", () => {

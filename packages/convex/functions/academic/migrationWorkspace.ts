@@ -438,3 +438,79 @@ export const cancelWorkspace = mutation({
     return { success: true };
   },
 });
+
+/** Permanently removes an abandoned workspace without erasing commit evidence. */
+export const deleteWorkspace = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+    confirmation: v.literal("DELETE"),
+  },
+  handler: async (ctx, args) => {
+    const { workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
+    if (
+      workspace.status === "committing" ||
+      workspace.status === "merged" ||
+      workspace.reviewApprovalReceiptId ||
+      workspace.lastCommitReceiptId ||
+      workspace.mergedAt ||
+      workspace.sourceFiles.length > 0
+    ) {
+      throw new ConvexError(
+        "Completed, approved, or retained-file import history cannot be deleted",
+      );
+    }
+
+    if (workspace.status !== "cancelled") {
+      await ctx.db.patch("importWorkspaces", workspace._id, {
+        status: "cancelled",
+        updatedAt: Date.now(),
+      });
+    }
+
+    const committedRecord = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId_and_isCommitted", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("isCommitted", true),
+      )
+      .first();
+    if (committedRecord) {
+      throw new ConvexError(
+        "Import history with committed records cannot be deleted",
+      );
+    }
+
+    const records = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+      .take(100);
+    if (records.length) {
+      await Promise.all(
+        records.map((record) =>
+          ctx.db.delete("stagedImportRecords", record._id),
+        ),
+      );
+      return { done: false, deletedRecords: records.length };
+    }
+
+    const signals = await ctx.db
+      .query("migrationFeatureSignals")
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+      .take(100);
+    if (signals.length) {
+      await Promise.all(
+        signals.map((signal) =>
+          ctx.db.delete("migrationFeatureSignals", signal._id),
+        ),
+      );
+      return { done: false, deletedRecords: signals.length };
+    }
+
+    await ctx.db.delete("importWorkspaces", args.workspaceId);
+    return { done: true, deletedRecords: 0 };
+  },
+});

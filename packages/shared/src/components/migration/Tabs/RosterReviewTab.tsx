@@ -30,6 +30,7 @@ export interface StagedStudentRow {
     admissionNumber?: string;
     gender: string;
     className: string;
+    matchedClassId?: string;
     guardianName?: string;
     guardianPhone?: string;
     guardianEmail?: string;
@@ -82,6 +83,10 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
 
   return (
     <div className="space-y-4">
+      <p className="text-xs leading-relaxed text-slate-600">
+        <strong>Review row</strong> records what should happen when you commit the import. A <strong>clash</strong> is a possible duplicate found from identity evidence; nothing is merged automatically.
+      </p>
+
       {/* Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-full max-w-sm">
@@ -235,15 +240,25 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
                         <AlertCircle className="h-3 w-3" />
                         Error
                       </span>
-                    ) : rec.validationStatus === "warning" ? (
+                    ) : rec.validationStatus === "warning" &&
+                      rec.clashConfidence !== undefined &&
+                      (rec.clashCandidateId || rec.existingStudentId) ? (
                       <button
                         type="button"
                         onClick={() => onOpenClashModal(rec)}
                         className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
                       >
                         <AlertTriangle className="h-3 w-3" />
-                        <span>Clash ({rec.clashConfidence}%)</span>
+                        <span>Possible duplicate ({rec.clashConfidence}%)</span>
                       </button>
+                    ) : rec.validationStatus === "warning" ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-700"
+                        title="Review this row; no duplicate candidate is available"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Review needed
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
                         <CheckCircle2 className="h-3 w-3" />

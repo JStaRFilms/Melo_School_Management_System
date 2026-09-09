@@ -582,7 +582,16 @@ export const patchStagedRecord = mutation({
         args.parsedDataPatch.guardianPhone;
     }
     const validationErrors = baseValidationErrors({ ...record, parsedData });
-    const validationStatus = validationErrors.length ? "error" : "warning";
+    const hasClashCandidate = Boolean(
+      record.clashReason &&
+        record.clashConfidence !== undefined &&
+        (record.clashCandidateId || record.existingStudentId),
+    );
+    const validationStatus = validationErrors.length
+      ? "error"
+      : hasClashCandidate
+        ? "warning"
+        : "valid";
     const oldStatus = record.validationStatus;
     await ctx.db.patch(record._id, {
       parsedData,

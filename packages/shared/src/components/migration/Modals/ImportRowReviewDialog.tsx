@@ -88,6 +88,19 @@ export function ImportRowReviewDialog({
 }: Props) {
   const grade = record.entityType === "grade_record";
   const supplied = Boolean(record.parsedData.admissionNumber?.trim());
+  const importedName = [
+    record.parsedData.firstName,
+    record.parsedData.middleName,
+    record.parsedData.lastName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+  const matchingUsers = options.availableStudentUsers.filter(
+    (user) => user.name.trim().toLowerCase() === importedName,
+  );
+  const suggestedUserId = matchingUsers.length === 1 ? matchingUsers[0]?.id ?? "" : "";
   const [action, setAction] = useState<
     "create_new" | "merge_existing" | "ignore"
   >(
@@ -96,12 +109,16 @@ export function ImportRowReviewDialog({
       ? record.resolutionAction
       : "create_new",
   );
-  const [classId, setClassId] = useState(record.selectedClassId ?? "");
+  const [classId, setClassId] = useState(
+    record.selectedClassId ?? record.parsedData.matchedClassId ?? "",
+  );
   const [subjectId, setSubjectId] = useState(record.selectedSubjectId ?? "");
   const [studentId, setStudentId] = useState(
     record.selectedStudentId ?? record.existingStudentId ?? "",
   );
-  const [userId, setUserId] = useState(record.selectedUserId ?? "");
+  const [userId, setUserId] = useState(
+    record.selectedUserId ?? suggestedUserId,
+  );
   const [familyId, setFamilyId] = useState(record.selectedFamilyId ?? "");
   const [sessionId, setSessionId] = useState(record.selectedSessionId ?? "");
   const [termId, setTermId] = useState(record.selectedTermId ?? "");
@@ -225,11 +242,10 @@ export function ImportRowReviewDialog({
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h2 id="import-review-title" className="font-bold text-slate-900">
-              Review row #{record.rowNumber}
+              Decide what happens to row #{record.rowNumber}
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              {record.parsedData.firstName} {record.parsedData.lastName}.
-              Imported text is reference data, never a database instruction.
+              {record.parsedData.firstName} {record.parsedData.lastName}. This decision is saved for the final import; it does not change school records yet.
             </p>
           </div>
           <button
@@ -244,7 +260,7 @@ export function ImportRowReviewDialog({
         </div>
         <div className="space-y-5 p-6 text-sm">
           <label className="block font-semibold text-slate-700">
-            Reviewed action
+            What should happen to this spreadsheet row?
             <select
               aria-label="Reviewed action"
               value={action}
@@ -255,15 +271,15 @@ export function ImportRowReviewDialog({
             >
               <option value="create_new">
                 {grade
-                  ? "Create assessment record"
-                  : "Create student enrollment"}
+                  ? "Add this assessment result"
+                  : "Enroll as a new student record"}
               </option>
               {!grade && (
                 <option value="merge_existing">
-                  Merge into selected existing student
+                  Match this row to an existing student
                 </option>
               )}
-              <option value="ignore">Ignore row</option>
+              <option value="ignore">Skip this row — import nothing</option>
             </select>
           </label>
 
@@ -281,8 +297,11 @@ export function ImportRowReviewDialog({
 
           {action === "create_new" && !grade && (
             <>
+              <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+                Every student enrollment must link to a prepared school identity. Spreadsheet text does not create or grant a login account. A class or identity is preselected only when there is one exact existing match; confirm both before saving.
+              </p>
               <Select
-                label="Existing un-enrolled student identity"
+                label="Prepared student identity (required)"
                 value={userId}
                 onChange={setUserId}
                 options={options.availableStudentUsers.map((item) => ({
@@ -291,7 +310,7 @@ export function ImportRowReviewDialog({
                 }))}
               />
               <Select
-                label="Existing class placement"
+                label="Class placement (required)"
                 value={classId}
                 onChange={setClassId}
                 options={options.classes.map((item) => ({
@@ -368,21 +387,13 @@ export function ImportRowReviewDialog({
               ) : selectedNumbering.available ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="font-semibold text-slate-800">
-                    Official H4 proposal starts at{" "}
+                    Next admission ID preview:{" "}
                     <span className="font-mono">
                       {selectedNumbering.nextNumber}
-                    </span>{" "}
-                    using counter{" "}
-                    <span className="font-mono">
-                      {selectedNumbering.counterKey}
                     </span>
-                    .
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
-                    Approval calculates an exact sequence-ordered proposal for
-                    every missing ID. It is allocated transactionally only
-                    during commit and fails stale if enrollment changes the
-                    counter.
+                    The final ID is reserved only when this import is committed. If another student is enrolled first, you will be asked to review again so IDs cannot collide.
                   </p>
                 </div>
               ) : (
@@ -461,7 +472,7 @@ export function ImportRowReviewDialog({
             disabled={!canSave || saving}
             className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
           >
-            {saving ? "Validating…" : "Save reviewed decision"}
+            {saving ? "Validating…" : "Save decision for final import"}
           </button>
         </div>
       </form>
