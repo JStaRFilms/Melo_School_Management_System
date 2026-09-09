@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MobileProgressIndicator } from "@school/shared";
 import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
@@ -302,27 +301,6 @@ export function SessionCreationModal({
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
-            <MobileProgressIndicator
-              mode="sections"
-              topOffset="top-0"
-              sections={[
-                { id: "identity", title: "Session details", isValid: Boolean(sessionName.trim()) },
-                { id: "dates", title: "Valid dates", isValid: Boolean(startDate && endDate && parseLocalDate(endDate) > parseLocalDate(startDate)), hasError: Boolean(startDate && endDate && parseLocalDate(endDate) <= parseLocalDate(startDate)) },
-              ]}
-              draftStatus={persistentDraft.status}
-              lastSavedAt={persistentDraft.lastSavedAt}
-            />
-            <PersistentFormDraftControls
-              draft={persistentDraft}
-              formTitle="academic session"
-              isDirty={sessionDirty}
-              excludedFieldsNotice="This private draft stores only the session name, dates, and setup choices. It contains no credentials, documents, or provider payloads."
-              onDiscard={async () => {
-                await persistentDraft.handleDiscardDraft();
-                resetForm();
-                setDraftInstanceKey((key) => key + 1);
-              }}
-            />
             <div className="space-y-1.5">
               <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block pl-0.5">
                 Session Name
@@ -396,21 +374,36 @@ export function SessionCreationModal({
               </label>
             </div>
 
-            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => void requestClose()}
-                className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer text-center"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="w-full sm:w-auto rounded-xl bg-brand-primary px-5 py-2.5 sm:py-2 text-xs font-bold text-white shadow-xs hover:opacity-90 transition cursor-pointer disabled:opacity-50 text-center"
-              >
-                {isSaving ? "Creating..." : "Create Session"}
-              </button>
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center">
+                <PersistentFormDraftControls
+                  draft={persistentDraft}
+                  formTitle="academic session"
+                  isDirty={sessionDirty}
+                  variant="compact"
+                  onDiscard={async () => {
+                    await persistentDraft.handleDiscardDraft();
+                    resetForm();
+                    setDraftInstanceKey((key) => key + 1);
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 sm:gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => void requestClose()}
+                  className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="w-full sm:w-auto rounded-xl bg-brand-primary px-5 py-2.5 sm:py-2 text-xs font-bold text-white shadow-xs hover:opacity-90 transition cursor-pointer disabled:opacity-50 text-center"
+                >
+                  {isSaving ? "Creating..." : "Create Session"}
+                </button>
+              </div>
             </div>
           </form>
         </div>

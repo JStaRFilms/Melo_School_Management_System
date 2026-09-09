@@ -28,6 +28,7 @@ vi.mock("@school/shared", () => ({
   AuthoritativeForbiddenView: () => <p>Forbidden</p>,
   MeloLoader: ({ message }: { message: string }) => <p>{message}</p>,
   SchoolSuspendedLockScreen: () => <p>Suspended</p>,
+  getWorkspaceModuleDenial: () => null,
   WorkspaceNavbar: ({ renderLink, children }: { renderLink: (props: { href: string; className?: string; children: ReactNode }) => ReactNode; children: ReactNode }) => <nav>{renderLink({ href: "/billing?tab=invoices#current", children: "Billing" })}{children}</nav>,
 }));
 

@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
+import { SettingsNavigationTabs } from "../components/SettingsNavigationTabs";
 
 type Frequency = "continuous" | "session" | "calendar";
 type Status = "active" | "paused";
@@ -110,8 +111,16 @@ export default function AdmissionNumberingPage() {
   };
 
   return (
-    <main className="mx-auto max-w-3xl space-y-6 p-4">
-      <h1 className="text-xl font-semibold">Admission numbering</h1>
+    <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6 pb-20">
+      <div className="space-y-5 border-b border-slate-200/80 pb-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Admission Numbering</h1>
+          <p className="mt-1 text-xs text-slate-500">
+            Define number sequences, format patterns, and branch or group counters.
+          </p>
+        </div>
+        <SettingsNavigationTabs />
+      </div>
       <p>
         Every counter belongs to this branch. Level counters take precedence;
         otherwise the selected branch default applies. Group inheritance can

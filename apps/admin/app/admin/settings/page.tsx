@@ -9,6 +9,7 @@ import { deriveSchoolTheme, normalizeThemeColor } from "@school/shared/theme";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { BranchBrandingEditor } from "../group/GroupBranding";
+import { SettingsNavigationTabs } from "./components/SettingsNavigationTabs";
 import { useAuth } from "@/AuthProvider";
 import {
   Building2,
@@ -268,40 +269,39 @@ export default function SchoolSettingsPage() {
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6 pb-20 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">School Profile & Branding</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Manage your official institution identity, crest logo, custom palette, and letterhead contact details.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <a className="text-sm underline" href="/admin/settings/email-domains">Institutional email policy and review</a>
-            <a className="text-sm underline" href="/admin/settings/group-defaults">Group default choices</a>
+      <div className="space-y-5 border-b border-slate-200/80 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950">School Profile & Branding</h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Manage your official institution identity, crest logo, custom palette, and letterhead contact details.
+            </p>
           </div>
-        </div>
 
-        <button
-          type="button"
-          onClick={handleSaveProfile}
-          disabled={
-            isSaving ||
-            (!canEditProfile && !canManageBranding) ||
-            (canManageBranding && !themeCanSave)
-          }
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Saving Profile...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              Save All Changes
-            </>
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={handleSaveProfile}
+            disabled={
+              isSaving ||
+              (!canEditProfile && !canManageBranding) ||
+              (canManageBranding && !themeCanSave)
+            }
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving Profile...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                Save All Changes
+              </>
+            )}
+          </button>
+        </div>
+        <SettingsNavigationTabs />
       </div>
 
       <form onSubmit={handleSaveProfile} className="space-y-6">

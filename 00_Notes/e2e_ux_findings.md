@@ -549,3 +549,17 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Removed artificial validation check in `createFeePlan` (`packages/convex/functions/billing.ts`) that previously threw an error when `billingMode === "class_default"` had `targetClassIds: []`.
   - Downstream invoicing (`createInvoiceFromFeePlan`) and bulk distribution (`applyFeePlanToClassStudents`) already support `targetClassIds.length === 0` as universal templates.
   - Added an informative blue indicator pill in `FeePlanForm.tsx` when "All Classes (Universal Template)" is selected: *"Universal Template: This fee plan can be billed to students in any class across the school."*
+
+### 7. Form Draft Ergonomics & Unified Settings Sub-Navigation
+- [x] **Session Creation Modal Draft Box De-sloppification (`SessionCreationModal.tsx`, `PersistentFormDraftControls.tsx`)**
+  - Removed bulky, developer-focused draft notice box and paragraph disclaimer from the Session Creation modal body.
+  - Implemented `variant="compact"` on `PersistentFormDraftControls`, embedding a subtle inline draft status indicator in the modal footer next to action buttons.
+  - Preserved full state restoration, departure guarding (`useDirtyForm`), and draft conflict recovery without visual clutter.
+- [x] **Unified Settings Sub-Navigation Tabs (`SettingsNavigationTabs.tsx`, `/admin/settings/*`)**
+  - Replaced raw underlined HTML anchor links dumped under the settings header with a clean, branded pill tab bar (`SettingsNavigationTabs`).
+  - Integrated across all 4 settings sub-routes:
+    - *School Profile & Branding* (`/admin/settings`)
+    - *Institutional Email* (`/admin/settings/email-domains`)
+    - *Group Defaults* (`/admin/settings/group-defaults`)
+    - *Admission Numbering* (`/admin/settings/admission-numbering`)
+  - Active tab highlighting, icons, responsive scroll, and cohesive page headers matching the Melo design system.

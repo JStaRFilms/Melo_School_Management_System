@@ -7,6 +7,7 @@ import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
 import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { SettingsNavigationTabs } from "../components/SettingsNavigationTabs";
 import { useDraftConnection } from "@/useDraftConnection";
 import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 
@@ -153,8 +154,15 @@ function EmailWorkbench({ schoolId, accountId }: { schoolId: Id<"schools">; acco
     studentTemplate: data.policy?.studentTemplate ?? "firstname.lastname", expectedVersion: data.policy?.version ?? 0 } : null);
   const selected = people.find(p => p.personId === personId);
   const duplicateDomain = domains.some(d => d.schoolId === schoolId && d.domain === domain.trim().toLowerCase());
-  return <main className="mx-auto max-w-4xl space-y-6 p-4 text-slate-900">
-    <header className="space-y-2"><h1 className="text-xl font-semibold">Institutional email policy and review</h1>
+  return <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6 pb-20 text-slate-900">
+    <div className="space-y-5 border-b border-slate-200/80 pb-5">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-950">Institutional email policy and review</h1>
+        <p className="mt-1 text-xs text-slate-500">Configure institutional domains, mailbox policies, and email prefix review.</p>
+      </div>
+      <SettingsNavigationTabs />
+    </div>
+    <header className="space-y-2">
       <p>{data.groupName ? `Group: ${data.groupName}. ` : "Independent branch. "}Addresses share one permanent namespace wherever the same domain is used. Inheriting a domain does not move its ownership to this branch.</p>
       <p className="rounded border border-amber-300 bg-amber-50 p-3">Provider activation unavailable. Domain control, licensing, delegated authorization, provider-specific syntax, DPA/security and jurisdiction/minor-notice decisions remain gated. Melo operates no mail server. Registration, approval and lifecycle controls below update Melo metadata only.</p>
       <p>Login-only is not an inbox and approval does not change the canonical login, person, or membership. Do not send mail to login-only identifiers.</p>
