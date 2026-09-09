@@ -49,6 +49,14 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [x] **Dedicated School Profile & Institution Settings (`/admin/settings`)**
   - Centralized institution settings: Name, Motto/Tagline, Crest Logo uploader, Brand Color Palette picker with curated presets, Official Contact info (Email, Phone, Campus Address).
   - Protected read-only tenant slug badge.
+- [x] **Admission Numbering Policy UI Overhaul (`/admin/settings/admission-numbering`)**
+  - Modernized unstyled raw developer form into a premium, card-based configuration center adhering to the Melo Slate/Indigo design system.
+  - Added real-time "Live Identifier Preview" banner highlighting dynamic tokens (`{SCHOOL}`, `{CAMPUS}`, `{LEVEL}`, `{YEAR}`, `{SEQ:4}`) and next-in-line sequence counters.
+  - Replaced naked input dumps and camelCase labels with clean descriptive form fields, token insertion pill buttons, and responsive grid layouts.
+  - Designed high-clarity safety confirmation callout guarding against accidental counter regression or duplicate admission IDs.
+  - Transformed unstyled bullet list of named sequences into structured status cards with level badges, active/paused indicators, quick edit actions, and clean empty states.
+  - Added enterprise group governance styling with inheritance badges and centralized format synchronization controls.
+  - Protected `SettingsNavigationTabs` against null pathname values in test and SSR environments.
 - [x] **Route Protection for Disabled Tier Modules**
   - Added layout guards on `/billing` and `/academic/knowledge/*` with user-friendly "Module Inactive" screen.
 
