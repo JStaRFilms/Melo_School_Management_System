@@ -747,6 +747,64 @@ export const listStudentsByClass = query({
   },
 });
 
+async function reconcileActiveSessionSubjectSelections(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    studentId: Id<"students">;
+    targetClassId: Id<"classes">;
+  },
+) {
+  const [activeSessions, targetOfferings] = await Promise.all([
+    ctx.db
+      .query("academicSessions")
+      .withIndex("by_school_active", (q) =>
+        q.eq("schoolId", args.schoolId).eq("isActive", true),
+      )
+      .take(11),
+    ctx.db
+      .query("classSubjects")
+      .withIndex("by_class", (q) => q.eq("classId", args.targetClassId))
+      .take(201),
+  ]);
+  if (activeSessions.length > 10)
+    throw new ConvexError("Active academic session configuration requires review");
+  if (targetOfferings.length > 200)
+    throw new ConvexError("Target class subject directory requires review");
+
+  const targetSubjectIds = new Set(
+    targetOfferings
+      .filter((offering) => offering.schoolId === args.schoolId)
+      .map((offering) => String(offering.subjectId)),
+  );
+  const now = Date.now();
+  for (const session of activeSessions) {
+    const selections = await ctx.db
+      .query("studentSubjectSelections")
+      .withIndex("by_student_and_session", (q) =>
+        q.eq("studentId", args.studentId).eq("sessionId", session._id),
+      )
+      .take(201);
+    if (selections.length > 200)
+      throw new ConvexError("Student subject selections require review");
+    const selectedInTarget = new Set<string>();
+    for (const selection of selections) {
+      const subjectId = String(selection.subjectId);
+      if (!targetSubjectIds.has(subjectId) || selectedInTarget.has(subjectId)) {
+        await ctx.db.delete(selection._id);
+        continue;
+      }
+      selectedInTarget.add(subjectId);
+      if (selection.classId !== args.targetClassId) {
+        await ctx.db.patch(selection._id, {
+          classId: args.targetClassId,
+          updatedAt: now,
+        });
+      }
+    }
+  }
+}
+
 export const updateStudent = mutation({
   args: {
     overrideReason: v.optional(v.string()),
@@ -910,6 +968,11 @@ export const updateStudent = mutation({
         .toLowerCase()}@students.local`;
     }
     const uploadedPhotoMetadata = await getValidatedPhotoMetadata(ctx, args);
+    await reconcileActiveSessionSubjectSelections(ctx, {
+      schoolId,
+      studentId: student._id,
+      targetClassId: nextClass._id,
+    });
 
     const nextStudentRecord: any = {
       schoolId: student.schoolId,
@@ -2287,7 +2350,9 @@ export const getClassStudentSubjectMatrix = query({
       ]);
 
     for (const selection of allSelections) {
-      studentIdSet.add(String(selection.studentId));
+      if (!sessionDoc.isActive || studentIdSet.has(String(selection.studentId))) {
+        studentIdSet.add(String(selection.studentId));
+      }
     }
 
     // Build outgoing promotion lookup maps
