@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
 import { useDirtyForm } from "@school/shared/drafts";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -96,8 +96,8 @@ export function StudentProfileEditor({
   const archiveStudent = useMutation(
     "functions/academic/studentEnrollment:archiveStudent" as never,
   );
-  const generateStudentPhotoUploadUrl = useMutation(
-    "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never,
+  const saveStudentPhoto = useAction(
+    "functions/academic/studentEnrollment:saveStudentPhoto" as never,
   );
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -115,7 +115,6 @@ export function StudentProfileEditor({
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [clearPhoto, setClearPhoto] = useState(false);
   const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
@@ -161,7 +160,6 @@ export function StudentProfileEditor({
     setGuardianPhone(profile.guardianPhone ?? "");
     setAddress(profile.address ?? "");
     setPhotoFile(null);
-    setClearPhoto(false);
     setIsPhotoProcessing(false);
   }, []);
 
@@ -171,19 +169,18 @@ export function StudentProfileEditor({
 
   const previewUrl = useMemo(() => {
     if (photoFile) return URL.createObjectURL(photoFile);
-    if (clearPhoto) return null;
     return studentProfile?.photoUrl ?? null;
-  }, [clearPhoto, photoFile, studentProfile?.photoUrl]);
+  }, [photoFile, studentProfile?.photoUrl]);
 
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || studentProfile?.displayName || "Unnamed Student";
   const admissionNumberChanged = Boolean(
     studentProfile &&
-      admissionNumber.trim() !== (studentProfile.admissionNumber ?? ""),
+    admissionNumber.trim() !== studentProfile.admissionNumber,
   );
   const profileDirty = Boolean(studentProfile && (
     firstName !== (studentProfile.firstName ?? "") ||
     lastName !== (studentProfile.lastName ?? "") ||
-    admissionNumber !== studentProfile.admissionNumber ||
+    admissionChanged(admissionNumber, studentProfile.admissionNumber) ||
     classId !== studentProfile.classId ||
     houseName !== (studentProfile.houseName ?? "") ||
     gender !== (studentProfile.gender ?? "") ||
@@ -191,7 +188,7 @@ export function StudentProfileEditor({
     guardianName !== (studentProfile.guardianName ?? "") ||
     guardianPhone !== (studentProfile.guardianPhone ?? "") ||
     address !== (studentProfile.address ?? "") ||
-    photoFile !== null || clearPhoto ||
+    photoFile !== null ||
     overrideReason !== "" || overrideConfirmed ||
     overrideCounterDecision !== "" || advanceCounterTo !== ""
   ));
@@ -290,12 +287,6 @@ export function StudentProfileEditor({
 
     setIsSaving(true);
     try {
-      const uploadedPhotoMetadata = photoFile
-        ? await uploadStudentPhoto(
-            photoFile,
-            () => generateStudentPhotoUploadUrl({} as never) as Promise<string>,
-          )
-        : null;
       await updateStudent({
         studentId,
         name: displayName,
@@ -346,21 +337,29 @@ export function StudentProfileEditor({
         guardianName: guardianName || null,
         guardianPhone: guardianPhone || null,
         address: address || null,
-        photoStorageId: clearPhoto
-          ? null
-          : (uploadedPhotoMetadata?.storageId ?? undefined),
-        photoFileName: clearPhoto
-          ? null
-          : (uploadedPhotoMetadata?.fileName ?? undefined),
-        photoContentType: clearPhoto
-          ? null
-          : (uploadedPhotoMetadata?.contentType ?? undefined),
       } as never);
 
-      onNotice({
-        tone: "success",
-        message: `${displayName} updated.`,
-      });
+      let photoUploadError: string | null = null;
+      if (photoFile) {
+        try {
+          await uploadStudentPhoto(photoFile, studentId, saveStudentPhoto);
+          setPhotoFile(null);
+        } catch (photoErr) {
+          photoUploadError = getUserFacingErrorMessage(photoErr, "Photo upload failed.");
+        }
+      }
+
+      if (photoUploadError) {
+        onNotice({
+          tone: "warning",
+          message: `${displayName} updated, but photo upload failed (${photoUploadError}). You can retry uploading the photo.`,
+        });
+      } else {
+        onNotice({
+          tone: "success",
+          message: `${displayName} updated.`,
+        });
+      }
     } catch (error) {
       onNotice({
         tone: "error",
@@ -394,85 +393,65 @@ export function StudentProfileEditor({
     }
   };
 
-  const isSidebar = variant !== "inline";
-
   return (
-    <div className="space-y-6 pb-10">
-      {studentId && transferAccess?.allowed && (
-        <Link
-          className="block text-sm underline"
-          href={`/academic/students/transfers?student=${encodeURIComponent(studentId)}`}
-        >
-          Within-group transfer history
-        </Link>
-      )}
-      {/* Tab Switcher - Only in Sidebar/Default Desktop mode */}
-      {isSidebar && (
-        <div className="flex p-1 bg-slate-100/60 rounded-xl mb-2">
-          <button
-            type="button"
-            onClick={() => onTabChange?.("profile")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
-              activeTab === "profile"
-                ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
-                : "text-slate-400 hover:text-slate-600"
-            }`}
-          >
-            <UserCog className="h-3.5 w-3.5" />
-            Identity
-          </button>
-          <button
-            type="button"
-            onClick={() => onTabChange?.("family")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all ${
-              activeTab === "family"
-                ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
-                : "text-slate-400 hover:text-slate-600"
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            Family
-          </button>
+    <div className="space-y-6">
+      {variant !== "sheet" && (
+        <div className="flex items-center justify-between pb-4 border-b border-slate-200/60">
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
+              <UserCog className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
+                Student Profile
+              </h2>
+              <p className="text-xs font-medium text-slate-500">
+                Editing <span className="font-bold text-slate-900">{displayName}</span> ({studentProfile.className})
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Profile / Family Tabs */}
+      <div className="flex rounded-xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => onTabChange?.("profile")}
+          className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            activeTab === "profile"
+              ? "bg-white text-slate-900 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          Profile Details
+        </button>
+        <button
+          type="button"
+          onClick={() => onTabChange?.("family")}
+          className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            activeTab === "family"
+              ? "bg-white text-slate-900 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          Family & Contacts
+        </button>
+      </div>
+
       {activeTab === "profile" ? (
         <div className="space-y-6">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-                  <UserCog className="h-4 w-4" />
-                </div>
-                <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
-                  Edit Identity
-                </h2>
-              </div>
-
-              {studentProfile.enrollmentStatus === "graduated" && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-bold text-emerald-900">
-                  🎓 Graduated / Alumnus
-                </span>
-              )}
-            </div>
-            <p className="text-xs font-medium text-slate-500 line-clamp-2">
-              Modify core records and credentials for{" "}
-              <span className="font-bold text-slate-900">{displayName}</span>.
-            </p>
-          </div>
-
           {studentProfile.enrollmentStatus === "graduated" && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block">
-                    Alumni Lifecycle Status
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                    Graduated Alumnus
                   </span>
-                  <p className="text-[11px] text-emerald-950 font-medium">
-                    Graduated from{" "}
-                    {studentProfile.graduatingClassName ||
-                      studentProfile.className}{" "}
-                    ({studentProfile.graduatingSessionName || "Final Session"}).
+                  <p className="mt-1 text-xs text-slate-600">
+                    Graduated
+                    {studentProfile.graduatingSessionName ? ` in ${studentProfile.graduatingSessionName}` : ""}
+                    {studentProfile.graduatingClassName ? ` from ${studentProfile.graduatingClassName}` : ""}.
                   </p>
                 </div>
                 {onViewAttestation && (
@@ -491,15 +470,13 @@ export function StudentProfileEditor({
           <div className="space-y-6">
             <StudentPhotoPanel
               name={displayName}
-              uploadAvailable={false}
+              uploadAvailable={true}
               previewUrl={previewUrl}
               onPhotoChange={(file) => {
                 setPhotoFile(file);
-                setClearPhoto(false);
               }}
               onRemovePhoto={() => {
                 setPhotoFile(null);
-                setClearPhoto(true);
               }}
               resetKey={studentProfile._id}
               onProcessingChange={setIsPhotoProcessing}
@@ -621,4 +598,8 @@ export function StudentProfileEditor({
       />
     </div>
   );
+}
+
+function admissionChanged(current: string, original: string) {
+  return current.trim() !== original;
 }

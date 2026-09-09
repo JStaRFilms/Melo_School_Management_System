@@ -295,6 +295,7 @@ export function StudentCreationForm({
 
         <StudentPhotoPanel
           name={[studentFirstName, studentLastName].filter(Boolean).join(" ") || "Student photo"}
+          uploadAvailable={true}
           previewUrl={photoPreviewUrl}
           onPhotoChange={onPhotoChange}
           onRemovePhoto={onRemovePhoto}

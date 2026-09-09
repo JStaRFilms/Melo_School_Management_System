@@ -33,7 +33,7 @@ export function StudentPhotoPanel({
   resetKey,
   onProcessingChange,
   onValidationError,
-  uploadAvailable = false,
+  uploadAvailable = true,
 }: StudentPhotoPanelProps) {
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [crop, setCrop] = useState<StudentPhotoCrop>(defaultCrop);
@@ -148,6 +148,7 @@ export function StudentPhotoPanel({
     setIsCropping(false);
     setShowCropAdjuster(false);
     onProcessingChangeRef.current?.(false);
+    onPhotoChange(null);
     onRemovePhoto();
   };
 
@@ -222,11 +223,11 @@ export function StudentPhotoPanel({
                 <span>Change</span>
               </button>
             )}
-            {uploadAvailable && (
+            {uploadAvailable && Boolean(sourceFile) && (
               <button
                 type="button"
                 onClick={handleRemovePhoto}
-                title="Remove Photo"
+                title="Clear Selection"
                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors shrink-0 shadow-sm"
               >
                 <Trash2 className="h-3 w-3" />

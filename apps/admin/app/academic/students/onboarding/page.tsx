@@ -56,8 +56,8 @@ export default function StudentOnboardingPage() {
   const upsertStudentFamilyLink = useMutation(
     "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
   );
-  const generateStudentPhotoUploadUrl = useMutation(
-    "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
+  const saveStudentPhoto = useAction(
+    "functions/academic/studentEnrollment:saveStudentPhoto" as never
   );
   const upsertPortalCredentials = useAction(
     "functions/academic/studentEnrollment:upsertPortalCredentials" as never
@@ -143,11 +143,7 @@ export default function StudentOnboardingPage() {
   const firstNameInputRef = useRef<HTMLInputElement>(null);
   const [enrollmentRequestKey, setEnrollmentRequestKey] = useState(newEnrollmentRequestKey);
   const createdStudent = useRef<string | null>(null);
-  const uploadedPhotoMetadata = useRef<{
-    storageId: string;
-    fileName: string;
-    contentType: string;
-  } | null | undefined>(undefined);
+  const photoUploaded = useRef(false);
   const [followUpPending, setFollowUpPending] = useState(false);
   const [draftInstanceKey, setDraftInstanceKey] = useState(0);
   const draftData = useMemo<DraftPayload<"student_onboarding">>(() => ({
@@ -289,7 +285,7 @@ export default function StudentOnboardingPage() {
 
   const resetForm = () => {
     createdStudent.current = null;
-    uploadedPhotoMetadata.current = undefined;
+    photoUploaded.current = false;
     setFollowUpPending(false);
     setFirstName("");
     setLastName("");
@@ -405,17 +401,7 @@ export default function StudentOnboardingPage() {
     setIsSubmitting(true);
     setCredentialSummary(null);
 
-    let uploadedPhoto = false;
     try {
-      if (uploadedPhotoMetadata.current === undefined) {
-        uploadedPhotoMetadata.current = studentPhotoFile
-          ? await uploadStudentPhoto(studentPhotoFile, () =>
-              generateStudentPhotoUploadUrl({} as never) as Promise<string>
-            )
-          : null;
-      }
-      uploadedPhoto = Boolean(uploadedPhotoMetadata.current);
-
       const createdStudentId =
         createdStudent.current ??
         ((await createStudent({
@@ -477,13 +463,25 @@ export default function StudentOnboardingPage() {
         guardianName: guardianName.trim() || null,
         guardianPhone: guardianPhone.trim() || null,
         address: address.trim() || null,
-        photoStorageId: uploadedPhotoMetadata.current?.storageId,
-        photoFileName: uploadedPhotoMetadata.current?.fileName,
-        photoContentType: uploadedPhotoMetadata.current?.contentType,
       } as never)) as string);
       createdStudent.current = createdStudentId;
       setFollowUpPending(true);
 
+      let photoUploadFailed = false;
+      let photoUploadErrorMsg = "";
+      if (studentPhotoFile && !photoUploaded.current) {
+        try {
+          await uploadStudentPhoto(
+            studentPhotoFile,
+            createdStudentId,
+            saveStudentPhoto,
+          );
+          photoUploaded.current = true;
+        } catch (photoErr) {
+          photoUploadFailed = true;
+          photoUploadErrorMsg = getUserFacingErrorMessage(photoErr, "Photo upload failed.");
+        }
+      }
       let familyLinkResult: FamilyLinkResult | null = null;
       if (shouldLinkParent && normalizedParentFirstName && normalizedParentLastName) {
         familyLinkResult = (await upsertStudentFamilyLink({
@@ -534,22 +532,27 @@ export default function StudentOnboardingPage() {
       draft.submissionSucceeded();
       resetForm();
       setDraftInstanceKey((key) => key + 1);
-      showNotice({
-        tone: "success",
-        message: `${normalizedFirstName} ${normalizedLastName} enrolled to ${selectedClassName}${shouldLinkParent ? " · parent linked" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? " · portal ready" : ""}.`,
-      });
+      if (photoUploadFailed) {
+        showNotice({
+          tone: "warning",
+          message: `${normalizedFirstName} ${normalizedLastName} enrolled to ${selectedClassName}${shouldLinkParent ? " · parent linked" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? " · portal ready" : ""}, but photo upload failed (${photoUploadErrorMsg}). You can upload the photo from the student profile.`,
+        });
+      } else {
+        showNotice({
+          tone: "success",
+          message: `${normalizedFirstName} ${normalizedLastName} enrolled to ${selectedClassName}${shouldLinkParent ? " · parent linked" : ""}${provisionStudentPortalAccess || provisionParentPortalAccess ? " · portal ready" : ""}.`,
+        });
+      }
       firstNameInputRef.current?.focus();
     } catch (error) {
       draft.submissionFailed();
       showNotice({
         tone: "error",
         message: createdStudent.current
-          ? "The student was created. Family or portal setup is incomplete. Retry in this tab to finish setup for the same student; do not start a second enrollment."
+          ? "The student was created. Family, portal setup, or photo upload is incomplete. Retry in this tab to finish setup for the same student; do not start a second enrollment."
           : getUserFacingErrorMessage(
               error,
-              uploadedPhoto
-                ? "The photo uploaded, but we couldn't finish creating the student."
-                : "We couldn't create the student right now.",
+              "We couldn't create the student right now.",
             ),
       });
     } finally {

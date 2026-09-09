@@ -2,40 +2,32 @@
 
 import { getStudentPhotoValidationError } from "./studentPhotoValidation";
 
-export type UploadedStudentPhoto = {
-  storageId: string;
-  fileName: string;
-  contentType: string;
+export type SaveStudentPhotoArgs = {
+  studentId: any;
+  bytes: ArrayBuffer;
+  photoFileName: string;
+  photoContentType: string;
 };
+
+export type SaveStudentPhotoAction =
+  | ((args: SaveStudentPhotoArgs) => Promise<unknown>)
+  | ((args: never) => Promise<unknown>);
 
 export async function uploadStudentPhoto(
   file: File,
-  generateUploadUrl: () => Promise<string>
-): Promise<UploadedStudentPhoto> {
+  studentId: any,
+  saveStudentPhoto: SaveStudentPhotoAction,
+): Promise<void> {
   const validationError = getStudentPhotoValidationError(file);
   if (validationError) {
     throw new Error(validationError);
   }
 
-  const uploadUrl = await generateUploadUrl();
-  const uploadResponse = await fetch(uploadUrl, {
-    method: "POST",
-    headers: { "Content-Type": file.type },
-    body: file,
+  const bytes = await file.arrayBuffer();
+  await (saveStudentPhoto as (args: unknown) => Promise<unknown>)({
+    studentId,
+    bytes,
+    photoFileName: file.name,
+    photoContentType: file.type,
   });
-
-  if (!uploadResponse.ok) {
-    throw new Error("Photo upload failed");
-  }
-
-  const uploadPayload = (await uploadResponse.json()) as { storageId?: string };
-  if (!uploadPayload.storageId) {
-    throw new Error("Photo upload failed");
-  }
-
-  return {
-    storageId: uploadPayload.storageId,
-    fileName: file.name,
-    contentType: file.type,
-  };
 }

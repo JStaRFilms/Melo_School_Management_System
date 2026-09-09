@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { isValidEmailAddress } from "@school/auth";
 import {
   cleanEmailInput,
@@ -107,8 +107,8 @@ function StudentsPageContent() {
   const createStudent = useMutation(
     "functions/academic/studentEnrollment:createStudent" as never
   );
-  const generateStudentPhotoUploadUrl = useMutation(
-    "functions/academic/studentEnrollment:generateStudentPhotoUploadUrl" as never
+  const saveStudentPhoto = useAction(
+    "functions/academic/studentEnrollment:saveStudentPhoto" as never
   );
   const setStudentSubjectSelections = useMutation(
     "functions/academic/studentEnrollment:setStudentSubjectSelections" as never
@@ -790,11 +790,6 @@ function StudentsPageContent() {
     setIsSubmitting(true);
 
     try {
-      const uploadedPhotoMetadata = studentPhotoFile
-        ? await uploadStudentPhoto(studentPhotoFile, () =>
-            generateStudentPhotoUploadUrl({} as never) as Promise<string>
-          )
-        : null;
       const createdStudentId = (await createStudent({
         requestKey: enrollmentRequestKey,
         name: normalizedStudentName,
@@ -847,9 +842,6 @@ function StudentsPageContent() {
         guardianName: trimmedGuardianName || null,
         guardianPhone: trimmedGuardianPhone || null,
         address: trimmedAddress || null,
-        photoStorageId: uploadedPhotoMetadata?.storageId ?? undefined,
-        photoFileName: uploadedPhotoMetadata?.fileName ?? undefined,
-        photoContentType: uploadedPhotoMetadata?.contentType ?? undefined,
         parentLink:
           shouldLinkParent && normalizedParentFirstName && normalizedParentLastName
             ? {
@@ -864,6 +856,19 @@ function StudentsPageContent() {
         confirmDuplicateLink: confirmDuplicateLink || undefined,
       } as never)) as string;
 
+      let photoUploadError: string | null = null;
+      if (studentPhotoFile) {
+        try {
+          await uploadStudentPhoto(
+            studentPhotoFile,
+            createdStudentId,
+            saveStudentPhoto,
+          );
+        } catch (photoErr) {
+          photoUploadError = getUserFacingErrorMessage(photoErr, "Photo upload failed.");
+        }
+      }
+
       if (draftClosure) familyDraft.submissionSucceeded();
       resetStudentCreationForm();
       setFamilyDraftInstanceKey((key) => key + 1);
@@ -871,13 +876,21 @@ function StudentsPageContent() {
       setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
       updateUrlParams({ studentId: createdStudentId });
-      showNotice({
-        tone: missingOptionalFields.length > 0 ? "warning" : "success",
-        message:
-          missingOptionalFields.length > 0
-            ? `${normalizedStudentName} added. Missing: ${joinFieldLabels(missingOptionalFields)}.`
-            : `${normalizedStudentName} added successfully to ${selectedClassName}${shouldLinkParent ? " · family linked" : ""}.`,
-      });
+
+      if (photoUploadError) {
+        showNotice({
+          tone: "warning",
+          message: `${normalizedStudentName} added, but photo upload failed (${photoUploadError}). You can upload the photo from the student profile.`,
+        });
+      } else {
+        showNotice({
+          tone: missingOptionalFields.length > 0 ? "warning" : "success",
+          message:
+            missingOptionalFields.length > 0
+              ? `${normalizedStudentName} added. Missing: ${joinFieldLabels(missingOptionalFields)}.`
+              : `${normalizedStudentName} added successfully to ${selectedClassName}${shouldLinkParent ? " · family linked" : ""}.`,
+        });
+      }
       if (!isMobile) {
         studentNameInputRef.current?.focus();
       }
