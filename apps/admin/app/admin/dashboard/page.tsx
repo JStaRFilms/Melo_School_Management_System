@@ -144,8 +144,7 @@ export default function AdminDashboardPage() {
   const billing = useQuery("functions/billing:getBillingDashboard" as never, {} as never) as BillingDashboard | undefined;
   const [eventsFromTimestamp] = useState(() => Date.now());
   const events = useQuery(
-    "functions/academic/events:listEvents" as never,
-    { fromTimestamp: eventsFromTimestamp } as never
+    "functions/academic/events:listEvents" as never
   ) as SchoolEvent[] | undefined;
   const auditEvents = useQuery(
     "functions/academic/academicSetup:listAcademicTimelineAuditEvents" as never
@@ -162,6 +161,10 @@ export default function AdminDashboardPage() {
   const activeTeachers = useMemo(() => teachers?.filter((t) => !t.isArchived) ?? [], [teachers]);
   const activeClasses = useMemo(() => classes?.filter((c) => !c.isArchived) ?? [], [classes]);
   const activeSubjects = useMemo(() => subjects?.filter((s) => !s.isArchived) ?? [], [subjects]);
+  const upcomingEvents = useMemo(
+    () => events?.filter((event) => event.endDate >= eventsFromTimestamp) ?? [],
+    [events, eventsFromTimestamp]
+  );
 
   const totalEnrolledStudents = useMemo(
     () => activeClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0),
@@ -746,8 +749,8 @@ export default function AdminDashboardPage() {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                   Upcoming Events
                 </span>
-                {events.length > 0 ? (
-                  events.slice(0, 2).map((ev) => (
+                {upcomingEvents.length > 0 ? (
+                  upcomingEvents.slice(0, 2).map((ev) => (
                     <div
                       key={ev._id}
                       className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50/60"
