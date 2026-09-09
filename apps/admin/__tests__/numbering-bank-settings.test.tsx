@@ -10,6 +10,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import NumberingPage from "../app/admin/settings/admission-numbering/page";
 import { BankAccountsPanel } from "../app/billing/components/BankAccountsPanel";
+import { appToast } from "@school/shared";
 
 const mockPolicyState = {
   policy: null as unknown,
@@ -27,17 +28,8 @@ const mockPolicyState = {
 };
 
 const mocks = vi.hoisted(() => ({ allowed: true, save: vi.fn() }));
-const mockToast = vi.hoisted(() => ({
-  error: vi.fn(),
-  success: vi.fn(),
-  warning: vi.fn(),
-  info: vi.fn(),
-  dismiss: vi.fn(),
-}));
-
-vi.mock("@school/shared/toast", () => ({
-  appToast: mockToast,
-}));
+const toastErrorSpy = vi.spyOn(appToast, "error");
+const toastSuccessSpy = vi.spyOn(appToast, "success");
 
 vi.mock("@/AuthProvider", () => ({
   useAuth: () => ({
@@ -64,8 +56,8 @@ afterEach(() => {
   cleanup();
   mocks.allowed = true;
   mocks.save.mockReset();
-  mockToast.error.mockReset();
-  mockToast.success.mockReset();
+  toastErrorSpy.mockReset();
+  toastSuccessSpy.mockReset();
   mockPolicyState.branchCounter = null;
 });
 it("shows explicit denied settings without mounting sensitive inputs", () => {
@@ -104,7 +96,7 @@ it("submits the reviewed numbering version and exact next sequence and preserves
   );
   await waitFor(() => {
     expect(screen.getByRole("status").textContent).toContain("Policy changed");
-    expect(mockToast.error).toHaveBeenCalledWith(
+    expect(toastErrorSpy).toHaveBeenCalledWith(
       "Policy updated elsewhere",
       expect.objectContaining({
         description: expect.stringContaining("Policy changed"),
@@ -146,7 +138,7 @@ it("cleans raw Convex errors into human-friendly messages and offers sequence re
     expect(status.textContent).not.toContain("Called by client");
 
     // Ensure the unified toast was triggered with human-friendly title, description, and action
-    expect(mockToast.error).toHaveBeenCalledWith(
+    expect(toastErrorSpy).toHaveBeenCalledWith(
       "Sequence cannot be moved backwards",
       expect.objectContaining({
         description: expect.stringContaining("cannot be set lower than #1000"),
@@ -158,7 +150,7 @@ it("cleans raw Convex errors into human-friendly messages and offers sequence re
   });
 
   // Verify invoking the toast action button resets draft sequence to minimum
-  const toastAction = mockToast.error.mock.calls[0]?.[1]?.action;
+  const toastAction = toastErrorSpy.mock.calls[0]?.[1]?.action;
   expect(toastAction?.label).toBe("Reset to #1000");
   act(() => { toastAction?.onClick(); });
   expect(

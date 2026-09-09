@@ -592,3 +592,13 @@ This document tracks all observations, issues, UX refinements, completed changes
     - *Group Defaults* (`/admin/settings/group-defaults`)
     - *Admission Numbering* (`/admin/settings/admission-numbering`)
   - Active tab highlighting, icons, responsive scroll, and cohesive page headers matching the Melo design system.
+
+### 11. Admission Numbering Policy & Feedback Notifications (/admin/settings/admission-numbering)
+- [x] **Convex Monotonic Sequence Error Sanitization & Unified Sonner Toast Routing**
+  - Scrubbed raw internal Convex mutation metadata (`[CONVEX M(functions/academic/admissionNumbers:updateAdmissionNumberPolicy)] [Request ID: ...] Server Error Uncaught ConvexError: The next sequence cannot be moved backwards Called by client`) through `getUserFacingErrorMessage` from `@school/shared`.
+  - Converted developer-jargon errors into human-friendly domain notifications:
+    - Sequence Moved Backwards: *"Sequence cannot be moved backwards"* with clear explanation that the next sequence cannot be lower than `#[min]` to avoid duplicate student IDs.
+    - Concurrency Conflict: *"Policy updated elsewhere"* advising admin to review latest settings before saving.
+  - Replaced intrusive in-page layout-shifting feedback banners with the project's unified toast notification system (`appToast` from `@school/shared`), featuring interactive recovery actions (`Reset to #[min]`, `Reload`).
+  - Preserved screen-reader accessibility and testing predictability with an `sr-only` `role="status"` live region.
+  - Added proactive client-side guardrails on form submit and interactive token insertion buttons with selection caret restoration.
