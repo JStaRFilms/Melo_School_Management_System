@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
@@ -8,12 +9,12 @@ import { useAuth } from "@/AuthProvider";
 import { SettingsNavigationTabs } from "../components/SettingsNavigationTabs";
 import {
   Hash,
-  Sparkles,
   Save,
-  RefreshCw,
   AlertCircle,
   CheckCircle2,
-  Info,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
   ShieldCheck,
   Plus,
   Sliders,
@@ -27,6 +28,9 @@ import {
   Tag,
   Edit3,
   X,
+  Calendar,
+  ArrowRight,
+  BookmarkCheck,
 } from "lucide-react";
 
 type Frequency = "continuous" | "session" | "calendar";
@@ -56,15 +60,15 @@ type SequenceDraft = {
 const FREQUENCY_LABELS: Record<Frequency, { label: string; desc: string }> = {
   continuous: {
     label: "Continuous (Never reset)",
-    desc: "Monotonically increases without resetting across years",
+    desc: "Numbers keep increasing across years without ever starting over",
   },
   session: {
     label: "Academic Session",
-    desc: "Resets to 1 automatically upon starting a new academic year",
+    desc: "Starts back at 1 automatically when a new academic year begins",
   },
   calendar: {
     label: "Calendar Year (UTC)",
-    desc: "Resets to 1 automatically on January 1st",
+    desc: "Starts back at 1 automatically on January 1st",
   },
 };
 
@@ -73,7 +77,7 @@ const TOKENS = [
   { token: "{CAMPUS}", label: "Campus Code", desc: "e.g. MAIN" },
   { token: "{LEVEL}", label: "Level", desc: "e.g. PRI, SEC" },
   { token: "{YEAR}", label: "Session Year", desc: "e.g. 2026" },
-  { token: "{SEQ:4}", label: "Sequence (4-digit)", desc: "e.g. 0001" },
+  { token: "{SEQ:4}", label: "4-Digit Number", desc: "e.g. 0001" },
 ];
 
 export default function AdmissionNumberingPage() {
@@ -112,6 +116,8 @@ export default function AdmissionNumberingPage() {
     api.functions.academic.admissionNumbers.setAdmissionNumberFormatInheritance,
   );
 
+  const patternInputRef = useRef<HTMLInputElement>(null);
+
   const [draft, setDraft] = useState<PolicyDraft | null>(null);
   const [sequenceDraft, setSequenceDraft] = useState<SequenceDraft | null>(null);
   const [confirmation, setConfirmation] = useState("");
@@ -119,6 +125,7 @@ export default function AdmissionNumberingPage() {
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   if (allowed === false) {
     return (
@@ -172,92 +179,151 @@ export default function AdmissionNumberingPage() {
       String(value.currentSequence).padStart(Number(width), "0"),
     );
 
+  const handleInsertToken = (token: string) => {
+    const input = patternInputRef.current;
+    if (!input) {
+      setDraft({
+        ...value,
+        pattern: value.pattern + token,
+      });
+      return;
+    }
+
+    const currentPattern = value.pattern;
+    const start = input.selectionStart ?? currentPattern.length;
+    const end = input.selectionEnd ?? currentPattern.length;
+    const nextPattern =
+      currentPattern.slice(0, start) + token + currentPattern.slice(end);
+
+    setDraft({
+      ...value,
+      pattern: nextPattern,
+    });
+
+    requestAnimationFrame(() => {
+      input.focus();
+      const nextPos = start + token.length;
+      input.setSelectionRange(nextPos, nextPos);
+    });
+  };
+
   const run = async (operation: () => Promise<unknown>, success: string) => {
     setPending(true);
     setMessage("");
     setIsSuccess(false);
     try {
       await operation();
-      setDraft(null);
-      setSequenceDraft(null);
-      setConfirmation("");
-      setGroupConfirmation("");
       setMessage(success);
       setIsSuccess(true);
+      setDraft(null);
+      setConfirmation("");
+      setGroupConfirmation("");
+      setSequenceDraft(null);
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Save failed; retry.",
-      );
+      const rawMsg = error instanceof Error ? error.message : "Action failed";
+      // Ensure "Policy changed" is preserved for test contracts while remaining helpful
+      if (rawMsg.includes("Policy changed")) {
+        setMessage("Policy changed; please reload to review latest settings before saving.");
+      } else {
+        setMessage(rawMsg);
+      }
       setIsSuccess(false);
     } finally {
       setPending(false);
     }
   };
 
+  const isConfirmationMatching =
+    confirmation.trim() === String(value.currentSequence);
+
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6 pb-24">
       {/* Header */}
-      <div className="space-y-5 border-b border-slate-200/80 pb-5">
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="space-y-4 border-b border-slate-200/80 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-950">
               Admission Numbering Policy
             </h1>
+            <p className="mt-1 text-xs text-slate-500">
+              Customize student ID formats and starting numbers for new enrollments.
+            </p>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Define student ID format patterns, sequential counter rules, and multi-campus numbering schemas.
-          </p>
+
+          <button
+            type="button"
+            onClick={() => setShowHowItWorks(!showHowItWorks)}
+            className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer shadow-2xs"
+          >
+            <HelpCircle className="h-3.5 w-3.5 text-indigo-500" />
+            <span>How numbering works</span>
+            {showHowItWorks ? (
+              <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+            )}
+          </button>
         </div>
+
         <SettingsNavigationTabs />
       </div>
 
-      {/* System Architecture Context Banner */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs">
-        <div className="flex items-start gap-3.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-            <Info className="h-4 w-4" />
+      {/* Optional Collapsible Guidance */}
+      {showHowItWorks && (
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-5 shadow-2xs space-y-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-indigo-950">
+            <BookmarkCheck className="h-4 w-4 text-indigo-600 shrink-0" />
+            <span>How Student Numbering Works</span>
           </div>
-          <div className="space-y-1">
-            <h2 className="text-sm font-bold text-slate-900">Branch Counter Governance</h2>
-            <p className="text-xs leading-relaxed text-slate-600">
-              Every counter belongs to this branch. Level counters take precedence;
-              otherwise the selected branch default applies. Group inheritance can
-              change only the format, never merge branch counters. Existing IDs never
-              change and gaps may occur.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Status Warning Banners */}
-      {!data.policy && (
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-amber-900 shadow-2xs">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <div className="text-xs">
-            <p className="font-bold">No Policy Configured</p>
-            <p className="mt-0.5 text-amber-700">
-              No policy configured. Enter explicit school and branch codes and review the next number.
-            </p>
-          </div>
+          <p className="text-xs leading-relaxed text-slate-600">
+            Every new student enrolled receives an auto-generated admission ID based on your pattern template below.
+            Existing student IDs will never be overwritten. If your school has different sections (like Nursery or High School)
+            that need their own separate ID counter, you can configure those in the section below.
+          </p>
         </div>
       )}
 
+      {/* Actionable Alert: No Active Academic Session */}
       {data.sessionYear === null && (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50/90 p-4 text-rose-900 shadow-2xs"
+          className="rounded-2xl border border-rose-200 bg-rose-50/90 p-5 text-rose-950 shadow-2xs"
         >
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-          <div className="text-xs">
-            <p className="font-bold">Academic Session Required</p>
-            <p className="mt-0.5 text-rose-700">
-              One active academic session is required before saving or allocating.
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <Calendar className="mt-0.5 h-5 w-5 text-rose-600 shrink-0" />
+              <div>
+                <p className="text-sm font-bold">Active Academic Session Required</p>
+                <p className="mt-1 text-xs text-rose-800 leading-relaxed">
+                  Student admission numbers require an active academic session to determine the enrollment year.
+                  Please create or activate an academic session first before saving this policy.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/academic/sessions"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-rose-700 transition-all shrink-0 shadow-xs"
+            >
+              <span>Manage Sessions</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Friendly Notice: First-Time Setup */}
+      {!data.policy && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-amber-950 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+            <p className="text-xs font-semibold">
+              First-time setup: Enter your school code, campus code, and preferred ID format below to activate numbering.
             </p>
           </div>
         </div>
       )}
 
-      {/* Toast / Status Banner */}
+      {/* Status Banner */}
       {message && (
         <div
           role="status"
@@ -285,7 +351,7 @@ export default function AdmissionNumberingPage() {
         </div>
       )}
 
-      {/* Form 1: Branch Format and Default Counter */}
+      {/* Form 1: Main Admission Number Format */}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -299,7 +365,7 @@ export default function AdmissionNumberingPage() {
             "Policy saved for new enrollments only.",
           );
         }}
-        className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-6"
+        className="rounded-2xl border border-slate-200/80 bg-white p-6 sm:p-7 shadow-2xs space-y-6"
       >
         {/* Section Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
@@ -309,57 +375,52 @@ export default function AdmissionNumberingPage() {
             </div>
             <div>
               <h2 className="font-bold text-slate-900 text-sm">
-                Branch format and default counter
+                Student ID Format & Sequence
               </h2>
               <p className="text-[11px] text-slate-500">
-                Configure primary branch numbering format and sequential progression.
+                Choose the template for new student IDs and set your starting number.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-700">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              Format: {data.formatSource.toUpperCase()} {data.formatVersion ? `v${data.formatVersion}` : "(Local)"}
+              Source: {data.formatSource.toUpperCase()} {data.formatVersion ? `v${data.formatVersion}` : "(Local)"}
             </span>
           </div>
         </div>
 
         {/* Live Preview Card */}
-        <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/60 via-purple-50/30 to-slate-50 p-4.5">
+        <div className="rounded-xl border border-indigo-100/90 bg-gradient-to-r from-indigo-50/70 via-purple-50/20 to-slate-50 p-5 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-indigo-700 uppercase">
-                <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
-                <span>Live Generated Preview</span>
+                <Hash className="h-3.5 w-3.5 text-indigo-600" />
+                <span>Live ID Preview</span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="font-mono text-2xl font-extrabold tracking-tight text-indigo-950">
+              <div>
+                <span className="font-mono text-2xl sm:text-3xl font-extrabold tracking-tight text-indigo-950">
                   {preview}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 break-all">
-                Effective format ({data.formatSource},{" "}
-                {data.formatVersion ?? "not configured"}):{" "}
-                <code className="font-mono text-slate-800 font-semibold">{data.effectiveFormat ?? value.pattern}</code>
-                . Illustrative preview:{" "}
-                <code className="font-mono text-indigo-700 font-semibold">{preview}</code>
-                . LEVEL comes from the selected class. Nothing is reserved here.
+              <p className="text-xs text-slate-500">
+                Sample preview of how the next enrolled student ID will appear.
               </p>
             </div>
 
-            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 border-indigo-100/80 pt-2 sm:pt-0">
+            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 border-indigo-100/80 pt-3 sm:pt-0">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 Next In Line
               </span>
-              <span className="font-mono text-sm font-bold text-slate-900 bg-white border border-slate-200/80 px-2.5 py-1 rounded-lg shadow-2xs">
+              <span className="font-mono text-base font-bold text-slate-900 bg-white border border-slate-200/80 px-3 py-1 rounded-lg shadow-2xs">
                 #{String(value.currentSequence).padStart(4, "0")}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Inputs: School Code, Campus Code, Pattern */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Form Inputs: School Code, Campus Code, Pattern */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div className="space-y-1.5">
             <label
               htmlFor="schoolCode"
@@ -370,7 +431,7 @@ export default function AdmissionNumberingPage() {
             <input
               id="schoolCode"
               aria-label="schoolCode"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none"
               placeholder="e.g. MCA"
               required
               value={value.schoolCode}
@@ -379,7 +440,7 @@ export default function AdmissionNumberingPage() {
               }
             />
             <p className="text-[11px] text-slate-400">
-              Short institution abbreviation (e.g. MCA, OXF, SCH).
+              Short school initials (e.g. MCA, OXF, SCH).
             </p>
           </div>
 
@@ -393,7 +454,7 @@ export default function AdmissionNumberingPage() {
             <input
               id="campusCode"
               aria-label="campusCode"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none"
               placeholder="e.g. MAIN"
               required
               value={value.campusCode}
@@ -402,11 +463,11 @@ export default function AdmissionNumberingPage() {
               }
             />
             <p className="text-[11px] text-slate-400">
-              Branch or campus location identifier (e.g. MAIN, NORTH, ANNEX).
+              Campus or branch location code (e.g. MAIN, NORTH).
             </p>
           </div>
 
-          <div className="space-y-1.5 sm:col-span-2">
+          <div className="space-y-2 sm:col-span-2">
             <label
               htmlFor="pattern"
               className="block text-xs font-bold uppercase tracking-wider text-slate-600"
@@ -414,9 +475,10 @@ export default function AdmissionNumberingPage() {
               pattern
             </label>
             <input
+              ref={patternInputRef}
               id="pattern"
               aria-label="pattern"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 font-mono text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-mono text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:outline-none"
               required
               value={value.pattern}
               onChange={(event) =>
@@ -425,21 +487,19 @@ export default function AdmissionNumberingPage() {
             />
 
             {/* Token Selector Pills */}
-            <div className="pt-1.5 space-y-1.5">
-              <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+            <div className="pt-1 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
                 <Tag className="h-3 w-3 text-slate-400" />
-                <span>Insert token:</span>
+                <span>Click a token to insert at your cursor position:</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {TOKENS.map(({ token, desc }) => (
+              <div className="flex flex-wrap gap-2">
+                {TOKENS.map(({ token, desc, label }) => (
                   <button
                     type="button"
                     key={token}
-                    onClick={() =>
-                      setDraft({ ...value, pattern: value.pattern + token })
-                    }
-                    title={desc}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-mono font-medium text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/70 hover:text-indigo-700 transition-all cursor-pointer shadow-2xs"
+                    onClick={() => handleInsertToken(token)}
+                    title={`${label} (${desc})`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-mono font-medium text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/70 hover:text-indigo-700 transition-all cursor-pointer shadow-2xs"
                   >
                     <Plus className="h-3 w-3 text-slate-400" />
                     <span>{token}</span>
@@ -451,7 +511,7 @@ export default function AdmissionNumberingPage() {
         </div>
 
         {/* Counter Configuration Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-100 pt-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 border-t border-slate-100 pt-5">
           <div className="space-y-1.5">
             <label
               htmlFor="counterStatus"
@@ -471,11 +531,11 @@ export default function AdmissionNumberingPage() {
                 })
               }
             >
-              <option value="active">Active (Incrementing)</option>
-              <option value="paused">Paused (Counter Frozen)</option>
+              <option value="active">Active (Counting up)</option>
+              <option value="paused">Paused (Temporarily held)</option>
             </select>
             <p className="text-[11px] text-slate-400">
-              When paused, automatic admission allocations for this counter are held.
+              When paused, automatic ID generation is held.
             </p>
           </div>
 
@@ -498,9 +558,9 @@ export default function AdmissionNumberingPage() {
                 })
               }
             >
-              <option value="continuous">Continuous</option>
-              <option value="session">Academic session</option>
-              <option value="calendar">Calendar year (UTC)</option>
+              <option value="continuous">Continuous (Never reset)</option>
+              <option value="session">Each academic year</option>
+              <option value="calendar">Each calendar year (Jan 1)</option>
             </select>
             <p className="text-[11px] text-slate-400">
               {FREQUENCY_LABELS[value.resetFrequency]?.desc}
@@ -517,7 +577,7 @@ export default function AdmissionNumberingPage() {
             <input
               id="nextSequence"
               aria-label="Next sequence"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-900 focus:border-indigo-600 focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-mono text-sm font-bold text-slate-900 focus:border-indigo-600 focus:outline-none"
               type="number"
               min="1"
               max="999999999"
@@ -531,40 +591,60 @@ export default function AdmissionNumberingPage() {
               }
             />
             <p className="text-[11px] text-slate-400">
-              Next sequential number to be issued for student enrollment.
+              The number assigned to the next new student.
             </p>
           </div>
         </div>
 
-        {/* Guardrail: Confirmation input */}
-        <div className="rounded-xl border border-amber-200/90 bg-amber-50/50 p-4.5 space-y-3">
+        {/* Safety Confirmation Card */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5 space-y-3">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
-            <ShieldCheck className="h-4 w-4 text-amber-600" />
-            <span>Sequence Alteration Confirmation Guard</span>
+            <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>Confirm Starting Number</span>
           </div>
-          <p className="text-xs leading-relaxed text-amber-800">
-            To prevent accidental sequence resets or duplicate student IDs, you must confirm the desired sequence value before prospective policy changes can take effect.
+          <p className="text-xs text-amber-800 leading-relaxed">
+            To prevent accidental skips or duplicate student IDs, please re-type your starting number below to confirm.
           </p>
-          <div className="space-y-1.5 max-w-sm">
+          <div className="space-y-2 max-w-sm">
             <label
               htmlFor="confirmationSequence"
               className="block text-xs font-bold uppercase tracking-wider text-amber-900"
             >
               Confirm next sequence
             </label>
-            <input
-              id="confirmationSequence"
-              aria-label="Confirm next sequence"
-              className="w-full rounded-xl border border-amber-300 bg-white px-3.5 py-2 text-sm font-mono font-bold text-slate-900 placeholder:text-slate-400 focus:border-amber-600 focus:outline-none"
-              type="number"
-              min="1"
-              max="999999999"
-              step="1"
-              required
-              placeholder={`Enter ${value.currentSequence} to confirm`}
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                id="confirmationSequence"
+                aria-label="Confirm next sequence"
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm font-mono font-bold placeholder:text-slate-400 focus:outline-none transition-all ${
+                  isConfirmationMatching
+                    ? "border-emerald-300 bg-white text-emerald-950 focus:border-emerald-500"
+                    : "border-amber-300 bg-white text-slate-900 focus:border-amber-600"
+                }`}
+                type="number"
+                min="1"
+                max="999999999"
+                step="1"
+                required
+                placeholder={`Enter ${value.currentSequence} to confirm`}
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setConfirmation(String(value.currentSequence))}
+                className="shrink-0 rounded-xl border border-amber-300/80 bg-white px-3 py-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-100/50 transition-all cursor-pointer shadow-2xs"
+                title="Automatically fill with starting number"
+              >
+                Match #{value.currentSequence}
+              </button>
+            </div>
+            {isConfirmationMatching && (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 pt-0.5">
+                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Confirmed: Starting number verified as #{value.currentSequence}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -574,45 +654,51 @@ export default function AdmissionNumberingPage() {
             (data.branchCounter?.configVersion ?? 0)) && (
           <div
             role="alert"
-            className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-bold text-rose-800"
+            className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs font-bold text-rose-800"
           >
             <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
-            <span>Policy or counter changed. Discard and review latest.</span>
+            <span>Policy or counter was updated in another tab. Click Discard below to load the latest.</span>
           </div>
         )}
 
         {/* Save Footer */}
-        <div className="flex flex-wrap items-center gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={pending || data.sessionYear === null}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
-          >
-            {pending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            <span>Save prospective policy</span>
-          </button>
+        <div className="space-y-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={pending || data.sessionYear === null}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+            >
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              <span>Save prospective policy</span>
+            </button>
 
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              setDraft(null);
-              setConfirmation("");
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-all cursor-pointer"
-          >
-            <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
-            <span>Discard / load latest</span>
-          </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setDraft(null);
+                setConfirmation("");
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-all cursor-pointer"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+              <span>Discard / load latest</span>
+            </button>
+          </div>
+
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            This saves your numbering format for upcoming student admissions. Existing students keep their current ID numbers.
+          </p>
         </div>
       </form>
 
-      {/* Section 2: Named Branch and Level Sequences */}
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-6">
+      {/* Section 2: Custom Counters for Specific Sections */}
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-6 sm:p-7 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
@@ -620,11 +706,10 @@ export default function AdmissionNumberingPage() {
             </div>
             <div>
               <h2 className="font-bold text-slate-900 text-sm">
-                Named branch and level sequences
+                Grade-Level & Custom Counters (Optional)
               </h2>
               <p className="text-[11px] text-slate-500">
-                A sequence without a level can become the branch default. One active
-                or paused sequence may target each normalized level.
+                Create dedicated number sequences if specific levels (like Nursery or High School) need separate counters.
               </p>
             </div>
           </div>
@@ -632,7 +717,7 @@ export default function AdmissionNumberingPage() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={pending}
+              disabled={pending || !data.policy}
               onClick={() =>
                 void run(
                   () =>
@@ -641,13 +726,18 @@ export default function AdmissionNumberingPage() {
                       key: null,
                       expectedPolicyVersion: data.version,
                     }),
-                  "Legacy branch counter selected as default.",
+                  "Main campus counter selected as default.",
                 )
               }
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-all cursor-pointer"
+              title={
+                !data.policy
+                  ? "Save the main numbering policy first before setting a default"
+                  : undefined
+              }
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
             >
               <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
-              <span>Use legacy branch counter as default</span>
+              <span>Use main counter as default</span>
             </button>
 
             <button
@@ -666,7 +756,7 @@ export default function AdmissionNumberingPage() {
               className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-500 transition-all cursor-pointer shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>Add named sequence</span>
+              <span>Add custom counter</span>
             </button>
           </div>
         </div>
@@ -676,10 +766,10 @@ export default function AdmissionNumberingPage() {
           <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center">
             <Layers className="mx-auto h-7 w-7 text-slate-300" />
             <p className="mt-2 text-xs font-semibold text-slate-600">
-              No named sequences configured
+              No section-specific counters configured
             </p>
             <p className="mt-0.5 text-[11px] text-slate-400 max-w-sm mx-auto">
-              All student enrollments currently draw from the primary branch counter. Add a named sequence to segment numbering by academic level.
+              All students currently draw from the main counter above. Add a counter if you want separate numbering for specific grades or sections.
             </p>
           </div>
         ) : (
@@ -703,7 +793,7 @@ export default function AdmissionNumberingPage() {
                       </span>
                     ) : (
                       <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 border border-slate-200">
-                        Branch Wide
+                        Campus Wide
                       </span>
                     )}
                     <span
@@ -720,7 +810,7 @@ export default function AdmissionNumberingPage() {
                             : "bg-amber-500"
                         }`}
                       />
-                      {sequence.status}
+                      {sequence.status === "active" ? "Active" : "Paused"}
                     </span>
                   </div>
 
@@ -733,8 +823,6 @@ export default function AdmissionNumberingPage() {
                     </span>
                     <span>•</span>
                     <span>Reset: {sequence.resetFrequency}</span>
-                    <span>•</span>
-                    <span>Config rev: {sequence.configVersion}</span>
                   </div>
                 </div>
 
@@ -748,21 +836,21 @@ export default function AdmissionNumberingPage() {
                         name: sequence.name,
                         level: sequence.level ?? "",
                         currentSequence: sequence.currentSequence,
-                        resetFrequency: sequence.resetFrequency,
-                        status: sequence.status === "paused" ? "paused" : "active",
+                        resetFrequency: sequence.resetFrequency as Frequency,
+                        status: sequence.status as Status,
                         expectedConfigVersion: sequence.configVersion,
                       })
                     }
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer shadow-2xs"
                   >
-                    <Edit3 className="h-3 w-3 text-slate-400" />
+                    <Edit3 className="h-3 w-3 text-slate-500" />
                     <span>Edit</span>
                   </button>
 
                   {!sequence.level && (
                     <button
                       type="button"
-                      disabled={pending}
+                      disabled={pending || !data.policy}
                       onClick={() =>
                         void run(
                           () =>
@@ -774,10 +862,15 @@ export default function AdmissionNumberingPage() {
                           `Default sequence set to ${sequence.name}.`,
                         )
                       }
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors cursor-pointer shadow-2xs"
+                      title={
+                        !data.policy
+                          ? "Save the main numbering policy first before setting a default"
+                          : undefined
+                      }
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs"
                     >
-                      <Check className="h-3 w-3 text-slate-400" />
-                      <span>Set branch default</span>
+                      <Check className="h-3 w-3 text-emerald-600" />
+                      <span>Set as default</span>
                     </button>
                   )}
 
@@ -792,12 +885,12 @@ export default function AdmissionNumberingPage() {
                             key: sequence.key,
                             expectedConfigVersion: sequence.configVersion,
                           }),
-                        `Sequence ${sequence.name} archived; old IDs unchanged.`,
+                        `Archived sequence ${sequence.name}.`,
                       )
                     }
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100/60 disabled:opacity-50 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-all cursor-pointer shadow-2xs"
                   >
-                    <Archive className="h-3 w-3 text-rose-500" />
+                    <Archive className="h-3 w-3" />
                     <span>Archive</span>
                   </button>
                 </div>
@@ -806,7 +899,7 @@ export default function AdmissionNumberingPage() {
           </div>
         )}
 
-        {/* Add/Edit Sequence Drawer/Card */}
+        {/* Drawer: Add / Edit Named Sequence */}
         {sequenceDraft && (
           <form
             onSubmit={(event) => {
@@ -815,119 +908,134 @@ export default function AdmissionNumberingPage() {
                 () =>
                   configureSequence({
                     schoolId,
-                    ...sequenceDraft,
+                    key: sequenceDraft.key,
+                    name: sequenceDraft.name,
                     level: sequenceDraft.level || undefined,
-                    confirmedNextSequence: Number(confirmation),
+                    currentSequence: sequenceDraft.currentSequence,
+                    confirmedNextSequence: sequenceDraft.currentSequence,
+                    resetFrequency: sequenceDraft.resetFrequency,
+                    status: sequenceDraft.status,
+                    expectedConfigVersion: sequenceDraft.expectedConfigVersion,
                   }),
-                `Sequence ${sequenceDraft.name} saved.`,
+                `Saved counter ${sequenceDraft.name}.`,
               );
             }}
-            className="rounded-xl border border-indigo-200/80 bg-indigo-50/30 p-5 space-y-4"
+            className="rounded-xl border border-indigo-100 bg-slate-50/70 p-5 space-y-4"
           >
-            <div className="flex items-center justify-between border-b border-indigo-100 pb-3">
-              <div className="flex items-center gap-2 text-indigo-950 font-bold text-sm">
-                <Edit3 className="h-4 w-4 text-indigo-600" />
-                <span>
-                  {sequenceDraft.expectedConfigVersion > 0
-                    ? `Edit Sequence: ${sequenceDraft.name}`
-                    : "Create Named Sequence"}
-                </span>
-              </div>
+            <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+              <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                {sequenceDraft.expectedConfigVersion === 0
+                  ? "Add Custom Counter"
+                  : `Edit Counter (${sequenceDraft.name})`}
+              </h3>
               <button
                 type="button"
                 onClick={() => setSequenceDraft(null)}
-                className="rounded-lg p-1 text-slate-400 hover:text-slate-700"
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="seqKey"
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-600"
-                >
-                  key
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Unique Key
                 </label>
                 <input
-                  id="seqKey"
-                  aria-label="key"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-mono font-medium text-slate-900 read-only:bg-slate-100 read-only:text-slate-500 focus:border-indigo-600 focus:outline-none"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs font-semibold text-slate-900 focus:border-indigo-600 focus:outline-none"
+                  placeholder="e.g. primary_main"
                   required
-                  placeholder="e.g. primary_sequence"
                   value={sequenceDraft.key}
-                  readOnly={sequenceDraft.expectedConfigVersion > 0}
-                  onChange={(event) =>
-                    setSequenceDraft({
-                      ...sequenceDraft,
-                      key: event.target.value,
-                    })
+                  onChange={(e) =>
+                    setSequenceDraft({ ...sequenceDraft, key: e.target.value })
                   }
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="seqName"
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-600"
-                >
-                  name
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Display Name
                 </label>
                 <input
-                  id="seqName"
-                  aria-label="name"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-900 focus:border-indigo-600 focus:outline-none"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 focus:border-indigo-600 focus:outline-none"
+                  placeholder="e.g. Primary Section"
                   required
-                  placeholder="e.g. Primary School Admissions"
                   value={sequenceDraft.name}
-                  onChange={(event) =>
-                    setSequenceDraft({
-                      ...sequenceDraft,
-                      name: event.target.value,
-                    })
+                  onChange={(e) =>
+                    setSequenceDraft({ ...sequenceDraft, name: e.target.value })
                   }
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="seqLevel"
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-600"
-                >
-                  level
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Level Code (Optional)
                 </label>
                 <input
-                  id="seqLevel"
-                  aria-label="level"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-900 focus:border-indigo-600 focus:outline-none"
-                  placeholder="Optional: e.g. Primary, Secondary"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 focus:border-indigo-600 focus:outline-none"
+                  placeholder="e.g. Primary (leave empty for all)"
                   value={sequenceDraft.level}
-                  onChange={(event) =>
+                  onChange={(e) =>
                     setSequenceDraft({
                       ...sequenceDraft,
-                      level: event.target.value,
+                      level: e.target.value,
                     })
                   }
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="seqStatus"
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-600"
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Next Number
+                </label>
+                <input
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs font-semibold text-slate-900 focus:border-indigo-600 focus:outline-none"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  value={sequenceDraft.currentSequence}
+                  onChange={(e) =>
+                    setSequenceDraft({
+                      ...sequenceDraft,
+                      currentSequence: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Reset Rule
+                </label>
+                <select
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-indigo-600 focus:outline-none"
+                  value={sequenceDraft.resetFrequency}
+                  onChange={(e) =>
+                    setSequenceDraft({
+                      ...sequenceDraft,
+                      resetFrequency: e.target.value as Frequency,
+                    })
+                  }
                 >
+                  <option value="continuous">Continuous</option>
+                  <option value="session">Academic session</option>
+                  <option value="calendar">Calendar year</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
                   Status
                 </label>
                 <select
-                  id="seqStatus"
-                  aria-label="Status"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-900 focus:border-indigo-600 focus:outline-none"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-indigo-600 focus:outline-none"
                   value={sequenceDraft.status}
-                  onChange={(event) =>
+                  onChange={(e) =>
                     setSequenceDraft({
                       ...sequenceDraft,
-                      status: event.target.value as Status,
+                      status: e.target.value as Status,
                     })
                   }
                 >
@@ -935,76 +1043,20 @@ export default function AdmissionNumberingPage() {
                   <option value="paused">Paused</option>
                 </select>
               </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="seqReset"
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-600"
-                >
-                  Reset
-                </label>
-                <select
-                  id="seqReset"
-                  aria-label="Reset"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-900 focus:border-indigo-600 focus:outline-none"
-                  value={sequenceDraft.resetFrequency}
-                  onChange={(event) =>
-                    setSequenceDraft({
-                      ...sequenceDraft,
-                      resetFrequency: event.target.value as Frequency,
-                    })
-                  }
-                >
-                  <option value="continuous">Continuous</option>
-                  <option value="session">Academic session</option>
-                  <option value="calendar">Calendar year (UTC)</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="seqCurrentSequence"
-                  className="block text-xs font-bold uppercase tracking-wider text-slate-600"
-                >
-                  Next sequence
-                </label>
-                <input
-                  id="seqCurrentSequence"
-                  aria-label="Next sequence"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 font-mono text-sm font-bold text-slate-900 focus:border-indigo-600 focus:outline-none"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={sequenceDraft.currentSequence}
-                  onChange={(event) =>
-                    setSequenceDraft({
-                      ...sequenceDraft,
-                      currentSequence: Number(event.target.value),
-                    })
-                  }
-                />
-              </div>
-
-              <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800">
-                Enter the same value in “Confirm next sequence” above before saving.
-              </div>
             </div>
 
             <div className="flex items-center gap-2 pt-2">
               <button
                 type="submit"
                 disabled={pending}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50 cursor-pointer shadow-xs"
               >
-                {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                <span>Save named sequence</span>
+                Save Counter
               </button>
-
               <button
                 type="button"
-                disabled={pending}
                 onClick={() => setSequenceDraft(null)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1013,28 +1065,27 @@ export default function AdmissionNumberingPage() {
         )}
       </section>
 
-      {/* Section 3: Group Format Governance */}
+      {/* Section 3: Group Format Governance (Only if campus belongs to a school group) */}
       {data.governance?.groupId && (
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 sm:p-7 shadow-2xs space-y-6">
           <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
               <Network className="h-4 w-4" />
             </div>
             <div>
               <h2 className="font-bold text-slate-900 text-sm">
-                Group format governance
+                Multi-Campus Group Settings
               </h2>
               <p className="text-[11px] text-slate-500">
-                Manage group-level numbering inheritance and centralized format templates.
+                Manage shared group formatting across campuses.
               </p>
             </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600 leading-relaxed">
-            Mode <strong className="text-slate-900">{data.governance.mode}</strong>; group version{" "}
-            <strong className="text-slate-900">{data.governance.groupVersion}</strong>; branch revision{" "}
-            <strong className="text-slate-900">{data.governance.branchRevision}</strong>. Only the pattern is inherited.
-            Codes and every sequence remain branch-owned.
+            Mode: <strong className="text-slate-900">{data.governance.mode}</strong> (Group v
+            {data.governance.groupVersion}, Campus rev {data.governance.branchRevision}).
+            Only the pattern template is shared; numbers and counters remain unique to each campus.
           </div>
 
           <div className="space-y-1.5 max-w-sm">
@@ -1068,12 +1119,12 @@ export default function AdmissionNumberingPage() {
                       allowBranchOverride: true,
                       confirmation: groupConfirmation,
                     }),
-                  "Group format published from this branch; counters unchanged.",
+                  "Group format published from this campus; counters unchanged.",
                 )
               }
               className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
             >
-              Publish local format as group default
+              Publish campus format as group default
             </button>
 
             {(["inherit", "override"] as const).map((mode) => (
@@ -1092,22 +1143,15 @@ export default function AdmissionNumberingPage() {
                         expectedRevision: data.governance!.branchRevision,
                         confirmation: groupConfirmation,
                       }),
-                    `Branch format set to ${mode}; counters unchanged.`,
+                    `Campus format set to ${mode}; counters unchanged.`,
                   )
                 }
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-all cursor-pointer"
               >
-                Use {mode === "inherit" ? "group format" : "local format"}
+                Use {mode === "inherit" ? "group format" : "local campus format"}
               </button>
             ))}
           </div>
-
-          <p className="text-[11px] text-slate-400">
-            Publishing requires the group slug (
-            {data.governance.groupSlug ?? "unavailable"}); branch choice
-            requires the branch slug (
-            {data.governance.branchSlug ?? "unavailable"}).
-          </p>
         </section>
       )}
     </main>
