@@ -16,17 +16,17 @@ This document tracks all observations, issues, UX refinements, completed changes
   - [ ] Walk through school registration and setup flow via UI.
   - [ ] Populate clean test data directly through user interfaces.
 - [ ] **Step 4: Systematic App-by-App UX Testing & Polish**
-  - [ ] `apps/admin` (Academics, Rosters, Grading, Settings, Staff)
+  - [x] `apps/admin` (Academics, Rosters, Grading, Settings, Staff, Imports, Billing)
   - [ ] `apps/teacher` (Grading entry, Report card extras, Class rosters)
   - [ ] `apps/portal` (Parent views, Student cards, Historical report cards)
-  - [ ] `apps/platform` (Super Admin tenant oversight, Cloud metrics)
+  - [x] `apps/platform` (Super Admin tenant oversight, Cloud metrics, School Groups, Audit Explorer)
   - [ ] `apps/sites` / `apps/www` (Public admission forms, Landing pages)
 
 ---
 
 ## ✅ Done (Completed Implementations & Fixes)
 
-### 1. Foundation, Branding & Security
+### 1. Foundation, Branding, Security & Auth Architecture
 - [x] **Branch Setup & Unified Branded Spinner (`MeloLoader`)**
   - Created branch `audit/e2e-ux-polish` from `master`.
   - Built `@school/shared/components/MeloLoader.tsx` with smooth SVG animations.
@@ -47,36 +47,42 @@ This document tracks all observations, issues, UX refinements, completed changes
   - Dense KPI summary strip (*Total Schools, Live Tenants, Pending Setup, Cloud Engine*).
   - Real-time search, status filter tabs, glowing pulse indicators, and copyable slug badges.
 - [x] **Dedicated School Profile & Institution Settings (`/admin/settings`)**
-  - Centralized institution settings: Name, Motto/Tagline, Crest Logo uploader, Brand Color Palette picker with curated presets, Official Contact info (Email, Phone, Campus Address).
+  - Centralized institution settings: Name, Motto/Tagline, Brand Color Palette picker with curated presets, Official Contact info (Email, Phone, Campus Address).
   - Protected read-only tenant slug badge.
-- [x] **Admission Numbering Policy UI Overhaul (`/admin/settings/admission-numbering`)**
-  - Modernized unstyled raw developer form into a premium, card-based configuration center adhering to the Melo Slate/Indigo design system.
-  - Added real-time "Live Identifier Preview" card highlighting dynamic tokens (`{SCHOOL}`, `{CAMPUS}`, `{LEVEL}`, `{YEAR}`, `{SEQ:4}`) and next-in-line sequence counters without distracting AI/sparkle icons.
-  - Fixed edge-touching padding on preview cards and form inputs (`p-6` to `p-7`, `px-4 py-2.5`), providing generous breathing room.
-  - Implemented cursor-position token insertion: clicking `{SCHOOL}`, `{CAMPUS}`, `{LEVEL}`, `{YEAR}`, or `{SEQ:4}` splices the token at the exact cursor caret location and advances the cursor, rather than appending to the end of the input string.
-  - De-slopped developer word salad: removed dense "Branch Counter Governance" banner in favor of an optional collapsible help guide (`(?) How numbering works`), and replaced cryptic format debug strings with plain-English 10th-grade descriptions.
-  - Converted blocking "Academic Session Required" banner into an actionable setup card with a direct 1-click link to `/academic/sessions`.
-  - Streamlined sequence confirmation guard: renamed to **"Confirm Starting Number"** with plain 10th-grade English, green match indicator, and a 1-click `Match #[X]` autofill button to eliminate typing friction.
-  - Renamed "Named branch and level sequences" to **"Grade-Level & Custom Counters (Optional)"** with clear educational explanations of how section-specific numbering operates.
-  - Prevented runtime Convex `setDefaultAdmissionNumberSequence` crashes by disabling sequence selection until an initial policy is saved.
-  - Protected `SettingsNavigationTabs` against null pathname values in test and SSR environments.
-  - De-slopped raw Convex error presentation: intercepted internal developer metadata (`[CONVEX M(...)]`, `[Request ID: ...]`, `Server Error Uncaught ConvexError:`, `Called by client`) using `getUserFacingErrorMessage` from `@school/shared` and mapped known numbering rules (monotonic sequence constraints, session counter drift, confirmation mismatches) into unified Sonner toast notifications via `appToast` (`@school/shared/toast`) with plain-English titles, descriptions, and 1-click interactive action buttons (`Reset to #X`, `Reload`), eliminating page displacement from static in-page error boxes while preserving accessible screen-reader live regions.
-  - Added proactive sequence backward-guardrails: configured `min={minSequenceAllowed}` on the "Next sequence" input, displayed real-time warning indicators (`Cannot be lower than #X`) with a 1-click reset shortcut, and disabled prospective save actions when the sequence is moved backwards, preventing duplicate ID collision errors before form submission.
-- [x] **Route Protection for Disabled Tier Modules**
-  - Added layout guards on `/billing` and `/academic/knowledge/*` with user-friendly "Module Inactive" screen.
+- [x] **Secure School Crest Logo Uploads (`schoolBranding.ts`, `assetStorageBoundary.ts`, `/admin/settings`)**
+  - Added `generateSchoolCrestUploadUrl` and `saveSchoolCrestUpload` mutations in `schoolBranding.ts` with strict image MIME validation (`image/png`, `image/jpeg`, `image/webp`, `image/svg+xml`) and 1MB size caps.
+  - Hardened `assetStorageBoundary.ts` to enforce tenant isolation and allowed shared group/HQ crest logos to load seamlessly on linked branch campuses during workspace startup.
+  - Integrated file upload picker and real-time logo preview directly into `/admin/settings`.
+- [x] **Unified Settings Sub-Navigation Tabs (`SettingsNavigationTabs.tsx`, `/admin/settings/*`)**
+  - Replaced raw underlined HTML anchor links dumped under the settings header with a clean, branded pill tab bar (`SettingsNavigationTabs`).
+  - Integrated across all 4 settings sub-routes:
+    - *School Profile & Branding* (`/admin/settings`)
+    - *Institutional Email* (`/admin/settings/email-domains`)
+    - *Group Defaults* (`/admin/settings/group-defaults`)
+    - *Admission Numbering* (`/admin/settings/admission-numbering`)
+  - Added null-safe pathname handling for SSR and test environments.
+- [x] **Route Protection & Alignment for Disabled Tier Modules**
+  - Added layout guards and synchronized `workspace-route-access.ts` and `workspace-navigation.ts` across `admin`, `teacher`, and `portal` apps (`/billing`, `/academic/knowledge/*`, `/enrollment/*`).
+  - Displays user-friendly "Module Inactive" screen instead of runtime errors when visiting disabled features.
 
-### 2. Enrollment, Image Uploads & Photo Cropping
-- [x] **Photo Upload Validation & File Size Guard**
-  - Fixed client-side error threshold check so valid photos under 1MB are accepted without false-positive error triggers.
-  - Enforced strict 1MB file size limits and image mime-type validation.
-- [x] **Image Cropping UX Refinement**
-  - Cleaned up image cropping modal interface to align with the design system.
+### 2. Enrollment, Image Uploads & Secure Student Photo Pipeline
+- [x] **Secure Student Photo Upload Backend (`studentEnrollment.ts`, `storageSafety.ts`)**
+  - Implemented `generateStudentPhotoUploadUrl` and `saveStudentPhoto` mutations with multi-tenant storage isolation.
+  - Enforced strict 1MB file size limits and image MIME-type validation (`image/jpeg`, `image/png`, `image/webp`).
+  - Replaced direct, insecure image writes with controlled pre-signed upload URLs and storage ID verification.
+- [x] **Admin Student Photo Upload & Cropping Integration (`StudentCreationForm.tsx`, `StudentProfileEditor.tsx`, `StudentPhotoPanel.tsx`)**
+  - Integrated student photo upload actions across student creation forms, profile editing drawers, and student photo panels.
+  - Cleaned up image cropping modal interface to align with the Melo Slate/Indigo design system.
+  - Maintained graceful fallback to student initials when no photo is uploaded.
+- [x] **Student Onboarding Viewport Clipping & Scroll Clearance (`StudentFirstOnboardingForm.tsx`, `onboarding/page.tsx`)**
+  - Fixed viewport clipping where the multi-step navigation stepper and bottom action buttons were cut off behind browser viewports.
+  - Added bounded container layout with `flex-1 min-h-0 overflow-y-auto` and generous `pb-16` clearance.
 
-### 3. Session-Oriented Promotions & Class Roster Resolution
+### 3. Session-Oriented Promotions, Class Transfers & Enrollment Rosters
 - [x] **Intra-Session Promotion Guard & Deep-Link Navigation**
   - Blocked promotion of students within the same session.
   - Added intelligent warning prompting admins to select a new session when initiating rollover.
-  - If no upcoming session exists, provides a 1-click deep-link directly to `/academic/sessions` (fixed legacy link that mistakenly went to `/academic/subjects`).
+  - If no upcoming session exists, provides a 1-click deep-link directly to `/academic/sessions`.
   - Added session date validation preventing backward promotions to earlier sessions.
 - [x] **Promotion Staging & Class Roster Architecture**
   - Added `studentSessionPromotions` table (`schoolId`, `studentId`, `sourceSessionId`, `targetSessionId`, `sourceClassId`, `targetClassId`, `status`, `promotedAt`, `promotedBy`).
@@ -89,13 +95,20 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [x] **Rich Promotion Confirmation Modal (`PromotionConfirmationModal.tsx`)**
   - Replaced native browser `window.confirm(...)` dialogue with a custom, branded confirmation modal.
   - Displays transfer routing badge (From: Class/Session &rarr; To: Class/Session), subject enrollment mode explanation, and amber overwrite warning banner for students already staged.
-  - Added safety reassurance badge and loading spinner during promotion execution.
   - Replaced `window.confirm` with portaled `ConfirmationModal` across student cancel promotion, student archiving, family unlinking, and class aggregation removals.
 - [x] **Student Identity Roster Matrix & Promotion Badge Redesign (`SubjectSelectionDesktopTable.tsx`, `SubjectSelectionMobileEditor.tsx`)**
   - Expanded sticky Student Identity column from cramped 240px to 340px, eliminating name truncation and overflow.
   - Relocated "All" and "Clear" subject selection controls into compact top-right inline action pills.
   - Replaced tall 4-line wrapping promotion block with a sleek, single-line emerald badge (`Promoted → Primary 5 (26/27)`) with an integrated `(X)` cancel action button.
   - Reduced row vertical height by ~50%, improving data density and visual balance.
+  - Integrated student photo avatars (`photoUrl`) with initials fallback across desktop, mobile editor cards, and bottom sheets.
+- [x] **Inter-Class Roster Transfers (`studentEnrollment.ts: moveStudentClass`)**
+  - Built `moveStudentClass` mutation allowing administrators to seamlessly transfer enrolled students between class rosters within an active session.
+  - Updates class placement, verifies academic session boundaries, and recalibrates subject selections cleanly.
+- [x] **Archived Student Account Desynchronization Fix (`studentEnrollment.ts`)**
+  - Resolved desync where archived user accounts (`users.isArchived = true`) retained unarchived student records (`students.isArchived = false`), triggering crashes when clicking roster rows or initiating promotions.
+  - Hardened `getClassStudentSubjectMatrix`, `getStudentsByClass`, and `loadStudentFamilyProfile` to strictly filter out students whose user account is missing or archived.
+  - Added `reconcileArchivedStudents` mutation to synchronize `isArchived = true` onto orphan student records and purge stale promotion staging rows.
 
 ### 4. Academic Class Management & Subject Blueprint Builder
 - [x] **Class Blueprint Builder Layout Overhaul (`/academic/classes`)**
@@ -105,289 +118,208 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [x] **Session-Scoped Form Teacher Assignments & History Preservation**
   - Added `classSessionFormTeachers` table (`schoolId`, `classId`, `sessionId`, `formTeacherId`, `createdAt`, `updatedAt`, `updatedBy`) with 4 composite indexes.
   - `createClass` and `updateClass` persist form teachers scoped to the targeted academic session while synchronizing `classes.formTeacherId` on the active session for backwards compatibility.
-  - `listClasses` query accepts an optional `sessionId` filter and dynamically resolves session form teachers.
-  - Added session selector dropdown in `/academic/classes` header and session context badges in creation/edit forms.
-- [x] **Historical Report Card Form Teacher Attribution**
-  - `buildStudentReportCard` in `reportCards.ts` resolves form teacher from `classSessionFormTeachers` for the exact session of the report card.
-  - Historical report cards accurately display the teacher who led the class during that academic year, even if the teacher was later reassigned or soft-archived.
+  - Historical report cards accurately display the teacher who led the class during that academic year.
 - [x] **Safe Teacher Archiving Guardrails**
   - `listTeacherArchiveBlockers` in `archiveGuardrails.ts` now inspects only form teacher and subject assignments in the **currently active session**.
-  - Teachers who concluded previous sessions and have no active duties can now be safely archived without triggering blocking validation errors.
-- [x] **Class Section / Academic Level (Nursery, Primary, Secondary) Modifiability (`ClassEditForm.tsx`, `page.tsx`)**
+  - Teachers who concluded previous sessions and have no active duties can now be safely archived without blocking validation errors.
+- [x] **Class Section / Academic Level (Nursery, Primary, Secondary) Modifiability (`ClassEditForm.tsx`)**
   - Added Section / Academic Level selector in the Class Edit blueprint drawer (`/academic/classes`), allowing administrators to correct class level assignments directly without needing to recreate the class.
-  - Linked `level` updates through the existing Convex `updateClass` mutation with full cache revalidation.
 - [x] **Natural Alphanumeric & Alphabetical Class Sorting across Backend & Frontend**
-  - Updated `listClasses`, `getAllClasses`, `getTeacherAssignableClasses`, and class roster views to sort by resolved class display name using natural numeric collation (`{ numeric: true, sensitivity: "base" }`) so classes always list in logical order (e.g. *Grade 1, Grade 2... Grade 10, Grade 11*, *JSS 1... JSS 3*, *Primary 1... Primary 6*) regardless of creation order.
-- [x] **Student Roster Visibility for Classes with Zero Subjects Configured (`SubjectSelectionMatrix.tsx`, `SubjectSelectionDesktopTable.tsx`, `SubjectSelectionMobileEditor.tsx`)**
-  - Previously, if a class had students enrolled but 0 subjects configured in the curriculum, the entire student roster table was replaced by a single empty-state banner, causing newly admitted students to disappear from view.
-  - Now, enrolled students are always visible in both desktop and mobile roster views with full names, avatars, admission numbers, and quick profile actions, accompanied by a direct action link to configure class subjects.
-- [x] **Global Phone & Email Input Sanitation and Strict Validation (`@school/shared`, `studentEnrollment.ts`, Form Fields)**
+  - Updated `listClasses`, `getAllClasses`, `getTeacherAssignableClasses`, and class roster views to sort by resolved class display name using natural numeric collation (`{ numeric: true, sensitivity: "base" }`) so classes always list in logical order (e.g. *Grade 1, Grade 2... Grade 10, Grade 11*).
+- [x] **Student Roster Visibility for Classes with Zero Subjects Configured**
+  - Enrolled students remain visible in both desktop and mobile roster views with full names, avatars, and admission numbers even when no subjects have yet been configured for the class.
+- [x] **Global Phone & Email Input Sanitation and Strict Validation**
   - Built `cleanPhoneInput`, `isValidPhoneNumber`, `cleanEmailInput`, and `isValidEmailAddress` in `@school/shared`.
-  - Added real-time character filtering on all phone input fields (`type="tel"`, `inputMode="tel"`) across the application, preventing letters, `@`, or email domains from ever being typed or pasted into phone fields.
-  - Added strict backend validation in Convex mutations (`normalizeOptionalPhone`), rejecting invalid strings or email payloads with clear error messages.
-- [x] **Stateful URL Query Synchronization & Deep Linking on `/academic/students` (`apps/admin/app/academic/students/page.tsx`)**
-  - Integrated `useSearchParams` and shallow URL history replacement so that selecting a Class (`?classId=...`), Academic Session (`?sessionId=...`), Student Record (`?studentId=...`), or Sheet Tab (`?tab=...`) automatically updates the browser URL.
-  - Refreshing the browser or sharing/bookmarking the URL preserves the exact class context, active session, and currently inspected student drawer without resetting to defaults.
+  - Added real-time character filtering on all phone input fields (`type="tel"`), preventing letters, `@`, or email domains from ever being typed or pasted into phone fields.
+- [x] **Stateful URL Query Synchronization & Deep Linking on `/academic/students`**
+  - Selecting a Class (`?classId=...`), Academic Session (`?sessionId=...`), Student Record (`?studentId=...`), or Sheet Tab (`?tab=...`) automatically updates the browser URL for seamless bookmarking and sharing.
 
-### 5. Academic Sessions, Dynamic Term Partitioning & Modal Overlay Polish
-- [x] **Full-Screen Modal Backdrop Portals & Viewport Scroll Locking**
-  - Portaled modal dialogs to `document.body` with `z-[9999]`, SSR mount guards, and `document.body` scroll locking.
-  - Fixes backdrop darkening and blur being trapped in `<main>`, now spanning the full 100vw x 100vh viewport over sticky navbar and desktop sidebar.
-  - Applied across `SessionCreationModal`, `TermCreationModal`, `ConfirmationModal`, `AdminSheet`, `ConfirmDialog`, `MobileSheet`, `PrintableFinanceModal`, and `CurriculumApprovalDialog`.
+### 5. Academic Sessions, Dynamic Term Partitioning & Bounded Generation
 - [x] **Dynamic Academic Session Term Partitioning & Bounded Calendar Generation**
-  - Eliminated hardcoded calendar dates (which previously caused validation errors when session start/end dates were customized).
   - Built `calculateDynamicTermSchedule` and `suggestTermDateRange` in `@school/shared` to automatically partition any session into 3 balanced terms separated by realistic 2-3 week holiday breaks.
-  - Added atomic `autoGenerateTerms` directly to `createSession` backend mutation in `academicSetup.ts`, eliminating sequential client-side network roundtrips and ensuring all 3 terms are created transactionally.
-  - Enhanced `TermCreationModal` to prepopulate smart start/end dates based on session boundaries and term sequence presets.
-- [x] **Session Date Modification & Dynamic Term Recalibration (`updateSession` in `academicSetup.ts`)**
-  - Resolved session start/end date editing constraints so extending or modifying an academic session dynamically checks and recalibrates child term dates.
-- [x] **Student Graduation Workflow & Official Attestation Letter (`studentGraduation.ts`, `GraduationConfirmationModal.tsx`, `AttestationLetterModal.tsx`)**
-  - Added atomic `graduateStudents` backend mutation marking student statuses as `"graduated"` with graduation session metadata and exit timestamps.
-  - Built `GraduationConfirmationModal` allowing batch graduation of terminal classes (e.g. SS 3, Primary 6).
-  - Built `AttestationLetterModal` providing official institutional letters of completion/attestation with school letterhead, student biographical details, attendance dates, and print styles.
-- [x] **Promotion Roster Isolation Per Academic Session (`SubjectSelectionMatrix.tsx`, `page.tsx`)**
-  - Ensured students promoted to an upcoming session remain isolated in the future session's roster without polluting active class lists for the ongoing term.
+  - Added atomic `autoGenerateTerms` directly to `createSession` backend mutation in `academicSetup.ts`, eliminating sequential client-side network roundtrips.
+  - Added term date clamping in `academicSetup.ts` so generated term dates are strictly bounded within the session start/end limits.
+- [x] **Academic Session Creation Timezone Normalization (`SessionCreationModal.tsx`, `TermCreationModal.tsx`)**
+  - Standardized all session and term start/end inputs on `Date.UTC(year, month - 1, day, 12, 0, 0)` and UTC-based date formatting.
+  - Eliminated timezone drift bugs where local noon timestamps ahead of UTC (e.g., WAT / UTC+1) caused term end bounds to exceed session end bounds by 1 hour on Convex Cloud, triggering false calendar template errors.
+- [x] **Full-Screen Modal Backdrop Portals & Viewport Scroll Locking**
+  - Portaled modal dialogs to `document.body` with `z-[9999]`, SSR mount guards, and scroll locking, spanning the full 100vw x 100vh viewport over sticky navbars and sidebars.
+- [x] **Responsive Bottom Sheet for Session & Term Creation**
+  - Replaced invalid Tailwind CSS utility `p-4.5` with generous `px-6 py-4 sm:py-5` padding.
+  - Refactored `SessionCreationModal` and `TermCreationModal` into responsive bottom sheets: animated slide-up drawer on mobile/tablet viewports with grab handle, rounded-t-[2.5rem], and centered dialog on desktop.
+- [x] **Student Graduation Workflow & Official Attestation Letter (`studentGraduation.ts`)**
+  - Added atomic `graduateStudents` backend mutation marking student statuses as `"graduated"` with graduation session metadata.
+  - Built `GraduationConfirmationModal` for batch graduation and `AttestationLetterModal` for institutional letters of completion with school letterhead.
 
-### 6. Billing Ledger & Fee Plan Currency UX
-- [x] **Currency Amount Input Truncation & Zero Clipping Fix (`FeePlanForm.tsx`, `BillingSidebar.tsx`)**
-  - Expanded line item amount input width from cramped 112px (`w-28`) to 160px (`w-40`), ensuring 5-7 digit values and trailing zeros never overflow or get clipped.
-  - Disabled native browser WebKit spin buttons (`[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none`) which previously crowded and occluded the right-aligned digits.
-  - Added smart number typing normalization preventing awkward leading zeros (e.g. `068000`).
-  - Added real-time live total calculation card (`Total Plan Value: ₦XX,XXX.XX`) dynamically reflecting line item additions and modifications.
-  - Enhanced Financial Arsenal desktop navigation with clear active state badges and highlight rings.
-- [x] **Fee Plan Creation Argument Validation & Optional Line Item Toggles (`FeePlanForm.tsx`, `billing.ts`, `schema.ts`)**
-  - Fixed runtime `ArgumentValidationError` where extra `order` property and root `installmentEnabled` were submitted instead of nested `installmentPolicy`.
+### 6. Billing Ledger, Deposit Bank Accounts & Universal Fee Plans
+- [x] **Billing Viewport Clipping Resolution & Full-Bleed Height Fix (`/billing/layout.tsx`, `/billing/page.tsx`, `FeePlanForm.tsx`)**
+  - Wrapped billing layout in `h-full w-full flex flex-col min-h-0` and hid redundant navigation as `sr-only`.
+  - Replaced `lg:h-[calc(100vh-56px)]` on the billing main container with `h-full min-h-0 w-full overflow-hidden flex flex-col` with `shrink-0` desktop management sidebar.
+  - Added `min-h-0 pb-10` to the scrollable container in `FeePlanForm.tsx` and tightened the pinned footer, ensuring the "Create Fee Plan" CTA and all fee inputs remain fully visible without clipping on smaller desktop viewports.
+- [x] **Modernized Deposit Bank Account Selection (`BankAccountSelection.tsx`)**
+  - Redesigned deposit account selector with `Landmark` icon, modern rounded-xl styling, and active account filtering (`activeAccounts`).
+  - Added informative contextual copy: clearly explains whether invoices deposit into the chosen bank account or fallback to the school's primary settlement account.
+- [x] **Universal "All Classes" Fee Plan Enablement (`billing.ts`, `FeePlanForm.tsx`)**
+  - Removed artificial validation check in `createFeePlan` that previously threw an error when `billingMode === "class_default"` had `targetClassIds: []`.
+  - Added informative blue indicator pill in `FeePlanForm.tsx` when "All Classes (Universal Template)" is selected: *"Universal Template: This fee plan can be billed to students in any class across the school."*
+- [x] **Manual Payment Receipt Reference Generator Overhaul (`BillingSidebar.tsx`, `useBillingActions.ts`)**
+  - Replaced disconnected header link containing AI sparkles with an integrated inside-input button: `[ # Generate ]` utilizing `Hash` icon and neutral slate styling (`bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700`).
+  - Fixed `runAction` error toast handling in `useBillingActions.ts` so errors no longer use `successTitle` (which previously produced misleading red toasts titled *"Fee Plan Created"* on failure).
+- [x] **Currency Amount Input Truncation & Zero Clipping Fix (`FeePlanForm.tsx`)**
+  - Expanded line item amount input width to 160px (`w-40`), ensuring 5-7 digit values and trailing zeros never overflow.
+  - Disabled native WebKit spin buttons and added smart number typing normalization preventing awkward leading zeros.
+- [x] **Optional Line Item Toggles & Paystack Integration**
   - Added `isOptional` field to `feePlans.lineItems` and `isOptional` + `isSelected` to `studentInvoices.lineItems`.
-  - Allowed line items in `FeePlanForm.tsx` to be toggled as **`✨ Optional Add-on (Payer Can Toggle)`** vs **`🔒 Mandatory Fee`**, letting parents choose non-compulsory fees (e.g. screen uniforms, bus services).
-  - Updated `computeBillingSubtotal` and `computeBillingInvoiceTotal` to compute subtotal from mandatory items plus selected optional items.
-  - Added `toggleInvoiceOptionalLineItem` mutation allowing payers and admins to opt in/out of optional items before invoice settlement.
-  - Added multi-class target bundling with quick group presets (`+ All Junior`, `+ All Senior`, `+ All Primary`) and universal template modes.
-- [x] **Fee Plan Form Pinning & Background Leakage Prevention (`FeePlanForm.tsx`, `BillingSidebar.tsx`)**
-  - Divided fee plan drawer into a scrollable input container and a solid pinned non-scrolling footer.
-  - Anchored both the Real-Time Breakdown Card and the "Create Fee Plan" CTA in the solid footer, preventing form fields from sliding underneath the button.
-- [x] **Fee Plan "Details" Modal Inspector (`FeePlanList.tsx`, `page.tsx`)**
-  - Implemented interactive modal when clicking "Details" on fee plan cards.
-  - Displays target class badges, installment policy rules, categorized itemized line items, and a one-click **"Bulk Invoice with this Plan"** trigger.
-- [x] **Manual Payment Receipt Reference Generator (`BillingSidebar.tsx`)**
-  - Added an **"⚡ Auto-Generate"** helper button generating formatted identifiers (`REC-YYMMDD-XXXXX`) for cash payments or when no bank teller/session ID is provided.
-- [x] **Executive Institutional Invoice & Statement of Account Redesign (`PrintableFinanceModal.tsx`)**
-  - Restyled both modals into formal institutional bursary documents with school letterheads.
-  - Added structured 4-column student metadata, high-contrast KPI cards (Total Billed, Paid to Date, Balance Due), itemized fee table with opt-out strike-through styling, and a **Running Balance** ledger column for Statements of Account.
-  - Retained embedded Paystack QR code and 1-click checkout link generation.
+  - Allowed line items to be toggled as optional add-ons (e.g. screen uniforms, bus services) with `toggleInvoiceOptionalLineItem` mutation.
+  - Redesigned executive invoices and statements of account in `PrintableFinanceModal.tsx` with high-contrast KPI cards, running balances, and Paystack checkout QR codes.
 
-### 7. Document Extraction & OCR Pipeline Overhaul (Luna Migration & Image PDF Reliability)
+### 7. Document Extraction, OCR Pipeline & Knowledge Library Ingestion
+- [x] **Admin Knowledge Material Upload in Knowledge Library (`/academic/knowledge/library/page.tsx`)**
+  - Added dedicated `Upload` button in the Knowledge Library header, gated on `assets.upload` and `academic.planning.use` / `academic.curriculum.manage` capabilities.
+  - Integrated `KnowledgeMaterialUploadForm` within an `AdminSheet`, allowing administrators to directly ingest curriculum guides, scheme of work PDFs, and reference textbooks.
+  - Connected upload action to `saveKnowledgeMaterialUpload` with binary array buffer streaming and toast notifications.
 - [x] **Eliminated Low-Density PDF False Failure Trap (`lessonKnowledgePdfExtraction.ts`)**
-  - Fixed false-rejection bug where documents with sparse native text (< 20 words / diagrams / worksheet titles) were immediately aborted with `status: "failed"` under `insufficient_text`.
-  - Routed low-density native extractions directly to `status: "ocr_needed"` (`fallbackReason: "scanned_or_problematic"`), enabling provider OCR to process scanned, illustrated, or image-heavy school files.
+  - Fixed false-rejection bug where documents with sparse native text (< 20 words / diagrams / worksheet titles) were aborted as `insufficient_text`.
+  - Routed low-density extractions directly to `status: "ocr_needed"`, enabling provider OCR to process scanned or illustrated school files.
 - [x] **OpenRouter Model Migration to `openai/gpt-5.6-luna` (`lessonKnowledgeOcrActions.ts`)**
-  - Replaced brittle `google/gemma-4-31b-it:free` default with high-performance, cost-effective `openai/gpt-5.6-luna` ($0.20/1M input, $1.20/1M output).
-  - Increased OCR timeout from 60s to 120s (`120_000`ms) to support multi-page extractions reliably.
-  - Implemented high-fidelity educational layout system prompt enforcing Markdown tables (`| Col 1 | Col 2 |`), visual bracketed captions (`[Diagram: ...]`), LaTeX formulas, and pure JSON output.
+  - Replaced brittle free tier default with cost-effective `openai/gpt-5.6-luna`.
+  - Increased OCR timeout to 120s (`120_000`ms) and implemented educational layout system prompt enforcing Markdown tables, bracketed diagram captions, and LaTeX formulas.
 - [x] **Dead Browser-OCR Code Deletion**
-  - Deleted legacy client-side canvas renderer `apps/teacher/features/planning-library/utils/browserPdfOcr.ts`.
-  - Deleted dead backend action `packages/convex/functions/academic/lessonKnowledgeBrowserOcrActions.ts` and pruned `requestKnowledgeMaterialBrowserOcrImageUploadUrls` and `startKnowledgeMaterialBrowserOcrRetryInternal` from `lessonKnowledgeIngestion.ts`.
+  - Deleted legacy client-side canvas renderer `browserPdfOcr.ts` and dead backend action `lessonKnowledgeBrowserOcrActions.ts`.
 
-### 8. Staff Roles, Parent-Staff Identity & Administrator Lifecycle
+### 8. Staff Roles, Parent-Staff Identity, Admin Parity & Teacher Controls
+- [x] **Restored Teacher Password Reset & Archiving for School Admins (`TeacherEditForm.tsx`, `academic/teachers/page.tsx`)**
+  - Restored teacher password reset and archiving actions for school administrators, eliminating the previous restriction where only platform super admins could perform resets.
+  - Added comprehensive test coverage in `teacher-password-reset.test.tsx`.
+- [x] **Administrative Leadership Role Parity (`workspace-access.ts: hasAdminRoleParity`)**
+  - Built `hasAdminRoleParity` helper checking both `user.role === "admin"` and `user.isSchoolAdmin === true`.
+  - Applied across `/admin/dashboard`, `/admin/audit`, `/admin/group`, `/admin/permissions`, `/admin/settings`, and teacher management views so school admins and designated principals share unified administrative authority.
+- [x] **Legacy Admin Authority Preservation (`rbac.ts`)**
+  - Ensured legacy school admins maintain full administrative privileges across all capabilities, preventing authorization lockouts during RBAC policy rollout.
 - [x] **Staff-as-Parent & Family Link Identity Unification**
-  - Updated `updateStudentFamilyParentContact` and `upsertStudentFamilyLink` in `studentEnrollment.ts` to allow teachers and administrators to be linked into Family Link as parents/guardians without colliding on active accounts.
-  - Preserved security check preventing enrolled students (`role === "student"`) from being linked as parent contacts.
-  - Refactored Student Family contact UI in `StudentFamilyPanel.tsx`: flattened nested 3-level card-in-card hierarchy into a single clean alert, fixed 3-line wrapped buttons, scaled typography and inputs down to clean responsive sizes (`h-9 text-xs font-medium`), and added `Staff: <role>` badges.
-- [x] **Administrator Archiving & Multi-Role Parity in Archive Audit**
-  - Added `role === "admin"` records into `archiveRecords.ts` (`listArchivedRecords`) with manager hierarchy metadata, email details, and total summary counts.
-  - Added `restoreSchoolAdmin` mutation to `adminLeadership.ts` with active email duplicate protection.
-  - Updated `/academic/archived-records` with Administrator filter tab, purple chip badges, and one-click restore action.
-  - Added `Archived` status badge and direct `Restore` action to the `/admin` Users Directory grid so archived admins can be restored from either surface.
-- [x] **Staff Role Demotion / Downgrade to Teacher**
-  - Added `demoteAdminToTeacher` mutation in `adminLeadership.ts` allowing non-lead admins to be safely downgraded to standard teachers while automatically re-parenting any direct sub-admins to the Lead Admin.
-  - Added `To Teacher` action button with `UserMinus` icon in `AdminCard.tsx` and `AdminDirectorySection.tsx`.
+  - Allowed teachers and administrators to be linked into Family Link as parents/guardians without colliding on active accounts, while preventing enrolled students from being linked as parent contacts.
+  - Refactored `StudentFamilyPanel.tsx`: flattened card hierarchy, scaled typography down to responsive sizes (`h-9 text-xs font-medium`), and added `Staff: <role>` badges.
+- [x] **Administrator Archiving & Demotion to Teacher**
+  - Added `restoreSchoolAdmin` and `demoteAdminToTeacher` mutations in `adminLeadership.ts` with sub-admin re-parenting to Lead Admin.
+  - Added Administrator filter tab and restore actions to `/academic/archived-records` and the `/admin` Users Directory.
 
 ### 9. Grading Bands Policy, Report Card Resumption Sync & Navigation
-- [x] **Grading Bands Multi-Issue Validation & Range Highlighting (`/assessments/setup/grading-bands`)**
-  - Added checks for duplicate grade labels (e.g. two "A" grades) and duplicate score ranges across tiers in `packages/shared/src/exam-recording/validation.ts`.
-  - Updated `BandValidationBanner.tsx` with clear error count badge and bulleted breakdown of all validation issues.
-  - Added targeted border highlighting in `BandTable.tsx` / `BandRow.tsx` (highlights letter input for grade label duplicates and min/max inputs for score range duplicates/overlaps).
-- [x] **Grading Bands Layout, Standard Default Preset & Auto-Arrange**
-  - Added bottom container padding (`pb-36`) so floating action bar never obscures table rows or the bottom Add Tier button.
-  - Upgraded action bar with status indicators ("Unsaved changes" vs "Resolve errors to save"), "Save Changes" and "Discard" actions.
-  - Added standard default grading scale (`A: 75–100`, `B: 65–74`, `C: 50–64`, `D: 40–49`, `F: 0–39`) and `Load Standard Scale` preset button (`Sparkles` icon).
-  - Added `Auto-Arrange` button and automated ascending sort on save (`0 → 100`).
-- [x] **Report Card Class Groups Override Form Toggle & Cancel Handler (`/assessments/report-cards`)**
-  - Fixed issue in `ReportCardAdminPanel.tsx` where clicking `+` failed to open the class group override form due to missing creation state.
-  - Added `isCreatingGroup` state, clear "Add Group" / "Close" toggle, and a direct "+ Create Override" button when no overrides exist.
-- [x] **Strict Adjacent-Term Resumption Auto-Lookup & Calendar Sync Warning**
-  - Updated `packages/convex/functions/academic/reportCardTermSettings.ts` to query all terms in the active session sorted by `startDate` ascending and strictly look up the immediate next adjacent term (`terms[currentIndex + 1]`).
-  - Pre-fills resumption date with adjacent next term's start date if global resumption is unset.
-  - When admin edits the resumption date on Report Cards and saves, it updates the linked term's `startDate` in `academicTerms`, keeping `/academic/sessions` and report cards in sync.
-  - Displayed a `Calendar Sync Notice` warning callout in `ReportCardAdminPanel.tsx` when changing resumption dates.
-- [x] **Automated 2-Week Resumption Calendar Event (`/academic/events`)**
-  - Added `syncNextTermResumptionCalendarEvent` in `reportCardTermSettings.ts` to automatically create or update a `"Next Term Resumption — [Term Name]"` event in `schoolEvents` when `term.endDate - Date.now() <= 14 days`.
-- [x] **Report Cards Self-Contained Launcher & Sidebar Direct Navigation**
-  - Added `ReportCardLauncher.tsx` to `/assessments/report-cards` providing a full interactive selector (Session, Term, Class, Student Search, Batch Print) when direct URL parameters are missing.
-  - Updated workspace navigation sidebar so "Report Cards" routes directly to `/assessments/report-cards`.
-- [x] **Report Add-ons & Bundles Educational UI Polish (`/assessments/setup/report-card-bundles`)**
-  - Completely de-robotized and un-slopped terminology across all bundle designer components (replaced sci-fi jargon like *"Void Catalog"*, *"Blueprint Designer"*, *"Virtual Monitor"*, *"Distribution Engine"*, *"Nodes"*, *"Internal Buffer"* with clear school terminology like *"Report Add-ons"*, *"Design Bundle"*, *"Live Preview"*, *"Class Assignment"*, *"Fields"*, *"Printed on Report Card"*, *"Internal Only"*).
-  - Added 1-click **Starter Bundle Presets** (`Affective & Behavioral Traits`, `Psychomotor & Practical Skills`, `Attendance & Health Summary`) with preconfigured sections, fields, and sources.
-  - Added 1-click **Standard Rating Scale Presets** (`5-Point Rating Scale (1–5)`, `Letter Grade Scale (A–E)`, `Behavioral Frequency Scale`).
-  - Streamlined bundle and scale creation workflows for admins with instant draft loading and clean preview cards.
-- [x] **Setup Pages Performance & Stutter Resolution (`/assessments/setup/report-card-bundles` & `grading-bands`)**
-  - Eliminated keystroke input lag by memoizing sub-components (`BundleEditor`, `FieldEditor`, `ScaleTemplateEditor`, `BundleList`, `TemplateList`, `ClassAssignmentCard`).
-  - Fixed re-render cascade: moved `ClassAssignmentPanel` from eager evaluation to lazy evaluation (only instantiated when visiting the *"Assign Classes"* tab instead of re-evaluating 300+ class/bundle buttons on every character typed).
-  - Protected local editing drafts against reactive query re-evaluations using ref-anchored selection locks (`loadedBundleIdRef` / `loadedScaleIdRef` / `isLoadedRef`), preventing Convex background query refetches from wiping user inputs or causing UI jitter.
-- [x] **Option 2: True WYSIWYG Interactive Sheet Designer & 3-Step Guided Workflow (`/assessments/setup/report-card-bundles`)**
-  - Created [`InteractiveSheetEditor.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/report-card-bundles/components/InteractiveSheetEditor.tsx) transforming the builder into an authentic direct-manipulation A4 report card document.
-  - Implemented the intuitive **3-Step Guided Workflow Stepper** (`Step 1: Rating Scales` $\to$ `Step 2: Design Add-on Sheet` $\to$ `Step 3: Assign to Classes`) with clear forward/back transitions.
-  - Allows school admins to click directly into table cells to rename traits (*Punctuality*, *Attentiveness*), switch evaluation scale headers in-place, click `+ Add Trait Row`, and configure written remarks & attendance metrics directly on the paper canvas.
-- [x] **Workspace Navigation Sidebar Sync for Report Cards**
-  - Added `/assessments/report-cards` to the academics filter in [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx), restoring direct sidebar access to the Report Cards launcher.
-- [x] **Independent Scroll Fix on Full-Bleed Pages (`grading-bands` & `report-cards`)**
-  - Added `h-full min-h-0 w-full overflow-y-auto custom-scrollbar` to [`grading-bands/page.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/grading-bands/page.tsx) and [`ReportCardLauncher.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/report-cards/components/ReportCardLauncher.tsx), fixing scroll lock caused by desktop `fullBleed` container bounds.
-- [x] **Grading Bands Responsive Mobile Tier Cards & In-Flow Validation (`/assessments/setup/grading-bands`)**
-  - Created dedicated mobile tier cards (`md:hidden`) inside [`BandTable.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/apps/admin/app/assessments/setup/grading-bands/components/BandTable.tsx) with large touch inputs, explicit labels (*Grade*, *Min Score %*, *Max Score %*, *Transcript Remark*), and instant validation coloring, eliminating mobile table cutoffs.
-  - Refactored `BandValidationBanner` to an in-flow alert card rendered above the tiers instead of a floating fixed-bottom toast, ensuring error messages never obstruct user typing or block lower form rows.
-  - Refactored the pinned sticky toolbar into a clean, 2-row responsive mobile grid with full-width action buttons (*Arrange*, *Standard*, *Add Tier*).
-- [x] **Report Cards Layout, In-Canvas Zoom & Deep Links (`/assessments/report-cards`)**
-  - Added dedicated **In-Canvas Zoom Controls** (`[ - ] [ 75% ] [ + ] [ Fit ] [ 100% ]`) scaling only the A4 preview canvas (`previewScale` from `0.4` to `1.25`) without zooming the browser window.
-  - Pinned initial layout towards the top (`justify-start` and top alignment) so report card sheets start immediately in view.
-  - Extended left sidebar scroll clearance (`pb-44`) so bottom admin settings and buttons are never clipped.
-  - Implemented dynamic context-aware `backHref` returning admins to their exact launcher session/class or origin instead of hardcoding score entry.
-- [x] **Direct "Import Students" Link in Navigation Sidebar**
-  - Added `/students/import` under `People & Operations` in [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx) and updated label to *"Import Students"* in [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts).
-- [x] **Report Add-ons Workbench Synergy & Non-Jumping 2-Pane Architecture (`/assessments/setup/report-card-bundles`)**
-  - Eliminated the dynamic 3rd preview aside column that squished the center canvas and caused layout jumps on tab changes. The Rating Scale Live Preview is now integrated cleanly into the Rating Scale step.
-  - Harmonized the catalog sidebar items (`BundleList.tsx` and `TemplateList.tsx`) with elevated white cards, crisp typography, and active indigo border/ring states matching `AssessmentProfiles`.
-  - Upgraded input legibility and placeholder contrast (`placeholder:text-slate-400 placeholder:font-normal`) in `ScaleTemplateEditor.tsx`.
-  - Added seamless `Save & Next` / `Save & Create Another Scale` inter-step transitions so admins never lose unsaved changes when moving between steps or setting up multiple evaluation scales.
-  - Replaced purple AI-aesthetic presets and heavy dark banners with clean, native white starter templates cards (`bg-white border border-slate-200/80 rounded-2xl`) with `+` action chips (`Affective & Behavioral Traits`, `Psychomotor & Practical Skills`, `Attendance & Physical Measurements`), fitting seamlessly into the app's design system.
-- [x] **Redesigned Class Allocation Workbench (`ClassAssignmentPanel.tsx`)**
-  - Replaced clumsy nested cards with a clean modern class allocation grid.
-  - Features real-time stats pills (`All`, `This Add-on`, `Other Add-ons`, `Unassigned`), search filtering, batch selection toolbar (`Assign to Selected`, `Remove from Selected`), and 1-click `Assign to Class` / `Assigned ✓` direct actions.
-- [x] **Grading Bands Responsive Mobile Polish & In-Flow Policy Navigation (`/assessments/setup/grading-bands`)**
-  - Enlarged toolbar buttons (`Arrange`, `Standard`, `+ Add Tier`) to `h-10 sm:h-11 px-4 sm:px-6` with bold typography for comfortable touch targets.
-  - Locked the `⏰ UNSAVED` / `Active` status badge directly onto the title row beside `Grading Bands` so it never wraps down onto an orphan line on mobile.
-  - Added an inline `⚠️ Show error` action button on mobile tier cards that smoothly scrolls up to `BandValidationBanner` when validation errors occur.
-- [x] **Report Cards Pinned Header & Dedicated Zoom / Pan Viewport (`/assessments/report-cards`)**
-  - Pinned the top toolbar (`REPORT CARD`, Student Name, `Back`, `Export / Print`, and Zoom controls) to `shrink-0 z-20` so it **never** scrolls off screen.
-  - Placed the report card canvas into an isolated scrollable viewport (`flex-1 min-h-0 overflow-auto`) supporting 2-axis panning and zooming.
-  - Implemented dynamic 2-axis `calculateFitScale()` measuring viewport width & height so clicking **Fit** fits the complete 794x1123 A4 sheet on screen at one glance without cutoff.
-  - Supported mobile two-finger pinch-to-zoom and drag panning.
-- [x] **Report Card Extras Scroll Depth, Flush Bottom Docking & Navigation (`/assessments/report-card-extras`)**
-  - Docked the global action bar (`Reset`, `Commit Override`) to `sticky bottom-0 -mx-4 md:-mx-8 -mb-6 md:-mb-8 z-30` so it stays flush against the bottom edge and never floats up into empty space.
-  - Updated "View Report Card" to navigate in the same tab, preserving browsing history so the "Back" button returns seamlessly to Report Extras.
-- [x] **Universal Mobile Vertical Scrolling Across the Entire App (`WorkspaceNavbar.tsx`)**
-  - Updated `<main>` in `WorkspaceNavbar.tsx` to `overflow-y-auto lg:overflow-hidden` when `fullBleed={true}`, unlocking natural vertical scrolling on all mobile screens across the entire application while preserving multi-panel desktop layouts.
-  - Made `<aside>` and `<main>` responsive on mobile across `report-cards` and `report-card-extras` to avoid 100vh lockouts.
-- [x] **Navigation Structure Reorganization**
-  - Moved `Import Students` (`/students/import`) from *People & Operations* to *Setup & Settings* in both [`workspace-navigation.ts`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/workspace-navigation.ts) and [`WorkspaceNavbar.tsx`](file:///c:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/packages/shared/src/components/WorkspaceNavbar.tsx).
-- [x] **Curriculum Intelligence Layout Streamlining & Bulk Actions (`/academic/knowledge/curriculum-import`)**
-  - Consolidated the header: moved proposal context chip, filter tabs (`All`, `Proposed`, `Approved`, `Rejected`), real-time search input, and **`Approve All (X)`** primary CTA directly into the top action bar to reclaim vertical space.
-  - Removed decorative AI sparkle icons across the extraction buttons, confidence pills, and cards.
-  - Refactored `CurriculumUnitCard` into a dense, space-efficient card layout (`p-4 space-y-3`, clean subtopic strings, compact bulleted objectives, compact source evidence quotes, and low-profile action buttons).
-  - Added multi-unit selection checkboxes with a sleek floating batch action bar (`[X] selected · [Approve (X)] · [Reject] · [Clear]`).
-  - Added atomic backend mutations `bulkApproveCurriculumUnits` and `bulkRejectCurriculumUnits` for fast single-transaction approvals.
-- [x] **Planning Studio Intelligent Subject Filter & Workspace Search (`/planning`)**
-  - Added dynamic subject filter pills (`All Subjects (X)`, `[Subject] (X)`) on the Planning Studio index, derived automatically from the teacher's active workspace topics and available assignments.
-  - Enhanced backend `listTeacherPlanningTopicWork` in `lessonKnowledgeTeacher.ts` and client-side workspace filtering to match topic titles, topic summaries, subject names, subject codes, class levels, and term names seamlessly.
-- [x] **Planning Library Real-Time Search & Zero-Unmount Query Caching (`/planning/library`)**
-  - Eliminated full-page unmounting on search input keystrokes by caching reactive query data during in-flight network queries.
-  - Added instant client-side multi-field search filtering (title, description, topic, subject name/code, level) for uninterrupted, zero-lag typing.
-- [x] **Planning Workspace Actionable Draft Generation Feedback (`/planning/lesson-plans`)**
-  - Added clear contextual warning notices explaining exactly why `[ Generate Draft ]` is disabled (e.g., missing template configuration in Setup > Lesson Templates, or requiring additional library source attachments).
-  - Replaced decorative AI sparkle icons with clean native workspace icons.
-- [x] **Curriculum Readiness Map Layout Overhaul & Vertical Scrolling (`/academic/knowledge/curriculum-readiness`)**
-  - Unlocked full vertical scrolling across the readiness map by establishing a scrollable viewport container (`h-full overflow-y-auto custom-scrollbar`) inside the full-bleed navbar wrapper.
-  - Modernized the 7 readiness statistic cards and transformed the evidence grid into a clean high-contrast matrix with rounded pill indicators.
-- [x] **Teacher Subject Selection Student Profile Picture Avatars (`/enrollment/subjects`)**
-  - Integrated student profile photos (`photoUrl`) in the subject selection desktop roster matrix (`SubjectSelectionDesktopTable.tsx`), mobile editor cards (`SubjectSelectionMobileEditor.tsx`), and bottom sheet editor (`StudentSubjectEditorSheet.tsx`) with seamless fallback to initials.
+- [x] **Differentiated Academic Grade Band Color Scale & Positive Standing for Grade C (`grade-policy.ts`, `GradeColorControl.tsx`)**
+  - Replaced murky brown/rust tones that caused parent panic with a crisp educational palette:
+    - **Grade A (75–100, Excellent):** Emerald Green (`#065f46`, 7.7:1 AAA contrast).
+    - **Grade B (65–74, Very Good):** Royal Blue (`#1e40af`, 8.7:1 AAA contrast).
+    - **Grade C (50–64, Good):** Vivid Purple / Violet (`#6d28d9`, 7.1:1 AAA contrast) — elevated to clear positive standing.
+    - **Grade D (45–49, Fair Pass):** Warm Amber / Ochre (`#b45309`, 5.0:1 AA contrast) — caution tone.
+    - **Grade E (40–44, Pass) & Grade F (0–39, Fail):** Crimson Red (`#991b1b`, 8.3:1 AAA contrast) — shared risk tier.
+  - Deduplicated palette swatches in `GradeColorControl.tsx` to render a clean 5-color selector without duplicate DOM keys.
+- [x] **Grading Bands Validation, Default Preset & Auto-Arrange (`/assessments/setup/grading-bands`)**
+  - Added duplicate grade label and score range overlap checks with targeted border highlighting in `BandTable.tsx`.
+  - Added 1-click **"Load Standard Scale"** preset (`A: 75–100`, `B: 65–74`, `C: 50–64`, `D: 40–49`, `F: 0–39`) and **"Auto-Arrange"** button sorting ascending (`0 → 100`).
+  - Added responsive mobile tier cards (`md:hidden`) and in-flow `BandValidationBanner` rendered above tiers.
+- [x] **Report Cards Self-Contained Launcher & Sidebar Navigation (`/assessments/report-cards`)**
+  - Added `ReportCardLauncher.tsx` providing session, term, class, student search, and batch print selectors.
+  - Added pinned top header (`shrink-0 z-20`) with dedicated 2-axis in-canvas zoom (`[ - ] [ Fit ] [ + ]`), drag panning, and mobile pinch-to-zoom.
+- [x] **Strict Next-Term Resumption Auto-Lookup & Calendar Event Sync**
+  - Automatically looks up adjacent next term's start date and synchronizes report card resumption edits back to `academicTerms.startDate`.
+  - Automatically posts a 2-week resumption notice to `schoolEvents` before term conclusion.
 
----
-
-### 10. Platform Super Admin Unified Navigation, School Groups & Audit Explorer De-Slopping
-- [x] **Unified Platform Navigation System (`PlatformLayoutClient.tsx`, `layout.tsx`)**
-  - Designed and implemented a universal Super Admin top navigation bar shared across `/schools`, `/groups`, and `/audit`.
-  - Replaced floating, unstyled blue hyperlinks with an integrated segmented navigation tab bar (`Schools`, `School Groups`, `Audit Explorer`) complete with active tab styling and icons.
-  - Streamlined account actions into the top bar (Platform Admin user pill, Change Password modal trigger, Sign Out action).
-  - Wrapped all 3 platform route groups (`app/schools`, `app/groups`, `app/audit`) in the unified layout.
+### 10. Platform Super Admin Unified Navigation, School Groups & Multi-Branch Staff Assignment
+- [x] **Multi-Branch Staff Assignment Engine (`GroupBranchAccessManager.tsx`, `groups.ts`)**
+  - Built `GroupBranchAccessManager` enabling school group proprietors and HQ admins to grant existing staff access to sibling branch campuses without creating second logins.
+  - Supports role assignment (`admin`, `staff`, `teacher`), permission templates (`roleTemplateId`), display titles (e.g. *Ruga Branch Administrator*), and slug confirmation.
+  - Added revocation controls with guardrails preventing accidental revocation of proprietors or a staff member's sole active campus.
+  - Extended schema to support the `"staff"` membership role.
+- [x] **Unified Platform Navigation System (`PlatformLayoutClient.tsx`)**
+  - Universal top navigation bar across `/schools`, `/groups`, and `/audit` with segmented tab bar, user pill, Change Password modal trigger, and Sign Out action.
 - [x] **School Groups Mental Model Clarification & Two-Column Workbench (`apps/platform/app/groups/page.tsx`)**
-  - Resolved user confusion around multi-school hierarchy: clarified that campuses are created first as independent schools, then grouped under an HQ campus and assigned proprietor.
-  - Eliminated robotic, defensive AI slop jargon (e.g., *"statutory group ownership"*, *"canonical identity review"*, *"reviewed intended proprietor"*).
-  - Designed a high-synergy 2-column layout:
-    - **Left Column (Directory):** Group list with slug badges, active status indicators, and group counts.
-    - **Right Column (Workspace):**
-      - **Selected Group View:** Clear Headquarters campus highlight card, list of linked branch campuses with status, and a smooth `+ Link Another Branch` drawer.
-      - **Group Creation View:** Clean form with real-time automatic slug generation from group name, HQ school selector, administrator candidate selector with auto-selection when only 1 admin exists, and fallback link to assign school admins.
-  - Removed high-friction manual slug confirmation typing (the selected school's slug is now verified and supplied automatically by the UI upon submission).
-- [x] **Audit Explorer Modernization & De-Slopping (`apps/platform/app/audit/page.tsx`, `AuditExplorerView.tsx`)**
-  - Removed disconnected breadcrumbs and defensive legalistic disclaimers.
-  - Transformed the School Filter scope into a clean, modern card selector.
-  - Upgraded `@school/shared/components/AuditExplorerView.tsx` with clean badge indicators for modules and outcomes (emerald for success, rose for failures/denials), human-readable timestamps, elegant collapsible event details, and polished export controls, while preserving all accessibility and test contracts.
-
----
+  - Two-column workbench: Left column directory of groups with slug badges; Right column showing HQ campus highlight, linked branches, and `+ Link Another Branch` drawer.
+  - Eliminated defensive AI jargon and automated slug verification on submission.
+- [x] **Audit Explorer Modernization & De-Slopping (`AuditExplorerView.tsx`)**
+  - Upgraded audit explorer with clean status pills (emerald for success, rose for denials), humanized relative timestamps, collapsible payload details, and export controls.
 
 ### 11. Admin & Staff Workspace Header Optimization & Branch Switcher Slop Removal
 - [x] **Zero Vertical Screen Waste & Dedicated Header Slot (`WorkspaceNavbar.tsx`)**
-  - Completely eliminated the full-width white banner strip (`border-b border-slate-200 bg-white px-4 py-2`) previously rendered below the top navigation across every single admin and teacher page.
-  - Relocated the branch selector directly into the top header bar (`h-16`) right alongside the user profile session dropdown.
-- [x] **Developer Slop Removal & Clean Multi-Campus Control (`BranchSwitcher.tsx`)**
-  - Removed the hardcoded developer technical-debt text (*"Branch switching is unavailable on this route: its data calls still use your default school. Scoped domain adapters and unsaved-work protection must be ready before switching."*).
-  - Configured intelligent rendering: when a school organization has only 1 branch (or when branch switching is not enabled for the route), the switcher returns `null` and renders zero visual clutter, giving 100% of vertical screen space back to actual dashboard and workspace content.
-  - When a user has multiple active campuses on a switchable route, renders a compact, elegant `[ 🏫 Campus ▾ ]` select pill inline in the header.
-- [x] **Verification & Test Alignment (`workspace-shell.test.tsx`)**
-  - Updated admin workspace shell tests to assert that defensive slop copy is eliminated while ensuring all accessibility roles and switching guards remain fully intact.
-  - Verified 100% green test suite across both `@school/admin` (35/35 test suites, 154 tests passing) and `@school/shared` (23/23 test suites, 168 tests passing).
+  - Completely eliminated the full-width white banner strip previously rendered below the top navigation across admin and teacher pages.
+  - Relocated the branch selector directly into the top header bar (`h-16`) alongside the user profile dropdown.
+- [x] **Developer Slop Removal & Multi-Campus Control (`BranchSwitcher.tsx`)**
+  - Removed hardcoded developer text regarding scoped domain adapters and unready routes.
+  - Intelligent rendering: returns `null` when a school organization has only 1 branch or when switching is not enabled, giving 100% of vertical screen space back to actual dashboards.
+  - Displays compact `[ 🏫 Campus ▾ ]` select pill when multiple active campuses exist.
 
----
+### 12. Admission Numbering Policy, Token Formatting & Monotonic Sequence Guardrails
+- [x] **Admission Numbering Modern Configuration Center (`/admin/settings/admission-numbering`)**
+  - Overhauled raw developer form into a premium card-based layout matching the Melo Slate/Indigo design system.
+  - Real-time "Live Identifier Preview" card showcasing dynamic tokens (`{SCHOOL}`, `{CAMPUS}`, `{LEVEL}`, `{YEAR}`, `{SEQ:4}`) with sample previews.
+  - Cursor-position token insertion: clicking a token splices it at the exact cursor caret position rather than appending to the end of the input.
+- [x] **Monotonic Sequence Guardrails & Backward-Step Prevention**
+  - Added proactive `min={minSequenceAllowed}` on the "Next sequence" input with live warnings (`Cannot be lower than #X`) and 1-click reset shortcuts.
+  - Disables save actions when moving sequence backwards, preventing duplicate ID collisions before form submission.
+- [x] **Convex Error Sanitization & Unified Sonner Toast Routing**
+  - Sanitized internal Convex mutation errors (`getUserFacingErrorMessage`), mapping monotonic sequence constraints, session counter drift, and concurrency conflicts into plain-English notifications.
+  - Routed notifications through unified `appToast` with interactive recovery actions (`Reset to #X`, `Reload`), replacing page-displacing in-page error banners while preserving `sr-only` live regions.
+- [x] **Intentional Starting Number Confirmation Requirement**
+  - Replaced 1-click auto-fill with an intentional manual typing requirement: admins must type the starting sequence number into the confirmation input, with instant emerald confirmation styling upon matching.
 
-### 12. Admission Numbering Intentional Confirmation & Session Creation Date Normalization
-- [x] **Admission Numbering Intentional Confirmation Safeguard (`/admin/settings/admission-numbering`)**
-  - Reverted the 1-click `Match #[X]` auto-fill shortcut button so users deliberately type the starting sequence into the confirmation input, preventing accidental skips or unintentional changes.
-  - Maintained instant visual feedback (emerald border, confirmed badge) once the entered number matches the draft sequence.
-- [x] **Academic Session Creation Timezone Normalization (`/academic/sessions`)**
-  - Diagnosed root cause of `"Session creation failed: The selected calendar template does not fit this branch session date range"`:
-    - In client timezones ahead of UTC (e.g., WAT / UTC+1 in Nigeria), `parseLocalDate` produced local noon timestamps (11:00 UTC).
-    - On Convex Cloud (running in UTC), `toDayStartNoon` calculated term end bounds at 12:00 UTC, which exceeded the session end timestamp by 1 hour (3,600,000 ms).
-    - This triggered Convex's strict `term.endDate > args.endDate` inequality check, throwing a cryptic error regarding calendar templates even for schools without a template.
-  - Standardized `SessionCreationModal.tsx`, `TermCreationModal.tsx`, `TermCard.tsx`, and `SessionTimelineCard.tsx` on `Date.UTC(year, month - 1, day, 12, 0, 0)` and UTC-based date formatting.
-  - Verified 100% test pass rate across 35 test files and 154 tests in `@school/admin` and TypeScript check with 0 errors.
-
----
-
-### 13. Data Migration Workbench Full-Bleed Scroll Container & Layout Fix
-- [x] **Independent Vertical Scroll Container on Data Migration Workbench (`DataMigrationWorkbench.tsx`)**
-  - Diagnosed root cause of vertical scrolling lock on `/students/import` and `/academic/students/import`:
-    - `WorkspaceNavbar` applies `lg:overflow-hidden h-full` to `<main>` when `fullBleed={true}`, expecting child workbench views to manage their own inner scrolling.
-    - `DataMigrationWorkbench` was wrapped in an unbounded `min-h-screen pb-20` without `overflow-y-auto` or flex bounding, causing rows #10 through #36 to be clipped offscreen behind the fixed bottom action bar and making the page appear "frozen" / locked.
-  - Refactored `DataMigrationWorkbench.tsx` to follow the canonical 3-tier workbench pattern:
-    1. **Pinned Header (`shrink-0`):** Workspace breadcrumb, name, and action buttons remain pinned at top.
-    2. **Scrollable Body (`flex-1 min-h-0 overflow-y-auto custom-scrollbar`):** Roster table, clash review, household tabs, and academic results scroll freely up and down with ample `pb-24` clearance.
-    3. **Pinned Action Bar (`shrink-0`):** Review metrics and commit buttons remain anchored at the viewport base.
-  - Updated test assertions in `migration-workbench.test.tsx` and verified 100% green test passes across both `@school/admin` and `@school/shared`.
-
----
+### 13. Data Migration & Bulk Student Import Engine (Roster Review, Deduplication & Counter Sync)
+- [x] **Independent Vertical Scroll Container on Migration Workbench (`DataMigrationWorkbench.tsx`)**
+  - Refactored `DataMigrationWorkbench.tsx` into a 3-tier layout: Pinned Header (`shrink-0`), Scrollable Body (`flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-24`), and Pinned Action Bar (`shrink-0`).
+  - Resolved scrolling lock caused by `WorkspaceNavbar` fullBleed container bounds, unlocking smooth navigation across rosters with dozens of students.
+- [x] **Automated Catalog Class Matching (`resolveStagedClassesBatch`, `migrationWorkspace.ts`)**
+  - Added `resolveStagedClassesBatch` backend mutation: automatically fuzzy-matches raw spreadsheet class names (e.g. "Primary 1A", "JSS1", "Grade 2") against active school catalog classes using `findUniqueMigrationClass`.
+- [x] **Sequence Counter Recommendations & Seed Advancement (`applyWorkspaceCounterRecommendations`)**
+  - Added `getWorkspaceCounterRecommendations` query and `applyWorkspaceCounterRecommendations` mutation: analyzes imported student admission numbers (e.g. `OBCA/2026/085`) and calculates the highest sequence used.
+  - Provides a 1-click action to advance the school's sequence counter seed, preventing future admission number collisions.
+- [x] **Bulk Roster Review & Batch Class Assignment Tools (`DataMigrationWorkbench.tsx`, `RosterReviewTab.tsx`)**
+  - Added multi-row selection checkboxes, batch class assignment (`assignStudentClassBatch`), batch approvals, and batch rejections.
+  - Filter tabs (`All`, `Pending`, `Approved`, `Flagged`) and real-time search across staged import records.
+- [x] **Student Clash Review & Deduplication Engine (`deduplicationEngine.ts`, `ClashResolutionModal.tsx`)**
+  - Enhanced deduplication engine to detect admission number collisions, existing user email matches, and fuzzy name matches.
+  - Built `ClashResolutionModal` giving admins clear resolution options: link to existing account, override and create new, or update identifiers.
+- [x] **Transactional Student & Family Account Creation (`migrationMerge.ts: createStudentsFromReviewedRoster`)**
+  - Implemented `createStudentsFromReviewedRoster` mutation: transactionally creates `students` documents, Better Auth user accounts, and parent `familyLinks` from approved staged rows.
+- [x] **Workspace Discard & Deletion (`migrationWorkspace.ts: deleteMigrationWorkspace`)**
+  - Added safe workspace deletion mutation allowing administrators to discard abandoned or incorrect import runs cleanly.
 
 ### 14. Academic Grading Band Color Scale & Positive Standing for Grade C
-- [x] **Differentiated Academic Grade Band Color Scale & Positive Standing for Grade C (`grade-policy.ts`, `GradeColorControl.tsx`, `themeDerivation.ts`)**
-  - **Issue & Parent Perception:** Previously, standard default grading bands used murky brown/rust tones for C (`#92400e`), D (`#9a3412`), and E (`#7c2d12`) right next to F (`#991b1b`). This caused parents reviewing report cards to mistakenly panic that Grade C ("Good", 50–64%) was a failing or danger-level mark.
-  - **Resolved Distinct Hue Architecture (A to D Distinct, E/F Shared Fail/Risk Hue):**
-    - **Grade A (75–100, Excellent):** Emerald Green (`#065f46`, 7.7:1 AAA contrast) — unmistakable symbol of academic distinction.
-    - **Grade B (65–74, Very Good):** Royal Blue (`#1e40af`, 8.7:1 AAA contrast) — unmistakable symbol of high achievement.
-    - **Grade C (50–64, Good):** Vivid Purple / Violet (`#6d28d9`, 7.1:1 AAA contrast) — completely removed from danger/warning hues; instantly communicates solid positive standing.
-    - **Grade D (45–49, Fair Pass):** Warm Amber / Ochre (`#b45309`, 5.0:1 AA contrast) — distinct warning/caution tone indicating borderline performance.
-    - **Grade E (40–44, Pass) & Grade F (0–39, Fail):** Crimson Red (`#991b1b`, 8.3:1 AAA contrast) — shared critical tier for marginal passes and failing scores.
-  - **Deduplicated Palette Swatches:**
-    - Updated `GradeColorControl.tsx` to deduplicate preset palette swatches so shared tier colors (E and F) render a clean, non-redundant 5-color selector without duplicate DOM keys.
+- [x] **Differentiated Hue Architecture for Grade Bands**
+  - Standardized distinct color hierarchy across `grade-policy.ts` and `themeDerivation.ts`:
+    - Grade A: Emerald Green (`#065f46`, distinction)
+    - Grade B: Royal Blue (`#1e40af`, high achievement)
+    - Grade C: Vivid Purple / Violet (`#6d28d9`, positive credit standing)
+    - Grade D: Warm Amber (`#b45309`, borderline pass caution)
+    - Grade E & F: Crimson Red (`#991b1b`, shared risk/failure)
+  - Successfully elevated Grade C out of danger/warning hues on report cards and parent portals.
 
----
+### 15. Report Add-ons & Bundle Designer Multi-Preset Workbench
+- [x] **Multi-Preset Sections & Section-Level Preset Selection (`InteractiveSheetEditor.tsx`, `BundleEditor.tsx`, `utils.ts`)**
+  - Enhanced the report add-on bundle designer to support adding multiple preset sections into a single bundle without overwriting existing sections.
+  - Added section-level preset selection (`createSectionDraftsFromPreset`) allowing admins to mix and match traits:
+    - *Affective & Behavioral Traits*
+    - *Psychomotor & Practical Skills*
+    - *Teacher Remarks & Term Summary* (narrative teacher/principal remarks and dynamic next term resumption date)
+    - *Attendance & Physical Measurements*
+- [x] **Floating Action Dock in Editor (`EditorActionBar.tsx`)**
+  - Replaced full-width bottom banner with a sleek, floating action dock (`fixed bottom-6 right-6 z-50` backdrop-blur pill).
+  - Displays live "Unsaved changes" ping or "All saved" checkmark, Discard, and Save actions.
+  - Replaced aggressive AI sparkles across curriculum and bundle designer components with clean native icons.
 
-### 15. Platform-Wide Silent Autosave & Non-Intrusive Draft Status Architecture
-- [x] **Elimination of Layout-Shifting Draft Banner Platform-Wide (`DraftStatusIndicator.tsx`, `PersistentFormDraftControls.tsx`, `billing/page.tsx`, `students/page.tsx`, `students/onboarding/page.tsx`)**
-  - **Issue & Annoyance:** Across forms in the application, autosave previously rendered a full-width bordered banner that expanded whenever a user typed or an autosave fired. This caused disruptive Cumulative Layout Shift (CLS), pushed page headers down by 40–60px, obstructed controls, and caused visual flickering.
-  - **Silent-on-Success Architecture:**
-    - Upgraded `DraftStatusIndicator.tsx` with a `silentOnSuccess` prop (default `true` in `PersistentFormDraftControls`). During normal typing and saving, `"saved"` and `"saving"` states return `null` (0px height, 0 margin, 0 CLS). The UI remains completely calm and stationary.
-    - Re-architected `PersistentFormDraftControls.tsx` to eliminate the full-width outer banner container across all screens. Clean/saved forms have zero DOM footprint.
-    - Preserved manual workflows: when a form is dirty and uses default controls, an unobtrusive `Save draft` button appears inline so users or manual tests can trigger immediate saves without waiting for debounce timers.
-  - **Truthful Error & Conflict Surfaces Preserved:**
-    - Failure states (`"save_failed"`, `"connection_lost"`, `"conflict"`, `"expired"`, `"reauth_required"`) immediately surface an actionable pill with `Retry` or `Preview draft` buttons.
-    - `DraftRecoveryModal.tsx` remains available to prompt users when restorable session edits or server drafts exist, keeping the form layout clean underneath.
+### 16. Developer Experience, Process Port Hygiene & Auth Query Initialization Guardrails
+- [x] **Port Hygiene Utility & Prestart Hook (`scripts/kill-ports.mjs`)**
+  - Created `scripts/kill-ports.mjs` and wired into `prestart` hook in `package.json`.
+  - Automatically terminates lingering Node/Next.js processes on ports 3000–3006 before booting apps, eliminating `EADDRINUSE` port collision errors.
+- [x] **Convex Auth Query Gating (`apps/admin/lib/AuthProvider.tsx`)**
+  - Gated workspace and school metadata queries on Convex authentication state (`useConvexAuth().isAuthenticated`).
+  - Eliminates startup race conditions where unauthenticated queries fired before JWTs were established, preventing sporadic initial load flashes and authorization failures.
+
+### 17. Form Draft Ergonomics, Modernized Recovery Modals & Viewport Polish
+- [x] **Streamlined Teacher Creation Form Header & Draft Controls (`TeacherCreationForm.tsx`)**
+  - Eliminated swollen, oversized draft status pills and header text crowding.
+  - Added `variant="compact"` to `PersistentFormDraftControls` for unobtrusive inline status indicators.
+- [x] **Modernized Draft Recovery Modal Hierarchy (`DraftRecoveryModal.tsx`)**
+  - Redesigned `DraftRecoveryModal`: clear visual hierarchy, plain copy, humanized relative timestamps, and zero button text wrapping.
+  - Prevented modal content clipping on small and medium screens with proper flex bounds and custom scrollbars.
+- [x] **Session Modal Draft Box De-sloppification (`SessionCreationModal.tsx`)**
+  - Removed bulky draft notice boxes and paragraph disclaimers from the modal body, replacing them with compact footer status indicators.
 
 ---
 
@@ -402,141 +334,111 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [ ] **Curriculum & Subject Assignments (`/academic/subjects`, `/academic/classes`):**
   - Assigning subject teachers within a class blueprint must persist cleanly without interfering with the session form teacher mapping.
 
-### 2. Student Promotions & Enrollment Rosters
+### 2. Student Promotions, Enrollment & Multi-Branch Transfers
 - [ ] **Student Directory (`/students`):**
   - Verify student count badges per class accurately reflect students placed in that class for the selected session.
   - Promoting a cohort from JSS 1 to JSS 2 for 2026/2027 must NOT alter the current 2025/2026 JSS 1 class list while the 2025/2026 session is still active.
-- [ ] **Student Detail & Profile Sheet (`/students/[id]`):**
-  - Verify student class name and session progression status render correctly on individual profiles.
+- [ ] **Class Roster Transfers (`moveStudentClass`):**
+  - Verify moving a student from Primary 1A to Primary 1B preserves the student's historical attendance and updates active subject selections.
+- [ ] **Student Photo Uploads:**
+  - Verify student photos render across admin roster, teacher grading sheet, and parent portal student badges.
 
 ### 3. Report Cards & Transcripts (Historical Integrity)
 - [ ] **Report Card Generation (`/assessments/report-cards`):**
   - Open a 2024/2025 report card for a student: verify the footer displays the 2024/2025 Form Teacher's name.
   - Open a 2025/2026 report card for the same student: verify it displays the 2025/2026 Form Teacher's name.
   - Verify that soft-archiving a departed teacher still renders their human-readable name on historical report card PDF prints without crashing or displaying "Unassigned".
+- [ ] **Multi-Preset Report Add-ons:**
+  - Verify that bundles with multiple sections (Affective + Psychomotor + Remarks) render cleanly on printed A4 report cards without overlapping margins.
 
 ### 4. Staff Management & Teacher Archiving
 - [ ] **Teacher Archiving Modal (`/staff` / `/admin/teachers`):**
   - Attempting to archive a teacher who is an active form teacher in the *current active session* must display the blocking warning listing the exact class name.
   - Attempting to archive a teacher who *only* taught in past sessions must succeed immediately with zero blockers.
+- [ ] **Teacher Password Reset:**
+  - Verify school admins can trigger password resets for teachers directly from the teacher edit drawer.
 
-### 5. Teacher Workspace Authorization
-- [ ] **Teacher Portal Extras (`apps/teacher`):**
-  - Verify `getTeacherExtrasAuthorization` grants comment/affective domain entry access to teachers who are form teachers in the active session.
+### 5. Multi-Branch Operations & Group Access
+- [ ] **Group Branch Access Manager (`/admin/group`, `/platform/groups`):**
+  - Assigning a teacher or admin to a secondary branch campus must grant immediate login access to that branch without duplicating user credentials.
+  - Revoking access must take effect immediately on the next request while preserving their home branch credentials.
 
 ### 6. Billing & Communications Downstream
-- [ ] **Receipts & Invoices Header (`/billing`):**
-  - Verify school motto, official contact phone/email, and physical campus address from Settings render on billing statements and PDF payment receipts.
-- [ ] **Parent & Student Portals (`:3003`):**
-  - Verify that custom school palette, crest favicon, and school tagline render in portal headers.
+- [ ] **Deposit Bank Accounts on Invoices & Statements (`/billing`):**
+  - Verify selected deposit bank accounts render verified bank name, account number, and settlement instructions on parent invoices and printable statements.
+- [ ] **Receipt Generation:**
+  - Verify manual `# Generate` receipt button produces distinct formatted identifiers (`REC-YYMMDD-XXXXX`).
 
 ### 7. Academic Timeline & Dynamic Term Scheduling
 - [ ] **Session & Term Creation (`/academic/sessions`):**
-  - Create a new academic session with arbitrary custom start/end dates (e.g. October 1 to June 30) with auto-create terms enabled: verify that 3 non-overlapping terms are created atomically without throwing date range bounds errors.
-  - Adding a manual term to an existing session: verify that start/end date inputs are automatically prepopulated with recommended dates corresponding to the selected term preset.
+  - Create a new academic session with arbitrary custom start/end dates in UTC+1 timezone: verify that terms are created atomically without throwing date range bounds errors.
 
 ---
 
 ## 🚀 Roadmap & Backlog
 
+### Completed in Recent Passes
+- [x] **Pre-Populated Default Grading Bands & Custom Color Coding per Grade Tier (`/assessments/setup/grading-bands`)** — Completed in Section 9 & 14 (`d89a037`). Standard scale presets, auto-arrange, and distinct AAA contrast palette (Grade C violet standing).
+- [x] **Sequential Auto-Incrementing Admission Numbers & Starting Counter Seed (`/admin/settings/admission-numbering`)** — Completed in Section 12 (`bd817cd`, `1abf8fa`, `7f9bb47`, `cfb8095`). Live preview card, cursor token insert, monotonic guardrails, intentional typing confirmation, and import counter recommendations.
+- [x] **School Bank Account Details for Invoices & Statements (`/billing`)** — Completed in Section 6 (`a17da8e`). Bank account selection per fee plan with fallback to school settlement default.
+- [x] **Form Unsaved State Guard & Draft Protection** — Completed in Section 17 (`b098f9f`, `f900a9f`, `262968f`). Modernized `DraftRecoveryModal`, inline compact draft pills, and `useDirtyForm` departure protection.
+- [x] **Intelligent School Bulk Data Import & Deduplication Engine (`/students/import`)** — Completed in Section 13 (`067e952`, `8e88e82`, `5d0b3aa`, `e5b0ecc`, `4707719`, `cfb8095`). Bulk roster tools, clash review modal, automated class fuzzy matching, sequence recommendations, and transactional student creation.
+- [x] **Multi-Branch Staff Assignment (School Groups & Campus Networks)** — Completed in Section 10 (`cc3b7a4`). Cross-branch staff assignment without duplicate logins, role templates, and revocation guardrails.
+- [x] **Direct Knowledge Material Ingestion in Admin (`/academic/knowledge/library`)** — Completed in Section 7 (`d922f82`). Upload button and sheet for school-wide curriculum guides and textbooks.
+
 ### High Priority / Next Up
-- [ ] **Pre-Populated Default Grading Bands & Custom Color Coding per Grade Tier / Level (`/assessments/setup/grading-bands`)**
-  - **Context & Need:** Currently, navigating to `/assessments/setup/grading-bands` presents a blank matrix requiring school administrators to define every single grade score tier (`0-100`) from scratch. Furthermore, grade levels / tiers currently lack visual color accents, making score entry and report cards monotonous.
-  - **Pre-Populated Default Policy:**
-    - When a new school registers or sets up grading for the first time, automatically initialize a standard default grading band policy (e.g., `A: 75–100 (Excellent)`, `B: 65–74 (Very Good)`, `C: 50–64 (Credit/Pass)`, `D: 40–49 (Pass)`, `F: 0–39 (Fail)`).
-    - Provide a prominent **"Load Standard Default"** preset button to reset or prefill standard bands at any time with 1 click.
-  - **Custom Color Palette per Grade Tier / Level:**
-    - Enable schools to assign custom color tags/badges to each grade band (e.g. Emerald `#10B981` for `A`, Sky/Blue `#0284C7` for `B`, Amber `#F59E0B` for `C`, Orange `#F97316` for `D`, Rose/Red `#EF4444` for `F`).
-    - These color accents flow dynamically into score recording sheets, student progress bars, class distribution analytics, and report card badge styling.
-  - **Full Customization Control:**
-    - Schools retain complete freedom to edit min/max ranges, delete tiers, add more tiers (e.g., `A+`, `A`, `B+`, `B`, `C+`, `C`, `D`, `E`, `F`), customize verbal remarks, and modify colors as they wish.
 - [ ] **Granular Admin Role-Based Access Control (RBAC) & Scoped Staff Permissions**
-  - **Context & Need:** Currently, all school administrator accounts receive full universal access across the entire admin workspace. Schools need to designate departmental staff roles (e.g., Bursar/Accountant, Academic Director/Dean of Studies, Registrar/Admissions Officer, Exam Officer) who should only view and manage modules relevant to their job functions rather than giving all admins access to everything.
+  - **Context & Need:** Departmental staff roles (Bursar/Accountant, Academic Director/Dean of Studies, Registrar/Admissions Officer, Exam Officer) should only view and manage modules relevant to their job functions.
   - **Proposed Role Scopes & Capability Matrix:**
-    - **Finance & Bursary (`bursar`):** Access restricted strictly to Billing, Invoices, Fee Plans, Statements of Account, Payment Receipts, and Bank Settings. Cannot view/edit exam configurations, student grades, or teacher assignments.
-    - **Academic Affairs (`academic_dean` / `exam_officer`):** Access to Sessions & Terms, Class Blueprints, Subject Catalogs, Exam Setup, Grading Bands, and Report Card generation. Restricted from billing ledgers, revenue analytics, and school banking settings.
-    - **Admissions & Student Affairs (`registrar`):** Access to Student Roster, Admissions, Enrollment Onboarding, and Attestation letters. Restricted from fee configuration and grading band policies.
-    - **School Super Admin / Proprietor (`super_admin`):** Full, unrestricted administrative privileges across all institutional modules, staff permissions, and workspace settings.
+    - **Finance & Bursary (`bursar`):** Restricted strictly to Billing, Invoices, Fee Plans, Statements of Account, Payment Receipts, and Bank Settings.
+    - **Academic Affairs (`academic_dean` / `exam_officer`):** Sessions & Terms, Class Blueprints, Subject Catalogs, Exam Setup, Grading Bands, and Report Card generation.
+    - **Admissions & Student Affairs (`registrar`):** Student Roster, Admissions, Enrollment Onboarding, and Attestation letters.
+    - **School Super Admin / Proprietor (`super_admin`):** Full unrestricted administrative privileges.
   - **Implementation Strategy:**
     - Add `adminRole` or `permissions: string[]` field on admin users / memberships.
     - Add layout-level and route-level authorization guards on sidebar navigation items and page endpoints.
-    - Enforce backend mutation/query assertion helpers (`assertSchoolAdminPermission(ctx, "finance" | "academics" | "admissions")`).
-- [ ] **School Bank Account Details for Invoices & Statements (Billing Settings / Defect Later)**
-  - Add configurable school bank account profile fields (Account Name, Bank Name, Account Number/IBAN, Sort Code/Branch) in Billing Settings (alongside the Paystack gateway configuration) or General Settings.
-  - Automatically attach and render configured school bank account details on generated and printed student billing invoices and statements of account so parents remitting via direct bank transfer see verified school account numbers.
-- [ ] **Sequential Auto-Incrementing Admission Numbers & Starting Counter Seed**
-  - Configurable format pattern in School Settings (e.g. `SCH/{YEAR}/{SEQ:4}` $\to$ `SCH/2026/0042` or `NUR-{SEQ:4}`).
-  - Admin defines *"Last Used Admission Number"* / *"Starting Seed Number"* (e.g. `516`) so onboarding schools migrate without ID gaps.
-  - Auto-assign next sequential number upon enrollment approval.
+    - Enforce backend assertion helpers (`assertSchoolAdminPermission(ctx, "finance" | "academics" | "admissions")`).
 - [ ] **Institutional Email Domain & Standardized Staff/Student Email Convention**
   - School domain configuration in Settings (e.g. `@meridiancrest.edu.ng`).
   - Standardized email address generation: `firstname.lastname@schoolsdomain.com` with collision resolution.
-- [ ] **Form Unsaved State Guard & Draft Protection**
-  - Confirmation prompt before navigating away when an enrollment or setup form has unsaved edits.
-  - Local draft backup in `localStorage` for form resilience against accidental reloads.
 - [ ] **Mobile Scroll Progress Bar for Long Forms**
   - Fixed top progress indicator on mobile viewports during multi-step student enrollment and wizard forms.
 - [ ] **AI & Document Ingestion Usage Limits, Storage Quotas & Over-Usage Buffers**
-  - **Context & Need:** Protect platform margins and prevent runaway costs from high-frequency generation, excessive OCR, and large file uploads. Schools on the Basic/Standard plan must have clear baseline quotas with a graceful buffer before hard caps kick in, plus an option to purchase top-up credits or upgrade tiers.
+  - **Context & Need:** Protect platform margins and prevent runaway costs from high-frequency generation, excessive OCR, and large file uploads.
   - **Tier-1 Simple Metering (Phase 1 - Immediate & Clean):**
-    - **Prompt / Message Quota:** Track AI generations per school per billing cycle (e.g. 500 lesson plan / quiz / assessment prompts per month on Basic).
-    - **Graceful Buffer:** Allow a 10–20% soft buffer (e.g. +50 extra prompts) with warning banners in the UI (*"You have used 95% of your monthly AI quota. Add credits to avoid service interruption"*) rather than jarring sudden cutoffs mid-lesson planning.
-    - **Pre-Upload PDF Page Counter & Smart Guidance Banner:**
-      - The moment a teacher selects a PDF in the file picker, inspect the page count client-side before upload begins.
-      - If the page count is high (> 20 pages), display an educational recommendation banner: *"This PDF contains [X] pages. We recommend using the 'Pages to Index' field below (e.g. `1-10, 25-30`) to focus on the specific chapter you need and conserve your monthly quota."*
-    - **Document Ingestion & OCR Limits:**
-      - File size cap: 15–25 MB per PDF upload.
-      - Page count cap: Maximum pages processed per document (e.g., 20–30 pages per document on Basic) and monthly OCR page allowance (e.g., 150 OCR pages/month).
-      - Storage Quota: Simple tenant-level disk allowance (e.g. 2 GB included on Basic).
+    - Prompt / Message Quota: Track AI generations per school per billing cycle.
+    - Graceful Buffer: 10–20% soft buffer with warning banners in UI.
+    - Pre-Upload PDF Page Counter & Smart Guidance Banner.
+    - Document Ingestion & OCR Limits: 15–25 MB cap per PDF, page count cap, tenant storage quota.
   - **Tier-2 Advanced Token, Compute & Automated Document Batching (Phase 2):**
-    - **Automated Multi-Batch Document Processing:**
-      - For large textbooks or syllabi, offer a 1-click *"Auto-Split & Ingest in Batches"* workflow that splits the PDF into manageable chapters (e.g., Ch 1: 1–20, Ch 2: 21–40).
-      - Display an explicit cost/quota confirmation modal before kickoff (*"Processing this 80-page document in 4 batches will consume 80 pages from your monthly quota. Remaining quota: 70 pages."*).
-    - **Granular Token Metering:**
-      - Transition to granular per-token tracking (`usage.total_tokens` from OpenRouter responses) recorded into a `schoolAiUsage` ledger.
-      - Custom rate cards per tenant for high-volume enterprise chains with automatic credit-drawdown.
+    - Auto-Split & Ingest in Batches for textbooks/syllabi.
+    - Granular per-token tracking recorded into a `schoolAiUsage` ledger.
 - [ ] **School Assets & PDF Compression Foundation** → see [docs/features/SchoolAssetsAndPdfCompression.md](../docs/features/SchoolAssetsAndPdfCompression.md)
-  - Per-school private document store (`schoolAssets` table) for non-lesson-knowledge PDFs: policy docs, report templates, past papers, circulars, logos. Complements (does not replace) the existing lesson-knowledge storage in `LessonKnowledgeHub_v1.md` / `v2`.
+  - Per-school private document store (`schoolAssets` table) for non-lesson-knowledge PDFs: policy docs, report templates, past papers, circulars, logos.
   - Per-school 5 GiB quota, 25 MB per-file cap, MIME allowlist (`application/pdf`, `image/png`, `image/jpeg`).
-  - Server-side pure-Node PDF compression in a Convex Node action using `pdf-lib` (metadata strip, font dedup, object-stream recompression). Replaces the stored copy only if savings exceed 10%. Idempotent + cron-retryable.
-  - `SchoolAssetsPanel` admin UI with usage bar, kind filter, per-row delete. No public/parent downloads in v1.
-  - Out of scope: Ghostscript / native binary compression, `sharp` image re-encoding (verify Convex Node runtime first), AV scanning, versioned assets.
+  - Server-side pure-Node PDF compression in a Convex Node action using `pdf-lib`.
 
 ### Architecture & Medium-Term Enhancements
 - [ ] **Centralize Product Modules and Per-School Entitlements** → see [docs/features/ProductWideModuleEntitlements.md](../docs/features/ProductWideModuleEntitlements.md)
-  - Implement each optional feature once across the shared Melo product, then enable it for selected schools or all schools through tenant configuration; do not create school-specific code forks.
+  - Implement each optional feature once across the shared Melo product, then enable it through tenant configuration.
   - Establish one non-React module registry as the source for platform controls, route-impact descriptions, navigation visibility, direct-route guards, and default entitlement behavior.
-  - Keep module entitlement separate from user permission, and add authoritative Convex checks so disabled modules cannot be reached through direct backend calls.
-  - First align the currently inconsistent Billing, Curriculum, Knowledge Library, and Admissions route declarations and enforcement described in the linked architecture note.
 - [ ] **Migrate All AI Generation from Vercel to Convex — Reliability & Offline Resilience**
-  - **Goal:** Move every OpenRouter AI generation currently in Vercel (`apps/teacher/app/api/planning/lesson-plans/generate/route.ts`, `apps/teacher/app/api/ai/question-bank/generate/route.ts` via `packages/ai/src/models.ts`) to **Convex actions** (like `packages/convex/functions/academic/curriculumGeneration.ts` via `packages/ai/src/runtime.ts`).
-  - **Why:** Vercel routes are tied to the HTTP request lifecycle — if the user closes the tab, network drops, or Vercel hits its timeout (10–300s), generation is aborted and tokens are wasted. Convex actions survive client disconnect, run up to ~10 min, retry automatically, and persist results directly to `ctx.db` for the client to pick up via `useQuery` on reconnect.
-  - **Scope:** (1) Create Convex actions for `lesson_plan`, `student_note`, `assignment`, `question_bank_draft`, `cbt_draft` (use `openai/gpt-5.6-luna` for all). (2) Port `createDocumentModel`/`resolveDocumentModelId` + `OPENROUTER_HTTP_REFERER`/`X-Title` header handling from `models.ts:84-93` into `runtime.ts` (currently Convex ignores those headers). (3) Unify env to single `SCHOOL_AI_*` set in **Convex Dashboard** (`npx convex env set`) instead of split Vercel + Convex. (4) Replace teacher `fetch('/api/.../generate')` calls with `useAction` + reactive `useQuery` polling. (5) Keep streaming if needed via Convex action + `useQuery` incremental updates or accept non-streaming reliable completion.
-  - **Acceptance:** All 6 models (`SCHOOL_AI_LESSON_PLAN_MODEL`, `SCHOOL_AI_STUDENT_NOTE_MODEL`, `SCHOOL_AI_ASSIGNMENT_MODEL`, `SCHOOL_AI_QUESTION_BANK_MODEL`, `SCHOOL_AI_CBT_MODEL`, `SCHOOL_AI_CURRICULUM_MODEL`) set to `openai/gpt-5.6-luna` in **one place (Convex)**; generation completes even if client disconnects mid-request; no `apps/teacher/app/api/**/generate` routes remain for AI.
+  - Move every OpenRouter AI generation currently in Vercel to Convex actions (`openai/gpt-5.6-luna`).
+  - Unify env to single `SCHOOL_AI_*` set in Convex Dashboard.
+  - Replace teacher `fetch('/api/.../generate')` calls with `useAction` + reactive `useQuery`.
 - [ ] **Multi-Arm Class Architecture & Grade-Level Hierarchy (Supporting Multiple Arms per Grade)**
-  - **Context & Need:** Many schools have multiple arms or streams per grade (e.g., *Grade 10 Cedar, Grade 10 Elm*, or *SS 1A, SS 1B, SS 1C*). Currently, the infrastructure models each arm as an individual distinct class record (`classes` table with `gradeName` + `classLabel`), which expects 1 class record per arm.
-  - **Future Architecture & Scope:**
-    - Model a first-class **Grade $\to$ Arms/Streams** hierarchy (e.g. `grades` representing the cohort level, and `classArms` or child `classes` representing individual classrooms/registers).
-    - Allow shared grade-level defaults (curriculum subject catalogs, grading policies, fee plans, assessment profiles) to be configured once at the Grade tier and automatically inherited by all constituent arms.
-    - Support cross-arm student rebalancing, joint subject timetable scheduling, grade-wide unified result ranking, and arm-specific vs grade-wide analytics.
+  - Model a first-class **Grade → Arms/Streams** hierarchy (e.g. `grades` representing cohort level, `classArms` representing classrooms/registers).
+  - Allow shared grade-level defaults (curricula, grading policies, fee plans) to be configured once at the Grade tier and inherited by arms.
 - [ ] **Multi-Parent Household & Guardian Linking Architecture**
-  - Support up to 2 legal parents (`Parent 1`, `Parent 2`) plus an optional primary `Guardian`.
+  - Support up to 2 legal parents plus an optional primary Guardian.
   - Relationship and residential address inheritance toggles.
   - Sibling auto-linking under unified `householdId` when contact details match.
 - [ ] **Comprehensive Student Lifecycle, Enrollment History & Timeline Audit Logs**
-  - Interactive vertical timeline widget on student admin & parent profiles (Admission $\to$ Class Progressions $\to$ Leaves/Transfers $\to$ Graduation).
-  - Official Certificate & Attestation Transcript export certifying exact dates of attendance.
+  - Interactive vertical timeline widget on student admin & parent profiles (Admission → Progressions → Leaves/Transfers → Graduation).
 - [ ] **Comprehensive Staff Onboarding & HR Profiles**
-  - Honorific titles (`Mr.`, `Mrs.`, `Dr.`, `Engr.`), staff codes, employment dates, and role progression logs.
-  - Formal exit recording (`resigned`, `retired`, `transferred`) and document uploads (contracts, clearance certificates).
-- [ ] **Multi-Tenant Campus & School Switcher (Proprietor Portal)**
-  - 1-click campus switching in navbar for multi-branch school owners without re-authentication.
-- [ ] **Intelligent School Bulk Data Import & Full Export Engine**
-  - Full structured tenant exports (Excel/CSV).
-  - AI-assisted import parsing with fuzzy name matching, grade placement confidence, and interactive deduplication review workbench.
+  - Honorific titles, staff codes, employment dates, role progression logs, formal exit recording.
 - [ ] **Smart Transactional & Batched Notification Engine**
-  - Immediate security/auth alerts.
-  - Debounced digest outbox for rapid operational edits to avoid guardian email fatigue.
+  - Immediate security/auth alerts, debounced digest outbox for operational edits.
 
 ---
 
@@ -568,7 +470,7 @@ This document tracks all observations, issues, UX refinements, completed changes
 - [ ] **Split `documentGeneration.ts`** — 1,898 lines hosting validators, schema-repair, retry/backoff, prompts, mapping, normalization, Markdown rendering, AI logging, and 2 actions. Split into `documentGeneration/{prompts,repair,actions/{lessonPlan,assessment}}.ts`.
 - [ ] **Split `WorkspaceNavbar.tsx`** — 1,145 lines. Extract mobile drawer, desktop tabs, profile dropdown, and favicon/title effects into separate components.
 - [ ] **Extract shared modal primitive** — 10+ modals lack focus trap, ESC handler, and `aria-modal`. Create one `<Modal>` component (Radix Dialog or hand-rolled) and replace all implementations.
-- [ ] **`callGenerateObject` type safety** — The `schema: unknown` → cast indirection works but obscures types. Consider one helper per output type so each call site is statically typed, especially after AI SDK v7 upgrade.
+- [ ] **`callGenerateObject` type safety** — The `schema: unknown` → cast indirection works but obscures types. Consider one helper per output type so each call site is statically typed.
 
 ### Data Integrity
 - [ ] **Promotion re-target audit trail** — Re-promoting a student to a different target class silently deletes prior `studentSubjectSelections` with no audit-log write or UI warning.
@@ -593,50 +495,3 @@ This document tracks all observations, issues, UX refinements, completed changes
 ### Scope Creep (land separately)
 - [ ] Navigation chrome (3 nav variants + preference switcher, WorkspaceNavbar +841 lines) — not in spec Done list. Land in a separate branch.
 - [ ] Future-spec docs (`StudentLifecycleAndEnrollmentHistory.md`, `EduClearanceTransferNetwork.md`, `KiddyTrackerAndGateOperations.md`, `ParentWhatsAppAndTransactionalComms.md`) added under `de88dbe`. Move to follow-up.
-
----
-
-### 10. E2E Polish: Receipt Generator, Session Sheet Modal, Archived Student Sync & Universal Fee Plans (Sept 2026)
-- [x] **Billing Manual Payment Reference Generator Overhaul (`BillingSidebar.tsx`, `useBillingActions.ts`)**
-  - Replaced the disconnected header link containing `✨ Auto-Generate` and amber `Sparkles` with an integrated inside-input button: `[ # Generate ]` utilizing `Hash` icon and neutral institutional slate styling (`bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700`).
-  - Adjusted input container padding (`pr-24 font-mono`) and updated helper text: *"Enter the bank transfer session ID, cash receipt number, or click Generate."*
-  - Fixed `runAction` error toast handling in `useBillingActions.ts` so errors no longer use `successTitle` (which previously produced misleading red toasts titled *"Fee Plan Created"* on failure).
-- [x] **Academic Session & Term Creation Responsive Bottom Sheet (`SessionCreationModal.tsx`, `TermCreationModal.tsx`)**
-  - Replaced invalid Tailwind CSS utility `p-4.5` (which rendered with 0px horizontal padding on touch/tablet screens < 640px) with generous `px-6 py-4 sm:py-5` padding.
-  - Refactored both modals into responsive bottom sheets matching `AdminSheet`:
-    - **Mobile/Tablet Viewports:** Animated slide-up drawer from the bottom with cubic-bezier transition, grab handle (`h-1.5 w-12 bg-slate-200`), rounded top (`rounded-t-[2.5rem]`), and full viewport blur backdrop.
-    - **Desktop (`sm:`):** Centered modal with `rounded-2xl sm:max-w-lg`.
-    - Integrated ESC key listener and scroll locking with restoration.
-- [x] **Archived Student Desynchronization Fix & Active Roster Hardening (`studentEnrollment.ts`)**
-  - Audited production Convex database for Olive Blessed Crest Academy and identified 5 students (`OBHIS/21/0214`, `OBHIS/21/207`, `OBCA/25/280`, `OBCA/17/`, `OBCA/25/0016`) whose user accounts were archived (`users.isArchived = true`) while their student enrollment documents had `isArchived = false`.
-  - Because `students.isArchived` was false, `getClassStudentSubjectMatrix` loaded them into active class rosters with 0 subjects, and clicking them triggered `ConvexError("Student account not found")` while promoting them triggered `ConvexError("One selected student account is not available")`.
-  - Hardened `getClassStudentSubjectMatrix`, `getStudentsByClass`, and `loadStudentFamilyProfile` to strictly omit any student whose corresponding user record is missing or has `isArchived: true`.
-  - Implemented `reconcileArchivedStudents` mutation in `studentEnrollment.ts` to idempotently synchronize `isArchived = true` onto `students` documents where the user account was archived, and prune pending promotions.
-- [x] **Universal "All Classes" Fee Plan Enablement (`billing.ts`, `FeePlanForm.tsx`)**
-  - Removed artificial validation check in `createFeePlan` (`packages/convex/functions/billing.ts`) that previously threw an error when `billingMode === "class_default"` had `targetClassIds: []`.
-  - Downstream invoicing (`createInvoiceFromFeePlan`) and bulk distribution (`applyFeePlanToClassStudents`) already support `targetClassIds.length === 0` as universal templates.
-  - Added an informative blue indicator pill in `FeePlanForm.tsx` when "All Classes (Universal Template)" is selected: *"Universal Template: This fee plan can be billed to students in any class across the school."*
-
-### 7. Form Draft Ergonomics & Unified Settings Sub-Navigation
-- [x] **Session Creation Modal Draft Box De-sloppification (`SessionCreationModal.tsx`, `PersistentFormDraftControls.tsx`)**
-  - Removed bulky, developer-focused draft notice box and paragraph disclaimer from the Session Creation modal body.
-  - Implemented `variant="compact"` on `PersistentFormDraftControls`, embedding a subtle inline draft status indicator in the modal footer next to action buttons.
-  - Preserved full state restoration, departure guarding (`useDirtyForm`), and draft conflict recovery without visual clutter.
-- [x] **Unified Settings Sub-Navigation Tabs (`SettingsNavigationTabs.tsx`, `/admin/settings/*`)**
-  - Replaced raw underlined HTML anchor links dumped under the settings header with a clean, branded pill tab bar (`SettingsNavigationTabs`).
-  - Integrated across all 4 settings sub-routes:
-    - *School Profile & Branding* (`/admin/settings`)
-    - *Institutional Email* (`/admin/settings/email-domains`)
-    - *Group Defaults* (`/admin/settings/group-defaults`)
-    - *Admission Numbering* (`/admin/settings/admission-numbering`)
-  - Active tab highlighting, icons, responsive scroll, and cohesive page headers matching the Melo design system.
-
-### 11. Admission Numbering Policy & Feedback Notifications (/admin/settings/admission-numbering)
-- [x] **Convex Monotonic Sequence Error Sanitization & Unified Sonner Toast Routing**
-  - Scrubbed raw internal Convex mutation metadata (`[CONVEX M(functions/academic/admissionNumbers:updateAdmissionNumberPolicy)] [Request ID: ...] Server Error Uncaught ConvexError: The next sequence cannot be moved backwards Called by client`) through `getUserFacingErrorMessage` from `@school/shared`.
-  - Converted developer-jargon errors into human-friendly domain notifications:
-    - Sequence Moved Backwards: *"Sequence cannot be moved backwards"* with clear explanation that the next sequence cannot be lower than `#[min]` to avoid duplicate student IDs.
-    - Concurrency Conflict: *"Policy updated elsewhere"* advising admin to review latest settings before saving.
-  - Replaced intrusive in-page layout-shifting feedback banners with the project's unified toast notification system (`appToast` from `@school/shared`), featuring interactive recovery actions (`Reset to #[min]`, `Reload`).
-  - Preserved screen-reader accessibility and testing predictability with an `sr-only` `role="status"` live region.
-  - Added proactive client-side guardrails on form submit and interactive token insertion buttons with selection caret restoration.
