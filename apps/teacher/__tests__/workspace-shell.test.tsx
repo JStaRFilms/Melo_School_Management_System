@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({ query: vi.fn(), replace: vi.fn(), push: vi.fn(
 let path = "/assessments/exams/entry";
 let access: WorkspaceAccessSummary | undefined;
 let selectedSchoolId: string | null = null;
+let sessionRole = "teacher";
 let branches: BranchSummary[] = [];
 
 vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(...args) }));
@@ -17,7 +18,7 @@ vi.mock("@/lib/convex-runtime", () => ({ isConvexConfigured: () => true }));
 vi.mock("@/lib/auth-client", () => ({ authClient: { changePassword: vi.fn() } }));
 vi.mock("@school/shared/drafts", () => ({ useDepartureGuard: () => ({ requestDeparture: mocks.departure }) }));
 vi.mock("@/lib/AuthProvider", () => ({ useAuth: () => ({
-  session: { user: { id: "account", name: "Teacher", role: "teacher" } }, workspaceAccess: access,
+  session: { user: { id: "account", name: "Teacher", role: sessionRole } }, workspaceAccess: access,
   availableBranches: branches, selectedSchoolId, selectSchool: mocks.select, clearSelectedSchool: mocks.clear,
   isAuthenticated: true, isLoading: false, signOut: mocks.signOut,
 }) }));
@@ -42,6 +43,7 @@ beforeEach(() => {
   path = "/assessments/exams/entry";
   access = defaultAccess;
   selectedSchoolId = null;
+  sessionRole = "teacher";
   branches = [
     { schoolId: "default", name: "Default", slug: "default", status: "active", isHeadquarters: true },
     { schoolId: "branch-two", name: "Branch Two", slug: "branch-two", status: "active", isHeadquarters: false },
@@ -105,10 +107,41 @@ describe("teacher selected-branch shell", () => {
       return name.includes("getTeacherAssignableClasses") ? [] : { schoolId: "branch-two", name: "Branch Two", status: "active", features: {} };
     });
     denied.rerender(<StaffWorkspace><p>Branch student data</p></StaffWorkspace>);
-    expect(screen.getByRole("alert")).toHaveTextContent("no active class assignment");
+    expect(screen.getByRole("alert")).toHaveTextContent("No class has been assigned");
     expect(screen.getByRole("navigation")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Exam Entry" })).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Active branch" })).toBeInTheDocument();
+  });
+
+  it("does not require a teacher assignment from an authorized school administrator", () => {
+    sessionRole = "admin";
+    access = {
+      ...defaultAccess,
+      membership: null,
+      compatibility: {
+        ...defaultAccess.compatibility,
+        mode: "legacy_default",
+        permissionManaged: false,
+        legacyRole: "admin",
+        legacyIsSchoolAdmin: true,
+      },
+      teacherAssignments: {
+        source: "domain_checks_required",
+        legacyTeacherId: null,
+      },
+    };
+    mocks.query.mockImplementation((reference: unknown, args: unknown) => {
+      if (args === "skip") return undefined;
+      const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
+      return name.includes("getTeacherAssignableClasses")
+        ? []
+        : { schoolId: "default", name: "Default", status: "active", features: {} };
+    });
+
+    render(<StaffWorkspace><p>Administrator exam entry</p></StaffWorkspace>);
+
+    expect(screen.getByText("Administrator exam entry")).toBeInTheDocument();
+    expect(screen.queryByText(/No class has been assigned/)).not.toBeInTheDocument();
   });
 
   it("fails closed after branch revocation without mounting route callers", () => {

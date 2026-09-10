@@ -1,4 +1,7 @@
-import { getUnboundStorageUrl } from "./assetStorageBoundary";
+import {
+  getUnboundStorageUrl,
+  isStorageOwnershipDenied,
+} from "./assetStorageBoundary";
 import { deriveGradeAndRemark, reportCardReviewKey } from "@school/shared/exam-recording";
 import { reportCardResultValidator } from "../foundation/reportCardContract";
 export { reportCardResultValidator } from "../foundation/reportCardContract";
@@ -45,6 +48,18 @@ import {
 const DEFAULT_CA_MAX = 20;
 const DEFAULT_EXAM_MAX = 40;
 const MAX_COMMENT_LENGTH = 1000;
+
+async function getSafeReportImageUrl(
+  ctx: QueryCtx,
+  storageId: Id<"_storage">,
+) {
+  try {
+    return await getUnboundStorageUrl(ctx, storageId);
+  } catch (error) {
+    if (isStorageOwnershipDenied(error)) return null;
+    throw error;
+  }
+}
 
 function buildClassName(classDoc: {
   gradeName?: string | null;
@@ -267,6 +282,7 @@ async function assertClassReportCardAccess(
     userId: Id<"users">;
     schoolId: Id<"schools">;
     role: string;
+    isSchoolAdmin: boolean;
     classId: Id<"classes">;
     sessionId: Id<"academicSessions">;
     termId: Id<"academicTerms">;
@@ -292,7 +308,7 @@ async function assertClassReportCardAccess(
     throw new ConvexError("Term not found");
   }
 
-  if (args.role === "teacher") {
+  if (args.role === "teacher" && !args.isSchoolAdmin) {
     const hasClassAccess = await teacherHasClassAccess(
       ctx,
       args.userId,
@@ -381,7 +397,7 @@ async function getStudentsForClassReportCardBatch(
 
         const studentName = getReadableUserName(studentUser);
         const passportUrl = student.photoStorageId
-          ? await getUnboundStorageUrl(ctx, student.photoStorageId)
+          ? await getSafeReportImageUrl(ctx, student.photoStorageId)
           : null;
         return {
           studentId: student._id,
@@ -410,6 +426,7 @@ export async function buildStudentReportCard(
     userId: Id<"users">;
     schoolId: Id<"schools">;
     role: string;
+    isSchoolAdmin?: boolean;
     studentId: Id<"students">;
     sessionId: Id<"academicSessions">;
     termId: Id<"academicTerms">;
@@ -504,7 +521,7 @@ export async function buildStudentReportCard(
   );
 
   if (!args.skipRoleCheck) {
-    if (args.role === "teacher") {
+    if (args.role === "teacher" && !args.isSchoolAdmin) {
       const hasClassAccess = await teacherHasClassAccess(
         ctx,
         args.userId,
@@ -522,13 +539,13 @@ export async function buildStudentReportCard(
   if (issued) return {
     ...issued.report,
     schoolLogoUrl: issued.schoolLogoStorageId
-      ? await getUnboundStorageUrl(ctx, issued.schoolLogoStorageId)
-      : issued.report.schoolLogoUrl,
+      ? await getSafeReportImageUrl(ctx, issued.schoolLogoStorageId)
+      : null,
     student: {
       ...issued.report.student,
       photoUrl: issued.studentPhotoStorageId
-        ? await getUnboundStorageUrl(ctx, issued.studentPhotoStorageId)
-        : issued.report.student.photoUrl,
+        ? await getSafeReportImageUrl(ctx, issued.studentPhotoStorageId)
+        : null,
     },
   };
   // Old output without an issued policy must not borrow today's thresholds.
@@ -554,8 +571,8 @@ export async function buildStudentReportCard(
   ] = await Promise.all([
     ctx.db.get(student.userId),
     ctx.db.get(reportCardClassId),
-    student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
-    school.logoStorageId ? getUnboundStorageUrl(ctx, school.logoStorageId) : null,
+    student.photoStorageId ? getSafeReportImageUrl(ctx, student.photoStorageId) : null,
+    school.logoStorageId ? getSafeReportImageUrl(ctx, school.logoStorageId) : null,
     ctx.db
       .query("classSubjects")
       .withIndex("by_class", (q: any) => q.eq("classId", reportCardClassId))
@@ -977,12 +994,13 @@ export const getStudentReportCard = query({
   },
   returns: reportCardResultValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
     return await buildStudentReportCard(ctx, {
       userId,
       schoolId,
       role,
+      isSchoolAdmin,
       studentId: args.studentId,
       sessionId: args.sessionId,
       termId: args.termId,
@@ -999,13 +1017,14 @@ export const getStudentsForReportCardBatch = query({
   },
   returns: v.array(reportCardBatchStudentValidator),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
 
     await assertClassReportCardAccess(ctx, {
       userId,
       schoolId,
       role,
+      isSchoolAdmin,
       classId: args.classId,
       sessionId: args.sessionId,
       termId: args.termId,
@@ -1028,13 +1047,14 @@ export const getClassReportCards = query({
   },
   returns: v.array(reportCardResultValidator),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
 
     await assertClassReportCardAccess(ctx, {
       userId,
       schoolId,
       role,
+      isSchoolAdmin,
       classId: args.classId,
       sessionId: args.sessionId,
       termId: args.termId,
@@ -1059,6 +1079,7 @@ export const getClassReportCards = query({
           userId,
           schoolId,
           role,
+          isSchoolAdmin,
           studentId: student.studentId,
           sessionId: args.sessionId,
           termId: args.termId,
@@ -1080,7 +1101,7 @@ export const saveStudentReportCardComments = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "academic.assessments.enter",
       });
@@ -1126,7 +1147,7 @@ export const saveStudentReportCardComments = mutation({
 
     const reportCardClassId = assessmentRecords[0]?.classId ?? student.classId;
 
-    if (role === "teacher") {
+    if (role === "teacher" && !isSchoolAdmin) {
       const hasClassAccess = await teacherHasClassAccess(
         ctx,
         userId,
@@ -1301,7 +1322,7 @@ export const certifyStudentReportCard = mutation({
     reviewedKey: v.string(),
   },
   handler: async (ctx, args) => {
-    const { schoolId, userId, role } =
+    const { schoolId, userId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.publish_final" });
     const auth = await requireCapability(
       ctx,
@@ -1320,6 +1341,7 @@ export const certifyStudentReportCard = mutation({
       schoolId,
       userId,
       role,
+      isSchoolAdmin,
       preferredClassId: args.classId,
     });
     if (report.certifiedAt) return report.certifiedAt;
@@ -1353,8 +1375,12 @@ export const certifyStudentReportCard = mutation({
       classId: args.classId,
       issuedAt: now,
       issuedBy: userId,
-      schoolLogoStorageId: (await ctx.db.get(schoolId))?.logoStorageId,
-      studentPhotoStorageId: student.photoStorageId,
+      schoolLogoStorageId: report.schoolLogoUrl
+        ? (await ctx.db.get(schoolId))?.logoStorageId
+        : undefined,
+      studentPhotoStorageId: report.student.photoUrl
+        ? student.photoStorageId
+        : undefined,
       report: {
         ...report,
         certifiedAt: now,
