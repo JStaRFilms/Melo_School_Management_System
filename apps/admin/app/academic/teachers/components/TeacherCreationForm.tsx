@@ -2,8 +2,12 @@
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { humanNameFinalStrict } from "@/human-name";
-import { Check,Copy,Send } from "lucide-react";
-import { useState } from "react";
+import { Check, Copy, Send } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useDirtyForm, type DraftConnection, type DraftPayload } from "@school/shared/drafts";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
+import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 
 interface ProvisionResult {
   teacherId: string;
@@ -11,18 +15,48 @@ interface ProvisionResult {
   temporaryPassword: string;
 }
 
-interface TeacherCreationFormProps {
-  onProvision: (name: string, email: string, password: string) => Promise<ProvisionResult>;
-  isSubmitting: boolean;
+interface DraftClosure {
+  schoolId: Id<"schools">;
+  draftId: Id<"formDrafts">;
+  expectedRevision: number;
 }
 
-export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreationFormProps) {
+interface TeacherCreationFormProps {
+  onProvision: (name: string, email: string, password: string, draft?: DraftClosure) => Promise<ProvisionResult>;
+  isSubmitting: boolean;
+  draftContext?: {
+    schoolId: Id<"schools">;
+    accountId: string;
+    connection: DraftConnection;
+  };
+}
+
+export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }: TeacherCreationFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [draftInstanceKey, setDraftInstanceKey] = useState(0);
+  const draftData = useMemo<DraftPayload<"staff_onboarding">>(() => ({ name, email }), [email, name]);
+  const draftIsDirty = isSubmitting || (!result && Boolean(name || email || temporaryPassword !== "Teacher123!Pass"));
+  const draft = usePersistentFormDraft({
+    formKey: "staff_onboarding",
+    schoolId: draftContext?.schoolId,
+    accountId: draftContext?.accountId,
+    connection: draftContext?.connection ?? { connected: false, authenticated: false, accountId: null },
+    currentData: draftData,
+    isDirty: draftIsDirty,
+    instanceKey: draftInstanceKey,
+    onRestore: (payload) => {
+      setName(payload.name);
+      setEmail(payload.email);
+      setTemporaryPassword("");
+      setResult(null);
+      setSubmitError("");
+    },
+  });
 
   const resetForm = () => {
     setName("");
@@ -33,19 +67,41 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
     setCopied(false);
   };
 
+  const requestDeparture = useDirtyForm({
+    name: "Teacher onboarding",
+    isDirty: draftIsDirty,
+    save: draftContext ? draft.retrySave : undefined,
+    discard: async () => {
+      if (isSubmitting) throw new Error("Wait for account creation to finish before leaving.");
+      if (draftContext) await draft.handleDiscardDraft();
+      resetForm();
+      if (draftContext) setDraftInstanceKey((key) => key + 1);
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !temporaryPassword) return;
+    if (isSubmitting || !name || !email || !temporaryPassword) return;
 
     setSubmitError("");
+    let closure: DraftClosure | null = null;
+    if (draftContext) {
+      try {
+        closure = await draft.prepareSubmission();
+      } catch {
+        setSubmitError("Save the recoverable draft before creating the account. Your current edits are still here.");
+        return;
+      }
+    }
     try {
-      const res = await onProvision(name, email, temporaryPassword);
+      const res = await onProvision(name, email, temporaryPassword, closure ?? undefined);
       if (res) {
+        if (draftContext) draft.submissionSucceeded();
         setResult(res);
         setSubmitError("");
       }
-    } catch (error) {
-      console.error("TeacherCreationForm:onProvision error", error);
+    } catch {
+      if (draftContext) draft.submissionFailed();
       setSubmitError("We could not create that teacher account right now.");
     }
   };
@@ -82,7 +138,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
           </div>
           <button 
             onClick={copyToClipboard}
-            className="w-full flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-600 text-[10px] font-bold uppercase tracking-widest text-white transition-opacity hover:opacity-90 active:scale-95"
+            className="w-full flex h-8 items-center justify-center gap-2 rounded-md bg-emerald-600 text-[10px] font-bold uppercase tracking-widest text-white transition-opacity hover:opacity-90 active:scale-95 cursor-pointer"
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             {copied ? "Copied" : "Copy Credentials"}
@@ -90,8 +146,15 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
         </div>
 
         <button 
-          onClick={resetForm}
-          className="w-full h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+          onClick={() => {
+            void requestDeparture({ kind: "close" }).then((confirmed) => {
+              if (confirmed && !draftIsDirty) {
+                resetForm();
+                setDraftInstanceKey((key) => key + 1);
+              }
+            });
+          }}
+          className="w-full h-9 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
         >
           Provision Another
         </button>
@@ -101,8 +164,24 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
 
   return (
     <AdminSurface intensity="medium" rounded="lg" className="p-4 space-y-4">
-      <div className="space-y-0.5">
-        <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
+      <div className="border-b border-slate-100 pb-3 space-y-1">
+        <div className="flex items-center justify-between gap-2 min-h-6">
+          <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
+          {draftContext && (
+            <PersistentFormDraftControls
+              draft={draft}
+              formTitle="teacher onboarding"
+              isDirty={draftIsDirty}
+              variant="compact"
+              excludedFieldsNotice="Passwords are not stored in drafts for security."
+              onDiscard={async () => {
+                await draft.handleDiscardDraft();
+                resetForm();
+                setDraftInstanceKey((key) => key + 1);
+              }}
+            />
+          )}
+        </div>
         <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
       </div>
 
@@ -132,7 +211,8 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
 
         <FormField label="Temporary Password">
           <input
-            type="text"
+            type="password"
+            autoComplete="new-password"
             required
             value={temporaryPassword}
             onChange={(e) => setTemporaryPassword(e.target.value)}
@@ -143,11 +223,15 @@ export function TeacherCreationForm({ onProvision, isSubmitting }: TeacherCreati
         <button
           type="submit"
           disabled={isSubmitting || !name || !email}
-          className="mt-2 w-full flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-slate-800 disabled:opacity-50 active:scale-[0.98]"
+          className="mt-2 w-full flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-slate-800 disabled:opacity-50 active:scale-[0.98] cursor-pointer"
         >
           <Send className="h-3.5 w-3.5" />
           {isSubmitting ? "Creating..." : "Create Teacher Account"}
         </button>
+
+        <p className="text-[11px] leading-relaxed text-slate-400 text-center pt-1">
+          Institutional address review remains separate; onboarding does not create an inbox.
+        </p>
 
         {submitError && (
           <p className="text-[11px] font-bold text-rose-500">{submitError}</p>

@@ -5,6 +5,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generat
 import { buildTopicPlanningContextKey } from "@school/shared/planning-context";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { getAuthenticatedSchoolMembership } from "./auth";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import {
   canUseKnowledgeMaterialAsLessonSource,
   resolveClassScopedKnowledgeMaterialStaffAccess,
@@ -1429,7 +1430,7 @@ export const getTeacherInstructionSourceExcerpts = query({
   },
   returns: sourceExcerptBundleValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1548,7 +1549,7 @@ export const getTeacherInstructionWorkspace = query({
   },
   returns: workspaceValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1746,7 +1747,7 @@ export const getTeacherInstructionArtifactRevisionContent = query({
     revisionId: v.id("instructionArtifactRevisions"),
   },
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1778,6 +1779,7 @@ export const getTeacherInstructionArtifactRevisionContent = query({
 export const saveTeacherInstructionArtifactDraft = mutation({
   args: {
     artifactId: v.optional(v.union(v.id("instructionArtifacts"), v.null())),
+    expectedRevisionNumber: v.number(),
     outputType: outputTypeValidator,
     title: v.string(),
     documentState: v.string(),
@@ -1791,7 +1793,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
   },
   returns: saveResultValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
     const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
@@ -1844,9 +1846,23 @@ export const saveTeacherInstructionArtifactDraft = mutation({
         throw new ConvexError("You cannot edit this draft");
       }
 
+      const latestRevision = await ctx.db
+        .query("instructionArtifactRevisions")
+        .withIndex("by_school_and_artifact", (q) =>
+          q.eq("schoolId", schoolId).eq("artifactId", existingArtifact._id)
+        )
+        .order("desc")
+        .first();
+      if (!Number.isSafeInteger(args.expectedRevisionNumber) || args.expectedRevisionNumber !== (latestRevision?.revisionNumber ?? 0)) {
+        throw new ConvexError({ code: "CONFLICT", message: "A newer planning revision exists. Reload the latest draft before saving." });
+      }
+
       artifactId = existingArtifact._id;
       existingDocumentId = existingArtifact.currentDocumentId ?? null;
     } else {
+      if (args.expectedRevisionNumber !== 0) {
+        throw new ConvexError({ code: "CONFLICT", message: "This planning draft no longer matches a new artifact." });
+      }
       artifactId = await ctx.db.insert("instructionArtifacts", {
         schoolId,
         ownerUserId: userId,
@@ -1986,7 +2002,7 @@ export const recordTeacherLessonPlanAiRun = mutation({
   args: aiRunLogValidator,
   returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 

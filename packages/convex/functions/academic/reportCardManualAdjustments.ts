@@ -102,7 +102,7 @@ export const listManualAdjustmentsForStudent = query({
     })
   ),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.adjust" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     await assertAdjustmentContext(ctx, { ...args, schoolId });
 
@@ -155,7 +155,7 @@ export const saveManualAdjustmentsBulk = mutation({
     reset: v.number(),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.adjust" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     await assertAdjustmentContext(ctx, { ...args, schoolId });
 

@@ -29,6 +29,9 @@ const getGroupOverviewRef = groupsApi.getGroupOverview;
 const listGroupBranchesRef = groupsApi.listGroupBranches;
 const createSchoolGroupRef = groupsApi.createSchoolGroup;
 const linkBranchToGroupRef = groupsApi.linkBranchToGroup;
+const listGroupStaffCandidatesRef = groupsApi.listGroupStaffCandidates;
+const assignUserToBranchRef = groupsApi.assignUserToBranch;
+const revokeUserBranchMembershipRef = groupsApi.revokeUserBranchMembership;
 
 describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", () => {
   it("1. Multi-branch user querying listUserBranches receives all active branch memberships with accurate group and HQ metadata", async () => {
@@ -175,6 +178,9 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
 
     // Suspended branch C must not be in list
     expect(branchC).toBeUndefined();
+    await t.run(ctx => ctx.db.patch(personId, { status: "suspended" }));
+    await expect(paulaSession.query(listUserBranchesRef, {})).rejects.toThrow("Forbidden");
+    await expect(paulaSession.query(getGroupOverviewRef, { groupId: groupA })).rejects.toThrow("Forbidden");
   });
 
   it("2. Cross-branch isolation: Linking Branch A and Branch B into a school group does NOT allow Branch A queries to access Branch B data", async () => {
@@ -355,6 +361,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         assignedAt: now,
       });
 
+      await ctx.db.insert("platformAdmins", { authId: "operator", authTokenIdentifier: "https://auth.melo.test|operator", email: "operator@example.test", name: "Platform operator", isActive: true, createdAt: now, updatedAt: now });
       return { schoolA, schoolB, bobPersonId };
     });
 
@@ -364,13 +371,18 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
       email: "bob@emerald.test",
     });
 
-    // 1. Create School Group
-    const { groupId, branchLinkId } = await bobSession.mutation(
+    const operator = t.withIdentity({ tokenIdentifier: "https://auth.melo.test|operator" });
+    await expect(bobSession.mutation(createSchoolGroupRef, { name: "Denied", slug: "denied", headquartersSchoolId: schoolA, proprietorPersonId: bobPersonId, confirmation: "emerald-ikoyi" })).rejects.toThrow("Forbidden");
+    const originalSchools = await t.run(async ctx => [await ctx.db.get(schoolA), await ctx.db.get(schoolB)]);
+    // Platform explicitly selects Bob, never itself.
+    const { groupId, branchLinkId } = await operator.mutation(
       createSchoolGroupRef,
       {
         name: "Emerald Heights Educational Group",
         slug: "emerald-group",
         headquartersSchoolId: schoolA,
+        proprietorPersonId: bobPersonId,
+        confirmation: "emerald-ikoyi",
       }
     );
 
@@ -418,11 +430,15 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
     });
 
     // 2. Link Branch B to Group
-    const linkResult = await bobSession.mutation(linkBranchToGroupRef, {
+    await expect(bobSession.mutation(linkBranchToGroupRef, { groupId, schoolId: schoolB, confirmation: "emerald-vi" })).rejects.toThrow("Forbidden");
+    const linkResult = await operator.mutation(linkBranchToGroupRef, {
       groupId,
       schoolId: schoolB,
       isHeadquarters: false,
+      confirmation: "emerald-vi",
     });
+    expect(await operator.mutation(linkBranchToGroupRef, { groupId, schoolId: schoolB, confirmation: "emerald-vi" })).toEqual(linkResult);
+    await expect(operator.mutation(createSchoolGroupRef, { name: "Duplicate", slug: "emerald-group", headquartersSchoolId: schoolA, proprietorPersonId: bobPersonId, confirmation: "emerald-ikoyi" })).rejects.toThrow("ALREADY_EXISTS");
 
     expect(linkResult.success).toBe(true);
     expect(linkResult.branchLinkId).toBeDefined();
@@ -474,13 +490,243 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
       groupId,
     });
     expect(groupBranches).toHaveLength(2);
+    expect(await t.run(async ctx => [await ctx.db.get(schoolA), await ctx.db.get(schoolB)])).toEqual(originalSchools);
   });
 
-  it("4. Unauthorized users cannot create groups or link branches", async () => {
+  it("4. Platform assigns an existing group person to another branch and the proprietor can revoke that access", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const fixture = await t.run(async (ctx) => {
+      const headquartersId = await ctx.db.insert("schools", {
+        name: "Meridian Headquarters",
+        slug: "meridian-hq",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const branchId = await ctx.db.insert("schools", {
+        name: "Meridian Riverside",
+        slug: "meridian-riverside",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const proprietorId = await ctx.db.insert("persons", {
+        authTokenIdentifier: "https://auth.melo.test|meridian-owner",
+        email: "owner@meridian.test",
+        name: "Meridian Owner",
+        status: "active",
+        primarySchoolId: headquartersId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const staffPersonId = await ctx.db.insert("persons", {
+        authTokenIdentifier: "https://auth.melo.test|meridian-staff",
+        email: "staff@meridian.test",
+        name: "Ada Staff",
+        status: "active",
+        primarySchoolId: headquartersId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const proprietorUserId = await ctx.db.insert("users", {
+        schoolId: headquartersId,
+        personId: proprietorId,
+        authId: "owner-auth",
+        authTokenIdentifier: "https://auth.melo.test|meridian-owner",
+        name: "Meridian Owner",
+        email: "owner@meridian.test",
+        role: "admin",
+        isSchoolAdmin: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const staffUserId = await ctx.db.insert("users", {
+        schoolId: headquartersId,
+        personId: staffPersonId,
+        authId: "staff-auth",
+        authTokenIdentifier: "https://auth.melo.test|meridian-staff",
+        name: "Ada Staff",
+        email: "staff@meridian.test",
+        role: "admin",
+        isSchoolAdmin: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("branchMemberships", {
+        personId: proprietorId,
+        schoolId: headquartersId,
+        status: "active",
+        legacyUserId: proprietorUserId,
+        isDefaultBranch: true,
+        joinedAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("branchMemberships", {
+        personId: staffPersonId,
+        schoolId: headquartersId,
+        status: "active",
+        legacyUserId: staffUserId,
+        isDefaultBranch: true,
+        joinedAt: now,
+        updatedAt: now,
+      });
+      const groupId = await ctx.db.insert("schoolGroups", {
+        name: "Meridian Group",
+        slug: "meridian-group",
+        proprietorPersonId: proprietorId,
+        status: "active",
+        settingsVersion: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("schoolGroupBranches", {
+        groupId,
+        schoolId: headquartersId,
+        isHeadquarters: true,
+        linkedAt: now,
+      });
+      await ctx.db.insert("schoolGroupBranches", {
+        groupId,
+        schoolId: branchId,
+        isHeadquarters: false,
+        linkedAt: now,
+      });
+      await ctx.db.insert("platformAdmins", {
+        authId: "operator-auth",
+        authTokenIdentifier: "https://auth.melo.test|operator-assign",
+        email: "operator@meridian.test",
+        name: "Platform Operator",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return {
+        headquartersId,
+        branchId,
+        proprietorId,
+        staffPersonId,
+        groupId,
+      };
+    });
+
+    const operator = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|operator-assign",
+      subject: "operator-auth",
+    });
+    const proprietor = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|meridian-owner",
+      subject: "owner-auth",
+    });
+    const staff = t.withIdentity({
+      tokenIdentifier: "https://auth.melo.test|meridian-staff",
+      subject: "staff-auth",
+    });
+    const paginationOpts = { numItems: 25, cursor: null };
+    const candidates = await operator.query(listGroupStaffCandidatesRef, {
+      groupId: fixture.groupId,
+      sourceSchoolId: fixture.headquartersId,
+      targetSchoolId: fixture.branchId,
+      paginationOpts,
+    });
+    expect(candidates.page).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          personId: fixture.staffPersonId,
+          currentRole: "admin",
+          targetMembershipStatus: null,
+        }),
+      ]),
+    );
+
+    await expect(
+      staff.mutation(assignUserToBranchRef, {
+        groupId: fixture.groupId,
+        sourceSchoolId: fixture.headquartersId,
+        targetSchoolId: fixture.branchId,
+        personId: fixture.staffPersonId,
+        role: "admin",
+        confirmation: "meridian-riverside",
+      }),
+    ).rejects.toThrow("Platform or Group Proprietor");
+
+    const assignment = await operator.mutation(assignUserToBranchRef, {
+      groupId: fixture.groupId,
+      sourceSchoolId: fixture.headquartersId,
+      targetSchoolId: fixture.branchId,
+      personId: fixture.staffPersonId,
+      role: "admin",
+      displayTitle: "Branch Administrator",
+      confirmation: "meridian-riverside",
+    });
+    expect(assignment.alreadyActive).toBe(false);
+    expect(
+      await operator.mutation(assignUserToBranchRef, {
+        groupId: fixture.groupId,
+        sourceSchoolId: fixture.headquartersId,
+        targetSchoolId: fixture.branchId,
+        personId: fixture.staffPersonId,
+        role: "admin",
+        confirmation: "meridian-riverside",
+      }),
+    ).toMatchObject({ alreadyActive: true, membershipId: assignment.membershipId });
+
+    const branches = await staff.query(listUserBranchesRef, {});
+    expect(branches.map((branch) => branch.schoolId)).toEqual(
+      expect.arrayContaining([fixture.headquartersId, fixture.branchId]),
+    );
+    const persisted = await t.run(async (ctx) => ({
+      membership: await ctx.db.get(assignment.membershipId),
+      targetUsers: await ctx.db
+        .query("users")
+        .withIndex("by_person", (q) => q.eq("personId", fixture.staffPersonId))
+        .collect(),
+      roles: await ctx.db
+        .query("membershipRoleAssignments")
+        .withIndex("by_membership", (q) => q.eq("membershipId", assignment.membershipId))
+        .collect(),
+      factoryRoles: await ctx.db
+        .query("roleTemplates")
+        .withIndex("by_code", (q) => q.eq("code", "principal"))
+        .collect(),
+      audits: await ctx.db
+        .query("auditEvents")
+        .withIndex("by_module_and_action", (q) =>
+          q.eq("module", "groups").eq("action", "membership.branch_assigned"),
+        )
+        .collect(),
+    }));
+    expect(persisted.membership).toMatchObject({
+      personId: fixture.staffPersonId,
+      schoolId: fixture.branchId,
+      status: "active",
+      isDefaultBranch: false,
+    });
+    expect(persisted.targetUsers).toHaveLength(2);
+    expect(persisted.roles).toHaveLength(1);
+    expect(persisted.factoryRoles).toEqual([
+      expect.objectContaining({ scope: "global", isSystem: true }),
+    ]);
+    expect(persisted.audits).toHaveLength(1);
+
+    await proprietor.mutation(revokeUserBranchMembershipRef, {
+      groupId: fixture.groupId,
+      schoolId: fixture.branchId,
+      personId: fixture.staffPersonId,
+      reason: "Assignment is no longer required",
+      confirmation: "meridian-riverside",
+    });
+    expect(await staff.query(listUserBranchesRef, {})).toHaveLength(1);
+    expect(await t.run((ctx) => ctx.db.get(assignment.membershipId))).toMatchObject({
+      status: "suspended",
+    });
+  });
+
+  it("5. Unauthorized users cannot create groups or link branches", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
 
-    const { schoolA, schoolB, group } = await t.run(async (ctx) => {
+    const { schoolA, schoolB, group, proprietorPerson } = await t.run(async (ctx) => {
       const schoolA = await ctx.db.insert("schools", {
         name: "Sunrise Academy",
         slug: "sunrise-main",
@@ -551,7 +797,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         updatedAt: now,
       });
 
-      return { schoolA, schoolB, group };
+      return { schoolA, schoolB, group, proprietorPerson };
     });
 
     const charlieSession = t.withIdentity({
@@ -560,12 +806,15 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
       email: "charlie@sunrise.test",
     });
 
+    await expect(charlieSession.query(getGroupOverviewRef, { groupId: group })).rejects.toThrow("Forbidden");
     // Charlie attempts to create a school group -> MUST be rejected
     await expect(
       charlieSession.mutation(createSchoolGroupRef, {
         name: "Charlie Rogue Group",
         slug: "charlie-rogue",
         headquartersSchoolId: schoolA,
+        proprietorPersonId: proprietorPerson,
+        confirmation: "sunrise-main",
       })
     ).rejects.toThrow("Forbidden");
 
@@ -575,6 +824,7 @@ describe("Task B-04 / M3: School Group Operations and Branch Switcher (F2/H2)", 
         groupId: group,
         schoolId: schoolB,
         isHeadquarters: false,
+        confirmation: "sunrise-branch",
       })
     ).rejects.toThrow("Forbidden");
   });

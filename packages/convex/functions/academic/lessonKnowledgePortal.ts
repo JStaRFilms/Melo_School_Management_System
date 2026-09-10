@@ -1,9 +1,9 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
-import { query, mutation, type MutationCtx } from "../../_generated/server";
+import { query, mutation, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership } from "./auth";
-import { resolveTokenFirstTrustedLegacyRow } from "./identityResolver";
+import { resolvePortalStudentContext } from "./portalIdentity";
 import {
   canCreateKnowledgeMaterialDraft,
   canPromoteKnowledgeMaterial,
@@ -12,6 +12,11 @@ import {
   resolveClassScopedKnowledgeMaterialStaffAccess,
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
+import {
+  assertSecureUploadTransportAvailable,
+  assertStorageUnclaimed,
+  secureUploadUnavailable,
+} from "./assetStorageBoundary";
 import { assertKnowledgeMaterialUploadIsSupported } from "./lessonKnowledgeIngestionHelpers";
 import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import {
@@ -102,92 +107,15 @@ const portalSupplementalFinalizeValidator = v.object({
 });
 
 async function getStudentPortalContext(
-  ctx: Parameters<typeof getAuthenticatedSchoolMembership>[0],
-  args: { studentId?: Id<"students"> | null } = {}
+  ctx: QueryCtx,
+  args: { studentId?: Id<"students"> | null } = {},
 ) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new ConvexError("Unauthorized");
+  const context = await resolvePortalStudentContext(ctx, args);
+  if (context.student.enrollmentStatus && context.student.enrollmentStatus !== "active") {
+    throw new ConvexError("Active enrollment required for lesson materials");
   }
-
-  const membership = await resolveTokenFirstTrustedLegacyRow<Doc<"users">>(identity, {
-    byTokenIdentifier: (tokenIdentifier) =>
-      ctx.db
-        .query("users")
-        .withIndex("by_auth_token_identifier", (q: any) =>
-          q.eq("authTokenIdentifier", tokenIdentifier)
-        )
-        .take(2),
-    bySubject: (subject) =>
-      ctx.db
-        .query("users")
-        .withIndex("by_auth", (q: any) => q.eq("authId", subject))
-        .take(2),
-  });
-  if (!membership || membership.isArchived) {
-    throw new ConvexError("Portal account not found");
-  }
-
-  const studentMembership = membership.role === "student" ? membership : null;
-  if (studentMembership) {
-    const studentRows = await ctx.db
-      .query("students")
-      .withIndex("by_school", (q: any) => q.eq("schoolId", studentMembership.schoolId))
-      .collect();
-    const student = studentRows.find(
-      (entry: Doc<"students">) =>
-        !entry.isArchived &&
-        String(entry.userId) === String(studentMembership._id) &&
-        (!args.studentId || String(entry._id) === String(args.studentId))
-    ) ?? null;
-    if (!student) {
-      throw new ConvexError("Student record not found");
-    }
-    return {
-      userId: studentMembership._id,
-      schoolId: studentMembership.schoolId,
-      role: "student" as const,
-      isSchoolAdmin: false,
-      student,
-    };
-  }
-
-  if (membership.role !== "parent") {
-    throw new ConvexError("Portal topic pages are available to students and parents only");
-  }
-
-  const accessible: Array<{ student: Doc<"students">; parentUser: Doc<"users"> }> = [];
-  const familyLinks = await ctx.db
-    .query("familyMembers")
-    .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", membership._id))
-    .collect();
-  for (const familyLink of familyLinks) {
-    const familyStudents = await ctx.db
-      .query("students")
-      .withIndex("by_family", (q: any) => q.eq("familyId", familyLink.familyId))
-      .collect();
-    for (const student of familyStudents) {
-      if (student.schoolId === membership.schoolId && !student.isArchived) {
-        accessible.push({ student: student as Doc<"students">, parentUser: membership });
-      }
-    }
-  }
-
-  const selected = args.studentId
-    ? accessible.find((entry) => String(entry.student._id) === String(args.studentId)) ?? null
-    : accessible[0] ?? null;
-  if (!selected) {
-    throw new ConvexError("Student record not found");
-  }
-  return {
-    userId: selected.parentUser._id,
-    schoolId: selected.student.schoolId,
-    role: "parent" as const,
-    isSchoolAdmin: false,
-    student: selected.student,
-  };
+  return context;
 }
-
 
 async function patchPortalPromotionChunksForState(
   ctx: Pick<MutationCtx, "db">,
@@ -366,7 +294,9 @@ export const getPortalTopicPageData = query({
       },
       classId: student.classId,
       className: classDoc.name,
-      canUploadSupplemental: classEligible,
+      // Class eligibility is preserved for future transport enablement, but the
+      // current generic upload URL cannot establish safe storage ownership.
+      canUploadSupplemental: false,
       approvedMaterials,
     };
   },
@@ -448,6 +378,7 @@ export const requestPortalSupplementalUploadUrl = mutation({
     if (!canCreateKnowledgeMaterialDraft(actor, { visibility: "class_scoped", reviewStatus: "pending_review", classContextMatches: true })) {
       throw new ConvexError("Supplemental uploads are not available");
     }
+    assertSecureUploadTransportAvailable();
     await assertLessonKnowledgeRateLimit(ctx, {
       action: "portal_supplemental_upload_url",
       schoolId,
@@ -511,7 +442,7 @@ export const requestPortalSupplementalUploadUrl = mutation({
       materialId,
       changeSummary: "Created a class-scoped supplemental upload shell from the portal topic page.",
     });
-    const uploadUrl = await ctx.storage.generateUploadUrl();
+    const uploadUrl = secureUploadUnavailable<string>();
     return { materialId, uploadUrl };
   },
 });
@@ -552,6 +483,8 @@ export const finalizePortalSupplementalUpload = mutation({
     if (!bindings.some((binding) => binding.classId === student.classId && binding.bindingPurpose === "topic_attachment" && binding.bindingStatus === "active")) {
       throw new ConvexError("Supplemental upload topic attachment is missing");
     }
+    assertSecureUploadTransportAvailable();
+    await assertStorageUnclaimed(ctx, args.storageId);
 
     const storageMeta = await ctx.db.system.get("_storage", args.storageId);
     if (!storageMeta) {

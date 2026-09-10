@@ -17,7 +17,6 @@ import {
   Play,
   AlertTriangle,
   Loader2,
-  FileSpreadsheet,
 } from "lucide-react";
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
 import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
@@ -145,14 +144,6 @@ function SchoolsTable({
                 </td>
                 <td className="px-5 py-4 text-right whitespace-nowrap">
                   <div className="inline-flex items-center justify-end gap-1.5">
-                    <Link
-                      href={`/schools/${school._id}/migration`}
-                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 transition-colors border border-indigo-200/80"
-                      title="Data Migration Workbench"
-                    >
-                      <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-600" />
-                      Migration
-                    </Link>
                     <button
                       type="button"
                       onClick={() => onManageFeatures(school)}
@@ -341,13 +332,6 @@ function SchoolsCards({
                 </Link>
               ) : (
                 <div className="space-y-2">
-                  <Link
-                    href={`/schools/${school._id}/migration`}
-                    className="flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-xs hover:bg-indigo-100 transition-colors border border-indigo-200"
-                  >
-                    <FileSpreadsheet className="h-3.5 w-3.5" />
-                    Data Migration
-                  </Link>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"

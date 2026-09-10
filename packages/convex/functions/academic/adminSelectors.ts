@@ -1,3 +1,4 @@
+import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -12,7 +13,7 @@ export const getAdminSessions = query({
   args: {},
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
   handler: async (ctx: any) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const sessions = await ctx.db
@@ -34,7 +35,7 @@ export const getTermsBySession = query({
   args: { sessionId: v.id("academicSessions") },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
   handler: async (ctx: any, args: { sessionId: any }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -61,7 +62,7 @@ export const getAllClasses = query({
   args: {},
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
   handler: async (ctx: any) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classes = await ctx.db
@@ -89,7 +90,7 @@ export const getSubjectsByClass = query({
   args: { classId: v.id("classes") },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
   handler: async (ctx: any, args: { classId: any }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);

@@ -264,6 +264,9 @@ importers:
 
   apps/sites:
     dependencies:
+      '@school/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       lucide-react:
         specifier: ^0.400.0
         version: 0.400.0(react@18.3.1)

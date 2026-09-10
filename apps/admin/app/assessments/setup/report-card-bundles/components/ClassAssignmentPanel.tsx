@@ -9,7 +9,6 @@ import {
   Loader2,
   Search,
   ShieldCheck,
-  Sparkles,
   Check,
   X,
   Plus
@@ -177,7 +176,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
                 Active Add-on
               </span>
               <h2 className="text-base sm:text-lg font-bold text-slate-900">
@@ -206,7 +205,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search classes..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-3 text-xs font-medium text-slate-800 outline-none transition focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 placeholder:text-slate-400"
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-3 text-xs font-medium text-slate-800 outline-none transition focus:border-slate-400 focus:bg-white placeholder:text-slate-400"
             />
           </div>
 
@@ -236,12 +235,12 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
 
       {/* Batch Actions Bar */}
       {selectedClassIds.length > 0 && (
-        <div className="p-3.5 bg-indigo-50/90 border border-indigo-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-xs animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black text-xs flex items-center justify-center">
+            <span className="w-6 h-6 rounded-lg bg-slate-900 text-white font-black text-xs flex items-center justify-center">
               {selectedClassIds.length}
             </span>
-            <span className="text-xs font-bold text-indigo-950">
+            <span className="text-xs font-bold text-slate-800">
               {selectedClassIds.length === 1 ? "Class selected" : "Classes selected"}
             </span>
           </div>
@@ -250,21 +249,21 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
             <button
               type="button"
               onClick={() => setSelectedClassIds([])}
-              className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-600 transition-colors"
+              className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-600 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => handleBulkApply(false)}
-              className="px-3.5 py-1.5 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-xs font-bold text-rose-700 transition-colors"
+              className="px-3.5 py-1.5 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-xs font-bold text-rose-700 transition-colors cursor-pointer"
             >
               Remove from Selected
             </button>
             <button
               type="button"
               onClick={() => handleBulkApply(true)}
-              className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all flex items-center gap-1.5"
+              className="px-4 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Assign to Selected</span>
@@ -289,11 +288,11 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
             <button
               type="button"
               onClick={() => handleSelectAllFiltered(filteredClasses.map((c) => c.id))}
-              className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
+              className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
             >
               {filteredClasses.length > 0 &&
               filteredClasses.every((c) => selectedClassIds.includes(c.id)) ? (
-                <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                <CheckCircle2 className="w-4 h-4 text-slate-900" />
               ) : (
                 <Circle className="w-4 h-4 text-slate-300" />
               )}
@@ -319,24 +318,24 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
                 key={classItem.id}
                 className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
                   isAssignedToThis
-                    ? "bg-white border-indigo-200 shadow-sm ring-1 ring-indigo-500/10"
+                    ? "bg-white border-slate-900/40 shadow-sm ring-1 ring-slate-900/10"
                     : "bg-white border-slate-200/80 hover:border-slate-300 shadow-2xs"
-                } ${isSelected ? "ring-2 ring-indigo-600" : ""}`}
+                } ${isSelected ? "ring-2 ring-slate-900" : ""}`}
               >
                 <div className="space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => handleToggleSelect(classItem.id)}
-                      className="flex items-center gap-2.5 text-left group"
+                      className="flex items-center gap-2.5 text-left group cursor-pointer"
                     >
                       {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <CheckCircle2 className="w-4 h-4 text-slate-900 shrink-0" />
                       ) : (
                         <Circle className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />
                       )}
                       <div className="space-y-0.5">
-                        <h4 className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                        <h4 className="text-xs font-bold text-slate-900 group-hover:text-slate-600 transition-colors">
                           {classItem.name}
                         </h4>
                         <span className="text-[10px] font-medium text-slate-400 block">
@@ -346,7 +345,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
                     </button>
 
                     {isWorking && (
-                      <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin shrink-0" />
+                      <Loader2 className="w-3.5 h-3.5 text-slate-500 animate-spin shrink-0" />
                     )}
                   </div>
 
@@ -375,7 +374,7 @@ const ClassAssignmentPanelContent = memo(function ClassAssignmentPanelContent({
                     type="button"
                     disabled={isWorking}
                     onClick={() => handleToggleThisBundle(classItem.id)}
-                    className={`w-full h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 ${
+                    className={`w-full h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer ${
                       isAssignedToThis
                         ? "bg-emerald-50 hover:bg-rose-50 text-emerald-800 hover:text-rose-700 border border-emerald-200 hover:border-rose-200"
                         : "bg-slate-900 hover:bg-slate-800 text-white shadow-xs"

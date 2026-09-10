@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CertifyReportCard } from "./CertifyReportCard";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { ReportCardSheetData } from "@school/shared";
@@ -333,6 +334,7 @@ export function ReportCardAdminPanel({
 
   return (
     <div className="rc-no-print space-y-10">
+      <CertifyReportCard key={`${studentId}:${sessionId}:${termId}`} reportCard={reportCard} sessionId={sessionId} termId={termId} />
       {reportCard.resultCalculationMode === "cumulative_annual" && missingDataSubjects.length > 0 && (
         <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
           <div className="flex items-start gap-3">
@@ -367,7 +369,7 @@ export function ReportCardAdminPanel({
       )}
 
       {/* Student Specific Section */}
-      <section className="space-y-4">
+      {!reportCard.certifiedAt && <section className="space-y-4">
         <div className="flex items-center gap-2 px-1">
           <MessageSquare className="h-4 w-4 text-slate-400" />
           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
@@ -422,7 +424,7 @@ export function ReportCardAdminPanel({
             <span>{isSavingComments ? "Saving..." : "Save Comments"}</span>
           </button>
         </div>
-      </section>
+      </section>}
 
       {/* Global Term Settings */}
       <section className="space-y-4 pt-6 border-t border-slate-100">

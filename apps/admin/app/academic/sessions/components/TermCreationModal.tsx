@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDirtyForm } from "@school/shared/drafts";
 import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import {
@@ -35,9 +36,9 @@ const TERM_PRESETS: Array<{
 
 function formatInputDate(timestamp: number) {
   const date = new Date(timestamp);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
@@ -64,6 +65,23 @@ export function TermCreationModal({
   const [resultCalculationMode, setResultCalculationMode] =
     useState<ReportCardCalculationMode>("standalone");
   const [isSaving, setIsSaving] = useState(false);
+  const [initial, setInitial] = useState({ termName, startDate, endDate, activateTerm, resultCalculationMode });
+  const requestDeparture = useDirtyForm({
+    name: "Term setup (not saved as a draft)",
+    isDirty: isOpen && (isSaving || JSON.stringify({ termName, startDate, endDate, activateTerm, resultCalculationMode }) !== JSON.stringify(initial)),
+    discard: () => {
+      if (isSaving) throw new Error("Wait for creation to finish before leaving.");
+      setTermName(initial.termName);
+      setStartDate(initial.startDate);
+      setEndDate(initial.endDate);
+      setActivateTerm(initial.activateTerm);
+      setResultCalculationMode(initial.resultCalculationMode);
+    },
+  });
+  const requestClose = useCallback(async () => {
+    if (await requestDeparture({ kind: "close" })) onClose();
+  }, [requestDeparture, onClose]);
+
 
   useEffect(() => {
     setMounted(true);
@@ -79,6 +97,7 @@ export function TermCreationModal({
       setStartDate(formatInputDate(suggested.startDate));
       setEndDate(formatInputDate(suggested.endDate));
       setActivateTerm(existingTermCount === 0);
+      setInitial({ termName: preset.name, startDate: formatInputDate(suggested.startDate), endDate: formatInputDate(suggested.endDate), activateTerm: existingTermCount === 0, resultCalculationMode: preset.defaultMode });
     }
   }, [isOpen, sessionStartDate, sessionEndDate, existingTermCount]);
 
@@ -108,20 +127,20 @@ export function TermCreationModal({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        void requestClose();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, shouldRender]);
+  }, [requestClose, shouldRender]);
 
   if (!shouldRender || !mounted) return null;
 
   const parseLocalDate = (value: string) => {
     const [year, month, day] = value.split("-").map(Number);
     if (!year || !month || !day) return Number.NaN;
-    return new Date(year, month - 1, day, 12, 0, 0).getTime();
+    return Date.UTC(year, month - 1, day, 12, 0, 0);
   };
 
   const handleSelectPreset = (
@@ -140,6 +159,7 @@ export function TermCreationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     const normalizedName = humanNameFinal(termName);
     if (!sessionId || !normalizedName || !startDate || !endDate) return;
 
@@ -189,7 +209,7 @@ export function TermCreationModal({
         className={`absolute inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity duration-400 ease-out ${
           isAnimating ? "opacity-100" : "opacity-0"
         }`}
-        onClick={onClose}
+        onClick={() => void requestClose()}
       />
 
       {/* Sheet / Modal Container */}
@@ -223,7 +243,7 @@ export function TermCreationModal({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void requestClose()}
             className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition cursor-pointer shrink-0"
           >
             <X className="h-4 w-4" />
@@ -335,7 +355,7 @@ export function TermCreationModal({
             <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => void requestClose()}
                 className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 py-2.5 sm:py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer text-center"
               >
                 Cancel

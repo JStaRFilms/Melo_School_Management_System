@@ -15,6 +15,7 @@ export interface PortalStudentOption {
   relationship: string | null;
   photoUrl: string | null;
   isActive: boolean;
+  enrollmentState: "active" | "historical";
 }
 
 export interface PortalHistoryItem {
@@ -78,6 +79,7 @@ export interface PortalWorkspaceData {
 }
 
 export interface PortalBillingInvoice {
+  paymentInstructions?: import("@school/shared").InvoiceBankInstructions | null;
   invoiceId: string;
   studentId: string;
   invoiceNumber: string;

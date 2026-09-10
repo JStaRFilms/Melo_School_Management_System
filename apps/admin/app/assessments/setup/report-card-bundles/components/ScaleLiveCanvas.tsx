@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { CheckCircle2, GraduationCap, Layers, ShieldCheck, Sparkles } from "lucide-react";
+import { CheckCircle2, GraduationCap, Layers, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import type { ScaleTemplateDraft } from "../types";
 
 interface ScaleLiveCanvasProps {
@@ -41,11 +41,11 @@ export const ScaleLiveCanvas = memo(function ScaleLiveCanvas({ draft }: ScaleLiv
 
         {/* Scale Grid Preview */}
         {draft.options.length === 0 ? (
-          <div className="py-12 flex flex-col items-center justify-center text-center rounded-xl border-2 border-dashed border-slate-100 bg-slate-50/50 space-y-2 p-4">
-            <Sparkles className="w-6 h-6 text-indigo-400" />
+          <div className="py-12 flex flex-col items-center justify-center text-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 space-y-2 p-4">
+            <SlidersHorizontal className="w-6 h-6 text-slate-300" />
             <p className="text-xs font-bold text-slate-700">No Rating Levels Added</p>
             <p className="text-[11px] text-slate-400 max-w-[240px]">
-              Add levels or click a 1-Click Preset on the left to see how this scale renders on report cards.
+              Add levels or click a preset on the left to see how this scale renders on report cards.
             </p>
           </div>
         ) : (
@@ -77,7 +77,7 @@ export const ScaleLiveCanvas = memo(function ScaleLiveCanvas({ draft }: ScaleLiv
                             <td key={opt.key ?? `cell-${optIdx}`} className="p-1.5 text-center">
                               <div className="flex items-center justify-center">
                                 {isChecked ? (
-                                  <div className="w-3.5 h-3.5 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                                  <div className="w-3.5 h-3.5 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-xs">
                                     <CheckCircle2 className="w-2.5 h-2.5" />
                                   </div>
                                 ) : (

@@ -1,10 +1,6 @@
 import type { ReactNode } from "react";
-import { SchoolsLayoutClient } from "./SchoolsLayoutClient";
+import { PlatformLayoutClient } from "@/PlatformLayoutClient";
 
-export default function SchoolsLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  return <SchoolsLayoutClient>{children}</SchoolsLayoutClient>;
+export default function SchoolsLayout({ children }: { children: ReactNode }) {
+  return <PlatformLayoutClient>{children}</PlatformLayoutClient>;
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Sparkles, Database, Check } from "lucide-react";
+import { X, Database, Check } from "lucide-react";
 
 export interface FeatureSignalItem {
   _id?: string;
@@ -22,7 +22,7 @@ export function ColumnMappingDialog({ signals, onClose }: ColumnMappingDialogPro
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/80">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
-              <Sparkles className="h-5 w-5" />
+              <Database className="h-5 w-5" />
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 leading-tight">
@@ -43,61 +43,51 @@ export function ColumnMappingDialog({ signals, onClose }: ColumnMappingDialogPro
         </div>
 
         {/* Informational Banner */}
-        <div className="bg-indigo-50/60 border-b border-indigo-100/80 p-5 text-xs text-indigo-900 space-y-1.5">
-          <div className="font-bold flex items-center gap-1.5">
-            <Database className="h-4 w-4 text-indigo-600" />
-            Zero Data Loss Guarantee
-          </div>
-          <p className="text-indigo-700 leading-relaxed">
-            Melo automatically preserves all uncatered columns in the student record's{" "}
-            <code className="font-mono bg-indigo-100/70 px-1 py-0.5 rounded text-[11px]">unmappedData</code>{" "}
-            attic. These signals are also logged to the product intelligence backlog for upcoming feature discovery.
-          </p>
+        <div className="bg-indigo-50/50 border-b border-indigo-100/60 p-4 text-xs text-indigo-900 leading-relaxed">
+          The spreadsheet contains non-standard columns that aren't mapped to standard school schema fields. These are tracked here for auditing and future product custom fields without breaking current records.
         </div>
 
-        {/* Signals Table */}
-        <div className="max-h-[350px] overflow-y-auto p-6 space-y-3">
-          {signals.length === 0 ? (
-            <div className="text-center py-8 text-xs text-slate-400">
-              No unrecognized columns found. All spreadsheet headers map directly to the core schema!
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-              {signals.map((sig, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 text-xs">
-                  <div className="space-y-0.5">
-                    <span className="font-bold text-slate-900 font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                      {sig.rawHeader}
-                    </span>
-                    {sig.sampleValue && (
-                      <span className="text-slate-500 block text-[11px]">
-                        Sample: <span className="text-slate-700 font-medium font-mono">"{sig.sampleValue}"</span>
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                      {sig.detectedType}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                      <Check className="h-3 w-3" />
-                      Preserved
-                    </span>
-                  </div>
+        {/* Signals List */}
+        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+          {signals.map((signal, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between rounded-xl border border-slate-100 p-3 hover:border-slate-200 transition-colors bg-white shadow-2xs"
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-slate-900">
+                    {signal.rawHeader}
+                  </span>
+                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                    {signal.detectedType}
+                  </span>
                 </div>
-              ))}
+                {signal.sampleValue && (
+                  <p className="text-[11px] text-slate-500 font-mono truncate max-w-md">
+                    Sample: <span className="text-slate-700 font-medium">{signal.sampleValue}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500 border border-slate-200">
+                  <Check className="h-3 w-3 text-slate-400" />
+                  Attic Saved
+                </span>
+              </div>
             </div>
-          )}
+          ))}
         </div>
 
         {/* Footer */}
-        <div className="border-t border-slate-100 bg-slate-50/70 px-6 py-4 flex justify-end">
+        <div className="border-t border-slate-100 bg-slate-50/60 p-4 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors shadow-xs"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors shadow-2xs"
           >
-            Got it
+            Done
           </button>
         </div>
       </div>

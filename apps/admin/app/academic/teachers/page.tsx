@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState, useEffect } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Search, GraduationCap, Sparkles, UserPlus } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
+import { getUserFacingErrorMessage, hasEffectiveCapability } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { StatGroup } from "@/components/ui/StatGroup";
@@ -14,11 +14,19 @@ import { TeacherCreationForm } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { TeacherRecord } from "@/types";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { useAuth } from "@/AuthProvider";
+import { useDraftConnection } from "@/useDraftConnection";
 
 type ProvisionResult = {
   teacherId: string;
   email: string;
   temporaryPassword: string;
+};
+type DraftClosure = {
+  schoolId: Id<"schools">;
+  draftId: Id<"formDrafts">;
+  expectedRevision: number;
 };
 
 function normalizeArchiveBlockers(blockers: string[] | undefined) {
@@ -44,6 +52,19 @@ function getTeacherArchiveBlockerMessage(blockers: string[]) {
 }
 
 export default function TeachersPage() {
+  const { workspaceAccess, session } = useAuth();
+  const draftConnection = useDraftConnection();
+  const canOnboard = hasEffectiveCapability(workspaceAccess, "staff.onboard");
+  const canEditProfile = hasEffectiveCapability(workspaceAccess, "staff.profiles.edit");
+  const canResetPassword = hasEffectiveCapability(workspaceAccess, "staff.password.reset");
+  const canArchive = hasEffectiveCapability(workspaceAccess, "staff.account.suspend");
+
+  const schoolId = workspaceAccess?.state === "ready"
+    ? (workspaceAccess.branch.schoolId as Id<"schools">)
+    : undefined;
+  const draftContext = schoolId && session?.user.id
+    ? { schoolId, accountId: session.user.id, connection: draftConnection }
+    : undefined;
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
@@ -79,12 +100,12 @@ export default function TeachersPage() {
   [teachers, selectedTeacherId]);
   const selectedTeacherArchiveBlockers = useQuery(
     "functions/academic/academicSetup:getTeacherArchiveBlockers" as never,
-    selectedTeacherId
+    selectedTeacherId && canArchive
       ? ({ teacherId: selectedTeacherId } as never)
       : ("skip" as never)
   ) as string[] | undefined;
   const isArchiveStatusLoading =
-    Boolean(selectedTeacherId) && selectedTeacherArchiveBlockers === undefined;
+    Boolean(selectedTeacherId && canArchive) && selectedTeacherArchiveBlockers === undefined;
   const selectedTeacherWithArchiveState = useMemo(
     () =>
       selectedTeacher
@@ -100,44 +121,43 @@ export default function TeachersPage() {
 
   useEffect(() => {
     if (selectedTeacherId && isMobile) {
-      const scrollTimer = setTimeout(() => {
-        const element = document.getElementById(`teacher-${selectedTeacherId}`);
-        if (element) {
-          const yOffset = -120;
-          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
-          window.scrollTo({ top: y, behavior: "smooth" });
-        }
-      }, 100);
-      return () => clearTimeout(scrollTimer);
+      const el = document.getElementById("teacher-builder-section");
+      el?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [isMobile, selectedTeacherId]);
+  }, [selectedTeacherId, isMobile]);
 
   const filteredTeachers = useMemo(() => {
     if (!teachers) return [];
-    const query = deferredSearch.trim().toLowerCase();
-    if (!query) return teachers;
+    if (!deferredSearch) return teachers;
     return teachers.filter(
-      (t) => t.name.toLowerCase().includes(query) || t.email.toLowerCase().includes(query)
+      (t) =>
+        t.name.toLowerCase().includes(deferredSearch.toLowerCase()) ||
+        t.email.toLowerCase().includes(deferredSearch.toLowerCase())
     );
   }, [deferredSearch, teachers]);
 
-  const handleProvision = async (name: string, email: string, password: string): Promise<ProvisionResult> => {
+  const handleProvision = async (name: string, email: string, password: string, draft?: DraftClosure): Promise<ProvisionResult> => {
     setIsSubmitting(true);
     try {
       const response = await createTeacher({
-        name,
+        name: name.trim(),
         email: email.trim().toLowerCase(),
         temporaryPassword: password.trim(),
         origin: window.location.origin,
+        draftId: draft?.draftId,
+        expectedDraftRevision: draft?.expectedRevision,
       } as never) as ProvisionResult;
       
       showNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
       return response;
     } catch (err) {
+      const message = getUserFacingErrorMessage(err, "Failed to provision account.");
       showNotice({
         tone: "error",
-        title: "Provisioning Failed",
-        message: getUserFacingErrorMessage(err, "Account creation failed.")
+        title: message.toLowerCase().includes("already registered") || message.toLowerCase().includes("unique")
+          ? "Account Exists"
+          : "Provision Failed",
+        message,
       });
       throw err;
     } finally {
@@ -154,7 +174,7 @@ export default function TeachersPage() {
       showNotice({
         tone: "error",
         title: "Update Failed",
-        message: getUserFacingErrorMessage(err, "Failed to save changes.")
+        message: getUserFacingErrorMessage(err, "Failed to update record."),
       });
     } finally {
       setIsSaving(false);
@@ -170,7 +190,7 @@ export default function TeachersPage() {
       showNotice({
         tone: "error",
         title: "Update Failed",
-        message: getUserFacingErrorMessage(err, "Failed to update password.")
+        message: getUserFacingErrorMessage(err, "Failed to reset password."),
       });
     } finally {
       setIsResetting(false);
@@ -204,7 +224,7 @@ export default function TeachersPage() {
       const message = getUserFacingErrorMessage(err, "Failed to deactivate record.");
       showNotice({
         tone: "error",
-        title: message.startsWith("Reassign this teacher")
+        title: message.toLowerCase().includes("reassign") || message.toLowerCase().includes("link")
           ? "Reassignment Required"
           : "Archive Failed",
         message,
@@ -274,6 +294,9 @@ export default function TeachersPage() {
              isResetting={isResetting}
              isArchiveStatusLoading={isArchiveStatusLoading}
              variant="sheet"
+             canEditProfile={canEditProfile}
+             canResetPassword={canResetPassword}
+             canArchive={canArchive}
            />
         )}
       </AdminSheet>
@@ -282,8 +305,8 @@ export default function TeachersPage() {
         {/* Sidebar Bucket - Locked & Pinned */}
         <aside className="w-full lg:w-[400px] xl:w-[420px] lg:h-full lg:overflow-hidden flex flex-col justify-between border-t lg:border-t-0 lg:border-l border-slate-200/60 bg-white/40 backdrop-blur-xl p-4 md:p-5 z-10 shrink-0">
           <div id="teacher-builder-section" className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-0.5 space-y-4">
-            <div className="hidden lg:block">
-              {selectedTeacherWithArchiveState ? (
+            {selectedTeacherWithArchiveState ? (
+              <div className="hidden lg:block">
                 <TeacherEditForm
                   teacher={selectedTeacherWithArchiveState}
                   onUpdate={handleUpdate}
@@ -293,23 +316,20 @@ export default function TeachersPage() {
                   isSaving={isSaving}
                   isResetting={isResetting}
                   isArchiveStatusLoading={isArchiveStatusLoading}
+                  canEditProfile={canEditProfile}
+                  canResetPassword={canResetPassword}
+                  canArchive={canArchive}
                 />
-              ) : (
-                <TeacherCreationForm
-                  onProvision={handleProvision}
-                  isSubmitting={isSubmitting}
-                />
-              )}
-            </div>
-
-            <div className="lg:hidden">
-              {!selectedTeacher && (
-                 <TeacherCreationForm
-                   onProvision={handleProvision}
-                   isSubmitting={isSubmitting}
-                 />
-              )}
-            </div>
+              </div>
+            ) : canOnboard ? (
+              <TeacherCreationForm
+                onProvision={handleProvision}
+                isSubmitting={isSubmitting}
+                draftContext={draftContext}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">Select a teacher to view authorized controls.</p>
+            )}
           </div>
 
           <div className="pt-3 border-t border-slate-200/60 shrink-0">

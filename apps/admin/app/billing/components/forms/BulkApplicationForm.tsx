@@ -1,3 +1,4 @@
+import { BankAccountSelection } from "../BankAccountSelection";
 import { Users } from "lucide-react";
 import React, { useMemo } from "react";
 import type {
@@ -49,6 +50,10 @@ export function BulkApplicationForm({
         </div>
 
         <div className="space-y-3.5">
+          <BankAccountSelection
+            value={draft.bankAccountId ?? ""}
+            onChange={(bankAccountId) => onChange({ ...draft, bankAccountId })}
+          />
           <div className="space-y-1">
             <label className={labelCx}>Fee Plan *</label>
             <select

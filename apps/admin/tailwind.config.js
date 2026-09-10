@@ -26,12 +26,18 @@ module.exports = {
           200: "#f8fafc",
         },
         brand: {
-          // Dynamic School Theme Tokens (injected by WorkspaceNavbar / SchoolThemeProvider)
           primary: "var(--school-primary, #0f172a)",
+          "primary-hover": "var(--school-primary-hover, #1e293b)",
+          "primary-pressed": "var(--school-primary-pressed, #020617)",
+          "primary-contrast": "var(--school-primary-contrast, #ffffff)",
+          "primary-surface": "var(--school-primary-surface, rgba(15, 23, 42, 0.06))",
+          "primary-border": "var(--school-primary-border, rgba(15, 23, 42, 0.18))",
           accent: "var(--school-accent, #2563eb)",
-          light: "var(--school-primary-light, rgba(15, 23, 42, 0.05))",
-          border: "var(--school-primary-border, rgba(15, 23, 42, 0.15))",
-          "accent-light": "var(--school-accent-light, rgba(37, 99, 235, 0.10))",
+          "accent-contrast": "var(--school-accent-contrast, #ffffff)",
+          "accent-surface": "var(--school-accent-surface, rgba(37, 99, 235, 0.1))",
+          focus: "var(--school-focus-ring, rgba(37, 99, 235, 0.45))",
+          selection: "var(--school-selection, #0f172a)",
+          progress: "var(--school-progress, #2563eb)",
         },
       },
       fontFamily: {

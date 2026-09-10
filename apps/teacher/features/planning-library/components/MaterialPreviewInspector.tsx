@@ -197,10 +197,10 @@ export function MaterialPreviewInspector({
                 <p className="text-[10px] font-black uppercase tracking-wider text-amber-900">
                   {material.processingStatus === "ocr_needed" ? "OCR Extraction Required" : "Extraction Failed"}
                 </p>
-                <p className="text-[12px] font-medium leading-relaxed text-amber-900/80">
+                <p id="ocr-unavailable" className="text-[12px] font-medium leading-relaxed text-amber-900/80">
                   {material.ingestionErrorMessage || (material.processingStatus === "ocr_needed"
-                    ? "Native text extraction could not read this document. Run AI OCR to extract scanned text and tables."
-                    : "Text extraction encountered an issue. You can retry with AI OCR.")}
+                    ? "Native text extraction could not read this document. Provider OCR is currently unavailable."
+                    : "Text extraction encountered an issue. Provider OCR retry is currently unavailable.")}
                 </p>
               </div>
             </div>
@@ -302,14 +302,15 @@ export function MaterialPreviewInspector({
 
         {/* Actions */}
         <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 backdrop-blur-sm px-6 py-4 space-y-2">
-          {(material.processingStatus === "failed" || material.processingStatus === "ocr_needed") && onRetry && (
+          {(material.processingStatus === "failed" || material.processingStatus === "ocr_needed") && (
             <button
               type="button"
-              onClick={onRetry}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-amber-600 text-[10px] font-black uppercase tracking-[0.15em] text-white transition hover:bg-amber-500 shadow-md shadow-amber-600/15"
+              disabled
+              aria-describedby="ocr-unavailable"
+              className="flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-amber-100 text-[10px] font-black uppercase tracking-[0.15em] text-amber-800"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              Run AI OCR / Retry Extraction
+              OCR retry unavailable
             </button>
           )}
           {(material.processingStatus === "queued" || material.processingStatus === "extracting") && (

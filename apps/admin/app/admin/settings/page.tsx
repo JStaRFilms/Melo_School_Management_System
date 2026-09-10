@@ -2,10 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import { deriveSchoolTheme, normalizeThemeColor } from "@school/shared/theme";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { BranchBrandingEditor } from "../group/GroupBranding";
+import { SettingsNavigationTabs } from "./components/SettingsNavigationTabs";
+import { useAuth } from "@/AuthProvider";
+import { hasEffectiveCapability } from "@school/shared";
 import {
   Building2,
   Upload,
@@ -28,6 +34,7 @@ import {
 
 interface SchoolBrandingData {
   schoolId: string;
+  groupId?: string;
   name: string;
   slug: string;
   logoUrl: string | null;
@@ -47,6 +54,9 @@ interface SchoolBrandingData {
   };
 }
 
+const MAX_LOGO_BYTES = 768 * 1024;
+const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+
 const PRESET_PALETTES = [
   { name: "Slate Navy & Amber Gold", primary: "#0f172a", accent: "#d97706" },
   { name: "Royal Blue & Gold", primary: "#1e3a8a", accent: "#f59e0b" },
@@ -58,6 +68,9 @@ const PRESET_PALETTES = [
 
 export default function SchoolSettingsPage() {
   const isConfigured = isConvexConfigured();
+  const { workspaceAccess } = useAuth();
+  const canEditProfile = hasEffectiveCapability(workspaceAccess, "settings.general.edit");
+  const canManageBranding = hasEffectiveCapability(workspaceAccess, "settings.branding.manage");
 
   const branding = useQuery(
     "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
@@ -67,10 +80,7 @@ export default function SchoolSettingsPage() {
   const updateProfile = useMutation(
     "functions/academic/schoolBranding:updateSchoolProfile" as never
   );
-  const generateLogoUploadUrl = useMutation(
-    "functions/academic/schoolBranding:generateSchoolLogoUploadUrl" as never
-  );
-  const saveSchoolLogo = useMutation(
+  const saveSchoolLogo = useAction(
     "functions/academic/schoolBranding:saveSchoolLogo" as never
   );
   const removeSchoolLogo = useMutation(
@@ -133,6 +143,14 @@ export default function SchoolSettingsPage() {
     }
   }, [branding]);
 
+  const normalizedPrimary = normalizeThemeColor(primaryColor);
+  const normalizedAccent = normalizeThemeColor(accentColor);
+  const previewTokens = useMemo(
+    () => deriveSchoolTheme(normalizedPrimary, normalizedAccent),
+    [normalizedPrimary, normalizedAccent],
+  );
+  const themeCanSave = Boolean(normalizedPrimary && normalizedAccent);
+
   const logoPreviewUrl = useMemo(() => {
     if (logoFile) {
       return URL.createObjectURL(logoFile);
@@ -158,9 +176,15 @@ export default function SchoolSettingsPage() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
+    if (canEditProfile && !name.trim()) {
       appToast.warning("School name required", {
         description: "Please enter your official school name.",
+      });
+      return;
+    }
+    if (!normalizedPrimary || !normalizedAccent) {
+      appToast.warning("Use a valid brand colour", {
+        description: "Enter a 3- or 6-digit hex colour for both Primary and Accent so a safe theme can be derived.",
       });
       return;
     }
@@ -168,21 +192,16 @@ export default function SchoolSettingsPage() {
     setIsSaving(true);
     try {
       // 1. Upload logo if new file chosen
-      if (logoFile) {
-        const uploadUrl = (await generateLogoUploadUrl({} as never)) as string;
-        const uploadResponse = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": logoFile.type },
-          body: logoFile,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error("Logo upload failed");
+      if (logoFile && canManageBranding) {
+        if (!ALLOWED_LOGO_TYPES.includes(logoFile.type as (typeof ALLOWED_LOGO_TYPES)[number])) {
+          throw new Error("Use a valid PNG, JPEG, or WebP school crest.");
+        }
+        if (logoFile.size > MAX_LOGO_BYTES) {
+          throw new Error("School crests must be smaller than 768 KB.");
         }
 
-        const payload = (await uploadResponse.json()) as { storageId: string };
         await saveSchoolLogo({
-          logoStorageId: payload.storageId as never,
+          bytes: await logoFile.arrayBuffer(),
           logoFileName: logoFile.name,
           logoContentType: logoFile.type,
         } as never);
@@ -193,10 +212,12 @@ export default function SchoolSettingsPage() {
       await updateProfile({
         name: name.trim(),
         motto: motto.trim() || undefined,
-        theme: {
-          primaryColor,
-          accentColor,
-        },
+        theme: canManageBranding
+          ? {
+              primaryColor: normalizedPrimary,
+              accentColor: normalizedAccent,
+            }
+          : undefined,
         contactEmail: contactEmail.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         address: address.trim() || undefined,
@@ -242,32 +263,39 @@ export default function SchoolSettingsPage() {
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6 pb-20 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">School Profile & Branding</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Manage your official institution identity, crest logo, custom palette, and letterhead contact details.
-          </p>
-        </div>
+      <div className="space-y-5 border-b border-slate-200/80 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950">School Profile & Branding</h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Manage your official institution identity, crest logo, custom palette, and letterhead contact details.
+            </p>
+          </div>
 
-        <button
-          type="button"
-          onClick={handleSaveProfile}
-          disabled={isSaving}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Saving Profile...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4" />
-              Save All Changes
-            </>
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={handleSaveProfile}
+            disabled={
+              isSaving ||
+              (!canEditProfile && !canManageBranding) ||
+              (canManageBranding && !themeCanSave)
+            }
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all cursor-pointer"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving Profile...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                Save All Changes
+              </>
+            )}
+          </button>
+        </div>
+        <SettingsNavigationTabs />
       </div>
 
       <form onSubmit={handleSaveProfile} className="space-y-6">
@@ -287,6 +315,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. Meridian Crest Academy"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -303,6 +332,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={motto}
                 onChange={(e) => setMotto(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. Nurturing Intellectual Depth, Character, and Global Leadership."
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -393,31 +423,45 @@ export default function SchoolSettingsPage() {
               <div>
                 <h4 className="text-xs font-bold text-slate-900">Upload Institution Crest</h4>
                 <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                  Recommended: High-resolution PNG, SVG, or WebP with a transparent background (min 400x400px).
-                  This crest dynamically populates browser tab favicons, printable report cards, and student portal headers.
+                  Supported formats: PNG, JPEG, or WebP up to 768 KB. High-resolution square or crest dimensions recommended.
                 </p>
               </div>
 
               <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <label
-                  aria-disabled={isSaving}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition-colors shadow-xs focus-within:outline-none focus-within:ring-2 focus-within:ring-slate-900 focus-within:ring-offset-2 sm:w-auto ${
-                    isSaving ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-slate-800"
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold shadow-xs sm:w-auto transition-colors ${
+                    canManageBranding && !isSaving
+                      ? "cursor-pointer bg-slate-900 text-white hover:bg-slate-800"
+                      : "cursor-not-allowed bg-slate-900 text-white opacity-50"
                   }`}
                 >
                   <Upload className="h-3.5 w-3.5" />
                   <span>Choose Image</span>
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                    disabled={isSaving}
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={!canManageBranding || isSaving}
                     className="sr-only"
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       e.target.value = "";
-                      if (file) {
-                        setLogoFile(file);
+                      if (!file) return;
+
+                      if (!ALLOWED_LOGO_TYPES.includes(file.type as (typeof ALLOWED_LOGO_TYPES)[number])) {
+                        appToast.warning("Invalid image format", {
+                          description: "Please select a PNG, JPEG, or WebP image.",
+                        });
+                        return;
                       }
+
+                      if (file.size > MAX_LOGO_BYTES) {
+                        appToast.warning("File too large", {
+                          description: "School crest image must be smaller than 768 KB.",
+                        });
+                        return;
+                      }
+
+                      setLogoFile(file);
                     }}
                   />
                 </label>
@@ -427,7 +471,7 @@ export default function SchoolSettingsPage() {
                     type="button"
                     onClick={() => setLogoFile(null)}
                     disabled={isSaving}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Discard selected image
@@ -438,8 +482,8 @@ export default function SchoolSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setIsLogoRemovalOpen(true)}
-                    disabled={isSaving}
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    disabled={isSaving || !canManageBranding}
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Remove current logo
@@ -458,6 +502,19 @@ export default function SchoolSettingsPage() {
         </div>
 
         {/* Section 3: Brand Colors */}
+        {branding.groupId ? (
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs">
+            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+              <Palette className="h-4 w-4 text-indigo-600" />
+              <span>Brand Color Palette</span>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">
+              This branch is linked to an active school group. Save profile and
+              contact changes here, then use the branch branding controls below
+              for color inheritance or overrides.
+            </p>
+          </div>
+        ) : (
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
           <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
             <Palette className="h-4 w-4 text-indigo-600" />
@@ -473,13 +530,15 @@ export default function SchoolSettingsPage() {
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={primaryColor}
+                    value={normalizedPrimary ?? "#0f172a"}
+                    disabled={!canManageBranding}
                     onChange={(e) => setPrimaryColor(e.target.value)}
                     className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
                   />
                   <input
                     type="text"
                     value={primaryColor}
+                    disabled={!canManageBranding}
                     onChange={(e) => setPrimaryColor(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 uppercase"
                   />
@@ -494,18 +553,71 @@ export default function SchoolSettingsPage() {
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={accentColor}
+                    value={normalizedAccent ?? "#2563eb"}
+                    disabled={!canManageBranding}
                     onChange={(e) => setAccentColor(e.target.value)}
                     className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer p-1 bg-white"
                   />
                   <input
                     type="text"
                     value={accentColor}
+                    disabled={!canManageBranding}
                     onChange={(e) => setAccentColor(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-mono text-slate-900 uppercase"
                   />
                 </div>
                 <p className="text-[11px] text-slate-400">Used for badges, highlights, and report card distinctions.</p>
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl border p-4"
+              style={{
+                backgroundColor: previewTokens["--school-primary-surface"],
+                borderColor: previewTokens["--school-primary-border"],
+              }}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Live school-facing preview</p>
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    Primary and Accent derive interaction, focus, selection, and progress tokens. Status alerts and grade-band colours are not changed.
+                  </p>
+                </div>
+                <span className={`text-[11px] font-semibold ${themeCanSave ? "text-emerald-700" : "text-rose-700"}`} role="status">
+                  {themeCanSave ? "Contrast-safe tokens ready" : "Enter valid hex colours to save"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  className="rounded-lg px-3 py-2 text-xs font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{
+                    backgroundColor: previewTokens["--school-primary"],
+                    color: previewTokens["--school-primary-contrast"],
+                    outlineColor: previewTokens["--school-focus-ring"],
+                  }}
+                >
+                  Primary action
+                </button>
+                <span
+                  className="rounded-lg px-3 py-2 text-center text-xs font-bold"
+                  style={{
+                    backgroundColor: previewTokens["--school-accent"],
+                    color: previewTokens["--school-accent-contrast"],
+                  }}
+                >
+                  Accent highlight
+                </span>
+                <span
+                  className="rounded-lg px-3 py-2 text-center text-xs font-bold"
+                  style={{
+                    backgroundColor: previewTokens["--school-progress"],
+                    color: previewTokens["--school-progress-contrast"],
+                  }}
+                >
+                  Progress
+                </span>
               </div>
             </div>
 
@@ -519,6 +631,7 @@ export default function SchoolSettingsPage() {
                   <button
                     key={preset.name}
                     type="button"
+                    disabled={!canManageBranding}
                     onClick={() => {
                       setPrimaryColor(preset.primary);
                       setAccentColor(preset.accent);
@@ -547,6 +660,7 @@ export default function SchoolSettingsPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Section 4: Contact & Letterhead Details */}
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-2xs space-y-5">
@@ -565,6 +679,7 @@ export default function SchoolSettingsPage() {
                 type="email"
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. info@meridiancrest.org"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -579,6 +694,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={contactPhone}
                 onChange={(e) => setContactPhone(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. +234 803 123 4567"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -593,6 +709,7 @@ export default function SchoolSettingsPage() {
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
+                disabled={!canEditProfile}
                 placeholder="e.g. Plot 12, Heritage Way, Victoria Island, Lagos"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -703,6 +820,13 @@ export default function SchoolSettingsPage() {
           </div>
         </div>
       </form>
+
+      {branding.groupId && canManageBranding && (
+        <BranchBrandingEditor
+          groupId={branding.groupId as Id<"schoolGroups">}
+          schoolId={branding.schoolId as Id<"schools">}
+        />
+      )}
 
       <ConfirmationModal
         isOpen={isLogoRemovalOpen}

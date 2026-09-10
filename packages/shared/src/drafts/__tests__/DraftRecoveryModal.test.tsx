@@ -69,7 +69,7 @@ describe("DraftRecoveryModal and Draft Status Components", () => {
   describe("Truthful Connectivity and Offline Claim Invariant", () => {
     it("explicitly flags connection_lost with truthful recovery label (Zero False Offline Claims)", () => {
       const config = DRAFT_STATUS_CONFIGS.connection_lost;
-      expect(config.label).toBe("Connection lost • Recovery pending");
+      expect(config.label).toBe("Connection lost \u2022 Recovery pending");
       expect(config.truthfulOfflineClaim).toBe(true);
       expect(config.description).toContain("Changes are held in local browser memory");
 
@@ -80,31 +80,53 @@ describe("DraftRecoveryModal and Draft Status Components", () => {
         })
       );
 
-      expect(html).toContain("Connection lost • Recovery pending");
+      expect(html).toContain("Connection lost \u2022 Recovery pending");
       expect(html).toContain("Changes are held in local browser memory");
     });
 
-    it("renders saved status with time", () => {
+    it("renders saved status with time when silentOnSuccess is false", () => {
       const savedTime = new Date("2026-09-03T14:32:00").getTime();
       const html = renderToStaticMarkup(
         createElement(DraftStatusIndicator, {
           status: "saved",
           lastSavedAt: savedTime,
+          silentOnSuccess: false,
         })
       );
 
       expect(html).toContain("Draft saved at");
     });
 
-    it("renders save_failed with retry button", () => {
+    it("renders nothing on saved and saving when silentOnSuccess is true (zero layout shift)", () => {
+      const savedTime = new Date("2026-09-03T14:32:00").getTime();
+      const htmlSaved = renderToStaticMarkup(
+        createElement(DraftStatusIndicator, {
+          status: "saved",
+          lastSavedAt: savedTime,
+          silentOnSuccess: true,
+        })
+      );
+      expect(htmlSaved).toBe("");
+
+      const htmlSaving = renderToStaticMarkup(
+        createElement(DraftStatusIndicator, {
+          status: "saving",
+          silentOnSuccess: true,
+        })
+      );
+      expect(htmlSaving).toBe("");
+    });
+
+    it("renders save_failed with retry button even when silentOnSuccess is true", () => {
       const html = renderToStaticMarkup(
         createElement(DraftStatusIndicator, {
           status: "save_failed",
+          silentOnSuccess: true,
           onRetry: vi.fn(),
         })
       );
 
-      expect(html).toContain("Save failed • Retry");
+      expect(html).toContain("Save failed \u2022 Retry");
       expect(html).toContain("Retry");
     });
   });

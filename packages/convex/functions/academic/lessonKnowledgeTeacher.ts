@@ -10,6 +10,7 @@ import {
 import { normalizeHumanName } from "@school/shared/name-format";
 import { buildMaterialSearchSeed, suggestKnowledgeMaterialLabels, normalizeKnowledgeMaterialText, canManageKnowledgeMaterial } from "./lessonKnowledgeIngestionHelpers";
 import { getAuthenticatedSchoolMembership, getTeacherAssignableClassIds, getTeacherAssignableSubjectIds } from "./auth";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import {
   canPromoteKnowledgeMaterial,
   canReadKnowledgeMaterialInStaffSurface,
@@ -753,7 +754,7 @@ export const listTeacherKnowledgeLibraryMaterials = query({
     materials: v.array(lessonLibraryMaterialValidator),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -771,7 +772,7 @@ export const listTeacherLibrarySubjects = query({
   args: {},
   returns: v.array(lessonLibrarySubjectValidator),
   handler: async (ctx) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -794,7 +795,7 @@ export const listTeacherKnowledgeTopics = query({
   },
   returns: v.array(lessonLibraryTopicValidator),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -823,7 +824,7 @@ export const listTeacherPlanningTopicWork = query({
   },
   returns: v.array(teacherPlanningWorkItemValidator),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherLibraryAccess(actor);
 
@@ -1001,7 +1002,7 @@ export const listTeacherYoutubeSubmissions = query({
     materials: v.array(lessonVideoSubmissionValidator),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -1027,7 +1028,7 @@ export const getTeacherKnowledgeMaterialSourceProof = query({
     sourceProof: knowledgeMaterialSourceProofValidator,
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -1066,7 +1067,7 @@ export const getTeacherKnowledgeMaterialOriginalFileAccess = query({
   },
   returns: knowledgeMaterialOriginalFileAccessValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -1108,7 +1109,7 @@ export const updateTeacherKnowledgeMaterialDetails = mutation({
     labelSuggestions: v.array(v.string()),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -1254,7 +1255,7 @@ export const createTeacherKnowledgeTopic = mutation({
     status: v.union(v.literal("draft"), v.literal("active"), v.literal("retired")),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,
@@ -1402,7 +1403,7 @@ export const publishTeacherKnowledgeMaterialToStaff = mutation({
     reviewStatus: knowledgeReviewStatusValidator,
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({
       userId,
       schoolId,

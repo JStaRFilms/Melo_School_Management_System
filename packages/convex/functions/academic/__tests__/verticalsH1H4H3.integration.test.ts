@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
 import { api, internal } from "../../../_generated/api";
+import { snapshotInvoicePaymentInstructionsHelper } from "../bankAccounts";
 
 declare global {
   interface ImportMeta {
@@ -24,7 +25,6 @@ const modules = Object.fromEntries(
 const gradingBandsApi = (api as any).functions.academic.gradingBands;
 const admissionNumbersApi = (api as any).functions.academic.admissionNumbers;
 const bankAccountsApi = (api as any).functions.academic.bankAccounts;
-const bankAccountsInternal = internal.functions.academic.bankAccounts;
 
 function assertExists<T>(value: T): asserts value is NonNullable<T> {
   if (value === null || value === undefined) throw new Error("Expected a result");
@@ -126,6 +126,11 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
       joinedAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("membershipDirectGrants", {
+      membershipId: teacherMembershipId,
+      capability: "finance.reports.view",
+      grantedAt: now,
+    });
 
     // Academic dependencies for invoice creation
     const sessionId = await ctx.db.insert("academicSessions", {
@@ -189,7 +194,7 @@ async function setupTestHarness(t: ReturnType<typeof convexTest>) {
       schoolId,
       classId,
       userId: studentUserId,
-      admissionNumber: "OBC-LAG-JSS1-2026-0001",
+      admissionNumber: "LEGACY-0001",
       createdAt: now,
       updatedAt: now,
     });
@@ -223,7 +228,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     });
 
     // 1. Initial retrieval on unconfigured school returns factory defaults
-    const defaultBands = await t.query(gradingBandsApi.getGradingBands, {
+    const defaultBands = await adminSession.query(gradingBandsApi.getGradingBands, {
       schoolId,
     });
 
@@ -317,20 +322,21 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     });
 
     // 4. Retrieve updated bands
-    const updatedBands = await t.query(gradingBandsApi.getGradingBands, {
+    const updatedBands = await adminSession.query(gradingBandsApi.getGradingBands, {
       schoolId,
     });
 
     expect(updatedBands).toHaveLength(5);
     expect(updatedBands.map((b: any) => b.gradeLetter)).toEqual([
-      "A",
-      "B",
-      "C",
-      "D",
       "F",
+      "D",
+      "C",
+      "B",
+      "A",
     ]);
-    expect(updatedBands[0].minScore).toBe(70);
-    expect(updatedBands[0].isDefaultPreset).toBe(false);
+    const updatedBandA = updatedBands.find((b: any) => b.gradeLetter === "A");
+    expect(updatedBandA.minScore).toBe(70);
+    expect(updatedBandA.isDefaultPreset).toBe(false);
   });
 
   it("2. Admission number allocation advances counter atomically and produces correct token substitution", async () => {
@@ -343,15 +349,13 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       email: "proprietor@obc.test",
     });
 
-    // 1. Initial policy inspection with dynamic live preview
-    const initialPolicy = await t.query(
+    // 1. An unconfigured branch has no implicit mutable policy.
+    const initialPolicy = await adminSession.query(
       admissionNumbersApi.getAdmissionNumberPolicy,
-      {
-        schoolId,
-      }
+      { schoolId, level: "JSS1" },
     );
-    expect(initialPolicy.currentSequence).toBe(1);
-    expect(initialPolicy.preview).toContain("-0001");
+    expect(initialPolicy.policy).toBeNull();
+    expect(initialPolicy.preview).toBeNull();
 
     // 2. Custom policy configuration with tokens
     await adminSession.mutation(
@@ -362,8 +366,17 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
         schoolCode: "OBC",
         campusCode: "LAG",
         currentSequence: 1,
+        expectedVersion: initialPolicy.version,
+        confirmedNextSequence: 1,
       }
     );
+
+    const configuredPolicy = await adminSession.query(
+      admissionNumbersApi.getAdmissionNumberPolicy,
+      { schoolId, level: "JSS1" },
+    );
+    expect(configuredPolicy.branchCounter?.nextSequence).toBe(1);
+    expect(configuredPolicy.preview).toBe("OBC-LAG-JSS1-2026-0001");
 
     // 3. Sequential allocation #1
     const alloc1 = await t.mutation(
@@ -371,11 +384,10 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       {
         schoolId,
         level: "JSS1",
-        year: 2026,
       }
     );
 
-    expect(alloc1).toEqual({
+    expect(alloc1).toMatchObject({
       allocatedNumber: "OBC-LAG-JSS1-2026-0001",
       sequenceNumber: 1,
     });
@@ -386,11 +398,10 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       {
         schoolId,
         level: "JSS1",
-        year: 2026,
       }
     );
 
-    expect(alloc2).toEqual({
+    expect(alloc2).toMatchObject({
       allocatedNumber: "OBC-LAG-JSS1-2026-0002",
       sequenceNumber: 2,
     });
@@ -401,7 +412,6 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       {
         schoolId,
         level: "JSS1",
-        year: 2026,
       }
     );
     const alloc4 = await t.mutation(
@@ -409,7 +419,6 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       {
         schoolId,
         level: "JSS1",
-        year: 2026,
       }
     );
 
@@ -417,13 +426,11 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     expect(alloc4.allocatedNumber).toBe("OBC-LAG-JSS1-2026-0004");
 
     // Check preview reflects next available sequence (5)
-    const policyAfter = await t.query(
+    const policyAfter = await adminSession.query(
       admissionNumbersApi.getAdmissionNumberPolicy,
-      {
-        schoolId,
-      }
+      { schoolId, level: "JSS1" },
     );
-    expect(policyAfter.currentSequence).toBe(5);
+    expect(policyAfter.branchCounter?.nextSequence).toBe(5);
     expect(policyAfter.preview).toBe("OBC-LAG-JSS1-2026-0005");
   });
 
@@ -452,29 +459,38 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       currency: "NGN",
       isDefault: true,
       transferNote: "Include student admission number in narration",
+      confirmation: "CONFIRM",
     });
 
-    // 2. Unauthorized caller querying accounts gets masked numbers (***-****-6789)
-    const maskedList = await teacherSession.query(
+    // 2. Finance-report viewers receive masked summaries but not bank-detail access.
+    const teacherList = await teacherSession.query(
       bankAccountsApi.listBankAccounts,
-      {
-        schoolId,
-      }
+      { schoolId },
     );
+    expect(teacherList[0]).toMatchObject({
+      accountNumber: "***-****-6789",
+      isMasked: true,
+    });
+    await expect(
+      teacherSession.query(bankAccountsApi.getBankAccount, {
+        schoolId,
+        bankAccountId: teacherList[0]._id,
+      }),
+    ).rejects.toThrow("finance.bank_details.manage");
+
+    // 3. Authorized summaries and edit metadata never reveal the stored number.
+    const maskedList = await adminSession.query(bankAccountsApi.listBankAccounts, {
+      schoolId,
+    });
     expect(maskedList).toHaveLength(1);
     expect(maskedList[0].accountNumber).toBe("***-****-6789");
     expect(maskedList[0].isMasked).toBe(true);
-
-    // 3. Authorized caller querying accounts gets unmasked full number
-    const unmaskedList = await adminSession.query(
-      bankAccountsApi.listBankAccounts,
-      {
-        schoolId,
-      }
-    );
-    expect(unmaskedList).toHaveLength(1);
-    expect(unmaskedList[0].accountNumber).toBe("0123456789");
-    expect(unmaskedList[0].isMasked).toBe(false);
+    const account = await adminSession.query(bankAccountsApi.getBankAccount, {
+      schoolId,
+      bankAccountId: maskedList[0]._id,
+    });
+    expect(account.accountNumber).toBe("");
+    expect(account.maskedAccountNumber).toBe("***-****-6789");
 
     // 4. Verify audit alert was created at tier1_critical level for bank account addition
     const alerts = await t.run(async (ctx) => {
@@ -511,6 +527,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       accountName: "Olive Blessed Crest Ltd",
       currency: "NGN",
       isDefault: true,
+      confirmation: "CONFIRM",
     });
 
     // 2. Create and issue invoice #1
@@ -537,16 +554,23 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
         dueDate: now + 30 * 24 * 3600 * 1000,
         issuedAt: now,
         issuedBy: adminUserId,
+        paymentInstructionsSnapshot: {
+          bankAccountId: firstBankId,
+          bankName: "First Bank of Nigeria",
+          accountName: "Olive Blessed Crest Ltd",
+          accountNumber: "0123456789",
+          currency: "NGN",
+          snapshottedAt: now,
+        },
         createdAt: now,
         updatedAt: now,
       });
     });
 
-    // 3. Snapshot payment instructions at issue time through the internal issuer.
+    // 3. The compatibility reader returns the snapshot captured by issuance.
     expect(bankAccountsApi).not.toHaveProperty("snapshotInvoicePaymentInstructions");
-    const snapshot1 = await t.mutation(
-      bankAccountsInternal.snapshotInvoicePaymentInstructions,
-      { invoiceId: invoice1Id }
+    const snapshot1 = await t.run((ctx) =>
+      snapshotInvoicePaymentInstructionsHelper(ctx, invoice1Id, firstBankId),
     );
 
     assertExists(snapshot1);
@@ -554,7 +578,7 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     expect(snapshot1.accountNumber).toBe("0123456789");
     await expect(
       t.query(bankAccountsApi.getInvoicePaymentView, { invoiceId: invoice1Id })
-    ).rejects.toThrow("Not authorized");
+    ).rejects.toThrow("Sign in required");
 
     // 4. Later in time, school adds GTBank and switches primary default bank account
     const gtbBankId = await adminSession.mutation(bankAccountsApi.addBankAccount, {
@@ -564,17 +588,18 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
       accountName: "Olive Blessed Crest GTB",
       currency: "NGN",
       isDefault: false,
+      confirmation: "CONFIRM",
     });
 
     await adminSession.mutation(bankAccountsApi.setPrimaryBankAccount, {
       schoolId,
       bankAccountId: gtbBankId,
+      confirmation: "CONFIRM",
     });
 
     // 5. Attempting to re-snapshot or query the historical issued invoice retains the ORIGINAL snapshot
-    const reSnapshot = await t.mutation(
-      bankAccountsInternal.snapshotInvoicePaymentInstructions,
-      { invoiceId: invoice1Id }
+    const reSnapshot = await t.run((ctx) =>
+      snapshotInvoicePaymentInstructionsHelper(ctx, invoice1Id, gtbBankId),
     );
 
     assertExists(reSnapshot);
@@ -616,14 +641,21 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
         dueDate: now + 30 * 24 * 3600 * 1000,
         issuedAt: now,
         issuedBy: adminUserId,
+        paymentInstructionsSnapshot: {
+          bankAccountId: gtbBankId,
+          bankName: "Guaranty Trust Bank",
+          accountName: "Olive Blessed Crest GTB",
+          accountNumber: "9876543210",
+          currency: "NGN",
+          snapshottedAt: now,
+        },
         createdAt: now,
         updatedAt: now,
       });
     });
 
-    const snapshot2 = await t.mutation(
-      bankAccountsInternal.snapshotInvoicePaymentInstructions,
-      { invoiceId: invoice2Id }
+    const snapshot2 = await t.run((ctx) =>
+      snapshotInvoicePaymentInstructionsHelper(ctx, invoice2Id, gtbBankId),
     );
 
     assertExists(snapshot2);
@@ -644,8 +676,8 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
     const now = Date.now();
 
     // Setup bank account
-    await t.run(async (ctx) => {
-      await ctx.db.insert("schoolBankAccounts", {
+    const bankAccountId = await t.run(async (ctx) => {
+      return await ctx.db.insert("schoolBankAccounts", {
         schoolId,
         bankName: "First Bank of Nigeria",
         accountNumber: "0123456789",
@@ -683,13 +715,17 @@ describe("Task B-05 / M4 (PR-E): Grade Band, Sequential Admission Number, and Ba
         dueDate: now + 30 * 24 * 3600 * 1000,
         issuedAt: now,
         issuedBy: adminUserId,
+        paymentInstructionsSnapshot: {
+          bankAccountId,
+          bankName: "First Bank of Nigeria",
+          accountName: "Olive Blessed Crest Ltd",
+          accountNumber: "0123456789",
+          currency: "NGN",
+          snapshottedAt: now,
+        },
         createdAt: now,
         updatedAt: now,
       });
-    });
-
-    await t.mutation(bankAccountsInternal.snapshotInvoicePaymentInstructions, {
-      invoiceId: unpaidInvoiceId,
     });
 
     // Unpaid invoice view DISPLAYS payment instructions

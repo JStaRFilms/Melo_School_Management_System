@@ -8,7 +8,7 @@ import {
   GraduationCap,
   Calendar,
   Clock,
-  Sparkles
+  FileText
 } from "lucide-react";
 import type { BundleDraft, BundleSectionDraft, ScaleTemplateRecord } from "../types";
 
@@ -29,59 +29,53 @@ export const BundleLiveCanvas = memo(function BundleLiveCanvas({
     return map;
   }, [scaleTemplates]);
 
-  const totalFields = useMemo(
-    () => draft.sections.reduce((acc, s) => acc + s.fields.length, 0),
-    [draft.sections]
-  );
+  const totalFields = draft.sections.reduce((acc, s) => acc + s.fields.length, 0);
 
   return (
-    <div className="w-full space-y-4">
-      {/* Simulated High-Fidelity A4 Report Card Sheet */}
-      <div className="w-full rounded-2xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-xl shadow-slate-900/5 space-y-5 transition-all text-slate-800">
-        {/* School Crest & Report Header */}
-        <div className="border-b-2 border-slate-900/10 pb-4 space-y-2.5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xs shadow-md shrink-0">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 truncate">
-                Melo Comprehensive Academy
-              </h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
-                Student Termly Assessment Report
-              </p>
-            </div>
+    <div className="w-full bg-slate-100/70 p-4 sm:p-6 rounded-2xl border border-slate-200/80">
+      {/* Visual Canvas simulating physical printed sheet */}
+      <div className="mx-auto max-w-[620px] bg-white rounded-xl shadow-lg shadow-slate-900/5 border border-slate-200 p-6 sm:p-8 space-y-6 text-slate-800 transition-all font-sans">
+        {/* Mock Report Card Header */}
+        <div className="border-b-2 border-slate-900/10 pb-4 space-y-2 text-center">
+          <div className="inline-flex items-center justify-center p-2 rounded-xl bg-slate-900 text-white mb-1 shadow-sm">
+            <GraduationCap className="w-5 h-5" />
           </div>
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-900">
+            Official Termly Student Report Card
+          </h3>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Primary Academic & Non-Academic Assessment
+          </p>
 
           {/* Sample Student Details Banner */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[10px] font-medium text-slate-600">
+          <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-left text-[10px] border border-slate-100 font-medium text-slate-600 mt-3">
             <div>
               <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Student:</span>
-              <span className="font-bold text-slate-900">Favour Adebayo</span>
+              <span className="font-bold text-slate-800">Favour Adebayo</span>
             </div>
             <div>
               <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Class:</span>
-              <span className="font-bold text-slate-900">Primary 4B</span>
+              <span className="font-bold text-slate-800">Primary 4B</span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Session:</span>
-              <span className="font-bold text-slate-900">2026/2027</span>
-            </div>
-            <div>
-              <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Term:</span>
-              <span className="font-bold text-slate-900">First Term</span>
+              <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Academic Term:</span>
+              <span className="font-bold text-slate-800">First Term</span>
             </div>
           </div>
         </div>
 
-        {/* Dynamic Bundle Name Header */}
-        <div className="space-y-0.5">
-          <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
-            {draft.name.trim() || "Report Card Add-on Section"}
-          </h4>
+        {/* Dynamic Bundle Title Block */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+              {draft.name.trim() || "Untitled Add-on Bundle"}
+            </h4>
+            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+              Add-on
+            </span>
+          </div>
           {draft.description.trim() && (
-            <p className="text-[10px] text-slate-400 leading-relaxed italic">
+            <p className="text-[11px] text-slate-500 italic">
               {draft.description.trim()}
             </p>
           )}
@@ -89,11 +83,11 @@ export const BundleLiveCanvas = memo(function BundleLiveCanvas({
 
         {/* Dynamic Sections on the Sheet */}
         {draft.sections.length === 0 || totalFields === 0 ? (
-          <div className="py-12 flex flex-col items-center justify-center text-center rounded-xl border-2 border-dashed border-slate-100 bg-slate-50/50 space-y-2 p-4">
-            <Sparkles className="w-6 h-6 text-indigo-400" />
+          <div className="py-12 flex flex-col items-center justify-center text-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 space-y-2 p-4">
+            <FileText className="w-6 h-6 text-slate-300" />
             <p className="text-xs font-bold text-slate-700">No Traits or Fields Added</p>
             <p className="text-[11px] text-slate-400 max-w-[240px]">
-              Add traits on the left or select a 1-click starter template to see the live sheet update.
+              Add traits on the left or select a template to see the live sheet update.
             </p>
           </div>
         ) : (
@@ -190,7 +184,7 @@ const CanvasSection = memo(function CanvasSection({
                         <td key={opt.id ?? `cell-${optIdx}`} className="p-1.5 text-center">
                           <div className="flex items-center justify-center">
                             {isChecked ? (
-                              <div className="w-3.5 h-3.5 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                              <div className="w-3.5 h-3.5 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-xs">
                                 <CheckCircle2 className="w-2.5 h-2.5" />
                               </div>
                             ) : (
@@ -219,12 +213,12 @@ const CanvasSection = memo(function CanvasSection({
               <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400">
                 <span>{field.label.trim() || "Custom Field"}</span>
                 {field.source === "system_term" && (
-                  <span className="flex items-center gap-1 text-indigo-600">
+                  <span className="flex items-center gap-1 text-slate-600">
                     <Calendar className="w-2.5 h-2.5" /> Term
                   </span>
                 )}
                 {field.source === "system_attendance" && (
-                  <span className="flex items-center gap-1 text-emerald-600">
+                  <span className="flex items-center gap-1 text-slate-600">
                     <Clock className="w-2.5 h-2.5" /> Attendance
                   </span>
                 )}

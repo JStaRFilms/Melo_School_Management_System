@@ -130,7 +130,7 @@ export function computeNameSimilarity(
  * - Class name match: weight +0.35 (+35 pts)
  * - Gender match: weight +0.10 (+10 pts)
  *
- * Thresholds:
+ * Thresholds after meaningful identity evidence qualifies the candidate:
  * - >= 85%: High-confidence clash / duplicate candidate
  * - 50% - 84%: Ambiguous match -> warning requiring review
  * - < 50%: Distinct individual
@@ -205,8 +205,24 @@ export function evaluateClash(
   }
 
   const confidence = Math.min(100, Math.round(score));
-  const isHighConfidenceClash = confidence >= 85;
-  const isWarning = confidence >= 50;
+  const relatedNamePart = (left?: string, right?: string) => {
+    const a = left?.trim().toLowerCase();
+    const b = right?.trim().toLowerCase();
+    if (!a || !b) return false;
+    return (
+      jaroWinkler(a, b) >= 0.82 ||
+      (Math.min(a.length, b.length) >= 4 &&
+        (a.includes(b) || b.includes(a)))
+    );
+  };
+  const hasMeaningfulIdentityEvidence =
+    (relatedNamePart(recordA.firstName, recordB.firstName) &&
+      relatedNamePart(recordA.lastName, recordB.lastName)) ||
+    (relatedNamePart(recordA.firstName, recordB.lastName) &&
+      relatedNamePart(recordA.lastName, recordB.firstName));
+  const isHighConfidenceClash =
+    hasMeaningfulIdentityEvidence && confidence >= 85;
+  const isWarning = hasMeaningfulIdentityEvidence && confidence >= 50;
 
   return {
     isClash: isHighConfidenceClash,

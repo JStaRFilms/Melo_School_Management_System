@@ -11,6 +11,7 @@ BookOpen,
 CalendarDays,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/AuthProvider";
 import { useMemo } from "react";
 import { ExtrasSelectionBar } from "./components/ExtrasSelectionBar";
 import { ExtrasWorkspace } from "./components/ExtrasWorkspace";
@@ -18,6 +19,10 @@ import type { ExtrasEntry,ExtrasSelection,SelectorOption } from "./components/ty
 
 export default function AdminReportCardExtrasPage() {
   const searchParams = useSearchParams();
+  const { workspaceAccess } = useAuth();
+  const canEdit =
+    workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("academic.assessments.enter");
   const selection = useMemo<ExtrasSelection>(() => ({ sessionId: searchParams.get("sessionId"), termId: searchParams.get("termId"), classId: searchParams.get("classId"), studentId: searchParams.get("studentId") }), [searchParams]);
 
   const rawSessions = useQuery(
@@ -40,6 +45,23 @@ export default function AdminReportCardExtrasPage() {
   const studentIsValid = !selection.studentId || students.some((option) => option.id === selection.studentId);
 
   const entry = useQuery("functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never, selection.sessionId && selection.termId && selection.classId && selection.studentId && classIsValid && studentIsValid ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, studentId: selection.studentId } as never) : ("skip" as never)) as ExtrasEntry | undefined;
+  const visibleEntry = useMemo<ExtrasEntry | undefined>(
+    () =>
+      entry && !canEdit
+        ? {
+            ...entry,
+            canEdit: false,
+            bundles: entry.bundles.map((bundle) => ({
+              ...bundle,
+              sections: bundle.sections.map((section) => ({
+                ...section,
+                fields: section.fields.map((field) => ({ ...field, canEdit: false })),
+              })),
+            })),
+          }
+        : entry,
+    [canEdit, entry],
+  );
   const saveEntry = useMutation("functions/academic/reportCardExtras:saveStudentReportCardExtrasEntry" as never);
 
   const currentExtrasUrl = `/assessments/report-card-extras?sessionId=${selection.sessionId}&termId=${selection.termId}&classId=${selection.classId}&studentId=${selection.studentId}`;
@@ -116,7 +138,7 @@ export default function AdminReportCardExtrasPage() {
             </div>
 
             <ExtrasWorkspace
-              entry={entry}
+              entry={visibleEntry}
               isLoading={hasSelection && entry === undefined && students.length > 0}
               hasSelection={hasSelection}
               hasStudents={students.length > 0}

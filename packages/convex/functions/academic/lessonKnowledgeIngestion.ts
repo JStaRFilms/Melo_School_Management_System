@@ -1,4 +1,12 @@
+import {
+  assertSecureUploadTransportAvailable,
+  assertStorageClaimedOnlyBy,
+  assertStorageUnclaimed,
+  secureUploadUnavailable,
+  storageClaimedOnlyBy,
+} from "./assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
+import { assertPaidUsageAvailable } from "../foundation/paidUsageGate";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import {
@@ -11,6 +19,7 @@ import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
 } from "./auth";
+import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import {
   assertActiveKnowledgeSubjectTopicScope,
   assertKnowledgeMaterialIngestionAccess,
@@ -32,6 +41,7 @@ import {
   type KnowledgeMaterialUploadIntent,
 } from "./lessonKnowledgeIngestionHelpers";
 import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
+import type { QuotaReservationResult } from "./metering";
 
 const MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS = 2 * 60 * 1000;
 
@@ -397,6 +407,529 @@ export const recordContentAuditEventInternal = internalMutation({
   },
 });
 
+const KNOWLEDGE_MATERIAL_UPLOAD_OPERATION = "knowledge_material_secure_http_upload";
+const KNOWLEDGE_MATERIAL_UPLOAD_INTENT_TTL_MS = 20 * 60 * 1000;
+
+export const finalizeSecureKnowledgeMaterialUpload = mutation({
+  args: {
+    uploadIntentId: v.id("knowledgeMaterialUploadIntents"),
+  },
+  returns: v.object({
+    materialId: v.id("knowledgeMaterials"),
+    visibility: v.union(
+      v.literal("private_owner"),
+      v.literal("staff_shared"),
+      v.literal("class_scoped"),
+      v.literal("student_approved"),
+    ),
+    reviewStatus: v.union(
+      v.literal("draft"),
+      v.literal("pending_review"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("archived"),
+    ),
+    processingStatus: v.literal("queued"),
+  }),
+  handler: async (ctx, request) => {
+    const args = await ctx.db.get(request.uploadIntentId);
+    if (!args) {
+      throw new ConvexError("Knowledge material upload was not found");
+    }
+    const { userId, schoolId, role, isSchoolAdmin } =
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: TEACHER_PLANNING_CAPABILITIES,
+      });
+    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
+    if (userId !== args.ownerUserId || schoolId !== args.schoolId) {
+      throw new ConvexError("Knowledge material access changed during upload");
+    }
+    assertKnowledgeMaterialIngestionAccess({
+      userId,
+      schoolId,
+      role: role as "teacher" | "admin" | "student",
+      isSchoolAdmin,
+    });
+    if (args.status === "completed" && args.materialId) {
+      const material = await ctx.db.get(args.materialId);
+      if (!material || material.schoolId !== schoolId) {
+        throw new ConvexError("Uploaded material was not found");
+      }
+      return {
+        materialId: material._id,
+        visibility: material.visibility,
+        reviewStatus: material.reviewStatus,
+        processingStatus: "queued" as const,
+      };
+    }
+    if (args.status !== "stored" || !args.storageId || args.expiresAt <= Date.now()) {
+      throw new ConvexError("Knowledge material upload is not ready to finalize");
+    }
+    const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
+
+    const title = normalizeRequiredText(args.title, "Title");
+    const sourceType = args.sourceType ?? "file_upload";
+    const topicLabel = normalizeRequiredText(
+      args.topicLabel,
+      sourceType === "imported_curriculum"
+        ? "Planning reference label"
+        : "Topic label",
+    );
+    const description = normalizeOptionalText(args.description);
+    const level = normalizeRequiredText(args.level, "Level");
+    if (!args.subjectId && actorRole === "teacher") {
+      throw new ConvexError("Teachers must choose an assigned subject for uploads");
+    }
+    if (sourceType !== "imported_curriculum" && !args.subjectId) {
+      throw new ConvexError(
+        "Subject is required unless this upload is a curriculum or planning reference",
+      );
+    }
+    await assertActiveKnowledgeSubjectTopicScope(ctx, {
+      schoolId,
+      subjectId: args.subjectId ?? null,
+      level,
+      topicId: args.topicId ?? null,
+    });
+    await assertTeacherKnowledgeContextAssignment(ctx, {
+      actorUserId: userId,
+      schoolId,
+      actorRole,
+      isSchoolAdmin,
+      subjectId: args.subjectId ?? null,
+      level,
+    });
+    if (!(await storageClaimedOnlyBy(ctx, args.storageId, {
+      purpose: "knowledgeMaterialUploadIntent",
+      ownerId: String(args._id),
+    }))) {
+      throw new ConvexError("Uploaded file has conflicting storage ownership");
+    }
+
+    const storageMeta = await ctx.db.system.get("_storage", args.storageId);
+    if (!storageMeta) {
+      throw new ConvexError("Stored file was not found during upload");
+    }
+    assertKnowledgeMaterialUploadIsSupported({
+      contentType: args.contentType,
+      size: args.expectedSize,
+    });
+    const selectedPageRanges = normalizePdfPageRangeInput(
+      args.selectedPageRanges,
+    );
+    const selectedPageNumbers = selectedPageRanges
+      ? parsePdfPageRanges(selectedPageRanges)
+      : undefined;
+    if (
+      selectedPageNumbers?.length &&
+      !isKnowledgeMaterialPdfContentType(args.contentType)
+    ) {
+      throw new ConvexError("Page selection is only available for PDF uploads.");
+    }
+
+    const record = buildKnowledgeMaterialRecord({
+      actorUserId: userId,
+      actorRole,
+      schoolId,
+      sourceType,
+      title,
+      ...(description ? { description } : {}),
+      ...(args.subjectId ? { subjectId: args.subjectId } : {}),
+      level,
+      topicLabel,
+      ...(args.topicId ? { topicId: args.topicId } : {}),
+      ...(selectedPageRanges ? { selectedPageRanges } : {}),
+      ...(selectedPageNumbers?.length ? { selectedPageNumbers } : {}),
+      ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
+      defaultsMode: args.defaultsMode,
+    });
+    const now = Date.now();
+    const materialId = await ctx.db.insert("knowledgeMaterials", {
+      ...record,
+      storageId: args.storageId,
+      processingStatus: "queued",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.runMutation(
+      internal.functions.academic.lessonKnowledgeIngestion
+        .recordContentAuditEventInternal,
+      {
+        schoolId,
+        actorUserId: userId,
+        actorRole,
+        eventType: "created",
+        entityType: "knowledgeMaterial",
+        materialId,
+        changeSummary: "Created a knowledge material from a secure upload intent.",
+      },
+    );
+    await ctx.runMutation(
+      internal.functions.academic.lessonKnowledgeIngestion
+        .queueKnowledgeMaterialProcessingInternal,
+      {
+        materialId,
+        actorUserId: userId,
+        actorRole,
+        reason: "upload_finalized",
+      },
+    );
+    await ctx.runMutation(
+      internal.functions.academic.metering.commitUsageQuota,
+      {
+        schoolId,
+        meterType: "storage_bytes",
+        idempotencyKey: args.quotaReservationKey,
+        operationName: KNOWLEDGE_MATERIAL_UPLOAD_OPERATION,
+        description: "Stored knowledge material upload",
+        actualUnits: args.expectedSize,
+        measurementMetadata: {
+          source: "convex_storage_metadata",
+          measuredAt: now,
+          reference: String(args.storageId),
+        },
+        actorUserId: userId,
+      },
+    );
+    await ctx.db.patch(args._id, {
+      status: "completed",
+      activeAttemptId: undefined,
+      storageId: undefined,
+      materialId,
+      updatedAt: now,
+    });
+    return {
+      materialId,
+      visibility: record.visibility,
+      reviewStatus: record.reviewStatus,
+      processingStatus: "queued" as const,
+    };
+  },
+});
+
+export const requestSecureKnowledgeMaterialUpload = mutation({
+  args: {
+    uploadToken: v.string(),
+    fileName: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    title: v.string(),
+    description: v.optional(v.union(v.string(), v.null())),
+    subjectId: v.optional(v.union(v.id("subjects"), v.null())),
+    level: v.string(),
+    topicLabel: v.string(),
+    topicId: v.optional(v.id("knowledgeTopics")),
+    sourceType: v.optional(
+      v.union(v.literal("file_upload"), v.literal("imported_curriculum")),
+    ),
+    uploadIntent: v.optional(
+      v.union(
+        v.literal("private_draft"),
+        v.literal("request_review"),
+        v.literal("staff_shared"),
+      ),
+    ),
+    defaultsMode: v.optional(
+      v.union(v.literal("actor_default"), v.literal("private_first")),
+    ),
+    selectedPageRanges: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.object({
+    uploadIntentId: v.id("knowledgeMaterialUploadIntents"),
+    expiresAt: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } =
+      await getAuthenticatedSchoolMembership(ctx, {
+        capability: TEACHER_PLANNING_CAPABILITIES,
+      });
+    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
+    assertKnowledgeMaterialIngestionAccess({
+      userId,
+      schoolId,
+      role: role as "teacher" | "admin" | "student",
+      isSchoolAdmin,
+    });
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(args.uploadToken)) {
+      throw new ConvexError("A secure upload token is required");
+    }
+    const existingIntent = await ctx.db
+      .query("knowledgeMaterialUploadIntents")
+      .withIndex("by_school_and_upload_token", (q) =>
+        q.eq("schoolId", schoolId).eq("uploadToken", args.uploadToken),
+      )
+      .unique();
+    if (existingIntent) {
+      throw new ConvexError("This secure upload token has already been used");
+    }
+    const fileName = args.fileName.trim();
+    if (!fileName || fileName.length > 200) {
+      throw new ConvexError("Use a file name between 1 and 200 characters");
+    }
+    const contentType = normalizeKnowledgeMaterialContentType(args.contentType) ?? "";
+    assertKnowledgeMaterialUploadIsSupported({
+      contentType,
+      size: args.size,
+    });
+
+    const title = normalizeRequiredText(args.title, "Title");
+    const sourceType = args.sourceType ?? "file_upload";
+    const topicLabel = normalizeRequiredText(
+      args.topicLabel,
+      sourceType === "imported_curriculum"
+        ? "Planning reference label"
+        : "Topic label",
+    );
+    const description = normalizeOptionalText(args.description);
+    const level = normalizeRequiredText(args.level, "Level");
+    const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
+    if (!args.subjectId && actorRole === "teacher") {
+      throw new ConvexError("Teachers must choose an assigned subject for uploads");
+    }
+    if (sourceType !== "imported_curriculum" && !args.subjectId) {
+      throw new ConvexError(
+        "Subject is required unless this upload is a curriculum or planning reference",
+      );
+    }
+    await assertActiveKnowledgeSubjectTopicScope(ctx, {
+      schoolId,
+      subjectId: args.subjectId ?? null,
+      level,
+      topicId: args.topicId ?? null,
+    });
+    await assertTeacherKnowledgeContextAssignment(ctx, {
+      actorUserId: userId,
+      schoolId,
+      actorRole,
+      isSchoolAdmin,
+      subjectId: args.subjectId ?? null,
+      level,
+    });
+    const selectedPageRanges = normalizePdfPageRangeInput(args.selectedPageRanges);
+    if (
+      selectedPageRanges &&
+      !isKnowledgeMaterialPdfContentType(contentType)
+    ) {
+      throw new ConvexError("Page selection is only available for PDF uploads.");
+    }
+    if (selectedPageRanges) parsePdfPageRanges(selectedPageRanges);
+    await assertLessonKnowledgeRateLimit(ctx, {
+      action: "knowledge_material_upload_url",
+      schoolId,
+      actorUserId: userId,
+    });
+
+    const quotaReservationKey = `knowledge-upload:${args.uploadToken}`;
+    const reservation: QuotaReservationResult = await ctx.runMutation(
+      internal.functions.academic.metering.reserveUsageQuota,
+      {
+        schoolId,
+        meterType: "storage_bytes",
+        unitsRequested: args.size,
+        idempotencyKey: quotaReservationKey,
+        operationName: KNOWLEDGE_MATERIAL_UPLOAD_OPERATION,
+      },
+    );
+    if (!reservation.allowed) {
+      throw new ConvexError(
+        `Storage quota is insufficient for this upload${reservation.shortfall ? ` by ${reservation.shortfall} bytes` : ""}`,
+      );
+    }
+    if (reservation.status !== "reserved") {
+      throw new ConvexError("This secure upload token cannot reserve storage again");
+    }
+
+    const now = Date.now();
+    const expiresAt = now + KNOWLEDGE_MATERIAL_UPLOAD_INTENT_TTL_MS;
+    const uploadIntentId = await ctx.db.insert("knowledgeMaterialUploadIntents", {
+      schoolId,
+      ownerUserId: userId,
+      uploadToken: args.uploadToken,
+      quotaReservationKey,
+      fileName,
+      contentType,
+      expectedSize: args.size,
+      title,
+      ...(description ? { description } : {}),
+      ...(args.subjectId ? { subjectId: args.subjectId } : {}),
+      level,
+      topicLabel,
+      ...(args.topicId ? { topicId: args.topicId } : {}),
+      sourceType,
+      ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
+      ...(args.defaultsMode ? { defaultsMode: args.defaultsMode } : {}),
+      ...(selectedPageRanges ? { selectedPageRanges } : {}),
+      status: "pending",
+      expiresAt,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.scheduler.runAt(
+      expiresAt,
+      internal.functions.academic.lessonKnowledgeIngestion
+        .cleanupKnowledgeMaterialUploadIntent,
+      { uploadIntentId },
+    );
+    return { uploadIntentId, expiresAt };
+  },
+});
+
+export const beginKnowledgeMaterialHttpUpload = internalMutation({
+  args: {
+    uploadIntentId: v.id("knowledgeMaterialUploadIntents"),
+    uploadToken: v.string(),
+    uploadAttemptId: v.string(),
+  },
+  returns: v.object({
+    contentType: v.string(),
+    expectedSize: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const intent = await ctx.db.get(args.uploadIntentId);
+    if (!intent || intent.uploadToken !== args.uploadToken) {
+      throw new ConvexError("Knowledge material upload was not found");
+    }
+    if (
+      !/^[A-Za-z0-9_-]{32,128}$/.test(args.uploadAttemptId) ||
+      intent.status !== "pending" ||
+      intent.expiresAt <= Date.now()
+    ) {
+      throw new ConvexError("Knowledge material upload is no longer available");
+    }
+    await ctx.db.patch(intent._id, {
+      activeAttemptId: args.uploadAttemptId,
+      status: "uploading",
+      updatedAt: Date.now(),
+    });
+    return {
+      contentType: intent.contentType,
+      expectedSize: intent.expectedSize,
+    };
+  },
+});
+
+export const recordKnowledgeMaterialUploadStorage = internalMutation({
+  args: {
+    uploadIntentId: v.id("knowledgeMaterialUploadIntents"),
+    uploadToken: v.string(),
+    uploadAttemptId: v.string(),
+    storageId: v.id("_storage"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const intent = await ctx.db.get(args.uploadIntentId);
+    if (
+      !intent ||
+      intent.uploadToken !== args.uploadToken ||
+      intent.activeAttemptId !== args.uploadAttemptId ||
+      intent.status !== "uploading" ||
+      intent.expiresAt <= Date.now()
+    ) {
+      throw new ConvexError("Knowledge material upload is no longer available");
+    }
+    await assertStorageUnclaimed(ctx, args.storageId);
+    await ctx.db.patch(intent._id, {
+      storageId: args.storageId,
+      status: "stored",
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+async function closeKnowledgeMaterialUploadIntent(
+  ctx: MutationCtx,
+  args: {
+    uploadIntentId: Id<"knowledgeMaterialUploadIntents">;
+    status: "failed" | "expired";
+    failureReason?: string;
+  },
+) {
+  const intent = await ctx.db.get(args.uploadIntentId);
+  if (!intent || intent.status === "completed" || intent.status === "failed" || intent.status === "expired") {
+    return;
+  }
+  if (intent.storageId) {
+    const ownedByIntent = await storageClaimedOnlyBy(ctx, intent.storageId, {
+      purpose: "knowledgeMaterialUploadIntent",
+      ownerId: String(intent._id),
+    });
+    if (!ownedByIntent) {
+      throw new ConvexError("Upload cleanup found conflicting storage ownership");
+    }
+    await ctx.storage.delete(intent.storageId);
+  }
+  await ctx.runMutation(
+    internal.functions.academic.metering.releaseUsageQuota,
+    {
+      schoolId: intent.schoolId,
+      meterType: "storage_bytes",
+      idempotencyKey: intent.quotaReservationKey,
+    },
+  );
+  await ctx.db.patch(intent._id, {
+    status: args.status,
+    activeAttemptId: undefined,
+    storageId: undefined,
+    ...(args.failureReason ? { failureReason: args.failureReason.slice(0, 240) } : {}),
+    updatedAt: Date.now(),
+  });
+}
+
+export const failKnowledgeMaterialHttpUpload = internalMutation({
+  args: {
+    uploadIntentId: v.id("knowledgeMaterialUploadIntents"),
+    uploadToken: v.string(),
+    uploadAttemptId: v.string(),
+    failureReason: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const intent = await ctx.db.get(args.uploadIntentId);
+    if (
+      !intent ||
+      intent.uploadToken !== args.uploadToken ||
+      intent.activeAttemptId !== args.uploadAttemptId ||
+      (intent.status !== "uploading" && intent.status !== "stored")
+    ) {
+      return null;
+    }
+    await closeKnowledgeMaterialUploadIntent(ctx, {
+      uploadIntentId: args.uploadIntentId,
+      status: "failed",
+      failureReason: args.failureReason,
+    });
+    return null;
+  },
+});
+
+export const cleanupKnowledgeMaterialUploadIntent = internalMutation({
+  args: {
+    uploadIntentId: v.id("knowledgeMaterialUploadIntents"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const intent = await ctx.db.get(args.uploadIntentId);
+    if (!intent || intent.status === "completed" || intent.status === "failed" || intent.status === "expired") {
+      return null;
+    }
+    if (intent.expiresAt > Date.now()) {
+      await ctx.scheduler.runAt(
+        intent.expiresAt,
+        internal.functions.academic.lessonKnowledgeIngestion
+          .cleanupKnowledgeMaterialUploadIntent,
+        args,
+      );
+      return null;
+    }
+    await closeKnowledgeMaterialUploadIntent(ctx, {
+      uploadIntentId: args.uploadIntentId,
+      status: "expired",
+    });
+    return null;
+  },
+});
+
 export const requestKnowledgeMaterialUploadUrl = mutation({
   args: {
     title: v.string(),
@@ -439,7 +972,8 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
     assertKnowledgeMaterialIngestionAccess({
       userId,
       schoolId,
@@ -480,6 +1014,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       subjectId: args.subjectId ?? null,
       level,
     });
+    assertSecureUploadTransportAvailable();
 
     const selectedPageRanges = normalizePdfPageRangeInput(args.selectedPageRanges);
     const selectedPageNumbers = selectedPageRanges ? parsePdfPageRanges(selectedPageRanges) : undefined;
@@ -524,7 +1059,7 @@ export const requestKnowledgeMaterialUploadUrl = mutation({
       changeSummary: "Created a knowledge material shell and issued an upload URL.",
     });
 
-    const uploadUrl = await ctx.storage.generateUploadUrl();
+    const uploadUrl = secureUploadUnavailable<string>();
 
     return {
       materialId,
@@ -554,7 +1089,8 @@ export const finalizeKnowledgeMaterialUpload = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
 
     if (actorRole !== "teacher" && actorRole !== "admin") {
@@ -580,6 +1116,8 @@ export const finalizeKnowledgeMaterialUpload = mutation({
     if (material.storageId && String(material.storageId) !== String(args.storageId)) {
       throw new ConvexError("This material already points to a different upload");
     }
+    assertSecureUploadTransportAvailable();
+    await assertStorageUnclaimed(ctx, args.storageId);
 
     const storageMeta = (await ctx.db.system.get(
       "_storage",
@@ -703,7 +1241,7 @@ export const registerKnowledgeMaterialLink = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     assertKnowledgeMaterialIngestionAccess({
       userId,
       schoolId,
@@ -803,7 +1341,7 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
     processingStatus: v.union(v.literal("queued"), v.literal("extracting")),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
     if (actorRole !== "teacher" && actorRole !== "admin") {
       throw new ConvexError("Knowledge material OCR is restricted to staff");
@@ -822,6 +1360,7 @@ export const requestKnowledgeMaterialProviderOcr = mutation({
     if (material.processingStatus !== "ocr_needed" && material.processingStatus !== "failed") {
       throw new ConvexError("OCR can only be queued for OCR-needed or failed material");
     }
+    assertPaidUsageAvailable();
     const storageMeta = await ctx.db.system.get("_storage", material.storageId);
     const normalizedContentType = normalizeKnowledgeMaterialContentType(storageMeta?.contentType);
     const isOcrEligible =
@@ -1102,7 +1641,7 @@ export const retryKnowledgeMaterialIngestion = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx);
+      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
 
     if (actorRole !== "teacher" && actorRole !== "admin") {
@@ -1298,6 +1837,11 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
     if (args.previousStorageId === args.nextStorageId) {
       throw new ConvexError("Replacement storage must differ from previous storage");
     }
+    await assertStorageClaimedOnlyBy(ctx, args.previousStorageId, {
+      purpose: "knowledgeMaterial",
+      ownerId: String(material._id),
+    });
+    await assertStorageUnclaimed(ctx, args.nextStorageId);
 
     await ctx.db.patch(args.materialId, {
       storageId: args.nextStorageId,

@@ -24,6 +24,8 @@ interface AdminDirectorySectionProps {
   viewerUserId: string | null;
   viewerIsLead: boolean;
   leadAdminId: string | null;
+  canManagePermissions: boolean;
+  canSuspendAdmins: boolean;
   onRunAction: (
     adminId: string,
     action: () => Promise<unknown>,
@@ -38,6 +40,8 @@ export function AdminDirectorySection({
   viewerUserId,
   viewerIsLead,
   leadAdminId,
+  canManagePermissions,
+  canSuspendAdmins,
   onRunAction,
 }: AdminDirectorySectionProps) {
   const promoteSchoolAdmin = useMutation(
@@ -120,6 +124,8 @@ export function AdminDirectorySection({
             viewerIsLead={viewerIsLead}
             leadAdminId={leadAdminId}
             busyAdminId={busyAdminId}
+            canManagePermissions={canManagePermissions}
+            canSuspendAdmins={canSuspendAdmins}
             onPromote={() =>
               void handleAction(
                 admin._id,

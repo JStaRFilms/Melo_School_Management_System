@@ -199,6 +199,67 @@ export function assertKnowledgeMaterialUploadIsSupported(args: {
   }
 }
 
+export function assertKnowledgeMaterialBytesMatchContentType(
+  bytes: Uint8Array,
+  contentType: string,
+): void {
+  const normalized = normalizeKnowledgeMaterialContentType(contentType);
+  const matches = (...expected: number[]) =>
+    expected.every((value, index) => bytes[index] === value);
+  let valid = false;
+
+  if (isKnowledgeMaterialPdfContentType(normalized)) {
+    valid = matches(0x25, 0x50, 0x44, 0x46, 0x2d);
+  } else if (normalized === "image/png") {
+    valid = matches(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+  } else if (normalized === "image/jpeg" || normalized === "image/jpg") {
+    valid = matches(0xff, 0xd8, 0xff);
+  } else if (normalized === "image/webp") {
+    valid =
+      matches(0x52, 0x49, 0x46, 0x46) &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50;
+  } else if (
+    normalized ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    normalized ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  ) {
+    if (matches(0x50, 0x4b, 0x03, 0x04)) {
+      const packageText = new TextDecoder("latin1").decode(bytes);
+      const packageDirectory =
+        packageText.includes("[Content_Types].xml") &&
+        packageText.includes("_rels/.rels");
+      valid =
+        packageDirectory &&
+        (normalized.includes("wordprocessingml")
+          ? packageText.includes("word/")
+          : packageText.includes("ppt/"));
+    }
+  } else if (
+    normalized === "text/plain" ||
+    normalized === "text/markdown" ||
+    normalized === "text/x-markdown"
+  ) {
+    try {
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      const disallowedControls = Array.from(text).filter((character) => {
+        const code = character.charCodeAt(0);
+        return code === 0 || (code < 32 && code !== 9 && code !== 10 && code !== 13);
+      }).length;
+      valid = disallowedControls === 0;
+    } catch {
+      valid = false;
+    }
+  }
+
+  if (!valid) {
+    throw new ConvexError("Uploaded file contents do not match the selected file type");
+  }
+}
+
 export function resolveKnowledgeMaterialDefaults(args: {
   actor: KnowledgeActorContext;
   sourceType: KnowledgeMaterialIngestionSourceType;

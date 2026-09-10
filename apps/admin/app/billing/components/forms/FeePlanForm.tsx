@@ -5,7 +5,11 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
+import { MobileProgressIndicator } from "@school/shared";
+import type { DraftStatus } from "@school/shared/drafts";
+import { feePlanValidation } from "../../fee-plan-validation";
+import { BankAccountSelection } from "../BankAccountSelection";
 import { cn } from "@/utils";
 import type { ClassOption, FeePlanDraft } from "../../types";
 
@@ -14,12 +18,14 @@ interface FeePlanFormProps {
   onChange: (draft: FeePlanDraft) => void;
   onSubmit: (e: React.FormEvent) => void;
   classes: ClassOption[];
+  draftStatus?: DraftStatus;
+  draftLastSavedAt?: number | null;
 }
 
 const labelCx = "text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 font-display flex items-center gap-1.5";
 const inputCx = "w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900/10 outline-none transition-all placeholder:text-slate-400";
 
-export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormProps) {
+export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, draftLastSavedAt }: FeePlanFormProps) {
   const [showMultiClass, setShowMultiClass] = useState(() => draft.targetClassIds.length > 1);
 
   const addLineItem = (defaultLabel = "", isOptional = false) => {
@@ -92,8 +98,12 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col h-full min-h-0 overflow-hidden">
+      <MobileProgressIndicator mode="sections" topOffset="top-0" sections={[
+        { id: "plan", title: "Plan name", isValid: Boolean(draft.name.trim()) },
+        { id: "fees", title: "Fees and schedule", isValid: feePlanValidation({ ...draft, name: "validation" }) === null },
+      ]} draftStatus={draftStatus} lastSavedAt={draftLastSavedAt} />
       {/* Scrollable Form Body */}
-      <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar pb-10">
         {/* Plan Name */}
         <div className="space-y-1">
           <label className={labelCx}>Plan Name *</label>
@@ -105,6 +115,11 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
             required
           />
         </div>
+
+        <BankAccountSelection
+          value={draft.bankAccountId ?? ""}
+          onChange={(bankAccountId) => onChange({ ...draft, bankAccountId })}
+        />
 
         {/* Target Classes Scope */}
         <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
@@ -384,7 +399,7 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes }: FeePlanFormP
       </div>
 
       {/* Solid Pinned Non-Scrolling Bottom Footer (Summary + Action Button) */}
-      <div className="shrink-0 bg-white border-t border-slate-200 p-4 sm:p-5 space-y-3 shadow-lg z-20">
+      <div className="shrink-0 bg-white border-t border-slate-200 p-3.5 sm:p-4 space-y-2.5 shadow-lg z-20">
         {/* Dynamic Real-Time Breakdown Card */}
         <div className="rounded-xl bg-slate-950 p-3.5 text-white shadow-xs space-y-1.5">
           <div className="flex items-center justify-between text-[11px]">

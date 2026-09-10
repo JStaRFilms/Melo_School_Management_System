@@ -16,6 +16,9 @@ interface TeacherEditFormProps {
   isResetting: boolean;
   isArchiveStatusLoading?: boolean;
   variant?: "default" | "sheet";
+  canEditProfile: boolean;
+  canResetPassword: boolean;
+  canArchive: boolean;
 }
 
 export function TeacherEditForm({
@@ -28,6 +31,9 @@ export function TeacherEditForm({
   isResetting,
   isArchiveStatusLoading = false,
   variant = "default",
+  canEditProfile,
+  canResetPassword,
+  canArchive,
 }: TeacherEditFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -47,6 +53,13 @@ export function TeacherEditForm({
     const trimmedEmail = email.trim();
     if (!trimmedName || !trimmedEmail) return;
     await onUpdate(teacher._id, trimmedName, trimmedEmail);
+  };
+
+  const handleTriggerResetPassword = async () => {
+    const trimmed = resetPass.trim();
+    if (!trimmed || isResetting) return;
+    await onResetPassword(teacher._id, trimmed);
+    setResetPass("");
   };
 
   const isSheet = variant === "sheet";
@@ -70,7 +83,7 @@ export function TeacherEditForm({
         </div>
       )}
 
-      <form onSubmit={handleUpdate} className="space-y-3">
+      {canEditProfile && <form onSubmit={handleUpdate} className="space-y-3">
           <FormField label="Full Name">
             <input
               type="text"
@@ -88,7 +101,7 @@ export function TeacherEditForm({
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
             />
           </FormField>
 
@@ -100,16 +113,23 @@ export function TeacherEditForm({
             <Send className="h-3 w-3" />
             {isSaving ? "Saving..." : "Update Teacher"}
           </button>
-        </form>
+        </form>}
 
-        <div className="pt-4 border-t border-slate-100 space-y-3">
-          <FormField label="Reset Password">
+        {(canResetPassword || canArchive) && <div className="pt-4 border-t border-slate-100 space-y-3">
+          {canResetPassword && <FormField label="Reset Password">
             <div className="flex gap-2">
               <input
                 type={showResetPass ? "text" : "password"}
                 value={resetPass}
                 onChange={(e) => setResetPass(e.target.value)}
-                className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isResetting && resetPass.trim()) {
+                    e.preventDefault();
+                    void handleTriggerResetPassword();
+                  }
+                }}
+                placeholder="Enter new temporary password"
+                className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 placeholder:text-slate-400"
               />
               <button
                 type="button"
@@ -121,16 +141,18 @@ export function TeacherEditForm({
               </button>
               <button
                 type="button"
-                onClick={() => onResetPassword(teacher._id, resetPass)}
-                disabled={isResetting || !resetPass}
+                onClick={() => void handleTriggerResetPassword()}
+                disabled={isResetting || !resetPass.trim()}
+                title="Update temporary password"
+                aria-label="Update temporary password"
                 className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 text-white transition-all hover:bg-amber-600 disabled:opacity-50 active:scale-90"
               >
                 <KeyRound className="h-4 w-4" />
               </button>
             </div>
-          </FormField>
+          </FormField>}
 
-          {hasArchiveBlockers && (
+          {canArchive && hasArchiveBlockers && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Reassignment required</p>
               <p className="mt-1 text-[11px] font-medium leading-relaxed">
@@ -142,25 +164,26 @@ export function TeacherEditForm({
                 ))}
               </ul>
               {archiveBlockers.length > 3 && (
-                <p className="mt-1 text-[11px] font-semibold">
-                  +{archiveBlockers.length - 3} more active links
+                <p className="mt-1 text-[10px] font-medium text-amber-800">
+                  +{archiveBlockers.length - 3} more link{archiveBlockers.length - 3 === 1 ? "" : "s"}
                 </p>
               )}
             </div>
           )}
 
-          <div className="flex justify-between items-center pt-2">
+          {canArchive && <div className="flex justify-between items-center pt-2">
             <div className="space-y-0.5">
               <span className="text-[10px] font-bold text-rose-500 uppercase tracking-[0.1em]">Danger Zone</span>
               <p className="text-[11px] text-slate-400 font-medium">Deactivate active access.</p>
             </div>
+            
             <button
               type="button"
               onClick={() => onArchive(teacher._id)}
               disabled={isArchiveStatusLoading || hasArchiveBlockers}
               title={
                 isArchiveStatusLoading
-                  ? "Checking active class and subject links before archiving."
+                  ? "Checking active class and subject assignments..."
                   : hasArchiveBlockers
                     ? "Reassign active class or subject links before archiving."
                     : undefined
@@ -170,8 +193,8 @@ export function TeacherEditForm({
               <Archive className="h-3 w-3" />
               {isArchiveStatusLoading ? "Checking..." : "Archive"}
             </button>
-          </div>
-      </div>
+          </div>}
+      </div>}
     </>
   );
 

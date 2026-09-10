@@ -9,6 +9,8 @@
  */
 
 import type * as betterAuth from "../betterAuth.js";
+import type * as crons from "../crons.js";
+import type * as functions_academic___tests___securityFixtures from "../functions/academic/__tests__/securityFixtures.js";
 import type * as functions_academic_academicSetup from "../functions/academic/academicSetup.js";
 import type * as functions_academic_adminLeadership from "../functions/academic/adminLeadership.js";
 import type * as functions_academic_adminLeadershipHelpers from "../functions/academic/adminLeadershipHelpers.js";
@@ -20,6 +22,8 @@ import type * as functions_academic_archiveRecords from "../functions/academic/a
 import type * as functions_academic_assessmentEditingPolicies from "../functions/academic/assessmentEditingPolicies.js";
 import type * as functions_academic_assessmentEditingPolicyHelpers from "../functions/academic/assessmentEditingPolicyHelpers.js";
 import type * as functions_academic_assessmentRecords from "../functions/academic/assessmentRecords.js";
+import type * as functions_academic_assetStorageBoundary from "../functions/academic/assetStorageBoundary.js";
+import type * as functions_academic_assetWorkspace from "../functions/academic/assetWorkspace.js";
 import type * as functions_academic_assets from "../functions/academic/assets.js";
 import type * as functions_academic_assetsMigration from "../functions/academic/assetsMigration.js";
 import type * as functions_academic_audit from "../functions/academic/audit.js";
@@ -42,6 +46,9 @@ import type * as functions_academic_documentGeneration from "../functions/academ
 import type * as functions_academic_drafts from "../functions/academic/drafts.js";
 import type * as functions_academic_events from "../functions/academic/events.js";
 import type * as functions_academic_gradingBands from "../functions/academic/gradingBands.js";
+import type * as functions_academic_groupDefaultsResolver from "../functions/academic/groupDefaultsResolver.js";
+import type * as functions_academic_groupOverview from "../functions/academic/groupOverview.js";
+import type * as functions_academic_groupSettings from "../functions/academic/groupSettings.js";
 import type * as functions_academic_groups from "../functions/academic/groups.js";
 import type * as functions_academic_historicalTermTotals from "../functions/academic/historicalTermTotals.js";
 import type * as functions_academic_identityMigration from "../functions/academic/identityMigration.js";
@@ -67,6 +74,7 @@ import type * as functions_academic_lessonKnowledgeSourceProof from "../function
 import type * as functions_academic_lessonKnowledgeTeacher from "../functions/academic/lessonKnowledgeTeacher.js";
 import type * as functions_academic_lessonKnowledgeTemplates from "../functions/academic/lessonKnowledgeTemplates.js";
 import type * as functions_academic_lessonKnowledgeTemplatesHelpers from "../functions/academic/lessonKnowledgeTemplatesHelpers.js";
+import type * as functions_academic_lessonKnowledgeUploadHttp from "../functions/academic/lessonKnowledgeUploadHttp.js";
 import type * as functions_academic_metering from "../functions/academic/metering.js";
 import type * as functions_academic_migrateSplitBranches from "../functions/academic/migrateSplitBranches.js";
 import type * as functions_academic_migrateSplitBranchesAction from "../functions/academic/migrateSplitBranchesAction.js";
@@ -75,6 +83,7 @@ import type * as functions_academic_migrationAutosave from "../functions/academi
 import type * as functions_academic_migrationIngest from "../functions/academic/migrationIngest.js";
 import type * as functions_academic_migrationMerge from "../functions/academic/migrationMerge.js";
 import type * as functions_academic_migrationWorkspace from "../functions/academic/migrationWorkspace.js";
+import type * as functions_academic_portalIdentity from "../functions/academic/portalIdentity.js";
 import type * as functions_academic_rbac from "../functions/academic/rbac.js";
 import type * as functions_academic_rbacMigration from "../functions/academic/rbacMigration.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
@@ -93,7 +102,11 @@ import type * as functions_academic_subjectAggregationHelpers from "../functions
 import type * as functions_academic_subjectAggregationSelectionHelpers from "../functions/academic/subjectAggregationSelectionHelpers.js";
 import type * as functions_academic_subjectAggregations from "../functions/academic/subjectAggregations.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
+import type * as functions_academic_tenantPurge from "../functions/academic/tenantPurge.js";
+import type * as functions_academic_tenantPurgeAction from "../functions/academic/tenantPurgeAction.js";
+import type * as functions_academic_tenantPurgeManifest from "../functions/academic/tenantPurgeManifest.js";
 import type * as functions_academic_transfers from "../functions/academic/transfers.js";
+import type * as functions_academic_usageEntitlements from "../functions/academic/usageEntitlements.js";
 import type * as functions_auth from "../functions/auth.js";
 import type * as functions_billing from "../functions/billing.js";
 import type * as functions_billingGateway from "../functions/billingGateway.js";
@@ -102,9 +115,16 @@ import type * as functions_billingShared from "../functions/billingShared.js";
 import type * as functions_billingWebhooks from "../functions/billingWebhooks.js";
 import type * as functions_foundation_applicationLinks from "../functions/foundation/applicationLinks.js";
 import type * as functions_foundation_auth from "../functions/foundation/auth.js";
+import type * as functions_foundation_bankInstructions from "../functions/foundation/bankInstructions.js";
+import type * as functions_foundation_brandingContract from "../functions/foundation/brandingContract.js";
+import type * as functions_foundation_commercialContract from "../functions/foundation/commercialContract.js";
 import type * as functions_foundation_contracts from "../functions/foundation/contracts.js";
 import type * as functions_foundation_documentAccess from "../functions/foundation/documentAccess.js";
+import type * as functions_foundation_groupDefaultsContract from "../functions/foundation/groupDefaultsContract.js";
+import type * as functions_foundation_paidUsageGate from "../functions/foundation/paidUsageGate.js";
 import type * as functions_foundation_paymentDispatch from "../functions/foundation/paymentDispatch.js";
+import type * as functions_foundation_reportCardContract from "../functions/foundation/reportCardContract.js";
+import type * as functions_foundation_usageContract from "../functions/foundation/usageContract.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
 import type * as functions_platform_index from "../functions/platform/index.js";
@@ -120,6 +140,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   betterAuth: typeof betterAuth;
+  crons: typeof crons;
+  "functions/academic/__tests__/securityFixtures": typeof functions_academic___tests___securityFixtures;
   "functions/academic/academicSetup": typeof functions_academic_academicSetup;
   "functions/academic/adminLeadership": typeof functions_academic_adminLeadership;
   "functions/academic/adminLeadershipHelpers": typeof functions_academic_adminLeadershipHelpers;
@@ -131,6 +153,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/assessmentEditingPolicies": typeof functions_academic_assessmentEditingPolicies;
   "functions/academic/assessmentEditingPolicyHelpers": typeof functions_academic_assessmentEditingPolicyHelpers;
   "functions/academic/assessmentRecords": typeof functions_academic_assessmentRecords;
+  "functions/academic/assetStorageBoundary": typeof functions_academic_assetStorageBoundary;
+  "functions/academic/assetWorkspace": typeof functions_academic_assetWorkspace;
   "functions/academic/assets": typeof functions_academic_assets;
   "functions/academic/assetsMigration": typeof functions_academic_assetsMigration;
   "functions/academic/audit": typeof functions_academic_audit;
@@ -153,6 +177,9 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/drafts": typeof functions_academic_drafts;
   "functions/academic/events": typeof functions_academic_events;
   "functions/academic/gradingBands": typeof functions_academic_gradingBands;
+  "functions/academic/groupDefaultsResolver": typeof functions_academic_groupDefaultsResolver;
+  "functions/academic/groupOverview": typeof functions_academic_groupOverview;
+  "functions/academic/groupSettings": typeof functions_academic_groupSettings;
   "functions/academic/groups": typeof functions_academic_groups;
   "functions/academic/historicalTermTotals": typeof functions_academic_historicalTermTotals;
   "functions/academic/identityMigration": typeof functions_academic_identityMigration;
@@ -178,6 +205,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeTeacher": typeof functions_academic_lessonKnowledgeTeacher;
   "functions/academic/lessonKnowledgeTemplates": typeof functions_academic_lessonKnowledgeTemplates;
   "functions/academic/lessonKnowledgeTemplatesHelpers": typeof functions_academic_lessonKnowledgeTemplatesHelpers;
+  "functions/academic/lessonKnowledgeUploadHttp": typeof functions_academic_lessonKnowledgeUploadHttp;
   "functions/academic/metering": typeof functions_academic_metering;
   "functions/academic/migrateSplitBranches": typeof functions_academic_migrateSplitBranches;
   "functions/academic/migrateSplitBranchesAction": typeof functions_academic_migrateSplitBranchesAction;
@@ -186,6 +214,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/migrationIngest": typeof functions_academic_migrationIngest;
   "functions/academic/migrationMerge": typeof functions_academic_migrationMerge;
   "functions/academic/migrationWorkspace": typeof functions_academic_migrationWorkspace;
+  "functions/academic/portalIdentity": typeof functions_academic_portalIdentity;
   "functions/academic/rbac": typeof functions_academic_rbac;
   "functions/academic/rbacMigration": typeof functions_academic_rbacMigration;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
@@ -204,7 +233,11 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/subjectAggregationSelectionHelpers": typeof functions_academic_subjectAggregationSelectionHelpers;
   "functions/academic/subjectAggregations": typeof functions_academic_subjectAggregations;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
+  "functions/academic/tenantPurge": typeof functions_academic_tenantPurge;
+  "functions/academic/tenantPurgeAction": typeof functions_academic_tenantPurgeAction;
+  "functions/academic/tenantPurgeManifest": typeof functions_academic_tenantPurgeManifest;
   "functions/academic/transfers": typeof functions_academic_transfers;
+  "functions/academic/usageEntitlements": typeof functions_academic_usageEntitlements;
   "functions/auth": typeof functions_auth;
   "functions/billing": typeof functions_billing;
   "functions/billingGateway": typeof functions_billingGateway;
@@ -213,9 +246,16 @@ declare const fullApi: ApiFromModules<{
   "functions/billingWebhooks": typeof functions_billingWebhooks;
   "functions/foundation/applicationLinks": typeof functions_foundation_applicationLinks;
   "functions/foundation/auth": typeof functions_foundation_auth;
+  "functions/foundation/bankInstructions": typeof functions_foundation_bankInstructions;
+  "functions/foundation/brandingContract": typeof functions_foundation_brandingContract;
+  "functions/foundation/commercialContract": typeof functions_foundation_commercialContract;
   "functions/foundation/contracts": typeof functions_foundation_contracts;
   "functions/foundation/documentAccess": typeof functions_foundation_documentAccess;
+  "functions/foundation/groupDefaultsContract": typeof functions_foundation_groupDefaultsContract;
+  "functions/foundation/paidUsageGate": typeof functions_foundation_paidUsageGate;
   "functions/foundation/paymentDispatch": typeof functions_foundation_paymentDispatch;
+  "functions/foundation/reportCardContract": typeof functions_foundation_reportCardContract;
+  "functions/foundation/usageContract": typeof functions_foundation_usageContract;
   "functions/platform/auth": typeof functions_platform_auth;
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
   "functions/platform/index": typeof functions_platform_index;

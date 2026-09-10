@@ -5,6 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { appToast } from "@school/shared/toast";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { UsagePreflight } from "../lesson-plans/components/UsagePreflight";
 import { 
   Plus, 
   Sparkles, 
@@ -15,10 +17,13 @@ import {
   Loader2,
   Search
 } from "lucide-react";
-import { 
+import {
   parseTeacherLessonPlanSourceIds,
   getUserFacingErrorMessage,
-  applyPlanningSourceIdsToReturnTo
+  applyPlanningSourceIdsToReturnTo,
+  hasEffectiveCapability,
+  resolveKnowledgeMaterialUploadEndpoint,
+  type KnowledgeMaterialUploadInput,
 } from "@school/shared";
 
 // Feature Imports
@@ -27,15 +32,11 @@ import {
   TeacherLibraryResponse, 
   TeacherLibrarySubject, 
   TeacherLibraryClassSummary,
-  UploadNotice,
   MaterialDraft,
   TeacherKnowledgeTopic,
   TeacherKnowledgeMaterialSourceProofResponse
 } from "../../../features/planning-library/types";
-import { 
-  inferUploadContentType, 
-  uploadIntentSuccessMessage
-} from "../../../features/planning-library/constants";
+import { uploadIntentSuccessMessage } from "../../../features/planning-library/constants";
 import { MaterialCard } from "../../../features/planning-library/components/MaterialCard";
 import { LibrarySidebar } from "../../../features/planning-library/components/LibrarySidebar";
 import { MaterialEditSheet } from "../../../features/planning-library/components/MaterialEditSheet";
@@ -44,10 +45,10 @@ import { MaterialPreviewInspector } from "../../../features/planning-library/com
 // UI Components
 import { TeacherSheet } from "@/lib/components/ui/TeacherSheet";
 import { StatGroup } from "@/lib/components/ui/StatGroup";
-import { cn } from "@/lib/utils";
 
 export default function TeacherLibraryPage() {
-  const { session } = useAuth();
+  const { session, workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -126,8 +127,12 @@ export default function TeacherLibraryPage() {
   ) as TeacherKnowledgeTopic[] | undefined;
 
   // Mutations
-  const requestUploadUrl = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialUploadUrl" as never);
-  const finalizeUpload = useMutation("functions/academic/lessonKnowledgeIngestion:finalizeKnowledgeMaterialUpload" as never);
+  const requestKnowledgeMaterialUpload = useMutation(
+    "functions/academic/lessonKnowledgeIngestion:requestSecureKnowledgeMaterialUpload" as never,
+  );
+  const finalizeKnowledgeMaterialUpload = useMutation(
+    "functions/academic/lessonKnowledgeIngestion:finalizeSecureKnowledgeMaterialUpload" as never,
+  );
   const updateMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:updateTeacherKnowledgeMaterialDetails" as never);
   const publishMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never);
   const retryMaterialIngestion = useMutation("functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never);
@@ -172,6 +177,11 @@ export default function TeacherLibraryPage() {
     }
     return true;
   }), [materials, subjectFilter, levelFilter, searchQuery]);
+
+  const canUploadMaterials =
+    hasEffectiveCapability(workspaceAccess, "assets.upload") &&
+    (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
+      hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
 
   const summary = activeMaterialsData?.summary ?? {
     loaded: 0,
@@ -236,41 +246,55 @@ export default function TeacherLibraryPage() {
     router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname, { scroll: false });
   };
 
-  const handleUpload = async (data: any) => {
+  const handleUpload = async (data: KnowledgeMaterialUploadInput) => {
     setIsUploading(true);
-    
     try {
-      const uploadContentType = inferUploadContentType(data.file);
-      const uploadShell = (await requestUploadUrl({
+      const uploadEndpoint = resolveKnowledgeMaterialUploadEndpoint(
+        process.env.NEXT_PUBLIC_CONVEX_SITE_URL,
+        process.env.NEXT_PUBLIC_CONVEX_URL,
+      );
+      const uploadToken = crypto.randomUUID();
+      const upload = (await requestKnowledgeMaterialUpload({
+        uploadToken,
+        fileName: data.file.name,
+        contentType: data.contentType,
+        size: data.file.size,
         title: data.title,
         description: data.description || null,
         subjectId: data.subjectId ? (data.subjectId as never) : null,
         level: data.level,
-        topicLabel: data.topicLabel || data.title,
-        sourceType: data.isCurriculumReference ? "imported_curriculum" : "file_upload",
+        topicLabel: data.topicLabel,
+        sourceType: data.isCurriculumReference
+          ? "imported_curriculum"
+          : "file_upload",
         uploadIntent: data.uploadIntent,
-        selectedPageRanges: uploadContentType.includes("pdf") ? data.selectedPageRanges?.trim() || null : null,
-      } as never)) as { materialId: string; uploadUrl: string };
-
-      const response = await fetch(uploadShell.uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": uploadContentType },
-        body: data.file,
-      });
-
-      if (!response.ok) throw new Error("Upload failed.");
-      const payload = await response.json();
-      if (!payload.storageId) throw new Error("Storage ID missing.");
-
-      await finalizeUpload({
-        materialId: uploadShell.materialId as never,
-        storageId: payload.storageId as never,
+        selectedPageRanges: data.contentType.includes("pdf")
+          ? data.selectedPageRanges || null
+          : null,
+      } as never)) as { uploadIntentId: string };
+      const response = await fetch(
+        uploadEndpoint,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": data.contentType,
+            "X-Knowledge-Upload-Intent": upload.uploadIntentId,
+            "X-Knowledge-Upload-Token": uploadToken,
+          },
+          body: data.file,
+        },
+      );
+      if (!response.ok) throw new Error("The secure file transfer was rejected.");
+      await finalizeKnowledgeMaterialUpload({
+        uploadIntentId: upload.uploadIntentId as never,
       } as never);
-
       appToast.success(uploadIntentSuccessMessage(data.uploadIntent));
       setIsMobileUploadOpen(false);
     } catch (err) {
-      appToast.error("Upload failed", { description: getUserFacingErrorMessage(err, "Upload failed.") });
+      appToast.error("Upload failed", {
+        description: getUserFacingErrorMessage(err, "Upload failed."),
+      });
+      throw err;
     } finally {
       setIsUploading(false);
     }
@@ -338,6 +362,7 @@ export default function TeacherLibraryPage() {
     subjects: subjects ?? [],
     levelOptions,
     subjectsReady: subjects ?? [],
+    canUpload: canUploadMaterials,
     onUpload: handleUpload,
     isUploading,
     isAdmin: session?.user?.role === "admin",
@@ -358,10 +383,6 @@ export default function TeacherLibraryPage() {
         material={materials.find(m => m._id === editingMaterialId) ?? null}
         onSave={handleSaveDraft}
         onPublish={async (id) => { await publishMaterial({ materialId: id as never } as never); }}
-        onRetry={async (id) => {
-          const material = materials.find((candidate) => candidate._id === id);
-          if (material) await handleRetryMaterial(material);
-        }}
         onArchive={handleArchive}
         isSaving={isSaving}
         topicCandidates={topicCandidates}
@@ -442,6 +463,8 @@ export default function TeacherLibraryPage() {
                 <h1 className="font-display text-2xl lg:text-3xl font-black tracking-tighter text-slate-950 uppercase">
                   Planning Library
                 </h1>
+                <p role="status" className="text-sm">Provider OCR dispatch remains unavailable. Upload limits are enforced separately. No OCR charge is initiated.</p>
+                {schoolId && activeMaterial && (activeMaterial.processingStatus === "ocr_needed" || activeMaterial.processingStatus === "failed") && <UsagePreflight schoolId={schoolId} task="provider_ocr" label="provider OCR" itemCount={activeMaterial.selectedPageNumbers?.length || 1} />}
               </div>
 
               <StatGroup
@@ -580,8 +603,13 @@ export default function TeacherLibraryPage() {
 
       {/* Primary Mobile Action */}
       <button
+        type="button"
+        disabled={!canUploadMaterials}
         onClick={() => setIsMobileUploadOpen(true)}
-        className="lg:hidden fixed bottom-8 right-8 h-16 w-16 flex items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 hover:scale-105 active:scale-95 transition-all z-50"
+        aria-label={canUploadMaterials ? "Upload library material" : "Upload permission required"}
+        className={`fixed bottom-8 right-8 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 lg:hidden ${
+          canUploadMaterials ? "" : "cursor-not-allowed opacity-50"
+        }`}
       >
         <Plus className="h-7 w-7" />
       </button>

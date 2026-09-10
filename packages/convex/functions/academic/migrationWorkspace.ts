@@ -1,7 +1,47 @@
 import { mutation, query } from "../../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { assertMigrationAccess } from "./migrationAuth";
+import { assertMigrationAccess, type MigrationCtx } from "./migrationAuth";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { inferAdmissionNumberSequenceHelper, proposeAdmissionNumberHelper } from "./admissionNumbers";
+
+export function normalizeMigrationCatalogName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export async function getActiveMigrationClasses(ctx: MigrationCtx, schoolId: Id<"schools">): Promise<Doc<"classes">[]> {
+  const [legacy, current] = await Promise.all([
+    ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", schoolId).eq("isArchived", undefined)).take(500),
+    ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", schoolId).eq("isArchived", false)).take(500),
+  ]);
+  return [...legacy, ...current];
+}
+
+export function findUniqueMigrationClass(classes: Doc<"classes">[], name: string): Doc<"classes"> | undefined {
+  const exact = classes.filter((item) => item.name.toLowerCase().trim() === name.toLowerCase().trim());
+  if (exact.length === 1) return exact[0];
+  const normalized = normalizeMigrationCatalogName(name);
+  const matches = classes.filter((item) => normalizeMigrationCatalogName(item.name) === normalized);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Staging content is private even to other administrators of the same branch. */
+export async function getPrivateMigrationWorkspace(
+  ctx: MigrationCtx,
+  schoolId: Id<"schools">,
+  workspaceId: Id<"importWorkspaces">,
+) {
+  const auth = await assertMigrationAccess(ctx, schoolId);
+  const workspace = await ctx.db.get(workspaceId);
+  if (
+    !workspace ||
+    workspace.schoolId !== schoolId ||
+    workspace.createdBy !== auth.callerId
+  ) {
+    throw new ConvexError("Workspace not found");
+  }
+  return { auth, workspace };
+}
 
 /**
  * Creates a new Data Migration Workspace for a school.
@@ -20,12 +60,30 @@ export const createWorkspace = mutation({
           fileName: v.string(),
           fileSize: v.number(),
           uploadedAt: v.number(),
-        })
-      )
+        }),
+      ),
     ),
   },
   handler: async (ctx, args) => {
     const auth = await assertMigrationAccess(ctx, args.schoolId);
+    if (args.sourceFiles?.length) {
+      throw new ConvexError(
+        "Temporary file storage is unavailable until private upload controls are configured",
+      );
+    }
+    if (
+      args.admissionNumberPrefix !== undefined ||
+      args.nextAdmissionSequence !== undefined
+    ) {
+      throw new ConvexError(
+        "Import-local numbering is disabled; use the reviewed official admission-number policy",
+      );
+    }
+    if ((args.mode === "super_admin") !== auth.isSuperAdmin) {
+      throw new ConvexError(
+        "Workspace mode does not match authenticated actor",
+      );
+    }
     const now = Date.now();
 
     const workspaceId = await ctx.db.insert("importWorkspaces", {
@@ -38,8 +96,8 @@ export const createWorkspace = mutation({
       warningRecords: 0,
       errorRecords: 0,
       sourceFiles: args.sourceFiles ?? [],
-      admissionNumberPrefix: args.admissionNumberPrefix?.trim() || undefined,
-      nextAdmissionSequence: args.nextAdmissionSequence ?? 1,
+      admissionNumberPrefix: undefined,
+      nextAdmissionSequence: undefined,
       createdAt: now,
       updatedAt: now,
       createdBy: auth.callerId,
@@ -57,15 +115,15 @@ export const listWorkspaces = query({
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
+    const auth = await assertMigrationAccess(ctx, args.schoolId);
 
-    const workspaces = await ctx.db
+    return await ctx.db
       .query("importWorkspaces")
-      .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
+      .withIndex("by_schoolId_and_createdBy", (q) =>
+        q.eq("schoolId", args.schoolId).eq("createdBy", auth.callerId)
+      )
       .order("desc")
       .take(50);
-
-    return workspaces;
   },
 });
 
@@ -78,13 +136,11 @@ export const getWorkspaceSummary = query({
     workspaceId: v.id("importWorkspaces"),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
-
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      return null;
-    }
-
+    const { workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
     return workspace;
   },
 });
@@ -98,47 +154,15 @@ export const getWorkspaceRecords = query({
     schoolId: v.id("schools"),
     workspaceId: v.id("importWorkspaces"),
     validationStatus: v.optional(
-      v.union(v.literal("valid"), v.literal("warning"), v.literal("error"))
+      v.union(v.literal("valid"), v.literal("warning"), v.literal("error")),
     ),
-    entityType: v.optional(v.union(v.literal("student"), v.literal("grade_record"))),
+    entityType: v.optional(
+      v.union(v.literal("student"), v.literal("grade_record")),
+    ),
     limit: v.optional(v.number()),
-    paginationOpts: v.optional(paginationOptsValidator),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
-
-    // Enforce workspace tenant ownership
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
-
-    if (args.paginationOpts) {
-      if (args.validationStatus) {
-        return await ctx.db
-          .query("stagedImportRecords")
-          .withIndex("by_workspaceId_and_validationStatus", (q) =>
-            q
-              .eq("workspaceId", args.workspaceId)
-              .eq("validationStatus", args.validationStatus!)
-          )
-          .paginate(args.paginationOpts);
-      }
-
-      if (args.entityType) {
-        return await ctx.db
-          .query("stagedImportRecords")
-          .withIndex("by_workspaceId_and_entityType", (q) =>
-            q.eq("workspaceId", args.workspaceId).eq("entityType", args.entityType!)
-          )
-          .paginate(args.paginationOpts);
-      }
-
-      return await ctx.db
-        .query("stagedImportRecords")
-        .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
-        .paginate(args.paginationOpts);
-    }
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
 
     const maxItems = Math.min(args.limit ?? 200, 1000);
 
@@ -148,7 +172,7 @@ export const getWorkspaceRecords = query({
         .withIndex("by_workspaceId_and_validationStatus", (q) =>
           q
             .eq("workspaceId", args.workspaceId)
-            .eq("validationStatus", args.validationStatus!)
+            .eq("validationStatus", args.validationStatus!),
         )
         .take(maxItems);
       return records;
@@ -158,7 +182,9 @@ export const getWorkspaceRecords = query({
       const records = await ctx.db
         .query("stagedImportRecords")
         .withIndex("by_workspaceId_and_entityType", (q) =>
-          q.eq("workspaceId", args.workspaceId).eq("entityType", args.entityType!)
+          q
+            .eq("workspaceId", args.workspaceId)
+            .eq("entityType", args.entityType!),
         )
         .take(maxItems);
       return records;
@@ -166,10 +192,261 @@ export const getWorkspaceRecords = query({
 
     const records = await ctx.db
       .query("stagedImportRecords")
-      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
+      )
       .take(maxItems);
 
     return records;
+  },
+});
+
+/** Paginated records for the routed workbench; every page repeats private ownership checks. */
+export const getWorkspaceRecordsPage = query({
+  args: {
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    return await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId_and_rowNumber", (q) =>
+        q.eq("workspaceId", args.workspaceId),
+      )
+      .paginate(args.paginationOpts);
+  },
+});
+
+/** Bounded existing entities that a reviewer may select. Text labels are never commit instructions. */
+export const getMigrationPromptContext = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, args) => {
+    await assertMigrationAccess(ctx, args.schoolId);
+    const [school, classes, legacySubjects, currentSubjects, sessions] =
+      await Promise.all([
+        ctx.db.get(args.schoolId),
+        getActiveMigrationClasses(ctx, args.schoolId),
+        ctx.db.query("subjects").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", undefined)).take(200),
+        ctx.db.query("subjects").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", false)).take(200),
+        ctx.db.query("academicSessions").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(50),
+      ]);
+    if (!school) throw new ConvexError("School not found");
+    const subjects = [...new Map([...legacySubjects, ...currentSubjects].map((item) => [String(item._id), item])).values()];
+    const sessionOptions = [];
+    for (const session of sessions) {
+      const terms = await ctx.db.query("academicTerms").withIndex("by_session", (q) => q.eq("sessionId", session._id)).take(20);
+      sessionOptions.push({ name: session.name, terms: terms.map((term) => term.name) });
+    }
+    return {
+      schoolName: school.name,
+      classes: classes.map((item) => ({ name: item.name, level: item.level })),
+      subjects: subjects.map((item) => item.name),
+      sessions: sessionOptions,
+    };
+  },
+});
+
+export const getWorkspaceCounterRecommendations = query({
+  args: { schoolId: v.id("schools"), workspaceId: v.id("importWorkspaces") },
+  handler: async (ctx, args) => {
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const records = await ctx.db.query("stagedImportRecords").withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId)).take(1000);
+    const recommendations = new Map<string, { counterKey: string; currentNextSequence: number; recommendedNextSequence: number; compatibleRows: number }>();
+    for (const record of records) {
+      if (record.entityType !== "student" || record.reviewStatus !== "approved" || record.resolutionAction !== "create_new" || record.admissionNumberMode !== "supplied" || !record.selectedClassId) continue;
+      const selectedClass = await ctx.db.get(record.selectedClassId);
+      const number = record.parsedData.admissionNumber?.trim();
+      if (!selectedClass || !number) continue;
+      const inferred = await inferAdmissionNumberSequenceHelper(ctx, { schoolId: args.schoolId, number, level: selectedClass.level });
+      if (!inferred || inferred.recommendedNextSequence <= inferred.currentNextSequence) continue;
+      const prior = recommendations.get(inferred.counterKey);
+      recommendations.set(inferred.counterKey, {
+        counterKey: inferred.counterKey,
+        currentNextSequence: inferred.currentNextSequence,
+        recommendedNextSequence: Math.max(prior?.recommendedNextSequence ?? 0, inferred.recommendedNextSequence),
+        compatibleRows: (prior?.compatibleRows ?? 0) + 1,
+      });
+    }
+    return [...recommendations.values()].filter(
+      (recommendation) =>
+        !records.some(
+          (record) =>
+            record.expectedNumberCounterKey === recommendation.counterKey &&
+            (record.advanceCounterTo ?? 0) >= recommendation.recommendedNextSequence,
+        ),
+    );
+  },
+});
+
+export const getWorkspaceReviewOptions = query({
+  args: {
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+  },
+  handler: async (ctx, args) => {
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const [
+      classes,
+      legacySubjects,
+      currentSubjects,
+      families,
+      legacyStudents,
+      currentStudents,
+      users,
+      sessions,
+    ] = await Promise.all([
+      getActiveMigrationClasses(ctx, args.schoolId),
+      ctx.db
+        .query("subjects")
+        .withIndex("by_school_and_archived", (q) =>
+          q.eq("schoolId", args.schoolId).eq("isArchived", undefined),
+        )
+        .take(200),
+      ctx.db
+        .query("subjects")
+        .withIndex("by_school_and_archived", (q) =>
+          q.eq("schoolId", args.schoolId).eq("isArchived", false),
+        )
+        .take(200),
+      ctx.db
+        .query("families")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .take(200),
+      ctx.db
+        .query("students")
+        .withIndex("by_school_and_archived", (q) =>
+          q.eq("schoolId", args.schoolId).eq("isArchived", undefined),
+        )
+        .take(500),
+      ctx.db
+        .query("students")
+        .withIndex("by_school_and_archived", (q) =>
+          q.eq("schoolId", args.schoolId).eq("isArchived", false),
+        )
+        .take(500),
+      ctx.db
+        .query("users")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .take(500),
+      ctx.db
+        .query("academicSessions")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .take(50),
+    ]);
+    const subjects = [...legacySubjects, ...currentSubjects].slice(0, 200);
+    const students = [...legacyStudents, ...currentStudents].slice(0, 500);
+    const enrolledUserIds = new Set(
+      students.map((student) => String(student.userId)),
+    );
+    const userNames = new Map(
+      users.map((user) => [String(user._id), user.name]),
+    );
+    const sessionOptions = [];
+    for (const session of sessions) {
+      const terms = await ctx.db
+        .query("academicTerms")
+        .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+        .take(20);
+      sessionOptions.push({
+        id: session._id,
+        name: session.name,
+        terms: terms.map((term) => ({ id: term._id, name: term.name })),
+      });
+    }
+    type NumberingOption =
+      | {
+          available: true;
+          nextNumber: string;
+          nextSequence: number;
+          policyVersion: number;
+          formatVersion: string;
+          counterKey: string;
+          counterVersion: number;
+          sessionId: Id<"academicSessions">;
+          resetPeriod: string;
+        }
+      | { available: false; reason: string };
+    const uniqueLevels = [...new Set(classes.map((item) => item.level))];
+    if (uniqueLevels.length > 50) {
+      throw new ConvexError(
+        "Class level directory exceeds supported numbering review size",
+      );
+    }
+    const byLevel: Array<{ level: string; numbering: NumberingOption }> = [];
+    for (const level of uniqueLevels) {
+      try {
+        const proposal = await proposeAdmissionNumberHelper(ctx, {
+          schoolId: args.schoolId,
+          level,
+        });
+        byLevel.push({
+          level,
+          numbering: {
+            available: true,
+            nextNumber: proposal.allocatedNumber,
+            nextSequence: proposal.sequenceNumber,
+            policyVersion: proposal.policyVersion,
+            formatVersion: proposal.formatVersion,
+            counterKey: proposal.counterKey,
+            counterVersion: proposal.counterVersion,
+            sessionId: proposal.activeSessionId,
+            resetPeriod: proposal.resetPeriod,
+          },
+        });
+      } catch (error) {
+        byLevel.push({
+          level,
+          numbering: {
+            available: false,
+            reason:
+              error instanceof Error
+                ? error.message
+                : "Official numbering is unavailable",
+          },
+        });
+      }
+    }
+    const numbering: NumberingOption = byLevel[0]?.numbering ?? {
+      available: false,
+      reason: "Select an existing class to review its exact counter",
+    };
+    return {
+      classes: classes.map((item) => ({
+        id: item._id,
+        name: item.name,
+        level: item.level,
+      })),
+      subjects: subjects.map((item) => ({ id: item._id, name: item.name })),
+      families: families.map((item) => ({ id: item._id, name: item.name })),
+      students: students
+        .filter(
+          (item) =>
+            !item.isArchived &&
+            (!item.enrollmentStatus || item.enrollmentStatus === "active"),
+        )
+        .map((item) => ({
+          id: item._id,
+          name: userNames.get(String(item.userId)) ?? item.admissionNumber,
+          admissionNumber: item.admissionNumber,
+          classId: item.classId,
+          familyId: item.familyId,
+        })),
+      availableStudentUsers: users
+        .filter(
+          (user) =>
+            user.role === "student" &&
+            !user.isArchived &&
+            !enrolledUserIds.has(String(user._id)),
+        )
+        .slice(0, 200)
+        .map((user) => ({ id: user._id, name: user.name })),
+      sessions: sessionOptions,
+      numbering,
+      numberingByLevel: byLevel,
+      bounded: true,
+    };
   },
 });
 
@@ -184,19 +461,16 @@ export const getWorkspaceFeatureSignals = query({
   handler: async (ctx, args) => {
     await assertMigrationAccess(ctx, args.schoolId);
 
-    if (args.workspaceId) {
-      const workspace = await ctx.db.get(args.workspaceId);
-      if (!workspace || workspace.schoolId !== args.schoolId) {
-        throw new ConvexError("Workspace not found");
-      }
-    }
+    if (!args.workspaceId) return [];
+    const workspaceId = args.workspaceId;
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, workspaceId);
 
     const signals = await ctx.db
       .query("migrationFeatureSignals")
-      .withIndex("by_schoolId", (q) => q.eq("schoolId", args.schoolId))
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", workspaceId))
       .take(100);
 
-    return signals;
+    return signals.map(({ sampleValue: _sampleValue, ...signal }) => signal);
   },
 });
 
@@ -209,12 +483,11 @@ export const cancelWorkspace = mutation({
     workspaceId: v.id("importWorkspaces"),
   },
   handler: async (ctx, args) => {
-    await assertMigrationAccess(ctx, args.schoolId);
-
-    const workspace = await ctx.db.get(args.workspaceId);
-    if (!workspace || workspace.schoolId !== args.schoolId) {
-      throw new ConvexError("Workspace not found");
-    }
+    const { workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
 
     if (workspace.status === "merged") {
       throw new ConvexError("Cannot cancel an already merged workspace");
@@ -230,5 +503,81 @@ export const cancelWorkspace = mutation({
     });
 
     return { success: true };
+  },
+});
+
+/** Permanently removes an abandoned workspace without erasing commit evidence. */
+export const deleteWorkspace = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+    confirmation: v.literal("DELETE"),
+  },
+  handler: async (ctx, args) => {
+    const { workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
+    if (
+      workspace.status === "committing" ||
+      workspace.status === "merged" ||
+      workspace.reviewApprovalReceiptId ||
+      workspace.lastCommitReceiptId ||
+      workspace.mergedAt ||
+      workspace.sourceFiles.length > 0
+    ) {
+      throw new ConvexError(
+        "Completed, approved, or retained-file import history cannot be deleted",
+      );
+    }
+
+    if (workspace.status !== "cancelled") {
+      await ctx.db.patch("importWorkspaces", workspace._id, {
+        status: "cancelled",
+        updatedAt: Date.now(),
+      });
+    }
+
+    const committedRecord = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId_and_isCommitted", (q) =>
+        q.eq("workspaceId", args.workspaceId).eq("isCommitted", true),
+      )
+      .first();
+    if (committedRecord) {
+      throw new ConvexError(
+        "Import history with committed records cannot be deleted",
+      );
+    }
+
+    const records = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+      .take(100);
+    if (records.length) {
+      await Promise.all(
+        records.map((record) =>
+          ctx.db.delete("stagedImportRecords", record._id),
+        ),
+      );
+      return { done: false, deletedRecords: records.length };
+    }
+
+    const signals = await ctx.db
+      .query("migrationFeatureSignals")
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+      .take(100);
+    if (signals.length) {
+      await Promise.all(
+        signals.map((signal) =>
+          ctx.db.delete("migrationFeatureSignals", signal._id),
+        ),
+      );
+      return { done: false, deletedRecords: signals.length };
+    }
+
+    await ctx.db.delete("importWorkspaces", args.workspaceId);
+    return { done: true, deletedRecords: 0 };
   },
 });

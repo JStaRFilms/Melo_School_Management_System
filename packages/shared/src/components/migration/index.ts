@@ -6,3 +6,5 @@ export * from "./Tabs/HouseholdReviewTab";
 export * from "./Tabs/ResultsReviewTab";
 export * from "./Modals/ClashResolutionModal";
 export * from "./Modals/ColumnMappingDialog";
+export * from "./Modals/ImportRowReviewDialog";
+export * from "./Modals/ImportConfirmationModal";

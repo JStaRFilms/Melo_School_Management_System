@@ -85,6 +85,67 @@ describe("deduplicationEngine", () => {
       expect(result.isWarning).toBe(true);
     });
 
+    it("does not warn for unrelated classmates with incidental name overlap", () => {
+      const result = evaluateClash(
+        {
+          firstName: "Hauwa",
+          lastName: "Ibrahim",
+          className: "Secondary 3",
+          gender: "Female",
+        },
+        {
+          firstName: "Damilola",
+          lastName: "Bello",
+          className: "Secondary 3",
+          gender: "Female",
+        }
+      );
+
+      expect(result.confidence).toBeGreaterThanOrEqual(50);
+      expect(result.isClash).toBe(false);
+      expect(result.isWarning).toBe(false);
+    });
+
+    it("does not treat a shared surname and similar class labels as a duplicate", () => {
+      const result = evaluateClash(
+        {
+          firstName: "Uche",
+          lastName: "Ogunleye",
+          className: "SSS 1A",
+          guardianPhone: "+2346001192019",
+          gender: "Female",
+        },
+        {
+          firstName: "Ebi",
+          lastName: "Ogunleye",
+          className: "JSS 1A",
+          guardianPhone: "+2346001142004",
+          gender: "Male",
+        },
+      );
+
+      expect(result.isClash).toBe(false);
+      expect(result.isWarning).toBe(false);
+    });
+
+    it("does not treat a shared guardian phone without name evidence as a duplicate", () => {
+      const result = evaluateClash(
+        {
+          firstName: "Amina",
+          lastName: "Adeyemi",
+          guardianPhone: "08031234567",
+        },
+        {
+          firstName: "Chukwuemeka",
+          lastName: "Okonkwo",
+          guardianPhone: "+2348031234567",
+        }
+      );
+
+      expect(result.isClash).toBe(false);
+      expect(result.isWarning).toBe(false);
+    });
+
     it("returns < 50% for completely distinct individuals in different classes", () => {
       const result = evaluateClash(
         {

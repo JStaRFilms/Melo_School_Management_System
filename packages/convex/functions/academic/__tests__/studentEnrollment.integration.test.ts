@@ -201,6 +201,194 @@ describe("student enrollment registered functions", () => {
     expect(state.promotions).toEqual([]);
   });
 
+  it("moves active-session subject selections atomically when an administrator changes a student's class", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const now = 1;
+      const schoolId = await ctx.db.insert("schools", {
+        name: "Class Move School",
+        slug: "class-move-school",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("users", {
+        schoolId,
+        authId: adminIdentity.subject,
+        authTokenIdentifier: adminIdentity.tokenIdentifier,
+        name: "Admin User",
+        email: "admin@class-move.test",
+        role: "admin",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const studentUserId = await ctx.db.insert("users", {
+        schoolId,
+        authId: "class-move-student",
+        name: "David Sterling",
+        email: "david@class-move.test",
+        role: "student",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const sourceClassId = await ctx.db.insert("classes", {
+        schoolId,
+        name: "Secondary 2",
+        gradeName: "Secondary 2",
+        level: "Secondary",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const targetClassId = await ctx.db.insert("classes", {
+        schoolId,
+        name: "Secondary 3",
+        gradeName: "Secondary 3",
+        level: "Secondary",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const activeSessionId = await ctx.db.insert("academicSessions", {
+        schoolId,
+        name: "2026/2027",
+        startDate: 200,
+        endDate: 300,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const historicalSessionId = await ctx.db.insert("academicSessions", {
+        schoolId,
+        name: "2025/2026",
+        startDate: 100,
+        endDate: 199,
+        isActive: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const commonSubjectId = await ctx.db.insert("subjects", {
+        schoolId,
+        name: "English",
+        code: "ENG",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const sourceOnlySubjectId = await ctx.db.insert("subjects", {
+        schoolId,
+        name: "Basic Science",
+        code: "BSC",
+        createdAt: now,
+        updatedAt: now,
+      });
+      for (const [classId, subjectId] of [
+        [sourceClassId, commonSubjectId],
+        [sourceClassId, sourceOnlySubjectId],
+        [targetClassId, commonSubjectId],
+      ] as const) {
+        await ctx.db.insert("classSubjects", {
+          schoolId,
+          classId,
+          subjectId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      const studentId = await ctx.db.insert("students", {
+        schoolId,
+        classId: sourceClassId,
+        userId: studentUserId,
+        admissionNumber: "MOVE-001",
+        createdAt: now,
+        updatedAt: now,
+      });
+      for (const subjectId of [commonSubjectId, sourceOnlySubjectId]) {
+        await ctx.db.insert("studentSubjectSelections", {
+          schoolId,
+          studentId,
+          classId: sourceClassId,
+          subjectId,
+          sessionId: activeSessionId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await ctx.db.insert("studentSubjectSelections", {
+        schoolId,
+        studentId,
+        classId: sourceClassId,
+        subjectId: sourceOnlySubjectId,
+        sessionId: historicalSessionId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return {
+        studentId,
+        sourceClassId,
+        targetClassId,
+        activeSessionId,
+        historicalSessionId,
+        commonSubjectId,
+        sourceOnlySubjectId,
+      };
+    });
+
+    const viewer = t.withIdentity(adminIdentity);
+    await viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
+      studentId: ids.studentId,
+      classId: ids.targetClassId,
+    });
+    await viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
+      studentId: ids.studentId,
+      classId: ids.targetClassId,
+    });
+
+    const [sourceActive, targetActive, sourceHistorical, state] = await Promise.all([
+      viewer.query(api.functions.academic.studentEnrollment.getClassStudentSubjectMatrix, {
+        classId: ids.sourceClassId,
+        sessionId: ids.activeSessionId,
+      }),
+      viewer.query(api.functions.academic.studentEnrollment.getClassStudentSubjectMatrix, {
+        classId: ids.targetClassId,
+        sessionId: ids.activeSessionId,
+      }),
+      viewer.query(api.functions.academic.studentEnrollment.getClassStudentSubjectMatrix, {
+        classId: ids.sourceClassId,
+        sessionId: ids.historicalSessionId,
+      }),
+      t.run(async (ctx) => ({
+        student: await ctx.db.get(ids.studentId),
+        activeSelections: await ctx.db
+          .query("studentSubjectSelections")
+          .withIndex("by_student_and_session", (q) =>
+            q.eq("studentId", ids.studentId).eq("sessionId", ids.activeSessionId),
+          )
+          .collect(),
+        historicalSelections: await ctx.db
+          .query("studentSubjectSelections")
+          .withIndex("by_student_and_session", (q) =>
+            q.eq("studentId", ids.studentId).eq("sessionId", ids.historicalSessionId),
+          )
+          .collect(),
+      })),
+    ]);
+
+    expect(sourceActive.students.map((student) => student._id)).not.toContain(ids.studentId);
+    expect(targetActive.students.map((student) => student._id)).toEqual([ids.studentId]);
+    expect(sourceHistorical.students.map((student) => student._id)).toEqual([ids.studentId]);
+    expect(state.student).toMatchObject({ classId: ids.targetClassId });
+    expect(state.activeSelections).toEqual([
+      expect.objectContaining({
+        classId: ids.targetClassId,
+        subjectId: ids.commonSubjectId,
+      }),
+    ]);
+    expect(state.historicalSelections).toEqual([
+      expect.objectContaining({
+        classId: ids.sourceClassId,
+        subjectId: ids.sourceOnlySubjectId,
+      }),
+    ]);
+  });
+
   it("suppresses archived student accounts from the roster and reconciles their active student records", async () => {
     const t = convexTest(schema, modules);
     const ids = await t.run(async (ctx) => {

@@ -1,0 +1,99 @@
+# U6a — Within-group student transfers
+
+**Implementation delivered and locally verified, including the Portal canonical-identity follow-up; runtime/browser acceptance E0, U7 pending.** No live Convex/CLI/codegen, deployment, migration, provider, production operation, credential access, server, or commit was performed. Existing predecessor changes were preserved. Additive schema/functions are authored only, not rolled out. M9 and automated staff-transfer policy remain excluded.
+
+## Routed workflow
+
+Actual Admin `/academic/students/transfers`; student-list and profile-history links render only when the backend reports the default-off group pilot enabled. Uses generated typed APIs, not mocked runtime data.
+
+- Authoritative branch access gate before student queries. Source class → own-class student selector, same-active-group destination metadata, explicit proposed class/session names, guardian consent method/evidence reference and attestation, optional academic/attendance summary, minimal preview, and source/destination confirmation.
+- Source proposal names are intentionally **not destination class/session selectors**: source authority does not confer destination operational access. Destination registrar chooses its actual nonarchived class and the one active academic session at acceptance. Names and session/class/number mappings are retained as snapshots.
+- Incoming/outgoing/finalized list; scoped review, release, reject/cancel, actual class/session and policy preview, automatic number or separately authorized manual override with reason/confirmation/explicit counter choice, permanent timeline and scoped continuous history.
+- Loading, empty/unlinked, denied, error/retry, missing class/session, missing policy, stale state/configuration, finalized and uncertain-response states. Confirmation and reason gates are native labelled controls. Wrapping layouts use a single column on narrow screens; no browser/mobile acceptance is claimed.
+- U3a guard-only adoption: proposal/review dirty registration, guarded review/new-proposal navigation, pending-operation discard prevention. No server draft, browser storage, dossier recovery cache or fake Save draft action. Only page memory is used. Definitive Convex rejection unlocks correction; uncertain transport errors freeze the submitted payload and retain an identical retry closure/key. Hard reload does not restore form edits; reload recovery is the authoritative transfer list/history, not a durable draft promise.
+
+## State / action / permission diagram
+
+```text
+source authority + same active group + verified guardian consent
+                          |
+                       initiated
+                          | source release
+                    source_released
+                          | destination authority + actual class/session
+                          | + atomic automatic allocation / governed manual claim
+                       completed
+
+initiated or source_released -- source explicit cancel + reason --> cancelled
+initiated or source_released -- destination explicit reject + reason --> rejected
+completed/cancelled/rejected -- no new transition
+
+Identical acknowledged intent replay returns its original action result,
+not a second transition; timeline independently shows current state.
+```
+
+Transfer authority is the post-remediation contract: an active reviewed branch membership with `enrollment.intakes.manage`. Platform status, legacy admin role, proprietor ownership, `academic.classes.manage`, and `enrollment.decisions.record` are not alternate transfer authorities. Every endpoint also requires the same active group to have the default-off `studentTransfersEnabled` pilot flag. No group membership alone grants another branch's operations. Manual numbering additionally requires `enrollment.admissions.override_number` through U2c's helper.
+
+Every mutation authorizes the acting branch and enabled pilot **before** replay/state handling. Initiate/release/accept/abort recheck active schools, unique branch links and the active same group. Abort never rewrites source enrollment. Source release requires recorded consent. Acceptance also rejects a source student that has since been archived/withdrawn/graduated/transferred, an archived/foreign class, a foreign/stale session or changed reviewed numbering policy.
+
+## API manifest — `api.functions.academic.transfers`
+
+| API | Signature / behavior |
+|---|---|
+| `getTransferWorkspace` query | `{schoolId}` → denied flag or safe current-school classes/active sessions, same-group destination ID/names, independent `canOverrideNumber`. No other branch roster/class/session data. |
+| `listTransferCandidates` query | `{schoolId,classId}` → own active students' ID/name/admission number only. Validates class scope before roster access. |
+| `previewTransferNumber` query | `{schoolId,classId}` → U2c nonmutating proposed identifier/policyVersion or explicit unavailable configuration. Transfer authority, not a broader numbering-policy read grant. |
+| `initiateStudentTransfer` mutation | Existing source/destination/student/guardian consent args plus optional `requestKey`, `proposalClassName`, `proposalSessionName`, academic summary/attendance. UI requires names and generates one stable source-scoped request key. Stored initiation fingerprint rejects changed payload reuse; exact replay returns original transfer ID/name/initiated action result even after later completion. Compatibility callers without a key still face the one-active-transfer and source-lifecycle gates. Legacy `medicalNotes` input is ignored, never stored/shared. |
+| `authorizeSourceRelease` mutation | `{transferId,sourceReleaseNote?}`. Source authority, consent/group/state, bounded note. Exact recorded release/note replay returns original release result without a second audit. Different note is stale, not an edit operation. |
+| `acceptDestinationTransfer` mutation | `{transferId,destinationClassId,destinationSessionId?,expectedPolicyVersion?,admissionNumberOverride?,admissionNumberOverrideReason?,admissionNumberOverrideConfirmed?,advanceCounterTo?}`. UI always supplies actual session and automatic preview version. Legacy absent session resolves only the one active destination session, never an arbitrary year. Fixed-field acceptance fingerprint makes argument property ordering irrelevant; identical completed replay returns original destination student ID/number. Changed finalized intent rejects. |
+| `rejectOrCancelTransfer` mutation | `{transferId,reason,action?:'cancelled'|'rejected'}`. UI explicitly chooses its current branch persona; no proprietor/double-membership destination-first ambiguity. Legacy absent-action callers retain destination-first/source-fallback behavior. Same status/reason replays once; conflicting finalization rejects. |
+| `getTransfer` query | `{transferId}` → scope-redacted participant record, or null for missing. No initiation/acceptance fingerprints or request keys returned. Legacy health data stripped at read time. |
+| `listTransfersBySchool` query | Existing `{schoolId,direction?,status?}` signature. Current-branch redaction, newest first. |
+| `listTransfersByGroup` query | Existing `{groupId,status?}` signature. Filters individually unauthorized transfer edges rather than failing an otherwise valid branch reader's entire group result. Does not grant all-group history. |
+| `getStudentTransferHistory` query | `{studentId: string}` normalizes untrusted URL input and returns empty for malformed/table-invalid IDs. For a valid student it authorizes the actual school, then follows connected enrollment IDs across individually authorized transfer edges. Stops at unauthorized edges; no arbitrary source-student probing by a destination-only reader. |
+
+## Numbering / history mapping
+
+No allocator fork: automatic acceptance calls `allocateNextAdmissionNumberHelper` with actual class level and reviewed policy version. Manual acceptance now calls `commitManualAdmissionNumberHelper`: permanent uniqueness claim, separate capability, 8–240 character reason, confirmation, optional exact counter advancement. Blank advancement never parses the identifier or advances the counter. Preview never allocates. Claims/allocation, destination user/student creation, source lifecycle update, mapping and audits are one Convex mutation transaction; failure rolls everything back.
+
+`studentTransfers` retains source student/school → destination student/school/class/session/admission number, class/session/branch display snapshots, consent, timestamps, source note and final reason. Source `students.schoolId`, `classId`, admission identifier, user and historical attendance/scores/invoices are not rekeyed. Only source student enrollmentStatus becomes `transferred_out` on successful acceptance. Release/abort do not touch the source student, including a later withdrawal. Destination gets a separate active student/user context, not a tenant rewrite.
+
+Portable data is bounded identity plus explicitly supplied academic/attendance summary (or existing class/admission summary); missing attendance is **not** fabricated as 100%. No financial, health, safeguarding, disciplinary or custom-attribute copying. Existing source guardian name/phone, user phone, address and house fields are no longer automatically copied to destination enrollment. A reviewed canonical student person/source membership is now required at acceptance. The destination receives an explicit branch membership and student user projection linked to that same person/token; `authId` copies the existing compatibility bridge value and is not a newly generated credential owner. Name/email remain contact/display projection fields, never identity matching keys. The UI discloses account linkage separately from the portable academic preview. Source-only readers do not receive destination class/session/student/admission mapping or accepting actor details; destination-only readers do not receive source release note/actor/timestamp. A safe release-exists flag preserves the released→rejected timeline without revealing private source details. Participant branch-name snapshots identify the actual transfer, not unrelated branch operations.
+
+Permanent statutory audit events remain append-only through U1e. Abort audit summary no longer contains raw free-text reasons; reasons remain in scoped transfer detail. No cryptographic signing, legal verification, source dossier download, independent-school network or production immutable-database guarantee is claimed.
+
+## Portal canonical identity continuity follow-up
+
+Portal now resolves authenticated access token-first through one canonical `persons.authTokenIdentifier`, then only that person's explicit active `branchMemberships` and each membership's validated linked `users` projection. Canonical person presence is terminal: suspended/reconciliation-required people, suspended/archived memberships, inactive schools, missing links, person/token mismatches and ambiguous rows fail closed; they never fall back to email, name or role. Only when no canonical person exists does the existing shared resolver permit an exact `users.authTokenIdentifier` projection or an exact trusted-issuer `identity.subject → users.authId` legacy row with no canonical prelink. Untrusted subject and mismatched/ambiguous compatibility paths remain denied.
+
+Acceptance validates an active canonical source person, exact source token link and exact active source membership before number/enrollment transaction completion. It creates or reuses one validated destination student user and creates the destination branch membership in the same transaction. It reuses a pre-existing valid destination projection but rejects an existing active enrollment. Historical enrollment rows may coexist with a later return enrollment; completed-intent retry still returns the original mapping before creating anything. Missing reviewed source linkage rolls back number claim/counter/user/membership/student and leaves the transfer released for explicit repair.
+
+Portal student choices are sorted with current enrollment first, then default branch, and each choice visibly states branch plus **Current** or **History**. `studentId` is an untrusted explicit selection: workspace, billing, learning topic and shell-branding context resolve it only from authorized branch projections. Selecting the transferred-out source context exposes that source branch's report history; the default destination context does not merge it. Unrelated same-token user rows without a membership and same-email rows are absent. Revoking/suspending destination membership removes that context while an independently active source historical membership remains selectable. Portal shell branding now requests the exact resolved selected branch instead of relying on an ambiguous no-argument legacy default.
+
+Direct student identity continuity is delivered. Parent/guardian continuity is deliberately not guessed: transfer consent method text does not identify a reviewed canonical guardian, and source `familyId`/family members are not copied. A parent needs an explicitly reviewed destination parent projection, membership, family and family-member link. Existing completed transfers without these links remain a repair gate rather than receiving an automatic migration.
+
+## Verification (executed locally)
+
+- Original Convex U6 bundle: **3 files / 24 PASS** (12 transfer, 8 numbering, 4 groups). Portal follow-up expanded the transfer suite to **17 PASS**; final focused identity/learning bundle (`transfers`, `identityResolver`, `lessonKnowledgeAccess`) is **3 files / 25 PASS**. A broader Portal-adjacent bundle (`transfers`, identity resolver, report cards, billing) also passed **4 files / 23 tests**.
+- Admin `vitest run __tests__/transfers-workspace.test.tsx __tests__/workspace-shell.test.tsx`: **2 files / 13 PASS** (6 new transfer DOM cases, 7 shell regressions).
+- Shared navigation/route-access suites: **2 files / 9 PASS**.
+- Convex, Admin, Shared original typechecks: PASS. Portal follow-up reran **Convex and Portal typecheck: PASS**.
+- Explicit changed-file ESLint: **0 errors, 4 existing unused-symbol warnings in student list**; no new warnings/errors. New backend, tests, routes and profile link pass.
+- `node scripts/audit-theme-colors.mjs`: executed, informational. New transfer controls use product-neutral slate/white/border colors, no tenant palette/status/grade substitutions. Existing list/profile direct colors remain pre-existing product actions/status/neutral surfaces; link additions introduce no direct tenant color. No global replacement.
+- `git diff --check`: PASS, existing LF/CRLF advisories only. Installed nested Prettier used locally; no dependency/download.
+
+Portal follow-up tests additionally cover exact trusted-subject legacy success/wrong-subject denial, same token/login opening destination after acceptance, explicit source historical report selection, destination-default ordering, shell and learning branch context, unrelated same-token/same-email rows absent, destination membership suspension, canonical person suspension with no legacy fallback, no synthetic auth owner, exact retry counts for person/users/memberships/enrollment, and full transaction rollback on missing reviewed source linkage. Changed-behavior tests cover source/destination separation and explicit cancel/reject, capability-only backend grant/revocation (including replay denial), unrelated group/foreign class selector denial, absent consent, pre-release acceptance, stale policy/session, archived group, source withdrawal, active duplicate/new-key rejection, altered intent, concurrent duplicate acceptance and one claim/student/audit, manual denied/reason/claim/unchanged counter, identical release/rejection/cancellation, legacy health redaction, missing attendance, full source invoice/attendance/score document equality, two-hop history and restricted source details. DOM covers denied/error, proposal confirmation and same-key retry, source-only controls/history, destination class/session/confirmation, same-payload acceptance retry, explicit rejection/finalized controls and governed manual advancement.
+
+Ordinary failures resolved: unauthenticated history now returns the direct U1a `UNAUTHENTICATED` code, so the precise denial assertion was updated; no denial was weakened into success. A profile-link JSX placement and an unescaped apostrophe failed local checks, were corrected and rerun. Temporary generation files were removed by exact path. Root Prettier executable was absent; existing nested installation was used. No failing check was ignored.
+
+## Self-review / boundaries / U7 request
+
+Reviewed authorization-before-replay, stable fixed-field intents, source/destination dual-authority choice, current group/state revalidation, medical redaction even for legacy rows and both-scope callers, rollback and permanent claims, no source enrollment rewrite on abort, connected-history redaction, guarded imperative selection, no hidden draft data, discoverable actual routes and safe account/branch-keyed remount. Removed the duplicate manual uniqueness allocator, fabricated attendance, automatic guardian/contact copying and abort's incorrect forced-active patch.
+
+Explicit operational bounds fail closed rather than silently truncating: 100 branch directory entries, 500 classes/students per selector, 100 sessions, 500 transfers per school direction/group list, 100 connected enrollment contexts/100 edges per student-history direction. A larger installation needs a separately reviewed paginated adapter; not presented as complete partial results. Source proposals are names until destination review. Long-form persistence/hard-reload draft restoration and global branch switching are not enabled.
+
+U2c remaining named/group counters and inherited numbering templates remain its documented limitations; this packet consumes the actual branch-counter contract. No new allocator defect was discovered. Portal continuity is now implemented for reviewed canonical student identity. Existing completed transfers are not automatically repaired: if they lack an active destination membership linked to the canonical person/user, destination Portal visibility stays closed pending a reviewed repair. Guardian/parent destination linkage is also not inferred from consent text or a source family: it requires an explicit reviewed destination family/member relationship. No broad identity migration, family copy, role seeding, or email matching was added.
+
+**U7:** request authorized synthetic source-only, destination-only, dual-member and denied personas; desktop + 320px + keyboard confirmation/preview/timeline/history evidence; actual Back/sidebar/sign-out dirty guard behavior; source release then destination class/session acceptance with displayed final number; stale policy/class/session/consent, revoked authority, lost-response replay, reject/cancel and missing-group/numbering states. Verify no source private dossier/health/guardian-contact data in network payloads, no duplicate enrollment/number on retry, and unchanged source attendance/score/invoice records. No screenshots, browser evidence or deployed endpoint availability claimed here.
+
+Files: `academic/transfers.ts`, new `academic/portalIdentity.ts`, `portal.ts`, the Portal-learning resolver consumer, transfer integration suite, only additive `studentTransfers` schema fields/index and optional attendance value; Portal shell/selector types and current-vs-history labels; new Admin `academic/students/transfers/{page,error}.tsx`, new `__tests__/transfers-workspace.test.tsx`; narrow student-list/profile and shared Academic navigation links; this result, packet completion note and matrix. Numbering/auth/groups/draft helpers and generated files were not modified by U6a.

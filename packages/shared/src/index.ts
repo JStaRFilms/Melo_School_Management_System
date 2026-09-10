@@ -3,6 +3,10 @@
 export * from "./name-format";
 export * from "./errors";
 export * from "./workspace-navigation";
+export * from "./workspace-access";
+export * from "./workspace-route-access";
+export * from "./audit-export";
+export * from "./components/AuditExplorerView";
 export * from "./report-card-routes";
 export * from "./planning-routes";
 export * from "./planning-context";
@@ -20,6 +24,18 @@ export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigat
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
 export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintStackV2";
 export { MeloLoader } from "./components/MeloLoader";
+export {
+  KnowledgeMaterialUploadForm,
+  MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
+  inferKnowledgeMaterialContentType,
+  resolveKnowledgeMaterialUploadEndpoint,
+} from "./components/KnowledgeMaterialUploadForm";
+export type {
+  KnowledgeMaterialUploadInput,
+  KnowledgeMaterialUploadIntent,
+  KnowledgeMaterialUploadOption,
+  KnowledgeMaterialUploadSubject,
+} from "./components/KnowledgeMaterialUploadForm";
 export { ChangePasswordModal } from "./components/ChangePasswordModal";
 export type { ChangePasswordModalProps } from "./components/ChangePasswordModal";
 export { SchoolSuspendedLockScreen } from "./components/SchoolSuspendedLockScreen";
@@ -52,6 +68,4 @@ export * from "./admissions-foundation";
 export * from "./academic-timeline";
 export * from "./migration";
 export * from "./components/migration";
-
-
-
+export * from "./components/InvoicePaymentInstructions";

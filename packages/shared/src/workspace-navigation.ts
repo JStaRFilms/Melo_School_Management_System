@@ -1,3 +1,6 @@
+import type { WorkspaceAccessSummary } from "./workspace-access";
+import { getBranchScopedWorkspaceAccess, getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, isWorkspaceBranchScopedRoute, type WorkspaceFeatures } from "./workspace-route-access";
+
 export type WorkspaceKey = "admin" | "teacher" | "portal";
 
 export interface WorkspaceSection {
@@ -95,13 +98,17 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
       },
 
       // 4. Finance & Invoicing
-      { href: "/billing", label: "Billing & Invoices", matchers: ["/billing"] },
+      { href: "/billing", label: "Billing & Invoices", matchers: ["/billing$"] },
+      { href: "/admin/group", label: "School group", matchers: ["/admin/group"] },
+      { href: "/admin/audit", label: "Audit", matchers: ["/admin/audit"] },
+      { href: "/admin/permissions", label: "Permissions", matchers: ["/admin/permissions"] },
 
       // 5. Setup & Settings
       { href: "/academic/sessions", label: "Sessions & Terms", matchers: ["/academic/sessions"] },
       { href: "/academic/classes", label: "Classes", matchers: ["/academic/classes"] },
       { href: "/academic/subjects", label: "Subjects", matchers: ["/academic/subjects"] },
       { href: "/students/import", label: "Import Students", matchers: ["/students/import", "/academic/students/import"] },
+      { href: "/admin/settings/email-domains", label: "Institutional Email", matchers: ["/admin/settings/email-domains"] },
       { href: "/admin/settings", label: "School Settings", matchers: ["/admin/settings"] },
       { href: "/admin", label: "Admin Users", matchers: ["/admin"] },
       {
@@ -120,7 +127,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     key: "teacher",
     label: "Teacher",
     audience: "Classroom tools",
-    switchPath: "/assessments/exams/entry",
+    switchPath: "/",
     appBasePath: "/teacher",
     available: true,
     description: "Open teacher workflows for exam entry, planning, and enrollment edits.",
@@ -204,12 +211,29 @@ export function getWorkspaceSections(workspace: WorkspaceKey) {
   return workspaceDefinitions[workspace].sections;
 }
 
+/** Navigation uses the same legacy/module decision as the owning layout, not guessed RBAC mappings. */
+export function getAccessibleWorkspaceSections(
+  workspace: WorkspaceKey,
+  options: { access?: WorkspaceAccessSummary; features?: WorkspaceFeatures | null; userRole?: string | null; branchScopedOnly?: boolean; teacherHasAssignments?: boolean } = {},
+) {
+  if (workspace !== "portal" && options.access && !options.branchScopedOnly && getLegacyWorkspaceAccess(workspace, options.access).state !== "allowed") return [];
+  return getWorkspaceSections(workspace).filter(section =>
+    !(workspace === "teacher" && options.teacherHasAssignments === false) &&
+    (!options.branchScopedOnly || isWorkspaceBranchScopedRoute(workspace, section.href)) &&
+    !getWorkspaceModuleDenial(workspace, section.href, options.features) &&
+    (!options.access || (options.branchScopedOnly
+      ? getBranchScopedWorkspaceAccess(workspace, section.href, options.access).state === "allowed"
+      : !getWorkspaceCapabilityDenial(workspace, section.href, options.access))) &&
+    !(workspace === "portal" && section.href === "/learning/topics" && options.userRole !== "student")
+  );
+}
+
 export function isWorkspaceSectionActive(section: WorkspaceSection, pathname: string) {
   return section.matchers.some((matcher) => {
     if (matcher.endsWith("$")) {
       return pathname === matcher.slice(0, -1);
     }
-    return matcher === "/" ? pathname === "/" : pathname.startsWith(matcher);
+    return matcher === "/" ? pathname === "/" : pathname === matcher || pathname.startsWith(`${matcher}/`);
   });
 }
 
@@ -277,48 +301,54 @@ export const PLATFORM_MODULE_DEFINITIONS: PlatformModuleDefinition[] = [
   {
     key: "billing",
     title: "Finance & Fee Billing",
-    description: "Invoicing, fee schedules, student accounts, payment records, and financial ledger.",
-    badge: "Core Optional",
+    description: "School billing, bank instructions, subscription usage, settlements, and the family fee ledger.",
+    badge: "Finance",
     iconName: "Landmark",
     controlledRoutes: [
-      { label: "Billing Overview", path: "/billing", workspace: "Admin" },
-      { label: "Fee Schedules & Invoices", path: "/billing/schedules", workspace: "Admin" },
-      { label: "Parent Fee Ledger", path: "/portal/fees", workspace: "Portal" },
+      { label: "Billing & Invoices", path: "/billing", workspace: "Admin" },
+      { label: "Bank Accounts", path: "/billing/bank-accounts", workspace: "Admin" },
+      { label: "Subscription & Usage", path: "/billing/subscription", workspace: "Admin" },
+      { label: "Settlements", path: "/billing/settlements", workspace: "Admin" },
+      { label: "Family Billing", path: "/billing", workspace: "Portal" },
     ],
   },
   {
     key: "curriculum",
-    title: "Curriculum & Planning Studio",
-    description: "Teacher planning tools, curriculum syllabus import, and scheme readiness checkers.",
+    title: "Curriculum & Lesson Planning",
+    description: "Curriculum imports, readiness checks, lesson templates, assessment profiles, and teacher lesson plans.",
     badge: "Academic",
     iconName: "BookOpenText",
     controlledRoutes: [
       { label: "Curriculum Import", path: "/academic/knowledge/curriculum-import", workspace: "Admin" },
       { label: "Curriculum Readiness", path: "/academic/knowledge/curriculum-readiness", workspace: "Admin" },
       { label: "Lesson Templates", path: "/academic/knowledge/templates", workspace: "Admin" },
-      { label: "Lesson Planning Studio", path: "/planning", workspace: "Teacher" },
+      { label: "Assessment Profiles", path: "/academic/knowledge/assessment-profiles", workspace: "Admin" },
+      { label: "Lesson Planning", path: "/planning", workspace: "Teacher" },
+      { label: "Lesson Plans", path: "/planning/lesson-plans", workspace: "Teacher" },
     ],
   },
   {
     key: "knowledgeLibrary",
-    title: "AI Knowledge Library",
-    description: "AI-indexed school documents, scheme-of-work repositories, and shared learning assets.",
-    badge: "AI Powered",
+    title: "Knowledge & Learning Library",
+    description: "The school knowledge library and teacher-facing materials, question bank, and video resources.",
+    badge: "Knowledge",
     iconName: "Sparkles",
     controlledRoutes: [
       { label: "Knowledge Library", path: "/academic/knowledge/library", workspace: "Admin" },
-      { label: "AI Question Generator", path: "/planning/drafts", workspace: "Teacher" },
+      { label: "Planning Library", path: "/planning/library", workspace: "Teacher" },
+      { label: "Question Bank", path: "/planning/question-bank", workspace: "Teacher" },
+      { label: "Video Library", path: "/planning/videos", workspace: "Teacher" },
     ],
   },
   {
     key: "admissions",
-    title: "Online Admissions Portal",
-    description: "Public application forms, guardian intake portal, and enrollment conversions.",
-    badge: "Tier Add-on",
+    title: "Admissions & Student Intake",
+    description: "New-student onboarding and reviewed student imports. Existing student records remain available when intake is disabled.",
+    badge: "Admissions",
     iconName: "UserPlus",
     controlledRoutes: [
-      { label: "Admissions Pipeline", path: "/admissions/pipeline", workspace: "Admin" },
-      { label: "Student Intake Forms", path: "/apply", workspace: "Public" },
+      { label: "Student Onboarding", path: "/academic/students/onboarding", workspace: "Admin" },
+      { label: "Student Import", path: "/academic/students/import", workspace: "Admin" },
     ],
   },
 ];

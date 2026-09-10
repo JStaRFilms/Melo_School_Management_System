@@ -1,0 +1,959 @@
+{
+  "schemaVersion": 1,
+  "title": "Melo expansion productization U7a evidence manifest",
+  "generatedAt": "2026-09-06T11:55:53.542Z",
+  "branch": "feat/melo-expansion-productization",
+  "headBeforeU7Commit": "4a5155d",
+  "auditedHead": "7490460",
+  "auditedHeadDescription": "Latest U7 acceptance evidence/report commit; current local implementation is final for E0 review while authenticated acceptance remains blocked.",
+  "overallStatus": "PARTIAL / AUTHENTICATED EVIDENCE BLOCKED",
+  "authorizationGate": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+  "safety": {
+    "credentialBodyRead": false,
+    "authenticatedSessions": false,
+    "convexCommands": false,
+    "seedsDeploysMigrations": false,
+    "providersOrPayments": false,
+    "productionCalls": false,
+    "astra": false,
+    "rootPlaywrightConfigUsed": false,
+    "tracesOrVideos": false
+  },
+  "environment": {
+    "browser": "@playwright/test 1.59.1 Chromium, headless",
+    "serverCommand": "pnpm --filter @school/sites exec next dev --webpack --port 3005 -H 0.0.0.0",
+    "actualListener": "0.0.0.0:3005",
+    "localListenerUrl": "http://localhost:3005",
+    "localActiveSiteUrl": "http://greenfield.schoolos.localhost:3005",
+    "tailscaleIPv4AtRuntime": "100.84.230.66",
+    "tailscaleListenerUrl": "http://100.84.230.66:3005",
+    "tailscaleBehavior": "The raw IP reaches the listener but returns the real unknown-host 404 because Sites is hostname-routed. A remote client needs approved local DNS/hosts mapping for the published school hostname to this Tailscale IP.",
+    "exposureCaveat": "Binding to 0.0.0.0 is not Tailscale-only and may also expose port 3005 to the local network depending on Windows Firewall and network settings.",
+    "externalFontRequests": "Blocked in the capture contexts; system fallback fonts rendered. No external CDN asset was added to evidence or report."
+  },
+  "implementationEvidence": [
+    {
+      "id": "sites-greenfield-home-desktop",
+      "filename": "sites-greenfield-home-desktop.png",
+      "url": "http://greenfield.schoolos.localhost:3005/",
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": true,
+      "state": "Published static home page, desktop",
+      "statusCode": 200,
+      "finalUrl": "http://greenfield.schoolos.localhost:3005/",
+      "capturedAt": "2026-09-06T11:53:34.810Z",
+      "sha256": "cea5e7b02b32d19bfaa80626162d733ef4d9ff18af5eedcabe5437d57928e661",
+      "bytes": 190810,
+      "dimensions": {
+        "viewportWidth": 1440,
+        "viewportHeight": 1000,
+        "documentWidth": 1440,
+        "documentHeight": 2022,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "GF\n\nSCHOOL WEBSITE\n\nGreenfield Preparatory School\n\nHome\nAbout\nAcademics\nAdmissio",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real Sites route using repository-published Greenfield static configuration. External Google font requests blocked; system fallback fonts rendered.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-greenfield-home-desktop.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-greenfield-contact-desktop",
+      "filename": "sites-greenfield-contact-desktop.png",
+      "url": "http://greenfield.schoolos.localhost:3005/contact",
+      "route": "/contact",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": true,
+      "state": "Published static contact page, desktop",
+      "statusCode": 200,
+      "finalUrl": "http://greenfield.schoolos.localhost:3005/contact",
+      "capturedAt": "2026-09-06T11:53:36.670Z",
+      "sha256": "7c3908d3a4cd3bfec1d61ec055afd03df39730e2abb9afc4adee2c7ca28ea428",
+      "bytes": 147282,
+      "dimensions": {
+        "viewportWidth": 1440,
+        "viewportHeight": 1000,
+        "documentWidth": 1440,
+        "documentHeight": 1760,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "GF\n\nSCHOOL WEBSITE\n\nGreenfield Preparatory School\n\nHome\nAbout\nAcademics\nAdmissio",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real Sites contact route; displayed contacts are existing published .example fixture data.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-greenfield-contact-desktop.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-greenfield-home-mobile-320",
+      "filename": "sites-greenfield-home-mobile-320.png",
+      "url": "http://greenfield.schoolos.localhost:3005/",
+      "route": "/",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "fullPage": true,
+      "state": "Published static home page, 320px mobile reflow",
+      "statusCode": 200,
+      "finalUrl": "http://greenfield.schoolos.localhost:3005/",
+      "capturedAt": "2026-09-06T11:53:38.406Z",
+      "sha256": "1e1fa62b5f8cf2acd633f9f45c57876e6266a444adbdd90d915337ef9987a437",
+      "bytes": 159095,
+      "dimensions": {
+        "viewportWidth": 320,
+        "viewportHeight": 720,
+        "documentWidth": 320,
+        "documentHeight": 3898,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "GF\n\nSCHOOL WEBSITE\n\nGreenfield Preparatory School\n\nHome\nAbout\nAcademics\nAdmissio",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real 320px layout; no mocked content.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-greenfield-home-mobile-320.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-greenfield-admissions-mobile-390",
+      "filename": "sites-greenfield-admissions-mobile-390.png",
+      "url": "http://greenfield.schoolos.localhost:3005/admissions",
+      "route": "/admissions",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "fullPage": true,
+      "state": "Published static admissions page, mobile",
+      "statusCode": 200,
+      "finalUrl": "http://greenfield.schoolos.localhost:3005/admissions",
+      "capturedAt": "2026-09-06T11:53:39.983Z",
+      "sha256": "2fea52377a23597e14425fcf8dff6da6a657f72107ec590d67b66d6c4a037bd9",
+      "bytes": 161895,
+      "dimensions": {
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "documentWidth": 390,
+        "documentHeight": 3670,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "GF\n\nSCHOOL WEBSITE\n\nGreenfield Preparatory School\n\nHome\nAbout\nAcademics\nAdmissio",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real mobile route using published static configuration.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-greenfield-admissions-mobile-390.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-greenfield-keyboard-focus-desktop",
+      "filename": "sites-greenfield-keyboard-focus-desktop.png",
+      "url": "http://greenfield.schoolos.localhost:3005/",
+      "route": "/",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "fullPage": false,
+      "state": "Keyboard focus traversal on desktop header",
+      "statusCode": 200,
+      "finalUrl": "http://greenfield.schoolos.localhost:3005/",
+      "capturedAt": "2026-09-06T11:53:41.500Z",
+      "sha256": "46e965c4b4acb3d1925c35d06c7d0c441d6c84881c074521a88c19c87f56444b",
+      "bytes": 103991,
+      "dimensions": {
+        "viewportWidth": 1280,
+        "viewportHeight": 800,
+        "documentWidth": 1280,
+        "documentHeight": 2022,
+        "activeElement": {
+          "tag": "A",
+          "text": "About",
+          "href": "/about"
+        }
+      },
+      "browserErrors": [],
+      "notes": "Focus reached via three real Tab key presses; active element metadata recorded by capture harness.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-greenfield-keyboard-focus-desktop.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-greenfield-zoom-200-desktop",
+      "filename": "sites-greenfield-zoom-200-desktop.png",
+      "url": "http://greenfield.schoolos.localhost:3005/",
+      "route": "/",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "fullPage": false,
+      "state": "Desktop page at emulated 200% page scale",
+      "statusCode": 200,
+      "finalUrl": "http://greenfield.schoolos.localhost:3005/",
+      "capturedAt": "2026-09-06T11:53:43.315Z",
+      "sha256": "e6a537bc098d8dd3a06b04b5ee2b1a9bbe5dd1a54e474f5c2cba84eec0dd7fb3",
+      "bytes": 65613,
+      "dimensions": {
+        "viewportWidth": 1280,
+        "viewportHeight": 800,
+        "documentWidth": 1280,
+        "documentHeight": 2022,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "GF\n\nSCHOOL WEBSITE\n\nGreenfield Preparatory School\n\nHome\nAbout\nAcademics\nAdmissio",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Chromium CDP pageScaleFactor=2 used for real page-scale evidence; no CSS zoom or screenshot enlargement.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-greenfield-zoom-200-desktop.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-aster-home-desktop",
+      "filename": "sites-aster-home-desktop.png",
+      "url": "http://aster.schoolos.localhost:3005/",
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "fullPage": true,
+      "state": "Second published school theme/template, desktop",
+      "statusCode": 200,
+      "finalUrl": "http://aster.schoolos.localhost:3005/",
+      "capturedAt": "2026-09-06T11:53:44.940Z",
+      "sha256": "caf850aad735f41e320cd402abca4658e9c85e76b9555a3b72af5aacdc5563cb",
+      "bytes": 182096,
+      "dimensions": {
+        "viewportWidth": 1440,
+        "viewportHeight": 1000,
+        "documentWidth": 1440,
+        "documentHeight": 1946,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "AS\n\nSCHOOL WEBSITE\n\nAster Primary School\n\nHome\nAbout\nAcademics\nAdmissions\nFees\nV",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real Sites route using repository-published Aster static configuration; demonstrates static theme variation, not Admin synchronization.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-aster-home-desktop.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-known-host-missing-route-error-desktop",
+      "filename": "sites-known-host-missing-route-error-desktop.png",
+      "url": "http://greenfield.schoolos.localhost:3005/not-a-published-page",
+      "route": "/not-a-published-page",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "fullPage": false,
+      "state": "Known active host, unpublished route error",
+      "statusCode": 404,
+      "finalUrl": "http://greenfield.schoolos.localhost:3005/not-a-published-page",
+      "capturedAt": "2026-09-06T11:53:46.421Z",
+      "sha256": "99db2a93b06fa1bf617f5c495e02dcf6c0b76961108491217e2cf4fed8699d35",
+      "bytes": 5851,
+      "dimensions": {
+        "viewportWidth": 1440,
+        "viewportHeight": 900,
+        "documentWidth": 1440,
+        "documentHeight": 900,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real application not-found rendering from a route absent from the static page allowlist.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-known-host-missing-route-error-desktop.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-unknown-host-error-mobile",
+      "filename": "sites-unknown-host-error-mobile.png",
+      "url": "http://unknown.schoolos.localhost:3005/",
+      "route": "/",
+      "viewport": {
+        "width": 320,
+        "height": 720
+      },
+      "fullPage": false,
+      "state": "Unknown hostname fail-closed response, mobile",
+      "statusCode": 404,
+      "finalUrl": "http://unknown.schoolos.localhost:3005/",
+      "capturedAt": "2026-09-06T11:53:47.809Z",
+      "sha256": "47573982bc91bedf498365b4748c2b2954b40ad1d6d9d7afe212ecbe05e836ca",
+      "bytes": 2082,
+      "dimensions": {
+        "viewportWidth": 320,
+        "viewportHeight": 720,
+        "documentWidth": 320,
+        "documentHeight": 720,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real request with an unknown Host header; response is the application not-found route. No mock screen.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-unknown-host-error-mobile.png",
+      "status": "Captured"
+    },
+    {
+      "id": "sites-inactive-host-error-desktop",
+      "filename": "sites-inactive-host-error-desktop.png",
+      "url": "http://legacy-heights.schoolos.localhost:3005/",
+      "route": "/",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "fullPage": false,
+      "state": "Known inactive school fail-closed response, desktop",
+      "statusCode": 404,
+      "finalUrl": "http://legacy-heights.schoolos.localhost:3005/",
+      "capturedAt": "2026-09-06T11:53:49.229Z",
+      "sha256": "3eab349ebf404dae5a2a20d041325042a032d46aeab4b9730d8f8962686fb9b0",
+      "bytes": 4714,
+      "dimensions": {
+        "viewportWidth": 1280,
+        "viewportHeight": 800,
+        "documentWidth": 1280,
+        "documentHeight": 800,
+        "activeElement": {
+          "tag": "BODY",
+          "text": "",
+          "href": null
+        }
+      },
+      "browserErrors": [],
+      "notes": "Real request for repository-published inactive school host; response remains unavailable.",
+      "kind": "implementation-evidence",
+      "app": "Sites",
+      "packet": "U3d/U7a",
+      "persona": "Public visitor",
+      "syntheticOrRedaction": "Existing repository-published static school fixture; no authentication, private data, credentials, mock overlay, or fabricated screen.",
+      "relativePathFromReport": "melo-expansion-productization-assets/screenshots/sites-inactive-host-error-desktop.png",
+      "status": "Captured"
+    }
+  ],
+  "blockedRequiredEvidence": [
+    {
+      "id": "platform-groups",
+      "packet": "U1c",
+      "app": "Platform",
+      "route": "/groups",
+      "persona": "Platform Super Admin",
+      "requirement": "Required authenticated/runtime evidence: desktop create review, 320px layout, confirmation modal, empty, conflict/retry, denied.",
+      "requiredStates": [
+        "desktop create review",
+        "320px layout",
+        "confirmation modal",
+        "empty",
+        "conflict/retry",
+        "denied"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "platform-audit",
+      "packet": "U1e",
+      "app": "Platform",
+      "route": "/audit",
+      "persona": "Platform Super Admin",
+      "requirement": "Required authenticated/runtime evidence: desktop explorer, 320px filters, denied school scope, export error.",
+      "requiredStates": [
+        "desktop explorer",
+        "320px filters",
+        "denied school scope",
+        "export error"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "platform-commercial",
+      "packet": "U5a/U5b",
+      "app": "Platform",
+      "route": "/commercial",
+      "persona": "Platform commercial operator",
+      "requirement": "Required authenticated/runtime evidence: desktop catalog/contract, 320px layout, confirmation, stale conflict, usage cycle, denied.",
+      "requiredStates": [
+        "desktop catalog/contract",
+        "320px layout",
+        "confirmation",
+        "stale conflict",
+        "usage cycle",
+        "denied"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-group",
+      "packet": "U1f/U1g",
+      "app": "Admin",
+      "route": "/admin/group",
+      "persona": "Recorded proprietor",
+      "requirement": "Required authenticated/runtime evidence: desktop defaults and aggregates, 320px layout, confirmation modal, denied branch, stale/error retry.",
+      "requiredStates": [
+        "desktop defaults and aggregates",
+        "320px layout",
+        "confirmation modal",
+        "denied branch",
+        "stale/error retry"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-permissions",
+      "packet": "U1d",
+      "app": "Admin",
+      "route": "/admin/permissions",
+      "persona": "Proprietor/delegated manager",
+      "requirement": "Required authenticated/runtime evidence: desktop editor, 320px checklist, keyboard, protected/denied, stale preview, save retry, confirmation modal.",
+      "requiredStates": [
+        "desktop editor",
+        "320px checklist",
+        "keyboard",
+        "protected/denied",
+        "stale preview",
+        "save retry",
+        "confirmation modal"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-audit",
+      "packet": "U1e",
+      "app": "Admin",
+      "route": "/admin/audit",
+      "persona": "Scoped auditor/proprietor",
+      "requirement": "Required authenticated/runtime evidence: desktop explorer, 320px filters, empty, denied module, alert acknowledgement, export error, printable PDF.",
+      "requiredStates": [
+        "desktop explorer",
+        "320px filters",
+        "empty",
+        "denied module",
+        "alert acknowledgement",
+        "export error",
+        "printable PDF"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-grading",
+      "packet": "U2a/U2b",
+      "app": "Admin",
+      "route": "/assessments/setup/grading-bands",
+      "persona": "Academic administrator",
+      "requirement": "Required authenticated/runtime evidence: desktop editor, 320px editor, keyboard, dirty, denied, save failure, inherit/override confirmation.",
+      "requiredStates": [
+        "desktop editor",
+        "320px editor",
+        "keyboard",
+        "dirty",
+        "denied",
+        "save failure",
+        "inherit/override confirmation"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-numbering",
+      "packet": "U2c",
+      "app": "Admin",
+      "route": "/admin/settings/admission-numbering",
+      "persona": "Registrar",
+      "requirement": "Required authenticated/runtime evidence: desktop builder, 320px builder, keyboard, stale counter, denied override, confirmation.",
+      "requiredStates": [
+        "desktop builder",
+        "320px builder",
+        "keyboard",
+        "stale counter",
+        "denied override",
+        "confirmation"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-bank",
+      "packet": "U2d",
+      "app": "Admin",
+      "route": "/billing",
+      "persona": "Proprietor/delegated bursar",
+      "requirement": "Required authenticated/runtime evidence: desktop settings, 320px form, empty/denied, full edit, stale/save failure, default/archive confirmation.",
+      "requiredStates": [
+        "desktop settings",
+        "320px form",
+        "empty/denied",
+        "full edit",
+        "stale/save failure",
+        "default/archive confirmation"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-people-drafts",
+      "packet": "U3a/U3b",
+      "app": "Admin",
+      "route": "/academic/students/onboarding; /academic/students; /academic/teachers",
+      "persona": "Registrar/staff administrator",
+      "requirement": "Required authenticated/runtime evidence: desktop recovery, 320px progress, Preview/Resume/Discard modal, Back/reload guard, two-tab conflict, reauth/error.",
+      "requiredStates": [
+        "desktop recovery",
+        "320px progress",
+        "Preview/Resume/Discard modal",
+        "Back/reload guard",
+        "two-tab conflict",
+        "reauth/error"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-long-forms",
+      "packet": "U3c",
+      "app": "Admin",
+      "route": "/billing; /academic/sessions; /assessments/setup/*",
+      "persona": "Bursar/academic administrator",
+      "requirement": "Required authenticated/runtime evidence: desktop forms, 320px progress, modal close guard, stale revision, save failure, reauth.",
+      "requiredStates": [
+        "desktop forms",
+        "320px progress",
+        "modal close guard",
+        "stale revision",
+        "save failure",
+        "reauth"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-email",
+      "packet": "U4a",
+      "app": "Admin",
+      "route": "/admin/settings/email-domains",
+      "persona": "Domain administrator/registrar",
+      "requirement": "Required authenticated/runtime evidence: desktop workbench, 320px layout, Preview/Resume/Discard modal, manual collision, denied action, provider-failure badges, save retry.",
+      "requiredStates": [
+        "desktop workbench",
+        "320px layout",
+        "Preview/Resume/Discard modal",
+        "manual collision",
+        "denied action",
+        "provider-failure badges",
+        "save retry"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-import",
+      "packet": "U4b/R1",
+      "app": "Admin",
+      "route": "/students/import",
+      "persona": "Migration executor",
+      "requirement": "Required authenticated/runtime evidence: desktop row review, 320px layout, mapping/clash modal, explicit create/merge/ignore, stale policy, partial failure/reconciliation, denied.",
+      "requiredStates": [
+        "desktop row review",
+        "320px layout",
+        "mapping/clash modal",
+        "explicit create/merge/ignore",
+        "stale policy",
+        "partial failure/reconciliation",
+        "denied"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-commercial",
+      "packet": "U5a/U5b",
+      "app": "Admin",
+      "route": "/billing/subscription; /billing/settlements; /billing/usage",
+      "persona": "Scoped finance reader/proprietor",
+      "requirement": "Required authenticated/runtime evidence: desktop charge classes, 320px layout, denied, empty, usage request, recorded settlement legs.",
+      "requiredStates": [
+        "desktop charge classes",
+        "320px layout",
+        "denied",
+        "empty",
+        "usage request",
+        "recorded settlement legs"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-assets",
+      "packet": "U5c",
+      "app": "Admin",
+      "route": "/admin/assets",
+      "persona": "Asset administrator",
+      "requirement": "Required authenticated/runtime evidence: desktop library, 320px layout, keyboard inspect/return, empty/filter, denied/revoked, upload unavailable, quarantine/failure history.",
+      "requiredStates": [
+        "desktop library",
+        "320px layout",
+        "keyboard inspect/return",
+        "empty/filter",
+        "denied/revoked",
+        "upload unavailable",
+        "quarantine/failure history"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-trash",
+      "packet": "U5d",
+      "app": "Admin",
+      "route": "/admin/assets/archive; /admin/assets/trash",
+      "persona": "Asset lifecycle administrator",
+      "requirement": "Required authenticated/runtime evidence: desktop Archive/Trash, 320px layout, hold/denied removal, exact purge confirmation, cleanup error, restore, PDF unavailable.",
+      "requiredStates": [
+        "desktop Archive/Trash",
+        "320px layout",
+        "hold/denied removal",
+        "exact purge confirmation",
+        "cleanup error",
+        "restore",
+        "PDF unavailable"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "admin-transfers",
+      "packet": "U6a",
+      "app": "Admin",
+      "route": "/academic/students/transfers",
+      "persona": "Source/destination registrar",
+      "requirement": "Required authenticated/runtime evidence: source desktop, destination desktop, 320px layout, confirmation modal, denied persona, stale policy/session, retry timeline.",
+      "requiredStates": [
+        "source desktop",
+        "destination desktop",
+        "320px layout",
+        "confirmation modal",
+        "denied persona",
+        "stale policy/session",
+        "retry timeline"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "teacher-branch-score",
+      "packet": "U1b/U2b",
+      "app": "Teacher",
+      "route": "/assessments/exams/entry; /enrollment/subjects",
+      "persona": "Assigned teacher",
+      "requirement": "Required authenticated/runtime evidence: desktop selected branch, 320px score entry, keyboard branch selector, unassigned/denied, revoked branch, custom grade label.",
+      "requiredStates": [
+        "desktop selected branch",
+        "320px score entry",
+        "keyboard branch selector",
+        "unassigned/denied",
+        "revoked branch",
+        "custom grade label"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "teacher-planning",
+      "packet": "U3c/U5b",
+      "app": "Teacher",
+      "route": "/planning/lesson-plans",
+      "persona": "Assigned planning teacher",
+      "requirement": "Required authenticated/runtime evidence: desktop planning, 320px progress, two-tab conflict, disconnect/reauth, paid preflight confirmation, provider unavailable.",
+      "requiredStates": [
+        "desktop planning",
+        "320px progress",
+        "two-tab conflict",
+        "disconnect/reauth",
+        "paid preflight confirmation",
+        "provider unavailable"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "teacher-reports",
+      "packet": "U2b",
+      "app": "Teacher",
+      "route": "/assessments/report-card-workbench; /assessments/report-cards",
+      "persona": "Assigned teacher/exam officer",
+      "requirement": "Required authenticated/runtime evidence: desktop result/report, 320px report, incomplete cumulative, denied, print preview.",
+      "requiredStates": [
+        "desktop result/report",
+        "320px report",
+        "incomplete cumulative",
+        "denied",
+        "print preview"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "portal-linked-student",
+      "packet": "U2b/U2d/U6a",
+      "app": "Portal",
+      "route": "/; /results; /report-cards; /billing; /learning/topics",
+      "persona": "Linked guardian/direct student",
+      "requirement": "Required authenticated/runtime evidence: desktop current/history selector, 320px results, billing instructions, unrelated-child denial, revoked membership, historical source branch.",
+      "requiredStates": [
+        "desktop current/history selector",
+        "320px results",
+        "billing instructions",
+        "unrelated-child denial",
+        "revoked membership",
+        "historical source branch"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "print-report-cards",
+      "packet": "U2b/U3d",
+      "app": "Admin/Teacher/Portal print",
+      "route": "browser Print / Save as PDF",
+      "persona": "Authorized report viewer",
+      "requirement": "Required authenticated/runtime evidence: single A4, batch A4, long extras pagination, grayscale, 200% zoom, certified snapshot.",
+      "requiredStates": [
+        "single A4",
+        "batch A4",
+        "long extras pagination",
+        "grayscale",
+        "200% zoom",
+        "certified snapshot"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "print-finance",
+      "packet": "U2d",
+      "app": "Admin/Portal print",
+      "route": "/billing print modal",
+      "persona": "Authorized finance viewer/linked family",
+      "requirement": "Required authenticated/runtime evidence: invoice, multi-account statement, paid/waived omission, legacy missing snapshot, grayscale.",
+      "requiredStates": [
+        "invoice",
+        "multi-account statement",
+        "paid/waived omission",
+        "legacy missing snapshot",
+        "grayscale"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "www-public",
+      "packet": "U7",
+      "app": "www",
+      "route": "/",
+      "persona": "Public visitor",
+      "requirement": "Required authenticated/runtime evidence: desktop, mobile, keyboard, zoom, error route.",
+      "requiredStates": [
+        "desktop",
+        "mobile",
+        "keyboard",
+        "zoom",
+        "error route"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    },
+    {
+      "id": "apply-runtime",
+      "packet": "U7",
+      "app": "Apply",
+      "route": "not present",
+      "persona": "Applicant",
+      "requirement": "Required authenticated/runtime evidence: desktop, mobile, denied/error.",
+      "requiredStates": [
+        "desktop",
+        "mobile",
+        "denied/error"
+      ],
+      "status": "Blocked",
+      "blocker": "$HOME/.melo-ops/approved-development-targets.json is absent, and the active shell has no CONVEX_DEPLOYMENT; therefore no approved DEVELOPMENT Convex target or account can be proven under D-05. Starting or authenticating Admin, Teacher, Portal, Platform, or www, or running Convex, seed, deploy, or migration commands, is prohibited.",
+      "screenshot": null,
+      "substitute": null
+    }
+  ],
+  "counts": {
+    "capturedImplementationScreenshots": 10,
+    "blockedRequiredEvidenceItems": 25,
+    "authenticatedScreenshots": 0,
+    "reportArtifactScreenshots": 2
+  },
+  "reportArtifacts": [
+    {
+      "id": "report-artifact-desktop",
+      "kind": "report-artifact-not-implementation-evidence",
+      "status": "Captured",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "relativePathFromReport": "melo-expansion-productization-assets/report-previews/report-artifact-desktop.png",
+      "sha256": "33b103cff7f075adc5e07dd939bdfe3466d739d9294c275078dbfabb809fa3b8",
+      "bytes": 2413121,
+      "capturedAt": "2026-09-06T12:02:59.758Z",
+      "verification": {
+        "fileUrl": "file:///C:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/deliverables/melo-expansion-productization-report.html",
+        "loadedImages": "10/10",
+        "horizontalOverflow": false,
+        "externalAssetRefs": [],
+        "consoleErrors": [],
+        "workflowFilter": "4/25"
+      },
+      "note": "Preview of the delivered report opened from file://. This is a report artifact and MUST NOT be counted as implementation evidence."
+    },
+    {
+      "id": "report-artifact-mobile",
+      "kind": "report-artifact-not-implementation-evidence",
+      "status": "Captured",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "relativePathFromReport": "melo-expansion-productization-assets/report-previews/report-artifact-mobile.png",
+      "sha256": "ecc30501b421b52368f8d6a0bef76b46ee38bad50093de935d629e3876a0f3e5",
+      "bytes": 2045101,
+      "capturedAt": "2026-09-06T12:02:59.764Z",
+      "verification": {
+        "fileUrl": "file:///C:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-03-14_School_Management_System/deliverables/melo-expansion-productization-report.html",
+        "loadedImages": "10/10",
+        "horizontalOverflow": false,
+        "externalAssetRefs": [],
+        "consoleErrors": [],
+        "workflowFilter": "4/25"
+      },
+      "note": "Preview of the delivered report opened from file://. This is a report artifact and MUST NOT be counted as implementation evidence."
+    }
+  ]
+}

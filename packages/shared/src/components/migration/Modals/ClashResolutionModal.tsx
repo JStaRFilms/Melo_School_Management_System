@@ -1,5 +1,5 @@
 import React from "react";
-import { X, AlertTriangle, UserCheck, Users, CopyMinus, UserPlus } from "lucide-react";
+import { X, AlertTriangle, UserCheck, CopyMinus, UserPlus } from "lucide-react";
 
 export interface StagedRecordItem {
   _id: string;
@@ -25,14 +25,20 @@ export interface StagedRecordItem {
 export interface ClashResolutionModalProps {
   record: StagedRecordItem | null;
   candidateRecord?: StagedRecordItem | null;
+  existingStudentMatch?: {
+    fullName: string;
+    className?: string;
+    admissionNumber?: string;
+  } | null;
   onClose: () => void;
-  onResolve: (action: "create_new" | "merge_existing" | "link_as_sibling" | "ignore") => void;
+  onResolve: (action: "create_new" | "merge_existing" | "ignore") => void;
   isResolving?: boolean;
 }
 
 export function ClashResolutionModal({
   record,
   candidateRecord,
+  existingStudentMatch,
   onClose,
   onResolve,
   isResolving,
@@ -55,7 +61,7 @@ export function ClashResolutionModal({
       ]
         .filter(Boolean)
         .join(" ")
-    : "Existing School Student Profile";
+    : existingStudentMatch?.fullName ?? "Match details unavailable";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
@@ -68,7 +74,7 @@ export function ClashResolutionModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 leading-tight">
-                Duplicate & Name Clash Resolution
+                Possible Duplicate Review
               </h3>
               <p className="text-xs text-slate-500 font-medium">
                 Row #{record.rowNumber} • Match Confidence:{" "}
@@ -84,6 +90,10 @@ export function ClashResolutionModal({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        <p className="border-b border-slate-100 px-6 py-3 text-xs leading-relaxed text-slate-600">
+          A possible duplicate means this row resembles another student record. Nothing is merged automatically—compare both sides and choose what the final import should do.
+        </p>
 
         {/* Reason Alert */}
         {record.clashReason && (
@@ -130,7 +140,11 @@ export function ClashResolutionModal({
           {/* Candidate Match */}
           <div className="space-y-3 pl-6">
             <div className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              {candidateRecord ? `Matched Row #${candidateRecord.rowNumber}` : "Database Match"}
+              {candidateRecord
+                ? `Matched Row #${candidateRecord.rowNumber}`
+                : existingStudentMatch
+                  ? "Existing Student"
+                  : "Match details unavailable"}
             </div>
             <div className="space-y-2 text-xs">
               <div>
@@ -140,25 +154,29 @@ export function ClashResolutionModal({
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Class</span>
                 <span className="font-medium text-slate-800">
-                  {candidateRecord?.parsedData.className || "Live Class"}
+                  {candidateRecord?.parsedData.className ||
+                    existingStudentMatch?.className ||
+                    "Not available"}
                 </span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Gender</span>
                 <span className="font-medium text-slate-800">
-                  {candidateRecord?.parsedData.gender || "Unspecified"}
+                  {candidateRecord?.parsedData.gender || "Not available"}
                 </span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Guardian Phone</span>
                 <span className="font-mono text-slate-800">
-                  {candidateRecord?.parsedData.guardianPhone || record.parsedData.guardianPhone || "N/A"}
+                  {candidateRecord?.parsedData.guardianPhone || "Not available"}
                 </span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Admission No</span>
                 <span className="font-mono text-slate-800">
-                  {candidateRecord?.parsedData.admissionNumber || "Existing Student"}
+                  {candidateRecord?.parsedData.admissionNumber ||
+                    existingStudentMatch?.admissionNumber ||
+                    "Not available"}
                 </span>
               </div>
             </div>
@@ -179,40 +197,27 @@ export function ClashResolutionModal({
                 <UserPlus className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Create New Student</div>
-                <div className="text-[11px] text-slate-500">Treat as distinct individual</div>
+                <div className="text-xs font-bold text-slate-900 leading-tight">Create New Student Record</div>
+                <div className="text-[11px] text-slate-500">Keep this as a separate student, then review identity, class, family, and admission ID</div>
               </div>
             </button>
 
-            <button
-              type="button"
-              disabled={isResolving}
-              onClick={() => onResolve("merge_existing")}
-              className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-emerald-400 hover:bg-emerald-50/30 transition-all shadow-2xs group"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                <UserCheck className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Merge with Existing</div>
-                <div className="text-[11px] text-slate-500">Update existing profile</div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              disabled={isResolving}
-              onClick={() => onResolve("link_as_sibling")}
-              className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-amber-400 hover:bg-amber-50/30 transition-all shadow-2xs group"
-            >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                <Users className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Link as Sibling</div>
-                <div className="text-[11px] text-slate-500">Share household family</div>
-              </div>
-            </button>
+            {existingStudentMatch && (
+              <button
+                type="button"
+                disabled={isResolving}
+                onClick={() => onResolve("merge_existing")}
+                className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-emerald-400 hover:bg-emerald-50/30 transition-all shadow-2xs group"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <UserCheck className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-900 leading-tight">Merge with Existing</div>
+                  <div className="text-[11px] text-slate-500">Reconcile this row; imported text will not overwrite identity or placement</div>
+                </div>
+              </button>
+            )}
 
             <button
               type="button"
@@ -224,8 +229,8 @@ export function ClashResolutionModal({
                 <CopyMinus className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Ignore Row</div>
-                <div className="text-[11px] text-slate-500">Exclude from final merge</div>
+                <div className="text-xs font-bold text-slate-900 leading-tight">Skip This Row</div>
+                <div className="text-[11px] text-slate-500">Import nothing from this spreadsheet row</div>
               </div>
             </button>
           </div>

@@ -181,14 +181,19 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
         const selectedStorageId = await ctx.storage.store(
           new Blob([new Uint8Array(selectedPdfBuffer)], { type: "application/pdf" })
         );
-        await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal, {
-          materialId: args.materialId,
-          schoolId: args.schoolId,
-          previousStorageId: args.storageId,
-          nextStorageId: selectedStorageId,
-          actorUserId: args.ownerUserId,
-          sourcePdfPageCount: args.selectedPageNumbers.length,
-        });
+        try {
+          await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal, {
+            materialId: args.materialId,
+            schoolId: args.schoolId,
+            previousStorageId: args.storageId,
+            nextStorageId: selectedStorageId,
+            actorUserId: args.ownerUserId,
+            sourcePdfPageCount: args.selectedPageNumbers.length,
+          });
+        } catch (error) {
+          await ctx.storage.delete(selectedStorageId);
+          throw error;
+        }
       }
 
       const extracted = await extractReadableTextFromBuffer(extractionBuffer, {

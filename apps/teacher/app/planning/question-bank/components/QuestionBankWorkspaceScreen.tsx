@@ -301,7 +301,7 @@ export function QuestionBankWorkspaceScreen({
     [description, effectiveGenerationSettings, items, title, workspace.draftMode]
   );
   const dirty = signature !== lastSavedSignature;
-  const canGenerate = workspace.canGenerate && !isGenerating;
+  const canGenerate = workspace.canGenerate && workspace.paidGenerationAvailable && !isGenerating;
   const canAutosave = workspace.canAutosave;
   const modeOption = getAssessmentDraftModeOption(workspace.draftMode);
   const modeOptions = useMemo(() => {
@@ -617,6 +617,11 @@ export function QuestionBankWorkspaceScreen({
             </div>
           </div>
 
+          {!workspace.paidGenerationAvailable && (
+            <p role="status" className="text-[11px] font-semibold leading-relaxed text-amber-700">
+              Assessment generation is unavailable until paid usage entitlements and provider reconciliation are enabled. You can continue editing and saving drafts.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-2 pt-2">
             <button
               type="button"

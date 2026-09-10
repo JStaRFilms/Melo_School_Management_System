@@ -16,7 +16,7 @@ export const createCurriculumImport = mutation({
   args: { materialId: v.id("knowledgeMaterials"), subjectId: v.id("subjects"), level: v.string(), termId: v.id("academicTerms") },
   returns: v.id("curriculumImports"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const [material, subject, term] = await Promise.all([ctx.db.get(args.materialId), ctx.db.get(args.subjectId), ctx.db.get(args.termId)]);
     if (!material || material.schoolId !== schoolId || !isReadyCurriculumSource(material)) throw new ConvexError("Choose a ready school curriculum source");
@@ -43,7 +43,7 @@ export const saveCurriculumProposals = mutation({
   args: { importId: v.id("curriculumImports"), proposals: v.array(proposalValidator), aiRunLogId: v.id("aiRunLogs") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const importRecord = await ctx.db.get(args.importId);
     if (!importRecord || importRecord.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");

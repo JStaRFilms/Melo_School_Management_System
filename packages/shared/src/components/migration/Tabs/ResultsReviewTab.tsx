@@ -1,31 +1,19 @@
 import React, { useState } from "react";
-import { Search, GraduationCap, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Search, AlertCircle, CheckCircle2 } from "lucide-react";
+import type { StagedStudentRow } from "./RosterReviewTab";
 
-export interface StagedGradeRow {
-  _id: string;
-  rowNumber: number;
-  parsedData: {
-    firstName: string;
-    lastName: string;
-    className: string;
-    subjectName?: string;
-    ca1?: number;
-    ca2?: number;
-    exam?: number;
-  };
-  validationStatus: "valid" | "warning" | "error";
-  validationErrors: string[];
-}
+type StagedGradeRow = StagedStudentRow;
 
 export interface ResultsReviewTabProps {
   records: StagedGradeRow[];
-  onPatchField: (recordId: string, patch: Record<string, any>) => Promise<void>;
+  onPatchField: (recordId: string, patch: Record<string, unknown>) => Promise<void>;
+  onReview: (record: StagedStudentRow) => void;
 }
 
-export function ResultsReviewTab({ records, onPatchField }: ResultsReviewTabProps) {
+export function ResultsReviewTab({ records, onPatchField, onReview }: ResultsReviewTabProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const gradeRecords = records.filter((r) => r.parsedData.subjectName || r.parsedData.ca1 !== undefined);
+  const gradeRecords = records.filter((record) => record.entityType === "grade_record");
 
   const filtered = gradeRecords.filter((rec) => {
     if (!searchTerm) return true;
@@ -144,7 +132,12 @@ export function ResultsReviewTab({ records, onPatchField }: ResultsReviewTabProp
                       {total}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {rec.validationStatus === "error" ? (
+                      <button type="button" onClick={() => onReview(rec)} className="mr-2 rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-bold text-slate-700">
+                        {rec.reviewStatus === "approved" ? "Edit review" : "Review row"}
+                      </button>
+                      {rec.reviewStatus === "approved" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700"><CheckCircle2 className="h-3 w-3" />{rec.commitOutcome ?? "Reviewed"}</span>
+                      ) : rec.validationStatus === "error" ? (
                         <span
                           className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200"
                           title={rec.validationErrors.join(", ")}
