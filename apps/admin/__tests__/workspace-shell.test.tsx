@@ -62,6 +62,7 @@ describe("default-school shell", () => {
   it("mounts the managed-account dashboard landing with no implicit module capability", () => {
     access = { ...ready, compatibility: { ...ready.compatibility, mode: "canonical", permissionManaged: true }, effectiveCapabilities: [] };
     render(<StaffWorkspace><p>Dashboard overview</p></StaffWorkspace>);
+    expect(mocks.query).toHaveBeenCalledWith(expect.anything(), { schoolId: "default" });
     expect(screen.getByText("Dashboard overview")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/admin/dashboard");
     expect(screen.queryByRole("link", { name: "Students" })).not.toBeInTheDocument();

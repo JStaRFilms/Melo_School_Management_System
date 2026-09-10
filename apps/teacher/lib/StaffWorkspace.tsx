@@ -43,7 +43,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
   const assignmentDenied = branchScopedRoute && assignedClasses !== undefined && assignedClasses.length === 0;
   const schoolBranding = useQuery(
     api.functions.academic.schoolBranding.getCurrentSchoolBranding,
-    canLoad && activeSchoolId ? (branchScopedRoute ? { schoolId: activeSchoolId } : {}) : "skip",
+    canLoad && activeSchoolId ? { schoolId: activeSchoolId } : "skip",
   );
 
   useEffect(() => {

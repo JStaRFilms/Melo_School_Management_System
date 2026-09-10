@@ -144,6 +144,7 @@ it("keeps authorized historical logo and student-photo reads while rejecting con
 
   await f.t.run((ctx) => ctx.db.patch(f.studentId, { photoStorageId: f.historicalLogoStorageId }));
   await expect(f.operator.query(a.studentEnrollment.getStudentProfile, { studentId: f.studentId })).rejects.toThrow("conflicting ownership");
+  expect(await f.operator.query(a.schoolBranding.getCurrentSchoolBranding, {})).toMatchObject({ schoolId: f.schoolId, logoUrl: null });
   await expect(f.operator.mutation(a.schoolBranding.removeSchoolLogo, {})).rejects.toThrow("conflicting ownership");
   expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(f.historicalLogoStorageId)))).toBe(true);
   expect(await f.t.run((ctx) => ctx.db.get(f.schoolId))).toMatchObject({ logoStorageId: f.historicalLogoStorageId });

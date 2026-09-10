@@ -39,7 +39,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
   const activeSchoolId = access?.state === "ready" ? access.branch.schoolId as Id<"schools"> : undefined;
   const schoolBranding = useQuery(
     api.functions.academic.schoolBranding.getCurrentSchoolBranding,
-    canLoad && activeSchoolId ? (branchScopedRoute ? { schoolId: activeSchoolId } : {}) : "skip",
+    canLoad && activeSchoolId ? { schoolId: activeSchoolId } : "skip",
   );
 
   useEffect(() => {
