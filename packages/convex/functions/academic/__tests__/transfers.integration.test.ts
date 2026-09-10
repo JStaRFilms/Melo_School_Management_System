@@ -988,6 +988,17 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     const harness = await setupTestHarness(t);
     const adminA = t.withIdentity(harness.adminAIdentity);
     const adminB = t.withIdentity(harness.adminBIdentity);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(harness.adminBMembershipId, {
+        permissionsManagedAt: Date.now(),
+      });
+      await ctx.db.insert("membershipDirectGrants", {
+        membershipId: harness.adminBMembershipId,
+        capability: "enrollment.intakes.manage",
+        grantedAt: Date.now(),
+        reason: "Managed destination transfer authority",
+      });
+    });
     const { transferId } = await adminA.mutation(initiateStudentTransferRef, {
       sourceSchoolId: harness.schoolA,
       destinationSchoolId: harness.schoolB,
@@ -1013,13 +1024,6 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         capability: "enrollment.admissions.override_number",
         grantedAt: Date.now(),
         reason: "Transfer admissions registrar",
-      });
-      await ctx.db.insert("membershipDirectGrants", {
-        membershipId: harness.adminBMembershipId,
-        capability: "enrollment.intakes.manage",
-        grantedAt: Date.now(),
-        reason:
-          "Managed transfer authority is explicit, not the legacy admin role",
       });
       return await ctx.db.insert("admissionNumberSequences", {
         schoolId: harness.schoolB,

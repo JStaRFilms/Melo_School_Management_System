@@ -34,6 +34,7 @@ import {
 } from "./studentNameCompat";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
 import { finishFormDraft } from "./drafts";
+import { requireCapability } from "./rbac";
 import {
   deriveEffectiveSubjectSelectionIds,
   listClassAggregationOptOuts,
@@ -537,6 +538,11 @@ export const createStudent = mutation({
         .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
         .unique();
       if (numberingPolicy) {
+        await requireCapability(
+          ctx,
+          schoolId,
+          "enrollment.admissions.override_number",
+        );
         await commitManualAdmissionNumberHelper(ctx, {
           schoolId,
           number: admissionNumber,
@@ -628,39 +634,30 @@ export const createStudent = mutation({
       updatedAt: now,
     });
 
-    const studentRecord: Record<string, unknown> = {
+    const studentRecord = {
       schoolId,
       classId: args.classId,
       userId: studentUserId,
       admissionNumber,
       gender,
+      ...(houseName ? { houseName } : {}),
+      ...(dateOfBirth ? { dateOfBirth } : {}),
+      ...(guardianName ? { guardianName } : {}),
+      ...(guardianPhone ? { guardianPhone } : {}),
+      ...(address ? { address } : {}),
+      ...(photoMetadata
+        ? {
+            photoStorageId: args.photoStorageId ?? undefined,
+            photoFileName: photoMetadata.fileName,
+            photoContentType: photoMetadata.contentType,
+            photoUpdatedAt: now,
+          }
+        : {}),
       createdAt: now,
       updatedAt: now,
     };
 
-    if (houseName) {
-      studentRecord.houseName = houseName;
-    }
-    if (dateOfBirth) {
-      studentRecord.dateOfBirth = dateOfBirth;
-    }
-    if (guardianName) {
-      studentRecord.guardianName = guardianName;
-    }
-    if (guardianPhone) {
-      studentRecord.guardianPhone = guardianPhone;
-    }
-    if (address) {
-      studentRecord.address = address;
-    }
-    if (photoMetadata) {
-      studentRecord.photoStorageId = args.photoStorageId;
-      studentRecord.photoFileName = photoMetadata.fileName;
-      studentRecord.photoContentType = photoMetadata.contentType;
-      studentRecord.photoUpdatedAt = now;
-    }
-
-    const studentId = await ctx.db.insert("students", studentRecord as any);
+    const studentId = await ctx.db.insert("students", studentRecord);
     if (args.requestKey)
       await ctx.db.insert("enrollmentRequests", {
         schoolId,

@@ -331,7 +331,7 @@ export const upsertAssessmentRecordsBulk = mutation({
       })
     ),
   }),
-  handler: async (ctx: any, args: { schoolId?: Id<"schools">; sessionId: any; termId: any; classId: any; subjectId: any; records: any[] }) => {
+  handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.assessments.enter" });
 
     // Verify class belongs to user's school
