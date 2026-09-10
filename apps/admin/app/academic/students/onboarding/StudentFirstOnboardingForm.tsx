@@ -277,8 +277,23 @@ export function StudentFirstOnboardingForm({
   const fullNameDisplay = [firstName, lastName].filter(Boolean).join(" ") || "New Student";
 
   return (
-    <div className="relative min-h-full lg:h-full w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
+    <div className="relative h-full min-h-0 w-full flex flex-col lg:overflow-hidden bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.2);
+          border-radius: 9999px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.4);
+        }
+      `}} />
       <MobileProgressIndicator
         mode="sections"
         sections={progressSections}
@@ -461,7 +476,7 @@ export function StudentFirstOnboardingForm({
         </aside>
 
         {/* ── LEFT MAIN WORKBENCH: Scrollable Canvas ── */}
-        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 py-6 md:px-10 md:py-10 custom-scrollbar">
+        <main className="flex-1 min-w-0 lg:h-full lg:overflow-y-auto px-4 pt-6 pb-36 md:px-10 md:pt-8 md:pb-48 custom-scrollbar">
           <div className="max-w-4xl mx-auto space-y-6">
             {/* Top Navigation Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/60">

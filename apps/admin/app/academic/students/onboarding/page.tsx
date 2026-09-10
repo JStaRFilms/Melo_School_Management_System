@@ -561,8 +561,8 @@ export default function StudentOnboardingPage() {
   };
 
   return (
-    <>
-      <section className="space-y-2 p-4">
+    <div className="flex flex-col h-full min-h-0 w-full lg:overflow-hidden">
+      <section className="shrink-0 space-y-2 px-4 pt-3 pb-2 sm:px-6 lg:px-8">
         <PersistentFormDraftControls
           draft={draft}
           formTitle="student enrollment"
@@ -581,7 +581,8 @@ export default function StudentOnboardingPage() {
           </p>
         )}
       </section>
-      <StudentFirstOnboardingForm
+      <div className="flex-1 min-h-0 w-full">
+        <StudentFirstOnboardingForm
       classes={classes}
       selectedClassId={selectedClassId}
       firstName={firstName}
@@ -665,8 +666,8 @@ export default function StudentOnboardingPage() {
       }}
       onSubmit={handleSubmit}
     />
-
-    </>
+      </div>
+    </div>
   );
 }
 
