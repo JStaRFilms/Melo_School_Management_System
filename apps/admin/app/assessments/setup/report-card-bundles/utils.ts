@@ -241,6 +241,21 @@ export const STARTER_BUNDLE_PRESETS: Array<{
   },
 ];
 
+export function getShortPresetName(presetIndex: number): string {
+  switch (presetIndex) {
+    case 0:
+      return "Affective & Behavioral";
+    case 1:
+      return "Psychomotor Skills";
+    case 2:
+      return "Attendance & Health";
+    case 3:
+      return "Teacher Remarks";
+    default:
+      return STARTER_BUNDLE_PRESETS[presetIndex]?.name ?? "Template";
+  }
+}
+
 export function createSectionDraftsFromPreset(
   preset: (typeof STARTER_BUNDLE_PRESETS)[number],
   defaultScaleId?: string | null
@@ -518,25 +533,14 @@ export function buildNextAssignedBundleIds(
   selectedBundleId: string,
   includeSelected: boolean
 ) {
-  const currentIds = assignment?.bundleAssignments.map((entry) => entry.bundleId) ?? [];
-  const nextIds = includeSelected
-    ? Array.from(new Set([...currentIds, selectedBundleId]))
-    : currentIds.filter((bundleId) => bundleId !== selectedBundleId);
-  return nextIds;
-}
-
-export function findBundleField(bundle: BundleRecord, fieldId: string): BundleFieldRecord | null {
-  for (const section of bundle.sections) {
-    for (const field of section.fields) {
-      if (field.id === fieldId) {
-        return field;
-      }
-    }
+  const current = assignment?.bundleAssignments.map((entry) => entry.bundleId) ?? [];
+  if (includeSelected) {
+    return Array.from(new Set([...current, selectedBundleId]));
   }
-  return null;
+  return current.filter((id) => id !== selectedBundleId);
 }
 
 function nextLocalId(prefix: string) {
   localCounter += 1;
-  return `${prefix}-${localCounter}`;
+  return `${prefix}-${Date.now().toString(36)}-${localCounter.toString(36)}`;
 }

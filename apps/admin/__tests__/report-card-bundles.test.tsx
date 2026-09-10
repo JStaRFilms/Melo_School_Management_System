@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   STARTER_BUNDLE_PRESETS,
+  getShortPresetName,
   createBundleDraftFromPreset,
   createEmptyBundleDraft,
   createEmptySection,
@@ -35,6 +36,13 @@ describe("Report Card Add-on Multi-Preset Bundles", () => {
     expect(names).toContain("Psychomotor & Practical Skills");
     expect(names).toContain("Attendance & Physical Measurements");
     expect(names).toContain("Teacher Remarks & Term Summary");
+  });
+
+  it("provides clean, concise short preset names for chips and menu labels", () => {
+    expect(getShortPresetName(0)).toBe("Affective & Behavioral");
+    expect(getShortPresetName(1)).toBe("Psychomotor Skills");
+    expect(getShortPresetName(2)).toBe("Attendance & Health");
+    expect(getShortPresetName(3)).toBe("Teacher Remarks");
   });
 
   it("creates section drafts with unique keys from presets", () => {

@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   BookOpenText,
   Clock3,
@@ -11,14 +11,21 @@ import {
   Sparkles,
   ShieldCheck,
   Search,
+  Upload,
 } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
+import {
+  getUserFacingErrorMessage,
+  hasEffectiveCapability,
+  KnowledgeMaterialUploadForm,
+  type KnowledgeMaterialUploadInput,
+} from "@school/shared";
 import { appToast } from "@school/shared/toast";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { AdminSheet } from "@/components/ui/AdminSheet";
 import { StatGroup } from "@/components/ui/StatGroup";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useAuth } from "@/AuthProvider";
 import type { SubjectRecord } from "@/types";
 
 import { KnowledgeLibraryFilters } from "./components/KnowledgeLibraryFilters";
@@ -153,6 +160,7 @@ function matchesSearch(material: KnowledgeLibraryListResponse["materials"][numbe
 }
 
 export default function KnowledgeLibraryPage() {
+  const { workspaceAccess } = useAuth();
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
   const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
   const topics = useQuery("functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeTopics" as never) as Array<{ _id: string; title: string; subjectId: string; subjectName: string; level: string; termId: string; status: string; }> | undefined;
@@ -167,13 +175,26 @@ export default function KnowledgeLibraryPage() {
   ) as KnowledgeLibraryListResponse | undefined;
 
   const levelOptions = useMemo(() => buildLevelOptions(classes), [classes]);
+  const uploadSubjects = useMemo(
+    () => (subjects ?? []).map((subject) => ({ id: subject._id, name: subject.name })),
+    [subjects],
+  );
+  const canUploadMaterials =
+    hasEffectiveCapability(workspaceAccess, "assets.upload") &&
+    (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
+      hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [activeDetail, setActiveDetail] = useState<KnowledgeLibraryDetailResponse | null>(null);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [isSavingState, setIsSavingState] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
+  const saveKnowledgeMaterialUpload = useAction(
+    "functions/academic/lessonKnowledgeIngestion:saveKnowledgeMaterialUpload" as never,
+  );
   const updateDetails = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialDetails" as never);
   const updateState = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialState" as never);
   const createTopic = useMutation("functions/academic/lessonKnowledgeAdmin:createAdminKnowledgeTopic" as never);
@@ -262,6 +283,40 @@ export default function KnowledgeLibraryPage() {
   }, [filteredMaterials]);
 
   const handleClearFilters = () => setFilters(DEFAULT_FILTERS);
+
+  const handleUpload = async (data: KnowledgeMaterialUploadInput) => {
+    setIsUploading(true);
+    try {
+      await saveKnowledgeMaterialUpload({
+        bytes: await data.file.arrayBuffer(),
+        fileName: data.file.name,
+        contentType: data.contentType,
+        title: data.title,
+        description: data.description || null,
+        subjectId: data.subjectId ? (data.subjectId as never) : null,
+        level: data.level,
+        topicLabel: data.topicLabel,
+        sourceType: data.isCurriculumReference
+          ? "imported_curriculum"
+          : "file_upload",
+        uploadIntent: data.uploadIntent,
+        selectedPageRanges: data.contentType.includes("pdf")
+          ? data.selectedPageRanges || null
+          : null,
+      } as never);
+      appToast.success("Material uploaded", {
+        description: "The material is securely stored and queued for indexing.",
+      });
+      setIsUploadOpen(false);
+    } catch (error) {
+      appToast.error("Upload failed", {
+        description: getUserFacingErrorMessage(error, "Failed to upload the material."),
+      });
+      throw error;
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleSaveDetails = async (args: {
     materialId: string;
@@ -441,6 +496,21 @@ export default function KnowledgeLibraryPage() {
       </AdminSheet>
 
       <AdminSheet
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        title="Upload material"
+        description="Add a secure source to the school knowledge library."
+      >
+        <KnowledgeMaterialUploadForm
+          subjects={uploadSubjects}
+          levelOptions={levelOptions}
+          isAdmin
+          isUploading={isUploading}
+          onUpload={handleUpload}
+        />
+      </AdminSheet>
+
+      <AdminSheet
         isOpen={Boolean(selectedMaterialId) && isMobile}
         onClose={() => setSelectedMaterialId(null)}
         title="Library inspector"
@@ -487,13 +557,25 @@ export default function KnowledgeLibraryPage() {
               description="Review and manage school-wide knowledge materials and ingestion status."
               className="gap-1.5"
               actions={
-                <Link
-                  href="/academic/knowledge/assessment-profiles"
-                  className="group flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 shadow-sm transition-all hover:border-slate-950 hover:bg-slate-950 hover:text-white"
-                >
-                  <Settings2 className="h-3 w-3 opacity-40 group-hover:opacity-100" />
-                  Profiles
-                </Link>
+                <div className="flex items-center gap-2">
+                  {canUploadMaterials ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsUploadOpen(true)}
+                      className="group flex h-7 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-[8px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition-all hover:bg-slate-800"
+                    >
+                      <Upload className="h-3 w-3" />
+                      Upload
+                    </button>
+                  ) : null}
+                  <Link
+                    href="/academic/knowledge/assessment-profiles"
+                    className="group flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 shadow-sm transition-all hover:border-slate-950 hover:bg-slate-950 hover:text-white"
+                  >
+                    <Settings2 className="h-3 w-3 opacity-40 group-hover:opacity-100" />
+                    Profiles
+                  </Link>
+                </div>
               }
             />
 

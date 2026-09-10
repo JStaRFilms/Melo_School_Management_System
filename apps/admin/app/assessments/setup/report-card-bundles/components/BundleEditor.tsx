@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback } from "react";
-import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical, LayoutGrid, FileText, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2, GripVertical, LayoutGrid, FileText, BookOpen } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { BundleDraft, BundleFieldDraft, ScaleTemplateRecord } from "../types";
 import { 
@@ -9,6 +9,7 @@ import {
   createEmptySection, 
   moveItem,
   STARTER_BUNDLE_PRESETS,
+  getShortPresetName,
   createBundleDraftFromPreset,
   createSectionDraftsFromPreset
 } from "../utils";
@@ -106,13 +107,13 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
   return (
     <div className="space-y-6">
       {/* Starter Template Presets */}
-      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-2">
+      <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 sm:px-4 sm:py-3 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-indigo-600" />
-            <span className="text-xs font-bold text-indigo-950">Quick Starter Templates</span>
+            <BookOpen className="h-4 w-4 text-slate-500" />
+            <span className="text-xs font-bold text-slate-800">Curriculum Templates</span>
           </div>
-          <span className="text-[10px] font-semibold text-indigo-500">1-Click Setup</span>
+          <span className="text-[10px] font-semibold text-slate-400">1-Click Append</span>
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
           {STARTER_BUNDLE_PRESETS.map((preset, idx) => {
@@ -125,15 +126,16 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
                 onClick={() => handleLoadPreset(idx)}
                 disabled={isUnavailable}
                 title={isUnavailable ? "Create a reusable scale before using this preset." : undefined}
-                className="px-3 py-1.5 rounded-xl border border-indigo-200/80 bg-white hover:bg-indigo-50 text-[11px] font-bold text-indigo-900 transition-all shadow-sm hover:shadow disabled:cursor-not-allowed disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100/80 text-xs font-semibold text-slate-700 transition-all shadow-2xs disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
               >
-                + {preset.name}
+                <Plus className="w-3 h-3 text-slate-400" />
+                <span>{getShortPresetName(idx)}</span>
               </button>
             );
           })}
         </div>
         {scaleTemplates.length === 0 ? (
-          <p className="text-[11px] font-medium text-indigo-700">Create a reusable scale before using presets with rating fields.</p>
+          <p className="text-[11px] font-medium text-amber-700">Create a reusable scale before using presets with rating fields.</p>
         ) : null}
       </div>
 
@@ -177,7 +179,7 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
             Sections
           </h3>
           <button
-            className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-all active:scale-95"
+            className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-white shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
             onClick={() => onChange((prev) => ({ ...prev, sections: [...prev.sections, createEmptySection(false)] }))}
             type="button"
           >
@@ -209,7 +211,7 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
                 </div>
                 <div className="flex items-center gap-1 opacity-20 group-hover:opacity-100 transition-opacity">
                   <button
-                    className="p-1.5 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-20"
+                    className="p-1.5 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-20 cursor-pointer"
                     disabled={sectionIndex === 0}
                     onClick={() => onChange((prev) => ({ ...prev, sections: moveItem(prev.sections, sectionIndex, -1) }))}
                     type="button"
@@ -217,7 +219,7 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
                     <ChevronUp className="h-4 w-4" />
                   </button>
                   <button
-                    className="p-1.5 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-20"
+                    className="p-1.5 text-slate-400 hover:text-slate-900 transition-colors disabled:opacity-20 cursor-pointer"
                     disabled={sectionIndex === draft.sections.length - 1}
                     onClick={() => onChange((prev) => ({ ...prev, sections: moveItem(prev.sections, sectionIndex, 1) }))}
                     type="button"
@@ -225,7 +227,7 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
                     <ChevronDown className="h-4 w-4" />
                   </button>
                   <button
-                    className="ml-1 p-1.5 text-slate-300 hover:text-rose-600 transition-colors disabled:opacity-20"
+                    className="ml-1 p-1.5 text-slate-300 hover:text-rose-600 transition-colors disabled:opacity-20 cursor-pointer"
                     disabled={draft.sections.length === 1}
                     onClick={() =>
                       onChange((prev) => ({
@@ -258,7 +260,7 @@ export const BundleEditor = memo(function BundleEditor({ draft, scaleTemplates, 
                 ))}
 
                 <button
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 py-3 text-xs font-bold uppercase tracking-widest text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-600 transition-all"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 py-3 text-xs font-bold uppercase tracking-widest text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-600 transition-all cursor-pointer"
                   onClick={() => {
                     onChange((prev) => {
                       const sections = prev.sections.slice();
