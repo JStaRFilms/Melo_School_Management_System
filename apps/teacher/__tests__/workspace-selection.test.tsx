@@ -4,8 +4,14 @@ import { getFunctionName } from "convex/server";
 import { AuthProvider, useAuth } from "../lib/AuthProvider";
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 
-const mocks = vi.hoisted(() => ({ query: vi.fn() }));
-vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(...args) }));
+const mocks = vi.hoisted(() => ({
+  query: vi.fn(),
+  convexAuth: vi.fn(() => ({ isLoading: false, isAuthenticated: true })),
+}));
+vi.mock("convex/react", () => ({
+  useQuery: (...args: unknown[]) => mocks.query(...args),
+  useConvexAuth: () => mocks.convexAuth(),
+}));
 vi.mock("@/lib/convex-runtime", () => ({ isConvexConfigured: () => true }));
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
@@ -27,12 +33,14 @@ const branches = [
 ];
 function Probe() {
   const auth = useAuth();
-  return <div><p data-testid="selection">{auth.selectedSchoolId ?? "default"}</p><p data-testid="access">{auth.workspaceAccess?.state === "ready" ? auth.workspaceAccess.branch.schoolId : auth.workspaceAccess?.state ?? "loading"}</p><button onClick={() => auth.selectSchool("default")}>Default</button></div>;
+  return <div><p data-testid="selection">{auth.selectedSchoolId ?? "default"}</p><p data-testid="access">{auth.workspaceAccess?.state === "ready" ? auth.workspaceAccess.branch.schoolId : auth.workspaceAccess?.state ?? "loading"}</p><p data-testid="is-loading">{String(auth.isLoading)}</p><p data-testid="is-authenticated">{String(auth.isAuthenticated)}</p><p data-testid="has-session">{String(Boolean(auth.session))}</p><button onClick={() => auth.selectSchool("default")}>Default</button></div>;
 }
 
 beforeEach(() => {
   localStorage.clear();
   mocks.query.mockReset();
+  mocks.convexAuth.mockReset();
+  mocks.convexAuth.mockReturnValue({ isLoading: false, isAuthenticated: true });
   mocks.query.mockImplementation((reference: unknown, args: unknown) => {
     if (args === "skip") return undefined;
     const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
@@ -60,5 +68,27 @@ describe("teacher account-scoped branch selection", () => {
     expect(screen.getByTestId("selection")).toHaveTextContent("revoked");
     expect(localStorage.getItem("melo:selected-school:teacher-account")).toBeNull();
     expect(localStorage.getItem("melo:selected-school:another-account")).toBe("another-branch");
+  });
+});
+
+describe("teacher authentication synchronization", () => {
+  it("skips workspace queries while Convex authentication is loading", async () => {
+    mocks.convexAuth.mockReturnValue({ isLoading: true, isAuthenticated: false });
+    render(<AuthProvider><Probe /></AuthProvider>);
+
+    await waitFor(() => expect(screen.getByTestId("is-loading")).toHaveTextContent("true"));
+    expect(screen.getByTestId("is-authenticated")).toHaveTextContent("false");
+    expect(screen.getByTestId("has-session")).toHaveTextContent("false");
+    for (const [, args] of mocks.query.mock.calls) expect(args).toBe("skip");
+  });
+
+  it("stops loading without opening a session when Convex authentication fails", async () => {
+    mocks.convexAuth.mockReturnValue({ isLoading: false, isAuthenticated: false });
+    render(<AuthProvider><Probe /></AuthProvider>);
+
+    await waitFor(() => expect(screen.getByTestId("is-loading")).toHaveTextContent("false"));
+    expect(screen.getByTestId("is-authenticated")).toHaveTextContent("false");
+    expect(screen.getByTestId("has-session")).toHaveTextContent("false");
+    for (const [, args] of mocks.query.mock.calls) expect(args).toBe("skip");
   });
 });
