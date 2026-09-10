@@ -324,6 +324,18 @@ This document tracks all observations, issues, UX refinements, completed changes
 ---
 
 ### 11. Admin & Staff Workspace Header Optimization & Branch Switcher Slop Removal
+- [x] **Zero Vertical Screen Waste & Dedicated Header Slot (`WorkspaceNavbar.tsx`)**
+  - Completely eliminated the full-width white banner strip (`border-b border-slate-200 bg-white px-4 py-2`) previously rendered below the top navigation across every single admin and teacher page.
+  - Relocated the branch selector directly into the top header bar (`h-16`) right alongside the user profile session dropdown.
+- [x] **Developer Slop Removal & Clean Multi-Campus Control (`BranchSwitcher.tsx`)**
+  - Removed the hardcoded developer technical-debt text (*"Branch switching is unavailable on this route: its data calls still use your default school. Scoped domain adapters and unsaved-work protection must be ready before switching."*).
+  - Configured intelligent rendering: when a school organization has only 1 branch (or when branch switching is not enabled for the route), the switcher returns `null` and renders zero visual clutter, giving 100% of vertical screen space back to actual dashboard and workspace content.
+  - When a user has multiple active campuses on a switchable route, renders a compact, elegant `[ 🏫 Campus ▾ ]` select pill inline in the header.
+- [x] **Verification & Test Alignment (`workspace-shell.test.tsx`)**
+  - Updated admin workspace shell tests to assert that defensive slop copy is eliminated while ensuring all accessibility roles and switching guards remain fully intact.
+  - Verified 100% green test suite across both `@school/admin` (35/35 test suites, 154 tests passing) and `@school/shared` (23/23 test suites, 168 tests passing).
+
+---
 
 ### 12. Admission Numbering Intentional Confirmation & Session Creation Date Normalization
 - [x] **Admission Numbering Intentional Confirmation Safeguard (`/admin/settings/admission-numbering`)**
@@ -339,20 +351,7 @@ This document tracks all observations, issues, UX refinements, completed changes
 
 ---
 
-
-- [x] **Zero Vertical Screen Waste & Dedicated Header Slot (`WorkspaceNavbar.tsx`)**
-  - Completely eliminated the full-width white banner strip (`border-b border-slate-200 bg-white px-4 py-2`) previously rendered below the top navigation across every single admin and teacher page.
-  - Relocated the branch selector directly into the top header bar (`h-16`) right alongside the user profile session dropdown.
-- [x] **Developer Slop Removal & Clean Multi-Campus Control (`BranchSwitcher.tsx`)**
-  - Removed the hardcoded developer technical-debt text (*"Branch switching is unavailable on this route: its data calls still use your default school. Scoped domain adapters and unsaved-work protection must be ready before switching."*).
-  - Configured intelligent rendering: when a school organization has only 1 branch (or when branch switching is not enabled for the route), the switcher returns `null` and renders zero visual clutter, giving 100% of vertical screen space back to actual dashboard and workspace content.
-  - When a user has multiple active campuses on a switchable route, renders a compact, elegant `[ 🏫 Campus ▾ ]` select pill inline in the header.
-- [x] **Verification & Test Alignment (`workspace-shell.test.tsx`)**
-  - Updated admin workspace shell tests to assert that defensive slop copy is eliminated while ensuring all accessibility roles and switching guards remain fully intact.
-  - Verified 100% green test suite across both `@school/admin` (35/35 test suites, 154 tests passing) and `@school/shared` (23/23 test suites, 168 tests passing).
-
----
-
+### 13. Data Migration Workbench Full-Bleed Scroll Container & Layout Fix
 - [x] **Independent Vertical Scroll Container on Data Migration Workbench (`DataMigrationWorkbench.tsx`)**
   - Diagnosed root cause of vertical scrolling lock on `/students/import` and `/academic/students/import`:
     - `WorkspaceNavbar` applies `lg:overflow-hidden h-full` to `<main>` when `fullBleed={true}`, expecting child workbench views to manage their own inner scrolling.
@@ -362,6 +361,20 @@ This document tracks all observations, issues, UX refinements, completed changes
     2. **Scrollable Body (`flex-1 min-h-0 overflow-y-auto custom-scrollbar`):** Roster table, clash review, household tabs, and academic results scroll freely up and down with ample `pb-24` clearance.
     3. **Pinned Action Bar (`shrink-0`):** Review metrics and commit buttons remain anchored at the viewport base.
   - Updated test assertions in `migration-workbench.test.tsx` and verified 100% green test passes across both `@school/admin` and `@school/shared`.
+
+---
+
+### 14. Academic Grading Band Color Scale & Positive Standing for Grade C
+- [x] **Differentiated Academic Grade Band Color Scale & Positive Standing for Grade C (`grade-policy.ts`, `GradeColorControl.tsx`, `themeDerivation.ts`)**
+  - **Issue & Parent Perception:** Previously, standard default grading bands used murky brown/rust tones for C (`#92400e`), D (`#9a3412`), and E (`#7c2d12`) right next to F (`#991b1b`). This caused parents reviewing report cards to mistakenly panic that Grade C ("Good", 50–64%) was a failing or danger-level mark.
+  - **Resolved Distinct Hue Architecture (A to D Distinct, E/F Shared Fail/Risk Hue):**
+    - **Grade A (75–100, Excellent):** Emerald Green (`#065f46`, 7.7:1 AAA contrast) — unmistakable symbol of academic distinction.
+    - **Grade B (65–74, Very Good):** Royal Blue (`#1e40af`, 8.7:1 AAA contrast) — unmistakable symbol of high achievement.
+    - **Grade C (50–64, Good):** Vivid Purple / Violet (`#6d28d9`, 7.1:1 AAA contrast) — completely removed from danger/warning hues; instantly communicates solid positive standing.
+    - **Grade D (45–49, Fair Pass):** Warm Amber / Ochre (`#b45309`, 5.0:1 AA contrast) — distinct warning/caution tone indicating borderline performance.
+    - **Grade E (40–44, Pass) & Grade F (0–39, Fail):** Crimson Red (`#991b1b`, 8.3:1 AAA contrast) — shared critical tier for marginal passes and failing scores.
+  - **Deduplicated Palette Swatches:**
+    - Updated `GradeColorControl.tsx` to deduplicate preset palette swatches so shared tier colors (E and F) render a clean, non-redundant 5-color selector without duplicate DOM keys.
 
 ---
 

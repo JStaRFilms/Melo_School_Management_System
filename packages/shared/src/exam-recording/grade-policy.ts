@@ -28,7 +28,7 @@ export const FACTORY_DEFAULT_GRADING_BANDS: readonly GradingBandItem[] = [
     gradePoints: 4.0,
     remark: "Excellent",
     colorHex: "#065f46", // Emerald
-    luminanceContrast: 7.2,
+    luminanceContrast: 7.7,
     isDefaultPreset: true,
   },
   {
@@ -38,7 +38,7 @@ export const FACTORY_DEFAULT_GRADING_BANDS: readonly GradingBandItem[] = [
     gradePoints: 3.0,
     remark: "Very Good",
     colorHex: "#1e40af", // Royal Blue
-    luminanceContrast: 8.1,
+    luminanceContrast: 8.7,
     isDefaultPreset: true,
   },
   {
@@ -47,8 +47,8 @@ export const FACTORY_DEFAULT_GRADING_BANDS: readonly GradingBandItem[] = [
     maxScore: 64,
     gradePoints: 2.0,
     remark: "Good",
-    colorHex: "#92400e", // Amber
-    luminanceContrast: 5.4,
+    colorHex: "#6d28d9", // Vivid Violet / Purple
+    luminanceContrast: 7.1,
     isDefaultPreset: true,
   },
   {
@@ -57,8 +57,8 @@ export const FACTORY_DEFAULT_GRADING_BANDS: readonly GradingBandItem[] = [
     maxScore: 49,
     gradePoints: 1.0,
     remark: "Fair Pass",
-    colorHex: "#9a3412", // Burnt Orange
-    luminanceContrast: 4.9,
+    colorHex: "#b45309", // Warm Amber / Gold
+    luminanceContrast: 5.0,
     isDefaultPreset: true,
   },
   {
@@ -67,8 +67,8 @@ export const FACTORY_DEFAULT_GRADING_BANDS: readonly GradingBandItem[] = [
     maxScore: 44,
     gradePoints: 0.5,
     remark: "Pass",
-    colorHex: "#7c2d12", // Deep Bronze
-    luminanceContrast: 6.2,
+    colorHex: "#991b1b", // Crimson / Red
+    luminanceContrast: 8.3,
     isDefaultPreset: true,
   },
   {
@@ -77,8 +77,8 @@ export const FACTORY_DEFAULT_GRADING_BANDS: readonly GradingBandItem[] = [
     maxScore: 39,
     gradePoints: 0.0,
     remark: "Fail",
-    colorHex: "#991b1b", // Rose / Crimson
-    luminanceContrast: 6.8,
+    colorHex: "#991b1b", // Crimson / Red
+    luminanceContrast: 8.3,
     isDefaultPreset: true,
   },
 ] as const;

@@ -52,7 +52,7 @@ export const PROTECTED_SEMANTIC_TOKENS = {
   warning: { text: "#92400e", bg: "#fffbeb", border: "#fde68a" },
   error: { text: "#991b1b", bg: "#fff1f2", border: "#fecdd3" },
   info: { text: "#075985", bg: "#f0f9ff", border: "#bae6fd" },
-  gradeBands: { A: "#065f46", B: "#1e40af", C: "#92400e", D: "#9a3412", F: "#991b1b" },
+  gradeBands: { A: "#065f46", B: "#1e40af", C: "#6d28d9", D: "#b45309", F: "#991b1b" },
 } as const;
 
 export function hexToRgb(hex: string): RgbColor | null {

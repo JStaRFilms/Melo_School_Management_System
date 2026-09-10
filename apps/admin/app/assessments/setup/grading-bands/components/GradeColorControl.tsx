@@ -17,6 +17,13 @@ export function GradeColorControl({
 }) {
   const selected = value ?? "#334155";
   const valid = isGradeHex(selected);
+  // Deduplicate preset colors so shared tier colors (e.g. E and F sharing crimson) render a clean, non-redundant palette
+  const uniqueSwatches = Array.from(
+    new Map(
+      FACTORY_DEFAULT_GRADING_BANDS.map((b) => [b.colorHex.toLowerCase(), b]),
+    ).values(),
+  );
+
   return (
     <div className="space-y-2 min-w-0">
       <div className="flex flex-wrap items-center gap-2">
@@ -51,15 +58,15 @@ export function GradeColorControl({
         </span>
       </div>
       <div className="flex flex-wrap gap-1" aria-label="Suggested grade colors">
-        {FACTORY_DEFAULT_GRADING_BANDS.map((band) => (
+        {uniqueSwatches.map((band) => (
           <button
             key={band.colorHex}
             type="button"
             aria-label={`Use ${band.colorHex}`}
-            aria-pressed={selected.toLowerCase() === band.colorHex}
-            title={band.colorHex}
+            aria-pressed={selected.toLowerCase() === band.colorHex.toLowerCase()}
+            title={`${band.remark} (${band.colorHex})`}
             onClick={() => onChange(band.colorHex)}
-            className="h-7 w-7 rounded border-2 border-white ring-1 ring-slate-300 focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="h-7 w-7 rounded border-2 border-white ring-1 ring-slate-300 focus-visible:outline-2 focus-visible:outline-offset-2 hover:scale-105 transition-transform"
             style={{ backgroundColor: band.colorHex }}
           />
         ))}
