@@ -37,6 +37,9 @@ export default function HomePage() {
       capabilities.includes("academic.curriculum.manage")
     ) redirect("/planning");
     if (capabilities.includes("enrollment.intakes.manage")) redirect("/enrollment/subjects");
+    if (workspaceAccess.compatibility.permissionManaged === false) {
+      redirect("/planning");
+    }
   }
 
   redirect("/sign-in?error=unauthorized");

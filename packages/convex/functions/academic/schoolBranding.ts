@@ -87,15 +87,21 @@ export const getCurrentSchoolBranding = query({
         .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
         .unique();
       const group = groupLink ? await ctx.db.get(groupLink.groupId) : null;
+      let logoUrl: string | null = null;
+      if (school.logoStorageId) {
+        try {
+          logoUrl = await getUnboundStorageUrl(ctx, school.logoStorageId);
+        } catch {
+          // An unsafe legacy logo must stay hidden without denying the school workspace.
+        }
+      }
       return {
         schoolId,
         groupId: group?.status === "active" ? group._id : undefined,
         name: normalizeHumanName(school.name),
         slug: school.slug,
         status: school.status ?? "active",
-        logoUrl: school.logoStorageId
-          ? await getUnboundStorageUrl(ctx, school.logoStorageId)
-          : null,
+        logoUrl,
         motto: school.motto,
         theme: fallbackTheme(effectiveTheme.theme),
         contactEmail: school.contactEmail,

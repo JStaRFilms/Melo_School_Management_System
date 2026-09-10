@@ -59,6 +59,7 @@ describe("teacher selected-branch shell", () => {
   it("awaits the dirty departure guard and clears route entity parameters only after approval", async () => {
     mocks.departure.mockResolvedValueOnce(false);
     render(<StaffWorkspace><p>Exam records</p></StaffWorkspace>);
+    expect(mocks.query).toHaveBeenCalledWith(expect.anything(), { schoolId: "default" });
     fireEvent.change(screen.getByRole("combobox", { name: "Active branch" }), { target: { value: "branch-two" } });
     await waitFor(() => expect(mocks.departure).toHaveBeenCalledWith({ kind: "branch", schoolId: "branch-two" }));
     expect(mocks.select).not.toHaveBeenCalled();
