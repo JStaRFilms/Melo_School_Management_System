@@ -453,8 +453,39 @@ export async function resolveActiveMembership(
   if (!user || user.schoolId !== schoolId || user.isArchived) {
     return deny("Not authorized: User does not have an active membership in this branch");
   }
-  // A prelinked person without a matching canonical token needs reviewed repair.
-  if (user.personId) return reconcile("Not authorized: mismatched canonical identity link");
+  if (user.personId) {
+    const linkedPerson = await ctx.db.get(user.personId);
+    if (
+      !linkedPerson ||
+      linkedPerson.status !== "active" ||
+      linkedPerson.identityReconciliationState === "reconciliation_required" ||
+      (linkedPerson.authTokenIdentifier &&
+        linkedPerson.authTokenIdentifier !== identity.tokenIdentifier)
+    ) {
+      return reconcile("Not authorized: mismatched canonical identity link");
+    }
+    const memberships = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_person_and_school", (q) =>
+        q.eq("personId", linkedPerson._id).eq("schoolId", schoolId),
+      )
+      .take(2);
+    if (memberships.length !== 1)
+      return reconcile("Not authorized: ambiguous branch membership");
+    const membership = memberships[0];
+    if (membership.status !== "active")
+      return deny("Not authorized: User does not have an active membership in this branch");
+    if (membership.legacyUserId !== user._id)
+      return reconcile("Not authorized: mismatched legacy identity link");
+    return {
+      personId: linkedPerson._id,
+      membershipId: membership._id,
+      schoolId,
+      userId: user._id,
+      role: user.role,
+      isPlatformAdmin: false,
+    };
+  }
   return { schoolId, userId: user._id, role: user.role, isPlatformAdmin: false };
 }
 

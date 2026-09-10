@@ -18,8 +18,18 @@ export interface IdentityLookup<Row extends LegacyIdentityRow> {
 }
 
 export function isTrustedLegacySubjectIssuer(issuer: string | undefined): boolean {
-  const trustedIssuer = process.env.LEGACY_SUBJECT_TRUSTED_ISSUER?.trim();
-  return Boolean(trustedIssuer && issuer === trustedIssuer);
+  const normalizedIssuer = issuer?.replace(/\/$/, "");
+  const trustedIssuers = [
+    process.env.LEGACY_SUBJECT_FALLBACK_ENABLED === "true"
+      ? process.env.CONVEX_SITE_URL
+      : undefined,
+    process.env.LEGACY_SUBJECT_TRUSTED_ISSUER,
+  ]
+    .map((value) => value?.trim().replace(/\/$/, ""))
+    .filter((value): value is string => Boolean(value));
+  return Boolean(
+    normalizedIssuer && trustedIssuers.includes(normalizedIssuer),
+  );
 }
 
 /**
