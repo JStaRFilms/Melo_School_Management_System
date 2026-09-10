@@ -86,7 +86,7 @@ export function createEmptyBundleDraft(): BundleDraft {
     sourceUpdatedAt: null,
     name: "",
     description: "",
-    sections: [createEmptySection()],
+    sections: [createEmptySection(false)],
   };
 }
 
@@ -225,7 +225,50 @@ export const STARTER_BUNDLE_PRESETS: Array<{
       },
     ],
   },
+  {
+    name: "Teacher Remarks & Term Summary",
+    description: "Narrative comments and next term resumption schedule",
+    sections: [
+      {
+        label: "Remarks & Observations",
+        fields: [
+          { label: "Class Teacher's Remark", type: "text", source: "teacher_manual", printable: true },
+          { label: "Head Teacher / Principal's Remark", type: "text", source: "teacher_manual", printable: true },
+          { label: "Next Term Begins", type: "text", source: "system_term", systemKey: "next_term_begins", printable: true },
+        ],
+      },
+    ],
+  },
 ];
+
+export function createSectionDraftsFromPreset(
+  preset: (typeof STARTER_BUNDLE_PRESETS)[number],
+  defaultScaleId?: string | null
+): BundleSectionDraft[] {
+  return preset.sections.map((section) => ({
+    key: nextLocalId("bundle-section"),
+    id: null,
+    label: section.label,
+    fields: section.fields.map((field) => ({
+      key: nextLocalId("bundle-field"),
+      id: null,
+      label: field.label,
+      type: field.type,
+      scaleTemplateId: field.type === "scale" ? (defaultScaleId ?? null) : null,
+      printable: field.printable,
+      source: field.source,
+      systemKey: field.systemKey ?? null,
+    })),
+  }));
+}
+
+export function createSectionDraftFromPreset(
+  preset: (typeof STARTER_BUNDLE_PRESETS)[number],
+  defaultScaleId?: string | null
+): BundleSectionDraft {
+  const sections = createSectionDraftsFromPreset(preset, defaultScaleId);
+  return sections[0] ?? createEmptySection(false);
+}
 
 export function createBundleDraftFromPreset(
   preset: (typeof STARTER_BUNDLE_PRESETS)[number],
@@ -236,21 +279,7 @@ export function createBundleDraftFromPreset(
     sourceUpdatedAt: null,
     name: preset.name,
     description: preset.description,
-    sections: preset.sections.map((section) => ({
-      key: nextLocalId("bundle-section"),
-      id: null,
-      label: section.label,
-      fields: section.fields.map((field) => ({
-        key: nextLocalId("bundle-field"),
-        id: null,
-        label: field.label,
-        type: field.type,
-        scaleTemplateId: field.type === "scale" ? (defaultScaleId ?? null) : null,
-        printable: field.printable,
-        source: field.source,
-        systemKey: field.systemKey ?? null,
-      })),
-    })),
+    sections: createSectionDraftsFromPreset(preset, defaultScaleId),
   };
 }
 
@@ -293,12 +322,12 @@ export function createEmptyField(type: FieldType = "text"): BundleFieldDraft {
   };
 }
 
-export function createEmptySection(): BundleSectionDraft {
+export function createEmptySection(withField = false): BundleSectionDraft {
   return {
     key: nextLocalId("bundle-section"),
     id: null,
     label: "",
-    fields: [createEmptyField()],
+    fields: withField ? [createEmptyField()] : [],
   };
 }
 
@@ -365,13 +394,13 @@ export function validateBundleDraft(
     seenSectionLabels.add(sectionKey);
 
     if (section.fields.length === 0) {
-      return `Add at least one field to \"${sectionLabel}\".`;
+      return `Add at least one field to "${sectionLabel}".`;
     }
 
     for (const field of section.fields) {
       const label = field.label.trim();
       if (!label) {
-        return `Each field in \"${sectionLabel}\" needs a label.`;
+        return `Each field in "${sectionLabel}" needs a label.`;
       }
       const key = label.toLowerCase();
       if (seenLabels.has(key)) {
@@ -381,10 +410,10 @@ export function validateBundleDraft(
 
       if (field.type === "scale") {
         if (!field.scaleTemplateId) {
-          return `Choose a reusable scale for \"${label}\".`;
+          return `Choose a reusable scale for "${label}".`;
         }
         if (!availableTemplateIds.has(field.scaleTemplateId)) {
-          return `The reusable scale for \"${label}\" is no longer available.`;
+          return `The reusable scale for "${label}" is no longer available.`;
         }
       }
 

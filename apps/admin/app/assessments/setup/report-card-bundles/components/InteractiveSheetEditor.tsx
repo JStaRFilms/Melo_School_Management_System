@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -10,19 +10,16 @@ import {
   GraduationCap,
   Sparkles,
   CheckCircle2,
-  Eye,
   Calendar,
   Clock,
   FileText,
-  Layers,
-  Settings2,
-  ShieldCheck
+  ShieldCheck,
 } from "lucide-react";
 import type {
   BundleDraft,
   BundleFieldDraft,
   BundleSectionDraft,
-  ScaleTemplateRecord
+  ScaleTemplateRecord,
 } from "../types";
 import {
   createEmptyField,
@@ -30,9 +27,10 @@ import {
   moveItem,
   STARTER_BUNDLE_PRESETS,
   createBundleDraftFromPreset,
-  getCanonicalFieldConfig,
+  createSectionDraftsFromPreset,
+  createSectionDraftFromPreset,
   systemAttendanceFieldOptions,
-  systemTermFieldOptions
+  systemTermFieldOptions,
 } from "../utils";
 
 interface InteractiveSheetEditorProps {
@@ -58,12 +56,95 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
     return map;
   }, [scaleTemplates]);
 
+  const isDraftHasContent = useMemo(() => {
+    if (draft.name.trim()) return true;
+    if (draft.sections.length > 1) return true;
+    const firstSection = draft.sections[0];
+    if (!firstSection) return false;
+    if (firstSection.label.trim()) return true;
+    if (firstSection.fields.length > 0 && firstSection.fields.some((f) => Boolean(f.label.trim()))) {
+      return true;
+    }
+    return false;
+  }, [draft]);
+
+  // Top bar preset loader:
+  // If the draft has content, append as a new section!
+  // If the draft is completely blank, initialize the draft.
   const handleLoadPreset = useCallback(
     (presetIndex: number) => {
       const preset = STARTER_BUNDLE_PRESETS[presetIndex];
       if (!preset) return;
       const defaultScale = scaleTemplates[0]?._id ?? null;
-      onChange(createBundleDraftFromPreset(preset, defaultScale));
+
+      onChange((current) => {
+        const hasContent =
+          Boolean(current.name.trim()) ||
+          current.sections.length > 1 ||
+          (current.sections[0] &&
+            (Boolean(current.sections[0].label.trim()) ||
+              current.sections[0].fields.some((f) => Boolean(f.label.trim()))));
+
+        if (!hasContent) {
+          return createBundleDraftFromPreset(preset, defaultScale);
+        }
+
+        const newSections = createSectionDraftsFromPreset(preset, defaultScale);
+        return {
+          ...current,
+          name: current.name.trim() ? current.name : preset.name,
+          sections: [...current.sections, ...newSections],
+        };
+      });
+    },
+    [onChange, scaleTemplates]
+  );
+
+  // Directly append a preset as a new section
+  const handleAddPresetSection = useCallback(
+    (presetIndex: number) => {
+      const preset = STARTER_BUNDLE_PRESETS[presetIndex];
+      if (!preset) return;
+      const defaultScale = scaleTemplates[0]?._id ?? null;
+      const newSections = createSectionDraftsFromPreset(preset, defaultScale);
+
+      onChange((current) => ({
+        ...current,
+        name: current.name.trim() ? current.name : preset.name,
+        sections: [...current.sections, ...newSections],
+      }));
+    },
+    [onChange, scaleTemplates]
+  );
+
+  // Add a blank section (waiting for user setup or manual additions)
+  const handleAddBlankSection = useCallback(() => {
+    onChange((current) => ({
+      ...current,
+      sections: [...current.sections, createEmptySection(false)],
+    }));
+  }, [onChange]);
+
+  // Apply a preset into a specific existing section
+  const handleApplyPresetToSection = useCallback(
+    (sectionIndex: number, presetIndex: number) => {
+      const preset = STARTER_BUNDLE_PRESETS[presetIndex];
+      if (!preset) return;
+      const defaultScale = scaleTemplates[0]?._id ?? null;
+      const newSectionData = createSectionDraftFromPreset(preset, defaultScale);
+
+      onChange((current) => ({
+        ...current,
+        name: current.name.trim() ? current.name : preset.name,
+        sections: current.sections.map((section, sIdx) => {
+          if (sIdx !== sectionIndex) return section;
+          return {
+            ...section,
+            label: newSectionData.label,
+            fields: newSectionData.fields,
+          };
+        }),
+      }));
     },
     [onChange, scaleTemplates]
   );
@@ -87,7 +168,11 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
   );
 
   const handleAddField = useCallback(
-    (sectionIndex: number, type: BundleFieldDraft["type"] = "scale", source: BundleFieldDraft["source"] = "teacher_manual") => {
+    (
+      sectionIndex: number,
+      type: BundleFieldDraft["type"] = "scale",
+      source: BundleFieldDraft["source"] = "teacher_manual"
+    ) => {
       onChange((current) => ({
         ...current,
         sections: current.sections.map((section, sIdx) => {
@@ -169,16 +254,16 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
       <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-              <Sparkles className="w-4 h-4 text-slate-600" />
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
+              <Sparkles className="w-4 h-4 text-indigo-600" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                   Starter Templates
                 </span>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-600">
-                  1-Click Load
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {isDraftHasContent ? "Append Section" : "1-Click Load"}
                 </span>
               </div>
               <p className="text-xs font-bold text-slate-800">
@@ -186,6 +271,11 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
               </p>
             </div>
           </div>
+          {isDraftHasContent && (
+            <p className="text-[11px] font-medium text-slate-400">
+              Clicking a preset adds it as a new section without replacing your existing work.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
@@ -194,10 +284,10 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
               key={preset.name}
               type="button"
               onClick={() => handleLoadPreset(idx)}
-              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 hover:border-slate-300 text-xs font-bold text-slate-800 transition-all shadow-2xs active:scale-95 flex items-center gap-2"
+              className="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-indigo-50/50 hover:border-indigo-200 hover:text-indigo-900 text-xs font-bold text-slate-800 transition-all shadow-2xs active:scale-95 flex items-center gap-2 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 text-slate-500" />
-              <span>{preset.name}</span>
+              <Plus className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{isDraftHasContent ? `+ Add ${preset.name}` : preset.name}</span>
             </button>
           ))}
         </div>
@@ -309,18 +399,49 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
               onAddField={(type, source) => handleAddField(sIdx, type, source)}
               onMoveField={(fIdx, dir) => handleMoveField(sIdx, fIdx, dir)}
               onDeleteField={(fIdx) => handleDeleteField(sIdx, fIdx)}
+              onApplyPreset={(presetIdx) => handleApplyPresetToSection(sIdx, presetIdx)}
             />
           ))}
 
-          {/* Add Section Button on Sheet */}
-          <button
-            type="button"
-            onClick={() => onChange((current) => ({ ...current, sections: [...current.sections, createEmptySection()] }))}
-            className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-200 hover:border-slate-400 bg-slate-50/50 hover:bg-slate-50 text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-all flex items-center justify-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Add Another Report Card Section
-          </button>
+          {/* Add Section Creator Box on Sheet */}
+          <div className="rounded-2xl border-2 border-dashed border-slate-200/90 bg-slate-50/40 p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Add Report Card Section
+                </span>
+                <p className="text-xs font-bold text-slate-800 mt-0.5">
+                  Expand this report card with additional domains or customized categories
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddBlankSection}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-2 shrink-0 self-start sm:self-auto active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Blank Section</span>
+              </button>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200/60 flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-indigo-500" />
+                Or insert preset:
+              </span>
+              {STARTER_BUNDLE_PRESETS.map((preset, idx) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => handleAddPresetSection(idx)}
+                  className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-900 text-xs font-bold text-slate-700 transition-all shadow-2xs flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>{preset.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Flow Navigation & Sheet Footer */}
@@ -329,7 +450,7 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
             <button
               type="button"
               onClick={onNavigateToScales}
-              className="text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors flex items-center gap-1.5"
+              className="text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               ← Step 1: Manage Rating Scales
             </button>
@@ -344,7 +465,7 @@ export const InteractiveSheetEditor = memo(function InteractiveSheetEditor({
             <button
               type="button"
               onClick={onProceedToDistribution}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-sm active:scale-95 flex items-center gap-2"
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-sm active:scale-95 flex items-center gap-2 cursor-pointer"
             >
               <span>Next: Assign to Classes</span>
               <span>→</span>
@@ -370,6 +491,7 @@ interface InteractiveSectionCardProps {
   onAddField: (type?: BundleFieldDraft["type"], source?: BundleFieldDraft["source"]) => void;
   onMoveField: (fieldIndex: number, direction: -1 | 1) => void;
   onDeleteField: (fieldIndex: number) => void;
+  onApplyPreset: (presetIndex: number) => void;
 }
 
 const InteractiveSectionCard = memo(function InteractiveSectionCard({
@@ -386,9 +508,26 @@ const InteractiveSectionCard = memo(function InteractiveSectionCard({
   onAddField,
   onMoveField,
   onDeleteField,
+  onApplyPreset,
 }: InteractiveSectionCardProps) {
+  const [isPresetMenuOpen, setIsPresetMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close preset dropdown on outside click
+  useEffect(() => {
+    if (!isPresetMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsPresetMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isPresetMenuOpen]);
+
   const scaleFields = section.fields.filter((f) => f.type === "scale");
   const otherFields = section.fields.filter((f) => f.type !== "scale");
+  const isSectionEmpty = section.fields.length === 0;
 
   const currentScaleId = scaleFields[0]?.scaleTemplateId ?? scaleTemplates[0]?._id ?? "";
   const activeScale = currentScaleId ? scaleMap[currentScaleId] : null;
@@ -401,9 +540,9 @@ const InteractiveSectionCard = memo(function InteractiveSectionCard({
   ];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm space-y-4 p-5 sm:p-6 transition-all hover:border-slate-300">
+    <div className="rounded-2xl border border-slate-200 bg-white overflow-visible shadow-sm space-y-4 p-5 sm:p-6 transition-all hover:border-slate-300">
       {/* Section Header with Editable Title and Ordering */}
-      <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <GripVertical className="w-4 h-4 text-slate-300 shrink-0" />
           <span className="text-xs font-black text-slate-400 uppercase tracking-wider shrink-0">
@@ -417,13 +556,54 @@ const InteractiveSectionCard = memo(function InteractiveSectionCard({
           />
         </div>
 
-        {/* Section Actions */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Section Actions: Presets Menu + Move + Delete */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Preset quick switcher / dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setIsPresetMenuOpen((prev) => !prev)}
+              className="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-700 text-slate-600 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Load a preset template into this section"
+            >
+              <Sparkles className="w-3 h-3 text-indigo-500" />
+              <span className="hidden sm:inline">Apply Preset</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {isPresetMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-64 rounded-xl bg-white border border-slate-200 shadow-xl py-1.5 z-30 space-y-0.5">
+                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Load Preset into Section #{sectionIndex + 1}
+                </div>
+                {STARTER_BUNDLE_PRESETS.map((preset, pIdx) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    onClick={() => {
+                      setIsPresetMenuOpen(false);
+                      onApplyPreset(pIdx);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="block truncate">{preset.name}</span>
+                      <span className="block text-[10px] font-normal text-slate-400 truncate">
+                        {preset.description}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             disabled={sectionIndex === 0}
             onClick={() => onMoveSection(-1)}
-            className="p-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-20 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-20 transition-colors cursor-pointer"
             title="Move section up"
           >
             <ChevronUp className="w-4 h-4" />
@@ -432,7 +612,7 @@ const InteractiveSectionCard = memo(function InteractiveSectionCard({
             type="button"
             disabled={sectionIndex === totalSections - 1}
             onClick={() => onMoveSection(1)}
-            className="p-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-20 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-900 disabled:opacity-20 transition-colors cursor-pointer"
             title="Move section down"
           >
             <ChevronDown className="w-4 h-4" />
@@ -441,7 +621,7 @@ const InteractiveSectionCard = memo(function InteractiveSectionCard({
             type="button"
             disabled={totalSections === 1}
             onClick={onDeleteSection}
-            className="p-1.5 text-slate-300 hover:text-rose-600 disabled:opacity-20 transition-colors ml-1"
+            className="p-1.5 text-slate-300 hover:text-rose-600 disabled:opacity-20 transition-colors ml-1 cursor-pointer"
             title="Delete section"
           >
             <Trash2 className="w-4 h-4" />
@@ -449,138 +629,217 @@ const InteractiveSectionCard = memo(function InteractiveSectionCard({
         </div>
       </div>
 
-      {/* RATING SCALE MATRIX TABLE (If section has scale fields or empty) */}
-      {(scaleFields.length > 0 || otherFields.length === 0) && (
-        <div className="space-y-3">
-          {/* Table Controls (Rating scale switcher) */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                Evaluation Scale:
-              </span>
-              <select
-                className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-slate-400"
-                onChange={(e) => onUpdateSectionScale(e.target.value)}
-                value={currentScaleId}
-              >
-                {scaleTemplates.map((template) => (
-                  <option key={template._id} value={template._id}>
-                    {template.name} ({template.options.length} levels)
-                  </option>
-                ))}
-              </select>
-            </div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              {scaleFields.length} {scaleFields.length === 1 ? "Trait" : "Traits"}
-            </span>
+      {/* SECTION CONTENT: Empty State Setup OR Active Fields Table */}
+      {isSectionEmpty ? (
+        <div className="rounded-xl border border-dashed border-indigo-200/90 bg-indigo-50/20 p-5 sm:p-6 text-center space-y-4">
+          <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center mx-auto shadow-2xs">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+              Section #{sectionIndex + 1} is Empty
+            </h4>
+            <p className="text-xs font-medium text-slate-500 max-w-md mx-auto">
+              Select a starter preset to populate this section with standard curriculum items, or add items manually.
+            </p>
           </div>
 
-          {/* Direct Interactive Table */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  <th className="p-3 text-left">Trait / Evaluation Item</th>
-                  {scaleOptions.map((opt, optIdx) => (
-                    <th key={opt.id ?? `opt-${optIdx}`} className="p-2 text-center w-12 sm:w-16" title={opt.label}>
-                      <span className="block font-black text-slate-800">{opt.shortLabel || opt.label}</span>
-                      <span className="text-[8px] font-semibold text-slate-400 hidden sm:block truncate">{opt.label}</span>
-                    </th>
-                  ))}
-                  <th className="p-3 text-right w-28">Options</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {section.fields
-                  .map((field, originalIdx) => ({ field, originalIdx }))
-                  .filter(({ field }) => field.type === "scale")
-                  .map(({ field, originalIdx }, rowIdx) => (
-                    <InteractiveTableRow
-                      key={field.key}
-                      field={field}
-                      fieldIndex={originalIdx}
-                      rowNumber={rowIdx + 1}
-                      scaleOptions={scaleOptions}
-                      onUpdate={(updated) => onUpdateField(originalIdx, updated)}
-                      onMove={(dir) => onMoveField(originalIdx, dir)}
-                      onDelete={() => onDeleteField(originalIdx)}
-                      canDelete={section.fields.length > 1}
-                    />
-                  ))}
-              </tbody>
-            </table>
+          {/* Preset Buttons */}
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            {STARTER_BUNDLE_PRESETS.map((preset, idx) => (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => onApplyPreset(idx)}
+                className="px-3.5 py-2 rounded-xl border border-indigo-200 bg-white hover:bg-indigo-600 hover:text-white hover:border-indigo-600 text-xs font-bold text-indigo-950 transition-all shadow-2xs flex items-center gap-2 group cursor-pointer active:scale-95"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:text-white" />
+                <span>{preset.name}</span>
+              </button>
+            ))}
+          </div>
 
-            {/* In-table "+ Add Trait" row */}
+          <div className="pt-2 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <span className="w-12 h-px bg-slate-200" />
+            <span>Or Start Manually</span>
+            <span className="w-12 h-px bg-slate-200" />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
               onClick={() => onAddField("scale", "teacher_manual")}
-              className="w-full py-2.5 px-4 bg-slate-50/50 hover:bg-slate-50 border-t border-slate-100 text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center justify-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Add Trait Row to Table
+              + Rating Trait Table
+            </button>
+            <button
+              type="button"
+              onClick={() => onAddField("text", "teacher_manual")}
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+            >
+              + Written Remark
+            </button>
+            <button
+              type="button"
+              onClick={() => onAddField("text", "system_term")}
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+            >
+              + Resumption Date
+            </button>
+            <button
+              type="button"
+              onClick={() => onAddField("number", "system_attendance")}
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+            >
+              + Attendance Summary
             </button>
           </div>
         </div>
-      )}
+      ) : (
+        <>
+          {/* RATING SCALE MATRIX TABLE (If section has scale fields) */}
+          {scaleFields.length > 0 && (
+            <div className="space-y-3">
+              {/* Table Controls (Rating scale switcher) */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Evaluation Scale:
+                  </span>
+                  <select
+                    className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-slate-400 cursor-pointer"
+                    onChange={(e) => onUpdateSectionScale(e.target.value)}
+                    value={currentScaleId}
+                  >
+                    {scaleTemplates.map((template) => (
+                      <option key={template._id} value={template._id}>
+                        {template.name} ({template.options.length} levels)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {scaleFields.length} {scaleFields.length === 1 ? "Trait" : "Traits"}
+                </span>
+              </div>
 
-      {/* OTHER FIELDS (Written Remarks & Attendance Metrics) */}
-      {otherFields.length > 0 && (
-        <div className="space-y-3 pt-2">
-          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-            Written Remarks & Metrics
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {section.fields
-              .map((field, originalIdx) => ({ field, originalIdx }))
-              .filter(({ field }) => field.type !== "scale")
-              .map(({ field, originalIdx }) => (
-                <InteractiveCardField
-                  key={field.key}
-                  field={field}
-                  fieldIndex={originalIdx}
-                  onUpdate={(updated) => onUpdateField(originalIdx, updated)}
-                  onMove={(direction) => onMoveField(originalIdx, direction)}
-                  onDelete={() => onDeleteField(originalIdx)}
-                />
-              ))}
-          </div>
-        </div>
-      )}
+              {/* Direct Interactive Table */}
+              <div className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      <th className="p-3 text-left">Trait / Evaluation Item</th>
+                      {scaleOptions.map((opt, optIdx) => (
+                        <th key={opt.id ?? `opt-${optIdx}`} className="p-2 text-center w-12 sm:w-16" title={opt.label}>
+                          <span className="block font-black text-slate-800">{opt.shortLabel || opt.label}</span>
+                          <span className="text-[8px] font-semibold text-slate-400 hidden sm:block truncate">{opt.label}</span>
+                        </th>
+                      ))}
+                      <th className="p-3 text-right w-28">Options</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {section.fields
+                      .map((field, originalIdx) => ({ field, originalIdx }))
+                      .filter(({ field }) => field.type === "scale")
+                      .map(({ field, originalIdx }, rowIdx) => (
+                        <InteractiveTableRow
+                          key={field.key}
+                          field={field}
+                          fieldIndex={originalIdx}
+                          rowNumber={rowIdx + 1}
+                          scaleOptions={scaleOptions}
+                          onUpdate={(updated) => onUpdateField(originalIdx, updated)}
+                          onMove={(dir) => onMoveField(originalIdx, dir)}
+                          onDelete={() => onDeleteField(originalIdx)}
+                          canDelete={section.fields.length > 1}
+                        />
+                      ))}
+                  </tbody>
+                </table>
 
-      {/* Section Quick Add Menu */}
-      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          + Add Section Item:
-        </span>
-        <button
-          type="button"
-          onClick={() => onAddField("scale", "teacher_manual")}
-          className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors"
-        >
-          + Rating Trait
-        </button>
-        <button
-          type="button"
-          onClick={() => onAddField("text", "teacher_manual")}
-          className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors"
-        >
-          + Written Remark
-        </button>
-        <button
-          type="button"
-          onClick={() => onAddField("text", "system_term")}
-          className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors"
-        >
-          + Resumption Date
-        </button>
-        <button
-          type="button"
-          onClick={() => onAddField("number", "system_attendance")}
-          className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors"
-        >
-          + Attendance Summary
-        </button>
-      </div>
+                {/* In-table "+ Add Trait" row */}
+                <button
+                  type="button"
+                  onClick={() => onAddField("scale", "teacher_manual")}
+                  className="w-full py-2.5 px-4 bg-slate-50/50 hover:bg-slate-50 border-t border-slate-100 text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Trait Row to Table
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* OTHER FIELDS (Written Remarks & Attendance Metrics) */}
+          {otherFields.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                Written Remarks & Metrics
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {section.fields
+                  .map((field, originalIdx) => ({ field, originalIdx }))
+                  .filter(({ field }) => field.type !== "scale")
+                  .map(({ field, originalIdx }) => (
+                    <InteractiveCardField
+                      key={field.key}
+                      field={field}
+                      fieldIndex={originalIdx}
+                      onUpdate={(updated) => onUpdateField(originalIdx, updated)}
+                      onMove={(direction) => onMoveField(originalIdx, direction)}
+                      onDelete={() => onDeleteField(originalIdx)}
+                    />
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section Quick Add Menu */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              + Add Section Item:
+            </span>
+            <button
+              type="button"
+              onClick={() => onAddField("scale", "teacher_manual")}
+              className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors cursor-pointer"
+            >
+              + Rating Trait
+            </button>
+            <button
+              type="button"
+              onClick={() => onAddField("text", "teacher_manual")}
+              className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors cursor-pointer"
+            >
+              + Written Remark
+            </button>
+            <button
+              type="button"
+              onClick={() => onAddField("text", "system_term")}
+              className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors cursor-pointer"
+            >
+              + Resumption Date
+            </button>
+            <button
+              type="button"
+              onClick={() => onAddField("number", "system_attendance")}
+              className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200 transition-colors cursor-pointer"
+            >
+              + Attendance Summary
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPresetMenuOpen((prev) => !prev)}
+              className="px-2.5 py-1 rounded-lg bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <Sparkles className="w-3 h-3 text-indigo-600" />
+              Load Preset...
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 });
@@ -643,7 +902,7 @@ const InteractiveTableRow = memo(function InteractiveTableRow({
           <button
             type="button"
             onClick={() => onMove(-1)}
-            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700 cursor-pointer"
             title="Move trait up"
           >
             <ChevronUp className="h-3.5 w-3.5" />
@@ -651,7 +910,7 @@ const InteractiveTableRow = memo(function InteractiveTableRow({
           <button
             type="button"
             onClick={() => onMove(1)}
-            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700 cursor-pointer"
             title="Move trait down"
           >
             <ChevronDown className="h-3.5 w-3.5" />
@@ -659,7 +918,7 @@ const InteractiveTableRow = memo(function InteractiveTableRow({
           <button
             type="button"
             onClick={() => onUpdate({ ...field, printable: !field.printable })}
-            className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-colors ${
+            className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-colors cursor-pointer ${
               field.printable
                 ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                 : "bg-amber-50 text-amber-700 hover:bg-amber-100"
@@ -672,7 +931,7 @@ const InteractiveTableRow = memo(function InteractiveTableRow({
             type="button"
             onClick={onDelete}
             disabled={!canDelete}
-            className="p-1 text-slate-300 hover:text-rose-600 disabled:opacity-20 transition-colors"
+            className="p-1 text-slate-300 hover:text-rose-600 disabled:opacity-20 transition-colors cursor-pointer"
             title="Delete trait"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -724,7 +983,7 @@ const InteractiveCardField = memo(function InteractiveCardField({
           <button
             type="button"
             onClick={() => onMove(-1)}
-            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700 cursor-pointer"
             title="Move field up"
           >
             <ChevronUp className="h-3.5 w-3.5" />
@@ -732,7 +991,7 @@ const InteractiveCardField = memo(function InteractiveCardField({
           <button
             type="button"
             onClick={() => onMove(1)}
-            className="p-1 text-slate-300 transition-colors hover:text-slate-700"
+            className="p-1 text-slate-300 transition-colors hover:text-slate-700 cursor-pointer"
             title="Move field down"
           >
             <ChevronDown className="h-3.5 w-3.5" />
@@ -740,7 +999,7 @@ const InteractiveCardField = memo(function InteractiveCardField({
           <button
             type="button"
             onClick={() => onUpdate({ ...field, printable: !field.printable })}
-            className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+            className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider cursor-pointer ${
               field.printable ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
             }`}
           >
@@ -749,7 +1008,7 @@ const InteractiveCardField = memo(function InteractiveCardField({
           <button
             type="button"
             onClick={onDelete}
-            className="p-1 text-slate-300 hover:text-rose-600 transition-colors"
+            className="p-1 text-slate-300 hover:text-rose-600 transition-colors cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -763,32 +1022,22 @@ const InteractiveCardField = memo(function InteractiveCardField({
         value={field.label}
       />
 
-      {(field.source === "system_term" || field.source === "system_attendance") && (
-        <select
-          className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none"
-          onChange={(e) => {
-            const nextKey = e.target.value as NonNullable<typeof field.systemKey>;
-            const canonical = getCanonicalFieldConfig(nextKey);
-            onUpdate({
-              ...field,
-              systemKey: nextKey,
-              label: canonical?.label ?? field.label,
-              type: canonical?.type ?? field.type,
-            });
-          }}
-          value={field.systemKey ?? ""}
-        >
-          {canonicalOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {field.type === "text" && field.source.includes("manual") && (
-        <div className="text-[11px] font-medium text-slate-400 bg-white p-2.5 rounded-lg border border-slate-100 italic">
-          “Teacher will type termly narrative remarks in this box for each student.”
+      {canonicalOptions.length > 0 && (
+        <div className="space-y-1">
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+            Map to system value:
+          </span>
+          <select
+            className="w-full h-7 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+            onChange={(e) => onUpdate({ ...field, systemKey: (e.target.value as any) || null })}
+            value={field.systemKey ?? ""}
+          >
+            {canonicalOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
       )}
     </div>
