@@ -11,6 +11,7 @@ import {
   restrictDirectCapability,
   setDelegationCeiling,
   CAPABILITY_CATALOG,
+  normalizeCapability,
   SENSITIVE_CAPABILITIES,
   FACTORY_ROLE_DEFINITIONS,
 } from "../rbac";
@@ -848,12 +849,14 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
       return { schoolId, adminMembershipId };
     });
 
-    // 3. Lockout prevention verification: Even BEFORE backfill runs, evaluator grants baseline capabilities
+    // 3. Until RBAC is explicitly managed, the founding legacy admin retains full branch authority.
     const preBackfillCaps = await t.run(async (ctx) => {
       return await evaluateEffectiveCapabilities(ctx, adminMembershipId);
     });
-    expect(preBackfillCaps).toContain("academic.curriculum.manage");
-    expect(preBackfillCaps).toContain("staff.onboard");
+    expect(preBackfillCaps).toEqual(
+      [...new Set(CAPABILITY_CATALOG.map(normalizeCapability))].sort(),
+    );
+    expect(preBackfillCaps).toContain("enrollment.admissions.override_number");
 
     // 4. Run backfill migration
     const backfillResult = await t.mutation(
@@ -874,12 +877,13 @@ describe("Task B-03 / M2: Capability RBAC and Append-Only Audit Kernel (H2/F1)",
     expect(assignments.length).toBe(1);
     expect(assignments[0].roleTemplateKey).toBe("principal");
 
-    // 6. Evaluator now returns principal capabilities via explicit assignment
+    // 6. The explicit Principal assignment activates managed RBAC and ends the fallback.
     const postBackfillCaps = await t.run(async (ctx) => {
       return await evaluateEffectiveCapabilities(ctx, adminMembershipId);
     });
     expect(postBackfillCaps).toContain("academic.curriculum.manage");
     expect(postBackfillCaps).toContain("staff.onboard");
     expect(postBackfillCaps).toContain("audit.branch.view");
+    expect(postBackfillCaps).not.toContain("enrollment.admissions.override_number");
   });
 });

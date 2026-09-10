@@ -371,7 +371,7 @@ export async function evaluateEffectiveCapabilities(
         effective.add(cap);
     }
   }
-  // Only untouched compatibility accounts retain the historical principal baseline.
+  // Untouched legacy school administrators retain their historical full branch authority.
   // A persisted management marker prevents clearing configuration from restoring it.
   if (ids.length === 0 && membership.legacyUserId &&
       membership.permissionsManagedAt === undefined && rows.roles.length === 0 &&
@@ -384,9 +384,7 @@ export async function evaluateEffectiveCapabilities(
       !user.isArchived &&
       (user.role === "admin" || user.isSchoolAdmin === true)
     ) {
-      for (const cap of canonicalCapabilities(
-        FACTORY_ROLE_DEFINITIONS.principal.capabilities,
-      ))
+      for (const cap of canonicalCapabilities([...CAPABILITY_CATALOG]))
         effective.add(cap);
     }
   }
@@ -412,7 +410,7 @@ export async function getContextCapabilities(
     return evaluateEffectiveCapabilities(ctx, context.membershipId);
   const legacy = context.userId ? await ctx.db.get(context.userId) : null;
   if (legacy && (legacy.role === "admin" || legacy.isSchoolAdmin === true))
-    return FACTORY_ROLE_DEFINITIONS.principal.capabilities;
+    return [...CAPABILITY_CATALOG];
   return [];
 }
 
