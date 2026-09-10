@@ -246,9 +246,32 @@ export const approveImportWorkspace = mutation({
           current.activeSessionId !== counterState.sessionId ||
           current.resetPeriod !== counterState.resetPeriod
         ) {
-          throw new ConvexError(
-            `Counter ${current.counterKey} changed during review; restart approval`,
-          );
+          await ctx.db.patch(workspace._id, {
+            status: "reviewing",
+            planningCursor: undefined,
+            planningProcessedRecords: undefined,
+            planningBaseSequence: undefined,
+            planningNextSequence: undefined,
+            planningPolicyVersion: undefined,
+            planningFormatVersion: undefined,
+            planningCounterKey: undefined,
+            planningCounterVersion: undefined,
+            planningCounters: undefined,
+            reviewedAt: undefined,
+            reviewedBy: undefined,
+            updatedAt: Date.now(),
+          });
+          return {
+            success: false,
+            done: false,
+            restartRequired: true,
+            processedRecords: 0,
+            totalRecords: workspace.totalRecords,
+            reviewPlanVersion: planVersion,
+            proposals: [],
+            skippedOccupiedNumbers,
+            message: `Counter ${current.counterKey} changed during review; reload recommendations and approve again`,
+          };
         }
         if (
           record.expectedNumberPolicyVersion !== counterState.policyVersion ||
