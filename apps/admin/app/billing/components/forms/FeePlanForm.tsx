@@ -103,7 +103,7 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
         { id: "fees", title: "Fees and schedule", isValid: feePlanValidation({ ...draft, name: "validation" }) === null },
       ]} draftStatus={draftStatus} lastSavedAt={draftLastSavedAt} saveStatusText={draftStatus ? undefined : "Draft recovery unavailable"} />
       {/* Scrollable Form Body */}
-      <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar pb-10">
         {/* Plan Name */}
         <div className="space-y-1">
           <label className={labelCx}>Plan Name *</label>
@@ -399,7 +399,7 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
       </div>
 
       {/* Solid Pinned Non-Scrolling Bottom Footer (Summary + Action Button) */}
-      <div className="shrink-0 bg-white border-t border-slate-200 p-4 sm:p-5 space-y-3 shadow-lg z-20">
+      <div className="shrink-0 bg-white border-t border-slate-200 p-3.5 sm:p-4 space-y-2.5 shadow-lg z-20">
         {/* Dynamic Real-Time Breakdown Card */}
         <div className="rounded-xl bg-slate-950 p-3.5 text-white shadow-xs space-y-1.5">
           <div className="flex items-center justify-between text-[11px]">

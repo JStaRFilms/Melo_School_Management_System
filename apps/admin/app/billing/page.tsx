@@ -516,7 +516,7 @@ export default function BillingPage() {
   if (!data) return <DashboardSkeleton />;
 
   return (
-    <main className="lg:h-[calc(100vh-56px)] lg:max-h-[calc(100dvh-56px)] lg:overflow-hidden bg-slate-50/50 flex flex-col">
+    <main className="h-full min-h-0 w-full overflow-hidden bg-slate-50/50 flex flex-col">
       {(sidebarVariant === "plan" || persistentFeePlanDraft.serverDraft || persistentFeePlanDraft.memoryDraft) && (
         <div className="shrink-0 p-2">
           <PersistentFormDraftControls
@@ -663,10 +663,10 @@ export default function BillingPage() {
         </section>
 
         {/* Management Sidebar (Desktop) */}
-        <aside className="hidden lg:block w-[400px] border-l border-slate-950/5 relative overflow-hidden bg-white/50 backdrop-blur-sm">
+        <aside className="hidden lg:block w-[400px] border-l border-slate-950/5 relative overflow-hidden bg-white/50 backdrop-blur-sm shrink-0">
           <div className="absolute inset-x-0 top-0 h-64 bg-slate-950/5 skew-y-12 -translate-y-32 pointer-events-none" />
-          <div className="relative z-10 h-full flex flex-col">
-            <div className="p-6 lg:p-7 border-b border-slate-950/5 space-y-3.5">
+          <div className="relative z-10 h-full flex flex-col min-h-0">
+            <div className="p-5 lg:p-6 border-b border-slate-950/5 space-y-3 shrink-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                   Financial Arsenal
