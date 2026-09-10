@@ -205,11 +205,21 @@ export function evaluateClash(
   }
 
   const confidence = Math.min(100, Math.round(score));
-  // Class and gender are contextual evidence, not identity evidence. Requiring
-  // a strong name match, or a phone match backed by a moderate name match,
-  // prevents classmates and weak household similarities from becoming candidates.
+  const relatedNamePart = (left?: string, right?: string) => {
+    const a = left?.trim().toLowerCase();
+    const b = right?.trim().toLowerCase();
+    if (!a || !b) return false;
+    return (
+      jaroWinkler(a, b) >= 0.82 ||
+      (Math.min(a.length, b.length) >= 4 &&
+        (a.includes(b) || b.includes(a)))
+    );
+  };
   const hasMeaningfulIdentityEvidence =
-    nameSim >= 0.8 || (hasPhoneMatch && nameSim >= 0.65);
+    (relatedNamePart(recordA.firstName, recordB.firstName) &&
+      relatedNamePart(recordA.lastName, recordB.lastName)) ||
+    (relatedNamePart(recordA.firstName, recordB.lastName) &&
+      relatedNamePart(recordA.lastName, recordB.firstName));
   const isHighConfidenceClash =
     hasMeaningfulIdentityEvidence && confidence >= 85;
   const isWarning = hasMeaningfulIdentityEvidence && confidence >= 50;

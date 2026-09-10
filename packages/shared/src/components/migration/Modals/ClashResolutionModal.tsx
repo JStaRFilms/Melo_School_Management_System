@@ -197,7 +197,7 @@ export function ClashResolutionModal({
                 <UserPlus className="h-4 w-4" />
               </div>
               <div>
-                <div className="text-xs font-bold text-slate-900 leading-tight">Continue as New Student</div>
+                <div className="text-xs font-bold text-slate-900 leading-tight">Create New Student Record</div>
                 <div className="text-[11px] text-slate-500">Keep this as a separate student, then review identity, class, family, and admission ID</div>
               </div>
             </button>

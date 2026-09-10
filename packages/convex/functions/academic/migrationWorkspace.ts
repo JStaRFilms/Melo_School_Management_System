@@ -200,6 +200,36 @@ export const getWorkspaceRecordsPage = query({
 });
 
 /** Bounded existing entities that a reviewer may select. Text labels are never commit instructions. */
+export const getMigrationPromptContext = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, args) => {
+    await assertMigrationAccess(ctx, args.schoolId);
+    const [school, legacyClasses, currentClasses, legacySubjects, currentSubjects, sessions] =
+      await Promise.all([
+        ctx.db.get(args.schoolId),
+        ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", undefined)).take(200),
+        ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", false)).take(200),
+        ctx.db.query("subjects").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", undefined)).take(200),
+        ctx.db.query("subjects").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", false)).take(200),
+        ctx.db.query("academicSessions").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(50),
+      ]);
+    if (!school) throw new ConvexError("School not found");
+    const classes = [...new Map([...legacyClasses, ...currentClasses].map((item) => [String(item._id), item])).values()];
+    const subjects = [...new Map([...legacySubjects, ...currentSubjects].map((item) => [String(item._id), item])).values()];
+    const sessionOptions = [];
+    for (const session of sessions) {
+      const terms = await ctx.db.query("academicTerms").withIndex("by_session", (q) => q.eq("sessionId", session._id)).take(20);
+      sessionOptions.push({ name: session.name, terms: terms.map((term) => term.name) });
+    }
+    return {
+      schoolName: school.name,
+      classes: classes.map((item) => ({ name: item.name, level: item.level })),
+      subjects: subjects.map((item) => item.name),
+      sessions: sessionOptions,
+    };
+  },
+});
+
 export const getWorkspaceReviewOptions = query({
   args: {
     schoolId: v.id("schools"),

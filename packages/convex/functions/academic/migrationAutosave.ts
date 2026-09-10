@@ -538,6 +538,61 @@ export async function validateReviewedRecord(
     );
 }
 
+/** Resolves class placement for selected pending roster rows in one private workspace operation. */
+export const assignStudentClassBatch = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    workspaceId: v.id("importWorkspaces"),
+    recordIds: v.array(v.id("stagedImportRecords")),
+    classId: v.id("classes"),
+  },
+  handler: async (ctx, args) => {
+    if (args.recordIds.length < 1 || args.recordIds.length > 100) {
+      throw new ConvexError("Select between 1 and 100 student rows");
+    }
+    const uniqueIds = [...new Set(args.recordIds.map(String))];
+    if (uniqueIds.length !== args.recordIds.length) {
+      throw new ConvexError("Selected rows must be unique");
+    }
+    const { workspace } = await getPrivateMigrationWorkspace(
+      ctx,
+      args.schoolId,
+      args.workspaceId,
+    );
+    assertEditable(workspace);
+    const selectedClass = await ctx.db.get(args.classId);
+    if (!selectedClass || selectedClass.schoolId !== args.schoolId) {
+      throw new ConvexError("Selected class is outside this school");
+    }
+    for (const recordId of args.recordIds) {
+      const record = await ctx.db.get(recordId);
+      if (
+        !record ||
+        record.schoolId !== args.schoolId ||
+        record.workspaceId !== args.workspaceId ||
+        record.entityType !== "student"
+      ) {
+        throw new ConvexError("Selected student row was not found");
+      }
+      if (record.reviewStatus === "approved" || record.isCommitted) {
+        throw new ConvexError(
+          `Row #${record.rowNumber} is already reviewed and cannot be reassigned in bulk`,
+        );
+      }
+      await ctx.db.patch(record._id, {
+        parsedData: {
+          ...record.parsedData,
+          className: selectedClass.name,
+          matchedClassId: selectedClass._id,
+        },
+        rowRevision: (record.rowRevision ?? 1) + 1,
+      });
+    }
+    await invalidateWorkspaceReview(ctx, workspace);
+    return { updated: args.recordIds.length };
+  },
+});
+
 /** Editing always invalidates prior review and immutable-plan approval. */
 export const patchStagedRecord = mutation({
   args: {

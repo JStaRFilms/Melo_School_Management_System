@@ -4,6 +4,23 @@ import { describe, expect, it, vi } from "vitest";
 import { ClashResolutionModal, type StagedRecordItem } from "../Modals/ClashResolutionModal";
 import { RosterReviewTab, type StagedStudentRow } from "../Tabs/RosterReviewTab";
 import { ImportRowReviewDialog, type ImportReviewOptions } from "../Modals/ImportRowReviewDialog";
+import { buildMigrationPrompt } from "../DataMigrationWorkbench";
+
+describe("buildMigrationPrompt", () => {
+  it("uses the live school catalogue and forbids invented records", () => {
+    const prompt = buildMigrationPrompt({
+      schoolName: "Greenwood Academy",
+      classes: [{ name: "JSS 1A", level: "JSS 1" }],
+      subjects: ["Mathematics"],
+      sessions: [{ name: "2026/2027", terms: ["First Term"] }],
+    });
+
+    expect(prompt).toContain("Do not generate sample or random data");
+    expect(prompt).toContain("JSS 1A (level: JSS 1)");
+    expect(prompt).toContain("Mathematics");
+    expect(prompt).toContain("2026/2027: First Term");
+  });
+});
 
 const importedRecord: StagedRecordItem = {
   _id: "imported",
@@ -111,6 +128,7 @@ describe("ClashResolutionModal", () => {
     const warningRecord: StagedStudentRow = {
       ...importedRecord,
       entityType: "student",
+      parsedData: { ...importedRecord.parsedData, matchedClassId: "class-1" },
       validationStatus: "warning",
       validationErrors: [],
       clashConfidence: undefined,
@@ -124,7 +142,7 @@ describe("ClashResolutionModal", () => {
       />,
     );
 
-    expect(html).toContain("Review needed");
+    expect(html).toContain("Invalid");
     expect(html).not.toContain("Possible duplicate (");
     expect(html).not.toContain("Clash (");
   });
@@ -133,6 +151,7 @@ describe("ClashResolutionModal", () => {
     const cleanRecord: StagedStudentRow = {
       ...importedRecord,
       entityType: "student",
+      parsedData: { ...importedRecord.parsedData, matchedClassId: "class-1" },
       validationStatus: "valid",
       validationErrors: [],
       clashConfidence: undefined,
@@ -144,13 +163,14 @@ describe("ClashResolutionModal", () => {
         onPatchField={async () => undefined}
         onOpenClashModal={vi.fn()}
         onReview={vi.fn()}
-        readyRowCount={1}
-        onReviewReadyRows={vi.fn()}
+        readyRecordIds={[cleanRecord._id]}
+        classes={[{ id: "class-1", name: "Secondary 3" }]}
+        onCreateRecords={vi.fn()}
       />,
     );
 
-    expect(html).toContain("Review 1 clean row");
-    expect(html).toContain("No detected issues");
+    expect(html).toContain("Select all filtered rows");
+    expect(html).toContain("Ready");
   });
 
   it("shows only known live-student details without copying the imported phone", () => {

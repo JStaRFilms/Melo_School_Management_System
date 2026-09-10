@@ -106,6 +106,28 @@ describe("deduplicationEngine", () => {
       expect(result.isWarning).toBe(false);
     });
 
+    it("does not treat a shared surname and similar class labels as a duplicate", () => {
+      const result = evaluateClash(
+        {
+          firstName: "Uche",
+          lastName: "Ogunleye",
+          className: "SSS 1A",
+          guardianPhone: "+2346001192019",
+          gender: "Female",
+        },
+        {
+          firstName: "Ebi",
+          lastName: "Ogunleye",
+          className: "JSS 1A",
+          guardianPhone: "+2346001142004",
+          gender: "Male",
+        },
+      );
+
+      expect(result.isClash).toBe(false);
+      expect(result.isWarning).toBe(false);
+    });
+
     it("does not treat a shared guardian phone without name evidence as a duplicate", () => {
       const result = evaluateClash(
         {

@@ -23,10 +23,12 @@ const createWorkspace = migrationWorkspace.createWorkspace as unknown as Mutatio
 const listWorkspaces = migrationWorkspace.listWorkspaces as unknown as QueryRef;
 const getWorkspaceRecords = migrationWorkspace.getWorkspaceRecords as unknown as QueryRef;
 const getWorkspaceFeatureSignals = migrationWorkspace.getWorkspaceFeatureSignals as unknown as QueryRef;
+const getMigrationPromptContext = migrationWorkspace.getMigrationPromptContext as unknown as QueryRef;
 const stageRecordsBatch = migrationIngest.stageRecordsBatch as unknown as MutationRef;
 const bulkResolveAdmissionNumbers = migrationAutosave.bulkResolveAdmissionNumbers as unknown as MutationRef;
 const resolveRecordClash = migrationAutosave.resolveRecordClash as unknown as MutationRef;
 const patchStagedRecord = migrationAutosave.patchStagedRecord as unknown as MutationRef;
+const assignStudentClassBatch = migrationAutosave.assignStudentClassBatch as unknown as MutationRef;
 const reviewStagedRecord = migrationAutosave.reviewStagedRecord as unknown as MutationRef;
 const cancelWorkspace = migrationWorkspace.cancelWorkspace as unknown as MutationRef;
 const deleteWorkspace = migrationWorkspace.deleteWorkspace as unknown as MutationRef;
@@ -106,7 +108,7 @@ async function setupTestFixture() {
 
 describe("Migration Lifecycle Engine", () => {
   it("keeps staging private from peer and platform admins and freezes committing rows", async () => {
-    const { t, schoolA } = await setupTestFixture();
+    const { t, schoolA, jss1Class } = await setupTestFixture();
     await t.run(async (ctx) => {
       await ctx.db.insert("users", {
         schoolId: schoolA,
@@ -136,11 +138,25 @@ describe("Migration Lifecycle Engine", () => {
     expect(records[0].rawPayload).toEqual({});
     const signals = await owner.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId });
     expect(signals[0]).not.toHaveProperty("sampleValue");
+    expect(await owner.query(getMigrationPromptContext, { schoolId: schoolA })).toMatchObject({
+      schoolName: "Greenwood Academy",
+      classes: [{ name: "JSS 1A", level: "JSS 1" }],
+    });
+    await owner.mutation(assignStudentClassBatch, {
+      schoolId: schoolA,
+      workspaceId,
+      recordIds: [records[0]._id],
+      classId: jss1Class,
+    });
+    expect(await t.run((ctx) => ctx.db.get(records[0]._id))).toMatchObject({
+      parsedData: { className: "JSS 1A", matchedClassId: jss1Class },
+    });
 
     const peer = t.withIdentity({ subject: "peer-admin", issuer: "https://legacy-auth.test" });
     expect(await peer.query(migrationWorkspace.listWorkspaces as unknown as QueryRef, { schoolId: schoolA })).toEqual([]);
     await expect(peer.query(migrationWorkspace.getWorkspaceSummary as unknown as QueryRef, { schoolId: schoolA, workspaceId })).rejects.toThrow("Workspace not found");
     await expect(peer.mutation(migrationAutosave.patchStagedRecord as unknown as MutationRef, { schoolId: schoolA, recordId: records[0]._id, parsedDataPatch: { firstName: "Changed" } })).rejects.toThrow("Workspace not found");
+    await expect(peer.mutation(assignStudentClassBatch, { schoolId: schoolA, workspaceId, recordIds: [records[0]._id], classId: jss1Class })).rejects.toThrow("Workspace not found");
     await expect(peer.mutation(commitImportWorkspace, { schoolId: schoolA, workspaceId })).rejects.toThrow("Workspace not found");
 
     const platform = t.withIdentity({ subject: "auth-super-admin", issuer: "https://legacy-auth.test" });

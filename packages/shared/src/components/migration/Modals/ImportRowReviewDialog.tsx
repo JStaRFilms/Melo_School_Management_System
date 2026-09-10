@@ -256,7 +256,7 @@ export function ImportRowReviewDialog({
               <option value="create_new">
                 {grade
                   ? "Add this assessment result"
-                  : "Enroll as a new student record"}
+                  : "Create a new student record"}
               </option>
               {!grade && (
                 <option value="merge_existing">
@@ -306,7 +306,7 @@ export function ImportRowReviewDialog({
               {supplied ? (
                 <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <p className="font-semibold text-amber-900">
-                    Preserve historical admission ID:{" "}
+                    Keep spreadsheet admission ID:{" "}
                     <span className="font-mono">
                       {record.parsedData.admissionNumber}
                     </span>
@@ -317,8 +317,7 @@ export function ImportRowReviewDialog({
                       checked={confirmed}
                       onChange={(event) => setConfirmed(event.target.checked)}
                     />
-                    I reviewed this exact historical identifier and its
-                    uniqueness.
+                    Confirm this admission ID belongs to this student. The system will still block duplicate IDs.
                   </label>
                   <label className="block">
                     Audit reason
@@ -329,35 +328,22 @@ export function ImportRowReviewDialog({
                       className="mt-1 block w-full rounded-lg border border-amber-300 bg-white p-2"
                     />
                   </label>
-                  <label className="flex gap-2">
-                    <input
-                      type="checkbox"
-                      checked={advance}
-                      onChange={(event) => setAdvance(event.target.checked)}
-                    />
-                    Explicitly advance the official next sequence
-                  </label>
-                  {advance && selectedNumbering.available && (
-                    <input
-                      aria-label="Official next sequence"
-                      type="number"
-                      min={selectedNumbering.nextSequence + 1}
-                      value={advanceTo}
-                      onChange={(event) => setAdvanceTo(event.target.value)}
-                      className="block w-full rounded-lg border border-amber-300 bg-white p-2"
-                    />
-                  )}
-                  {advance && !selectedNumbering.available && (
-                    <p role="alert" className="text-rose-800">
-                      Counter advancement unavailable:{" "}
-                      {selectedNumbering.reason}
+                  <details className="rounded-lg border border-amber-200 bg-white/60 p-3 text-sm text-amber-900">
+                    <summary className="cursor-pointer font-semibold">Advanced: update the school’s next generated number</summary>
+                    <p className="mt-2 text-xs leading-relaxed text-amber-800">
+                      This does not apply the numbering format to this row. It only moves the official counter forward so later automatically generated IDs do not reuse an earlier sequence.
                     </p>
-                  )}
-                  {!advance && (
-                    <p className="text-xs text-amber-800">
-                      Official counter remains unchanged.
-                    </p>
-                  )}
+                    <label className="mt-3 flex gap-2">
+                      <input type="checkbox" checked={advance} onChange={(event) => setAdvance(event.target.checked)} />
+                      Move the official counter forward
+                    </label>
+                    {advance && selectedNumbering.available && (
+                      <input aria-label="Official next sequence" type="number" min={selectedNumbering.nextSequence + 1} value={advanceTo} onChange={(event) => setAdvanceTo(event.target.value)} className="mt-2 block w-full rounded-lg border border-amber-300 bg-white p-2" />
+                    )}
+                    {advance && !selectedNumbering.available && (
+                      <p role="alert" className="mt-2 text-rose-800">Counter update unavailable: {selectedNumbering.reason}</p>
+                    )}
+                  </details>
                 </div>
               ) : selectedNumbering.available ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">

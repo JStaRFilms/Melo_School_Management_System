@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   Loader2,
   Trash2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { WorkspaceUploadCard } from "./WorkspaceUploadCard";
 import { RosterReviewTab, StagedStudentRow } from "./Tabs/RosterReviewTab";
@@ -25,6 +27,20 @@ import { ColumnMappingDialog } from "./Modals/ColumnMappingDialog";
 import { StagingActionBar } from "./StagingActionBar";
 import { appToast, getErrorMessage } from "../../toast";
 import { type SpreadsheetParseResult } from "../../migration";
+
+interface MigrationPromptContext {
+  schoolName: string;
+  classes: Array<{ name: string; level: string }>;
+  subjects: string[];
+  sessions: Array<{ name: string; terms: string[] }>;
+}
+
+export function buildMigrationPrompt(context: MigrationPromptContext): string {
+  const classList = context.classes.map((item) => `- ${item.name} (level: ${item.level})`).join("\n") || "- No classes configured";
+  const subjectList = context.subjects.map((item) => `- ${item}`).join("\n") || "- No subjects configured";
+  const sessionList = context.sessions.map((item) => `- ${item.name}: ${item.terms.join(", ") || "no terms"}`).join("\n") || "- No sessions configured";
+  return `You are preparing existing school documents for import into ${context.schoolName}. Do not generate sample or random data. Use only facts present in the documents I upload or paste after this prompt. Never guess a missing student, identifier, class, subject, score, date, or contact detail. Leave unknown values blank and describe any uncertainty in Migration Note.\n\nCreate separate UTF-8 CSV outputs for student rosters and academic results when both are present. Return each CSV in its own fenced csv block with one header row and one record per row. Preserve admission IDs exactly, including leading zeroes. Use YYYY-MM-DD dates and plain text phone numbers. Do not merge people merely because they share a surname, class, address, or guardian.\n\nSTUDENT ROSTER HEADERS\nFirst Name,Middle Name,Last Name,Class,Admission ID,Gender,Date of Birth,Guardian Name,Guardian Phone,Guardian Email,Address,Migration Note\n\nRESULT HEADERS\nFirst Name,Last Name,Admission ID,Class,Subject,CA1,CA2,Exam,Session,Term,Migration Note\n\nUse class, subject, session, and term spellings exactly as listed below. If a source value cannot be matched confidently, leave the target cell blank and put the original value in Migration Note.\n\nCLASSES\n${classList}\n\nSUBJECTS\n${subjectList}\n\nSESSIONS AND TERMS\n${sessionList}\n\nBefore producing CSV, briefly list any source pages or fields you could not interpret. Do not invent replacements.`;
+}
 
 export interface DataMigrationWorkbenchProps {
   schoolId: string;
@@ -53,6 +69,7 @@ export function DataMigrationWorkbench({
   const [isResolvingClash, setIsResolvingClash] = useState(false);
   const [isReviewingReadyRows, setIsReviewingReadyRows] = useState(false);
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null);
+  const [promptCopied, setPromptCopied] = useState(false);
 
   // Queries
   const workspaces = useQuery(
@@ -88,6 +105,11 @@ export function DataMigrationWorkbench({
     activeWorkspaceId ? ({ schoolId, workspaceId: activeWorkspaceId } as never) : ("skip" as never)
   ) as ImportReviewOptions | undefined;
 
+  const promptContext = useQuery(
+    "functions/academic/migrationWorkspace:getMigrationPromptContext" as never,
+    { schoolId } as never,
+  ) as MigrationPromptContext | undefined;
+
   const featureSignals = useQuery(
     "functions/academic/migrationWorkspace:getWorkspaceFeatureSignals" as never,
     { schoolId, workspaceId: activeWorkspaceId ?? undefined } as never
@@ -100,11 +122,37 @@ export function DataMigrationWorkbench({
   const patchStagedRecord = useMutation("functions/academic/migrationAutosave:patchStagedRecord" as never);
   const resolveRecordClash = useMutation("functions/academic/migrationAutosave:resolveRecordClash" as never);
   const reviewStagedRecord = useMutation("functions/academic/migrationAutosave:reviewStagedRecord" as never);
+  const assignStudentClassBatch = useMutation("functions/academic/migrationAutosave:assignStudentClassBatch" as never);
   const approveImportWorkspace = useMutation("functions/academic/migrationMerge:approveImportWorkspace" as never);
   const reopenIncompleteImportReview = useMutation("functions/academic/migrationMerge:reopenIncompleteImportReview" as never);
   const commitImportWorkspace = useMutation("functions/academic/migrationMerge:commitImportWorkspace" as never);
 
   // Handlers
+  const handleCopyAiPrompt = async () => {
+    if (!promptContext) return;
+    const prompt = buildMigrationPrompt(promptContext);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(prompt);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = prompt;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("Clipboard unavailable");
+      }
+      setPromptCopied(true);
+      window.setTimeout(() => setPromptCopied(false), 2000);
+      appToast.success("AI formatting prompt copied");
+    } catch {
+      appToast.error("Could not copy the AI formatting prompt");
+    }
+  };
+
   const handleStartIngest = async ({
     workspaceName,
     parseResult,
@@ -225,11 +273,15 @@ export function DataMigrationWorkbench({
     }
   };
 
-  const readyStudentRows = stagedRecords.filter((record) => {
+  const createEligibleStudentRows = stagedRecords.filter((record) => {
+    const hasDuplicateCandidate =
+      record.validationStatus === "warning" &&
+      record.clashConfidence !== undefined &&
+      Boolean(record.clashCandidateId || record.existingStudentId);
     if (
       record.entityType !== "student" ||
       record.reviewStatus === "approved" ||
-      record.validationStatus !== "valid" ||
+      (record.validationStatus !== "valid" && !hasDuplicateCandidate) ||
       !record.parsedData.matchedClassId
     ) {
       return false;
@@ -243,17 +295,29 @@ export function DataMigrationWorkbench({
       ?.numbering.available ?? reviewOptions?.numbering.available ?? false;
   });
 
-  const handleReviewReadyRows = async () => {
-    if (!reviewOptions || readyStudentRows.length === 0) return;
-    const suppliedCount = readyStudentRows.filter((record) =>
+  const readyStudentRows = createEligibleStudentRows.filter(
+    (record) => record.validationStatus === "valid",
+  );
+
+  const handleCreateRecords = async (recordIds: string[]) => {
+    if (!reviewOptions) return;
+    const selectedRows = createEligibleStudentRows.filter((record) => recordIds.includes(record._id));
+    if (selectedRows.length !== recordIds.length) {
+      appToast.error("Resolve class placement or invalid data before creating the selected records");
+      return;
+    }
+    const suppliedCount = selectedRows.filter((record) =>
       record.parsedData.admissionNumber?.trim(),
     ).length;
+    const duplicateCount = selectedRows.filter(
+      (record) => record.validationStatus === "warning",
+    ).length;
     if (!window.confirm(
-      `Review ${readyStudentRows.length} clean student rows as new enrollments? ${suppliedCount} supplied admission IDs will be preserved after backend uniqueness checks. Nothing is committed yet.`,
+      `Create ${selectedRows.length} separate student records in the import plan? ${suppliedCount} supplied admission IDs will be kept after backend uniqueness checks.${duplicateCount ? ` You are explicitly rejecting ${duplicateCount} possible-duplicate suggestions.` : ""} Nothing is committed yet.`,
     )) return;
     setIsReviewingReadyRows(true);
     try {
-      for (const record of readyStudentRows) {
+      for (const record of selectedRows) {
         const classOption = reviewOptions.classes.find(
           (item) => item.id === record.parsedData.matchedClassId,
         );
@@ -287,9 +351,42 @@ export function DataMigrationWorkbench({
             !supplied && numbering.available ? numbering.resetPeriod : undefined,
         } as never);
       }
-      appToast.success(`Reviewed ${readyStudentRows.length} clean student rows`);
+      appToast.success(`Added ${selectedRows.length} new student records to the import plan`);
     } catch (error) {
       appToast.error(getErrorMessage(error, "Bulk row review stopped; completed decisions remain saved"));
+    } finally {
+      setIsReviewingReadyRows(false);
+    }
+  };
+
+  const handleAssignClass = async (recordIds: string[], classId: string) => {
+    if (!activeWorkspaceId) return;
+    setIsReviewingReadyRows(true);
+    try {
+      await assignStudentClassBatch({ schoolId, workspaceId: activeWorkspaceId, recordIds, classId } as never);
+      appToast.success(`Assigned ${recordIds.length} rows to the selected class`);
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Could not assign the selected class"));
+    } finally {
+      setIsReviewingReadyRows(false);
+    }
+  };
+
+  const handleSkipRecords = async (recordIds: string[]) => {
+    if (!window.confirm(`Skip ${recordIds.length} selected spreadsheet rows? They will not create records when committed.`)) return;
+    setIsReviewingReadyRows(true);
+    try {
+      for (const record of stagedRecords.filter((item) => recordIds.includes(item._id))) {
+        await reviewStagedRecord({
+          schoolId,
+          recordId: record._id,
+          expectedRowRevision: record.rowRevision ?? 1,
+          resolutionAction: "ignore",
+        } as never);
+      }
+      appToast.success(`Skipped ${recordIds.length} rows`);
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Bulk skip stopped; completed decisions remain saved"));
     } finally {
       setIsReviewingReadyRows(false);
     }
@@ -417,6 +514,16 @@ export function DataMigrationWorkbench({
           </div>
 
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              disabled={!promptContext}
+              onClick={handleCopyAiPrompt}
+              title="Copy a prompt that tells an AI how to format your existing documents for this school"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50 disabled:opacity-50"
+            >
+              {promptCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              <span>{promptCopied ? "Prompt copied" : "Copy AI prompt"}</span>
+            </button>
             {featureSignals && featureSignals.length > 0 && (
               <button
                 type="button"
@@ -601,9 +708,13 @@ export function DataMigrationWorkbench({
                   onPatchField={handlePatchField}
                   onOpenClashModal={(rec) => setClashModalRecord(rec)}
                   onReview={setReviewRecord}
-                  readyRowCount={readyStudentRows.length}
-                  isReviewingReadyRows={isReviewingReadyRows}
-                  onReviewReadyRows={handleReviewReadyRows}
+                  readyRecordIds={readyStudentRows.map((record) => record._id)}
+                  createRecordIds={createEligibleStudentRows.map((record) => record._id)}
+                  classes={reviewOptions?.classes ?? []}
+                  isApplyingBulkAction={isReviewingReadyRows}
+                  onAssignClass={handleAssignClass}
+                  onCreateRecords={handleCreateRecords}
+                  onSkipRecords={handleSkipRecords}
                 />
               )}
 
