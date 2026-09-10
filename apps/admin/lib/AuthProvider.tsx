@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 import type { BranchSummary } from "@school/shared";
@@ -95,7 +95,27 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+interface ConvexAuthState {
+  isLoading: boolean;
+  isAuthenticated: boolean;
+}
+
+const UNCONFIGURED_CONVEX_AUTH: ConvexAuthState = {
+  isLoading: false,
+  isAuthenticated: false,
+};
+
+interface AuthProviderInternalProps {
+  children: ReactNode;
+  convexAuth: ConvexAuthState;
+  isConfigured: boolean;
+}
+
+function AuthProviderInternal({
+  children,
+  convexAuth,
+  isConfigured,
+}: AuthProviderInternalProps) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
   const [selectionAccountId, setSelectionAccountId] = useState<string | null>(null);
@@ -128,24 +148,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accountId]);
 
   const selectionReady = Boolean(accountId && selectionAccountId === accountId);
+
+  // Requirement 1: Gate both viewerAccessQuery and userBranchesQuery on:
+  // - Better Auth session available
+  // - account selection hydrated
+  // - Convex auth no longer loading
+  // - Convex isAuthenticated === true
+  const canQueryConvex =
+    isConfigured &&
+    Boolean(session?.user) &&
+    selectionReady &&
+    !convexAuth.isLoading &&
+    convexAuth.isAuthenticated;
+
   const resolvedWorkspaceAccess = useQuery(
     viewerAccessQuery,
-    isConvexConfigured() && session?.user && selectionReady
-      ? selectedSchoolId ? { schoolId: selectedSchoolId as Id<"schools"> } : {}
+    canQueryConvex
+      ? selectedSchoolId
+        ? { schoolId: selectedSchoolId as Id<"schools"> }
+        : {}
       : "skip",
   );
   const availableBranches = useQuery(
     userBranchesQuery,
-    isConvexConfigured() && session?.user && selectionReady ? {} : "skip",
+    canQueryConvex ? {} : "skip",
   );
-  const selectedIsValidated = !selectedSchoolId || availableBranches === undefined ||
+
+  const selectedIsValidated =
+    !selectedSchoolId ||
+    availableBranches === undefined ||
     availableBranches.some((branch) => branch.schoolId === selectedSchoolId);
-  const resolvedMatchesSelection = !selectedSchoolId || resolvedWorkspaceAccess?.state !== "ready" ||
+  const resolvedMatchesSelection =
+    !selectedSchoolId ||
+    resolvedWorkspaceAccess?.state !== "ready" ||
     resolvedWorkspaceAccess.branch.schoolId === selectedSchoolId;
-  const workspaceAccess = useMemo<WorkspaceAccessSummary | undefined>(() => !selectedIsValidated
-    ? { state: "reconciliation_required", message: "The saved branch is no longer an active membership. No branch data was opened. Return to your default branch or ask an administrator to review access." }
-    : resolvedMatchesSelection ? resolvedWorkspaceAccess : undefined,
-  [resolvedMatchesSelection, resolvedWorkspaceAccess, selectedIsValidated]);
+  const workspaceAccess = useMemo<WorkspaceAccessSummary | undefined>(() => {
+    if (!canQueryConvex) return undefined;
+    if (!selectedIsValidated) {
+      return {
+        state: "reconciliation_required",
+        message:
+          "The saved branch is no longer an active membership. No branch data was opened. Return to your default branch or ask an administrator to review access.",
+      };
+    }
+    return resolvedMatchesSelection ? resolvedWorkspaceAccess : undefined;
+  }, [canQueryConvex, resolvedMatchesSelection, resolvedWorkspaceAccess, selectedIsValidated]);
 
   useEffect(() => {
     if (!accountId || !selectedSchoolId || availableBranches === undefined || selectedIsValidated) return;
@@ -156,18 +203,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [accountId, availableBranches, selectedIsValidated, selectedSchoolId]);
 
-  const selectSchool = useCallback((schoolId: string) => {
-    if (!accountId || !availableBranches?.some((branch) => branch.schoolId === schoolId)) {
-      throw new Error("Target branch is not in the server-validated branch directory.");
-    }
-    const defaultSchoolId = resolvedWorkspaceAccess?.state === "ready"
-      ? resolvedWorkspaceAccess.compatibility.legacyDefaultSchoolId
-      : null;
-    const persisted = schoolId === defaultSchoolId ? null : schoolId;
-    if (persisted) window.localStorage.setItem(selectedSchoolKey(accountId), persisted);
-    else window.localStorage.removeItem(selectedSchoolKey(accountId));
-    setSelectedSchoolId(persisted);
-  }, [accountId, availableBranches, resolvedWorkspaceAccess]);
+  const selectSchool = useCallback(
+    (schoolId: string) => {
+      if (!accountId || !availableBranches?.some((branch) => branch.schoolId === schoolId)) {
+        throw new Error("Target branch is not in the server-validated branch directory.");
+      }
+      const defaultSchoolId =
+        resolvedWorkspaceAccess?.state === "ready"
+          ? resolvedWorkspaceAccess.compatibility.legacyDefaultSchoolId
+          : null;
+      const persisted = schoolId === defaultSchoolId ? null : schoolId;
+      if (persisted) window.localStorage.setItem(selectedSchoolKey(accountId), persisted);
+      else window.localStorage.removeItem(selectedSchoolKey(accountId));
+      setSelectedSchoolId(persisted);
+    },
+    [accountId, availableBranches, resolvedWorkspaceAccess]
+  );
 
   const clearSelectedSchool = useCallback(() => {
     if (accountId) {
@@ -179,14 +230,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setSelectedSchoolId(null);
   }, [accountId]);
-  const mappedSession = useMemo(
-    () => mapSession(session, workspaceAccess?.state === "ready" &&
-      workspaceAccess.compatibility.legacyDefaultSchoolId === workspaceAccess.branch.schoolId ? {
-      role: workspaceAccess.compatibility.legacyRole ?? undefined,
-      schoolId: workspaceAccess.branch.schoolId,
-    } : null),
-    [session, workspaceAccess]
-  );
+
+  const isConvexAuthPending =
+    isConfigured && Boolean(session?.user) && convexAuth.isLoading;
+  const isConvexUnauthenticated =
+    isConfigured &&
+    Boolean(session?.user) &&
+    !convexAuth.isLoading &&
+    !convexAuth.isAuthenticated;
+
+  const mappedSession = useMemo(() => {
+    if (isConvexUnauthenticated || isConvexAuthPending) {
+      return null;
+    }
+    return mapSession(
+      session,
+      workspaceAccess?.state === "ready" &&
+        workspaceAccess.compatibility.legacyDefaultSchoolId ===
+          workspaceAccess.branch.schoolId
+        ? {
+            role: workspaceAccess.compatibility.legacyRole ?? undefined,
+            schoolId: workspaceAccess.branch.schoolId,
+          }
+        : null
+    );
+  }, [isConvexAuthPending, isConvexUnauthenticated, session, workspaceAccess]);
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<SignInResult> => {
@@ -242,10 +310,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  // Requirement 3: While Convex authentication is loading, expose isLoading: true.
+  // Requirement 4: If Better Auth has a session but Convex finishes unauthenticated:
+  // - do not remain in an infinite loading state.
+  const isConvexAuthLoading =
+    isConfigured && Boolean(session?.user) && convexAuth.isLoading;
+
+  const isWaitingForConvexData =
+    isConfigured &&
+    Boolean(session?.user) &&
+    !convexAuth.isLoading &&
+    convexAuth.isAuthenticated &&
+    (!selectionReady ||
+      workspaceAccess === undefined ||
+      (Boolean(selectedSchoolId) && availableBranches === undefined));
+
   const isLoading =
-    isPending ||
-    (isConvexConfigured() && Boolean(session?.user) &&
-      (!selectionReady || workspaceAccess === undefined || (Boolean(selectedSchoolId) && availableBranches === undefined)));
+    isPending || isConvexAuthLoading || isWaitingForConvexData;
 
   const value: AuthContextValue = {
     session: mappedSession,
@@ -262,6 +343,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function ConfiguredAuthProvider({ children }: { children: ReactNode }) {
+  const convexAuth = useConvexAuth();
+  return (
+    <AuthProviderInternal convexAuth={convexAuth} isConfigured={true}>
+      {children}
+    </AuthProviderInternal>
+  );
+}
+
+function UnconfiguredAuthProvider({ children }: { children: ReactNode }) {
+  return (
+    <AuthProviderInternal
+      convexAuth={UNCONFIGURED_CONVEX_AUTH}
+      isConfigured={false}
+    >
+      {children}
+    </AuthProviderInternal>
+  );
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  if (isConvexConfigured()) {
+    return <ConfiguredAuthProvider>{children}</ConfiguredAuthProvider>;
+  }
+
+  return <UnconfiguredAuthProvider>{children}</UnconfiguredAuthProvider>;
 }
 
 export function useAuth() {
