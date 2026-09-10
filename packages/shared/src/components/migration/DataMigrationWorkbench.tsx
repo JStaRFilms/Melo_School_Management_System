@@ -554,14 +554,18 @@ export function DataMigrationWorkbench({
     setIsApproving(true);
     try {
       let done = false;
+      let skippedOccupiedNumbers = 0;
       while (!done) {
         const result = await approveImportWorkspace({ schoolId, workspaceId: activeWorkspaceId } as never) as {
-          done: boolean; processedRecords: number; totalRecords: number;
+          done: boolean; processedRecords: number; totalRecords: number; skippedOccupiedNumbers?: number;
         };
         setCommitProgress({ processed: result.processedRecords, total: result.totalRecords });
+        skippedOccupiedNumbers += result.skippedOccupiedNumbers ?? 0;
         done = result.done;
       }
-      appToast.success("Reviewed import plan approved. Commit will revalidate every row.");
+      appToast.success(skippedOccupiedNumbers
+        ? `Import plan approved. Skipped ${skippedOccupiedNumbers} previously used admission ${skippedOccupiedNumbers === 1 ? "ID" : "IDs"}.`
+        : "Reviewed import plan approved. Commit will revalidate every row.");
     } catch (error) {
       appToast.error(getErrorMessage(error, "Plan approval failed"));
     } finally {

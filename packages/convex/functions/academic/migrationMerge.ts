@@ -154,8 +154,28 @@ export const approveImportWorkspace = mutation({
       ? []
       : [...(workspace.planningCounters ?? (legacyPlanningCounter ? [legacyPlanningCounter] : []))];
     const proposals: Array<{ rowNumber: number; admissionNumber: string }> = [];
+    const reviewedRows = await ctx.db
+      .query("stagedImportRecords")
+      .withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId))
+      .take(1000);
+    const reservedPlanNumbers = new Set(
+      reviewedRows.flatMap((record) => {
+        if (
+          record.reviewStatus !== "approved" ||
+          record.resolutionAction !== "create_new" ||
+          record.entityType !== "student"
+        ) return [];
+        if (record.admissionNumberMode === "supplied") {
+          const supplied = record.parsedData.admissionNumber?.trim();
+          return supplied ? [supplied] : [];
+        }
+        return record.approvedPlanVersion === planVersion && record.proposedAdmissionNumber
+          ? [record.proposedAdmissionNumber]
+          : [];
+      }),
+    );
+    let skippedOccupiedNumbers = 0;
     if (starting) {
-      const reviewedRows = await ctx.db.query("stagedImportRecords").withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId)).take(1000);
       for (const record of reviewedRows) {
         if (record.advanceCounterTo === undefined || !record.selectedClassId) continue;
         const selectedClass = await ctx.db.get(record.selectedClassId);
@@ -243,42 +263,49 @@ export const approveImportWorkspace = mutation({
           );
         }
         if (record.admissionNumberMode === "official_generated") {
-          const proposalNumber = await proposeAdmissionNumberAtSequenceHelper(
-            ctx,
-            {
-              schoolId: args.schoolId,
-              level: selectedClass.level,
-              sequence: counterState.nextSequence,
-              expectedVersion: counterState.policyVersion,
-              expectedFormatVersion: counterState.formatVersion,
-              expectedCounterKey: counterState.key,
-              expectedCounterVersion: counterState.counterVersion,
-              expectedSessionId: counterState.sessionId,
-              expectedResetPeriod: counterState.resetPeriod,
-            },
-          );
-          proposedAdmissionNumber = proposalNumber;
-          const [existing, claim] = await Promise.all([
-            ctx.db
-              .query("students")
-              .withIndex("by_school_and_admission_number", (q) =>
-                q
-                  .eq("schoolId", args.schoolId)
-                  .eq("admissionNumber", proposalNumber),
-              )
-              .first(),
-            ctx.db
-              .query("admissionNumberClaims")
-              .withIndex("by_school_number", (q) =>
-                q.eq("schoolId", args.schoolId).eq("number", proposalNumber),
-              )
-              .unique(),
-          ]);
-          if (existing || claim)
-            throw new ConvexError(
-              `Official proposal for row #${record.rowNumber} is already assigned or claimed`,
+          for (let attempts = 0; attempts < 1_000; attempts += 1) {
+            const proposalNumber = await proposeAdmissionNumberAtSequenceHelper(
+              ctx,
+              {
+                schoolId: args.schoolId,
+                level: selectedClass.level,
+                sequence: counterState.nextSequence,
+                expectedVersion: counterState.policyVersion,
+                expectedFormatVersion: counterState.formatVersion,
+                expectedCounterKey: counterState.key,
+                expectedCounterVersion: counterState.counterVersion,
+                expectedSessionId: counterState.sessionId,
+                expectedResetPeriod: counterState.resetPeriod,
+              },
             );
-          counterState.nextSequence += 1;
+            const [existing, claim] = await Promise.all([
+              ctx.db
+                .query("students")
+                .withIndex("by_school_and_admission_number", (q) =>
+                  q.eq("schoolId", args.schoolId).eq("admissionNumber", proposalNumber),
+                )
+                .first(),
+              ctx.db
+                .query("admissionNumberClaims")
+                .withIndex("by_school_number", (q) =>
+                  q.eq("schoolId", args.schoolId).eq("number", proposalNumber),
+                )
+                .unique(),
+            ]);
+            counterState.nextSequence += 1;
+            if (existing || claim || reservedPlanNumbers.has(proposalNumber)) {
+              skippedOccupiedNumbers += 1;
+              continue;
+            }
+            proposedAdmissionNumber = proposalNumber;
+            reservedPlanNumbers.add(proposalNumber);
+            break;
+          }
+          if (!proposedAdmissionNumber) {
+            throw new ConvexError(
+              `No available official admission ID was found for row #${record.rowNumber} within 1,000 sequences`,
+            );
+          }
           proposals.push({
             rowNumber: record.rowNumber,
             admissionNumber: proposedAdmissionNumber,
@@ -328,6 +355,7 @@ export const approveImportWorkspace = mutation({
         totalRecords: workspace.totalRecords,
         reviewPlanVersion: planVersion,
         proposals,
+        skippedOccupiedNumbers,
       };
     }
 
@@ -373,6 +401,7 @@ export const approveImportWorkspace = mutation({
       reviewPlanVersion: planVersion,
       approvalReceiptId: approvalReceipt.eventId,
       proposals,
+      skippedOccupiedNumbers,
     };
   },
 });

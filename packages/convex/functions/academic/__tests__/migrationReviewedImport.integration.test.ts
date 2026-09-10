@@ -525,6 +525,13 @@ describe("R1 reviewed import remediation", () => {
         },
       );
     }
+    await f.t.run((ctx) =>
+      ctx.db.insert("admissionNumberClaims", {
+        schoolId: f.schoolId,
+        number: "SCH/2026/0011",
+        createdAt: Date.now(),
+      }),
+    );
     await approveAll(f, workspaceId, 1);
     const planned = await f.session.query(
       api.functions.academic.migrationWorkspace.getWorkspaceRecords,
@@ -532,7 +539,7 @@ describe("R1 reviewed import remediation", () => {
     );
     expect(planned.map((record) => record.proposedAdmissionNumber)).toEqual([
       "SCH/2026/0010",
-      "SCH/2026/0011",
+      "SCH/2026/0012",
     ]);
     const receipts = await commitAll(f, workspaceId, 1);
     expect(receipts).toHaveLength(2);
@@ -544,7 +551,7 @@ describe("R1 reviewed import remediation", () => {
     );
     expect(students.map((student) => student.admissionNumber)).toEqual([
       "SCH/2026/0010",
-      "SCH/2026/0011",
+      "SCH/2026/0012",
     ]);
     expect(students.map((student) => student.userId)).toEqual([
       f.studentUserIds[0],
@@ -554,7 +561,7 @@ describe("R1 reviewed import remediation", () => {
       await f.t.run(
         async (ctx) => (await ctx.db.get(f.policyId))?.currentSequence,
       ),
-    ).toBe(12);
+    ).toBe(13);
     expect(
       await f.t.run((ctx) =>
         ctx.db
