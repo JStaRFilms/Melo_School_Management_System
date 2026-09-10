@@ -35,6 +35,12 @@ function normalizeTeacherEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function getBetterAuthTokenIdentifier(authId: string) {
+  const issuer = process.env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
+  if (!issuer) throw new ConvexError("Authentication issuer is not configured");
+  return `${issuer}|${authId}`;
+}
+
 function archivedRecordNotice(recordType: string) {
   return `This failed because the ${recordType} was previously archived. Check the archives.`;
 }
@@ -171,16 +177,56 @@ export const createTeacherRecordInternal = internalMutation({
       throw new ConvexError(archivedRecordNotice("teacher"));
     }
 
+    const authTokenIdentifier = getBetterAuthTokenIdentifier(args.authId);
+    const [people, tokenUsers] = await Promise.all([
+      ctx.db
+        .query("persons")
+        .withIndex("by_token_identifier", (q) =>
+          q.eq("authTokenIdentifier", authTokenIdentifier),
+        )
+        .take(2),
+      ctx.db
+        .query("users")
+        .withIndex("by_auth_token_identifier", (q) =>
+          q.eq("authTokenIdentifier", authTokenIdentifier),
+        )
+        .take(2),
+    ]);
+    if (people.length || tokenUsers.length)
+      throw new ConvexError("Authentication account is already linked to a school user");
+
     const now = Date.now();
+    const personId = await ctx.db.insert("persons", {
+      authTokenIdentifier,
+      identityReconciliationState: "resolved",
+      email: normalizedEmail,
+      name: teacherName.name,
+      status: "active",
+      primarySchoolId: args.schoolId,
+      createdAt: now,
+      updatedAt: now,
+    });
     const teacherId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.authId,
+      authTokenIdentifier,
+      personId,
       name: teacherName.name,
       ...(teacherName.firstName ? { firstName: teacherName.firstName } : {}),
       ...(teacherName.lastName ? { lastName: teacherName.lastName } : {}),
       email: normalizedEmail,
       role: "teacher",
       createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("branchMemberships", {
+      personId,
+      schoolId: args.schoolId,
+      status: "active",
+      displayTitle: "Teacher",
+      isDefaultBranch: true,
+      legacyUserId: teacherId,
+      joinedAt: now,
       updatedAt: now,
     });
 
