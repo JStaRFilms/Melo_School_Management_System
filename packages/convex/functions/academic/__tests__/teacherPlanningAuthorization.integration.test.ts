@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import schema from "../../../schema";
-import { api } from "../../../_generated/api";
+import { api, internal } from "../../../_generated/api";
 import type { Id } from "../../../_generated/dataModel";
 import type { PermissionCapability } from "../rbac";
 import { seedReviewedTenantOperatorWithCapabilities } from "./securityFixtures";
@@ -107,14 +107,33 @@ async function fixture() {
         });
       }
     }
-    return { schoolId, classId, subjectId, otherSubjectId, termId, userIds };
+    const adminOperator = await seedReviewedTenantOperatorWithCapabilities(
+      ctx,
+      [schoolId],
+      "test|planning-admin",
+      ["academic.curriculum.manage", "assets.upload"],
+      { role: "admin" },
+    );
+    return {
+      schoolId,
+      classId,
+      subjectId,
+      otherSubjectId,
+      termId,
+      userIds,
+      adminUserId: adminOperator.memberships[0].userId,
+    };
   });
 
   const teacher = (key: TeacherKey) => t.withIdentity({
     tokenIdentifier: `test|planning-${key}`,
     subject: `planning-${key}`,
   });
-  return { t, teacher, ...ids };
+  const admin = t.withIdentity({
+    tokenIdentifier: "test|planning-admin",
+    subject: "planning-admin",
+  });
+  return { t, teacher, admin, ...ids };
 }
 
 const uploadArgs = (subjectId: Id<"subjects">) => ({
@@ -125,6 +144,16 @@ const uploadArgs = (subjectId: Id<"subjects">) => ({
   topicLabel: "Algebra",
   sourceType: "file_upload" as const,
   uploadIntent: "private_draft" as const,
+});
+
+const UPLOAD_BYTES = new TextEncoder().encode("Assigned planning source");
+
+const secureUploadArgs = (subjectId: Id<"subjects">, uploadToken: string) => ({
+  ...uploadArgs(subjectId),
+  uploadToken,
+  fileName: "assigned-source.txt",
+  contentType: "text/plain",
+  size: UPLOAD_BYTES.byteLength,
 });
 
 describe("managed teacher planning capability contract", () => {
@@ -164,30 +193,183 @@ describe("managed teacher planning capability contract", () => {
     })).rejects.toThrow("Admin access required");
   });
 
-  it("keeps source upload capability independent while secure transport remains unavailable", async () => {
+  it("keeps source upload capability independent and securely stores assigned material", async () => {
     const f = await fixture();
+    await f.t.mutation(internal.functions.academic.metering.allocateQuota, {
+      schoolId: f.schoolId,
+      meterType: "storage_bytes",
+      allocatedUnits: 100_000,
+    });
     await expect(f.teacher("planning").mutation(
-      academic.lessonKnowledgeIngestion.requestKnowledgeMaterialUploadUrl,
-      uploadArgs(f.subjectId),
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, "planning-denied-upload-token-00001"),
     )).rejects.toThrow("capability");
     await expect(f.teacher("curriculum").mutation(
-      academic.lessonKnowledgeIngestion.requestKnowledgeMaterialUploadUrl,
-      uploadArgs(f.subjectId),
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, "curriculum-denied-upload-token-001"),
     )).rejects.toThrow("capability");
 
-    for (const key of ["planningUpload", "curriculumUpload"] as const) {
-      await expect(f.teacher(key).mutation(
-        academic.lessonKnowledgeIngestion.requestKnowledgeMaterialUploadUrl,
-        uploadArgs(f.subjectId),
-      )).rejects.toThrow("Uploads unavailable");
-    }
+    const uploadToken = "planning-allowed-upload-token-000001";
+    const uploadAttemptId = "planning-allowed-upload-attempt-0001";
+    const upload = await f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, uploadToken),
+    );
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.beginKnowledgeMaterialHttpUpload,
+      { uploadIntentId: upload.uploadIntentId, uploadToken, uploadAttemptId },
+    );
+    const storageId = await f.t.run((ctx) =>
+      ctx.storage.store(new Blob([UPLOAD_BYTES], { type: "text/plain" })),
+    );
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.recordKnowledgeMaterialUploadStorage,
+      { uploadIntentId: upload.uploadIntentId, uploadToken, uploadAttemptId, storageId },
+    );
+    const result = await f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.finalizeSecureKnowledgeMaterialUpload,
+      { uploadIntentId: upload.uploadIntentId },
+    );
+    expect(result).toMatchObject({
+      visibility: "private_owner",
+      reviewStatus: "draft",
+      processingStatus: "queued",
+    });
+    const material = await f.t.run((ctx) => ctx.db.get(result.materialId));
+    expect(material).toMatchObject({
+      schoolId: f.schoolId,
+      ownerUserId: f.userIds.planningUpload,
+      ownerRole: "teacher",
+      sourceType: "file_upload",
+      storageId: expect.any(String),
+    });
+    const materialStorageId = material?.storageId;
+    if (!materialStorageId) throw new Error("Material storage was not assigned");
+    expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(materialStorageId)))).toBe(true);
+
     await expect(f.teacher("unassigned").mutation(
-      academic.lessonKnowledgeIngestion.requestKnowledgeMaterialUploadUrl,
-      uploadArgs(f.subjectId),
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, "unassigned-upload-token-0000000001"),
+    )).rejects.toThrow("assigned");
+    await expect(f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.otherSubjectId, "wrong-subject-upload-token-000001"),
     )).rejects.toThrow("assigned");
     await expect(f.teacher("planningUpload").mutation(
       academic.lessonKnowledgeIngestion.requestKnowledgeMaterialUploadUrl,
-      uploadArgs(f.otherSubjectId),
-    )).rejects.toThrow("assigned");
+      uploadArgs(f.subjectId),
+    )).rejects.toThrow("Uploads unavailable");
+
+    const expiringToken = "expiring-upload-intent-token-000001";
+    const expiringAttemptId = "expiring-upload-attempt-token-00001";
+    const expiringUpload = await f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, expiringToken),
+    );
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.beginKnowledgeMaterialHttpUpload,
+      {
+        uploadIntentId: expiringUpload.uploadIntentId,
+        uploadToken: expiringToken,
+        uploadAttemptId: expiringAttemptId,
+      },
+    );
+    const expiringStorageId = await f.t.run((ctx) =>
+      ctx.storage.store(new Blob([UPLOAD_BYTES], { type: "text/plain" })),
+    );
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.recordKnowledgeMaterialUploadStorage,
+      {
+        uploadIntentId: expiringUpload.uploadIntentId,
+        uploadToken: expiringToken,
+        uploadAttemptId: expiringAttemptId,
+        storageId: expiringStorageId,
+      },
+    );
+    await f.t.run((ctx) =>
+      ctx.db.patch(expiringUpload.uploadIntentId, { expiresAt: 0 }),
+    );
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.cleanupKnowledgeMaterialUploadIntent,
+      { uploadIntentId: expiringUpload.uploadIntentId },
+    );
+    expect(await f.t.run((ctx) => ctx.storage.get(expiringStorageId))).toBeNull();
+    const quotaReservations = await f.t.run((ctx) =>
+      ctx.db
+        .query("usageQuotaReservations")
+        .withIndex("by_school", (q) => q.eq("schoolId", f.schoolId))
+        .take(10),
+    );
+    expect(
+      quotaReservations.find(
+        (reservation) => reservation.idempotencyKey === `knowledge-upload:${uploadToken}`,
+      )?.status,
+    ).toBe("committed");
+    expect(
+      quotaReservations.find(
+        (reservation) => reservation.idempotencyKey === `knowledge-upload:${expiringToken}`,
+      )?.status,
+    ).toBe("released");
+
+    const storageEntries = await f.t.run((ctx) =>
+      ctx.db.system.query("_storage").collect(),
+    );
+    expect(storageEntries).toHaveLength(1);
+  });
+
+  it("allows an admin to upload a staff-shared curriculum reference", async () => {
+    const f = await fixture();
+    await f.t.mutation(internal.functions.academic.metering.allocateQuota, {
+      schoolId: f.schoolId,
+      meterType: "storage_bytes",
+      allocatedUnits: 100_000,
+    });
+
+    const bytes = new TextEncoder().encode("School curriculum source");
+    const uploadToken = "admin-curriculum-upload-token-000001";
+    const uploadAttemptId = "admin-curriculum-upload-attempt-0001";
+    const upload = await f.admin.mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      {
+        uploadToken,
+        fileName: "curriculum.txt",
+        contentType: "text/plain",
+        size: bytes.byteLength,
+        title: "School curriculum",
+        description: null,
+        subjectId: null,
+        level: "JSS 1",
+        topicLabel: "National curriculum",
+        sourceType: "imported_curriculum",
+        uploadIntent: "staff_shared",
+      },
+    );
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.beginKnowledgeMaterialHttpUpload,
+      { uploadIntentId: upload.uploadIntentId, uploadToken, uploadAttemptId },
+    );
+    const storageId = await f.t.run((ctx) =>
+      ctx.storage.store(new Blob([bytes], { type: "text/plain" })),
+    );
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.recordKnowledgeMaterialUploadStorage,
+      { uploadIntentId: upload.uploadIntentId, uploadToken, uploadAttemptId, storageId },
+    );
+    const result = await f.admin.mutation(
+      academic.lessonKnowledgeIngestion.finalizeSecureKnowledgeMaterialUpload,
+      { uploadIntentId: upload.uploadIntentId },
+    );
+
+    expect(result).toMatchObject({
+      visibility: "staff_shared",
+      reviewStatus: "approved",
+      processingStatus: "queued",
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(result.materialId))).toMatchObject({
+      schoolId: f.schoolId,
+      ownerUserId: f.adminUserId,
+      ownerRole: "admin",
+      sourceType: "imported_curriculum",
+    });
   });
 });

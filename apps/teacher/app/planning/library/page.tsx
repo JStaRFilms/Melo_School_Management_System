@@ -17,10 +17,13 @@ import {
   Loader2,
   Search
 } from "lucide-react";
-import { 
+import {
   parseTeacherLessonPlanSourceIds,
   getUserFacingErrorMessage,
-  applyPlanningSourceIdsToReturnTo
+  applyPlanningSourceIdsToReturnTo,
+  hasEffectiveCapability,
+  resolveKnowledgeMaterialUploadEndpoint,
+  type KnowledgeMaterialUploadInput,
 } from "@school/shared";
 
 // Feature Imports
@@ -33,10 +36,7 @@ import {
   TeacherKnowledgeTopic,
   TeacherKnowledgeMaterialSourceProofResponse
 } from "../../../features/planning-library/types";
-import { 
-  inferUploadContentType, 
-  uploadIntentSuccessMessage
-} from "../../../features/planning-library/constants";
+import { uploadIntentSuccessMessage } from "../../../features/planning-library/constants";
 import { MaterialCard } from "../../../features/planning-library/components/MaterialCard";
 import { LibrarySidebar } from "../../../features/planning-library/components/LibrarySidebar";
 import { MaterialEditSheet } from "../../../features/planning-library/components/MaterialEditSheet";
@@ -127,8 +127,12 @@ export default function TeacherLibraryPage() {
   ) as TeacherKnowledgeTopic[] | undefined;
 
   // Mutations
-  const requestUploadUrl = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialUploadUrl" as never);
-  const finalizeUpload = useMutation("functions/academic/lessonKnowledgeIngestion:finalizeKnowledgeMaterialUpload" as never);
+  const requestKnowledgeMaterialUpload = useMutation(
+    "functions/academic/lessonKnowledgeIngestion:requestSecureKnowledgeMaterialUpload" as never,
+  );
+  const finalizeKnowledgeMaterialUpload = useMutation(
+    "functions/academic/lessonKnowledgeIngestion:finalizeSecureKnowledgeMaterialUpload" as never,
+  );
   const updateMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:updateTeacherKnowledgeMaterialDetails" as never);
   const publishMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never);
   const retryMaterialIngestion = useMutation("functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never);
@@ -174,9 +178,10 @@ export default function TeacherLibraryPage() {
     return true;
   }), [materials, subjectFilter, levelFilter, searchQuery]);
 
-  // Secure upload transport is externally gated. Capability alone must not
-  // imply that generic storage URLs establish provenance or reserve quota.
-  const canUploadMaterials = false;
+  const canUploadMaterials =
+    hasEffectiveCapability(workspaceAccess, "assets.upload") &&
+    (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
+      hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
 
   const summary = activeMaterialsData?.summary ?? {
     loaded: 0,
@@ -241,41 +246,55 @@ export default function TeacherLibraryPage() {
     router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname, { scroll: false });
   };
 
-  const handleUpload = async (data: any) => {
+  const handleUpload = async (data: KnowledgeMaterialUploadInput) => {
     setIsUploading(true);
-    
     try {
-      const uploadContentType = inferUploadContentType(data.file);
-      const uploadShell = (await requestUploadUrl({
+      const uploadEndpoint = resolveKnowledgeMaterialUploadEndpoint(
+        process.env.NEXT_PUBLIC_CONVEX_SITE_URL,
+        process.env.NEXT_PUBLIC_CONVEX_URL,
+      );
+      const uploadToken = crypto.randomUUID();
+      const upload = (await requestKnowledgeMaterialUpload({
+        uploadToken,
+        fileName: data.file.name,
+        contentType: data.contentType,
+        size: data.file.size,
         title: data.title,
         description: data.description || null,
         subjectId: data.subjectId ? (data.subjectId as never) : null,
         level: data.level,
-        topicLabel: data.topicLabel || data.title,
-        sourceType: data.isCurriculumReference ? "imported_curriculum" : "file_upload",
+        topicLabel: data.topicLabel,
+        sourceType: data.isCurriculumReference
+          ? "imported_curriculum"
+          : "file_upload",
         uploadIntent: data.uploadIntent,
-        selectedPageRanges: uploadContentType.includes("pdf") ? data.selectedPageRanges?.trim() || null : null,
-      } as never)) as { materialId: string; uploadUrl: string };
-
-      const response = await fetch(uploadShell.uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": uploadContentType },
-        body: data.file,
-      });
-
-      if (!response.ok) throw new Error("Upload failed.");
-      const payload = await response.json();
-      if (!payload.storageId) throw new Error("Storage ID missing.");
-
-      await finalizeUpload({
-        materialId: uploadShell.materialId as never,
-        storageId: payload.storageId as never,
+        selectedPageRanges: data.contentType.includes("pdf")
+          ? data.selectedPageRanges || null
+          : null,
+      } as never)) as { uploadIntentId: string };
+      const response = await fetch(
+        uploadEndpoint,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": data.contentType,
+            "X-Knowledge-Upload-Intent": upload.uploadIntentId,
+            "X-Knowledge-Upload-Token": uploadToken,
+          },
+          body: data.file,
+        },
+      );
+      if (!response.ok) throw new Error("The secure file transfer was rejected.");
+      await finalizeKnowledgeMaterialUpload({
+        uploadIntentId: upload.uploadIntentId as never,
       } as never);
-
       appToast.success(uploadIntentSuccessMessage(data.uploadIntent));
       setIsMobileUploadOpen(false);
     } catch (err) {
-      appToast.error("Upload failed", { description: getUserFacingErrorMessage(err, "Upload failed.") });
+      appToast.error("Upload failed", {
+        description: getUserFacingErrorMessage(err, "Upload failed."),
+      });
+      throw err;
     } finally {
       setIsUploading(false);
     }
@@ -584,9 +603,13 @@ export default function TeacherLibraryPage() {
 
       {/* Primary Mobile Action */}
       <button
-        disabled
-        aria-label="Upload unavailable — secure storage transport required"
-        className="lg:hidden fixed bottom-8 right-8 h-16 w-16 flex items-center justify-center rounded-full bg-slate-950 text-white opacity-50 shadow-2xl shadow-slate-950/40 z-50"
+        type="button"
+        disabled={!canUploadMaterials}
+        onClick={() => setIsMobileUploadOpen(true)}
+        aria-label={canUploadMaterials ? "Upload library material" : "Upload permission required"}
+        className={`fixed bottom-8 right-8 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 lg:hidden ${
+          canUploadMaterials ? "" : "cursor-not-allowed opacity-50"
+        }`}
       >
         <Plus className="h-7 w-7" />
       </button>

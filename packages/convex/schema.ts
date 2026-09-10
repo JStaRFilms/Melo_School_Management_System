@@ -2612,6 +2612,54 @@ export default defineSchema({
       filterFields: ["schoolId", "subjectId", "termId", "status"],
     }),
 
+  knowledgeMaterialUploadIntents: defineTable({
+    schoolId: v.id("schools"),
+    ownerUserId: v.id("users"),
+    uploadToken: v.string(),
+    quotaReservationKey: v.string(),
+    fileName: v.string(),
+    contentType: v.string(),
+    expectedSize: v.number(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    subjectId: v.optional(v.id("subjects")),
+    level: v.string(),
+    topicLabel: v.string(),
+    topicId: v.optional(v.id("knowledgeTopics")),
+    sourceType: v.union(v.literal("file_upload"), v.literal("imported_curriculum")),
+    uploadIntent: v.optional(
+      v.union(
+        v.literal("private_draft"),
+        v.literal("request_review"),
+        v.literal("staff_shared"),
+      ),
+    ),
+    defaultsMode: v.optional(
+      v.union(v.literal("actor_default"), v.literal("private_first")),
+    ),
+    selectedPageRanges: v.optional(v.string()),
+    activeAttemptId: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("uploading"),
+      v.literal("stored"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("expired"),
+    ),
+    storageId: v.optional(v.id("_storage")),
+    materialId: v.optional(v.id("knowledgeMaterials")),
+    failureReason: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_storage", ["storageId"])
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_upload_token", ["schoolId", "uploadToken"])
+    .index("by_school_and_owner", ["schoolId", "ownerUserId"])
+    .index("by_status_and_expiry", ["status", "expiresAt"]),
+
   knowledgeMaterials: defineTable({
     schoolId: v.id("schools"),
     ownerUserId: v.id("users"),

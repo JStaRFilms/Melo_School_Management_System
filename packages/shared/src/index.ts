@@ -24,6 +24,18 @@ export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigat
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
 export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintStackV2";
 export { MeloLoader } from "./components/MeloLoader";
+export {
+  KnowledgeMaterialUploadForm,
+  MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
+  inferKnowledgeMaterialContentType,
+  resolveKnowledgeMaterialUploadEndpoint,
+} from "./components/KnowledgeMaterialUploadForm";
+export type {
+  KnowledgeMaterialUploadInput,
+  KnowledgeMaterialUploadIntent,
+  KnowledgeMaterialUploadOption,
+  KnowledgeMaterialUploadSubject,
+} from "./components/KnowledgeMaterialUploadForm";
 export { ChangePasswordModal } from "./components/ChangePasswordModal";
 export type { ChangePasswordModalProps } from "./components/ChangePasswordModal";
 export { SchoolSuspendedLockScreen } from "./components/SchoolSuspendedLockScreen";

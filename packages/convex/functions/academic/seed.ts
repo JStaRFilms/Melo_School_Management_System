@@ -34,7 +34,7 @@ const DEMO_SCHOOL_TABLES = [
   "assessmentBankItems", "assessmentBanks", "assessmentGenerationProfiles",
   "instructionArtifactSources", "instructionArtifactRevisions", "instructionArtifactDocuments", "instructionArtifacts", "instructionTemplates",
   "curriculumUnits", "curriculumImports",
-  "knowledgeOcrJobs", "knowledgeMaterialChunks", "knowledgeMaterialClassBindings", "knowledgeMaterials", "knowledgeTopics",
+  "knowledgeOcrJobs", "knowledgeMaterialChunks", "knowledgeMaterialClassBindings", "knowledgeMaterialUploadIntents", "knowledgeMaterials", "knowledgeTopics",
   "assetQuarantineLogs", "assetRetentionHolds", "assetStorageReconciliationIssues", "assetPurgeReceipts", "pdfCompressionCandidates", "assetUploadIntents", "schoolAssets", "assetPolicies",
   "settlementLegs", "settlementLedgers", "subscriptionInvoices", "commercialContracts", "paymentMandates", "schoolSubscriptions",
   "usageProviderCosts", "usageEvents", "usageQuotaReservations", "usageMeterAllocations",

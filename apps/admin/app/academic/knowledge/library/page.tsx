@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
   BookOpenText,
   Clock3,
@@ -17,6 +17,7 @@ import {
   getUserFacingErrorMessage,
   hasEffectiveCapability,
   KnowledgeMaterialUploadForm,
+  resolveKnowledgeMaterialUploadEndpoint,
   type KnowledgeMaterialUploadInput,
 } from "@school/shared";
 import { appToast } from "@school/shared/toast";
@@ -192,8 +193,11 @@ export default function KnowledgeLibraryPage() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  const saveKnowledgeMaterialUpload = useAction(
-    "functions/academic/lessonKnowledgeIngestion:saveKnowledgeMaterialUpload" as never,
+  const requestKnowledgeMaterialUpload = useMutation(
+    "functions/academic/lessonKnowledgeIngestion:requestSecureKnowledgeMaterialUpload" as never,
+  );
+  const finalizeKnowledgeMaterialUpload = useMutation(
+    "functions/academic/lessonKnowledgeIngestion:finalizeSecureKnowledgeMaterialUpload" as never,
   );
   const updateDetails = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialDetails" as never);
   const updateState = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialState" as never);
@@ -287,10 +291,16 @@ export default function KnowledgeLibraryPage() {
   const handleUpload = async (data: KnowledgeMaterialUploadInput) => {
     setIsUploading(true);
     try {
-      await saveKnowledgeMaterialUpload({
-        bytes: await data.file.arrayBuffer(),
+      const uploadEndpoint = resolveKnowledgeMaterialUploadEndpoint(
+        process.env.NEXT_PUBLIC_CONVEX_SITE_URL,
+        process.env.NEXT_PUBLIC_CONVEX_URL,
+      );
+      const uploadToken = crypto.randomUUID();
+      const upload = (await requestKnowledgeMaterialUpload({
+        uploadToken,
         fileName: data.file.name,
         contentType: data.contentType,
+        size: data.file.size,
         title: data.title,
         description: data.description || null,
         subjectId: data.subjectId ? (data.subjectId as never) : null,
@@ -303,6 +313,22 @@ export default function KnowledgeLibraryPage() {
         selectedPageRanges: data.contentType.includes("pdf")
           ? data.selectedPageRanges || null
           : null,
+      } as never)) as { uploadIntentId: string };
+      const response = await fetch(
+        uploadEndpoint,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": data.contentType,
+            "X-Knowledge-Upload-Intent": upload.uploadIntentId,
+            "X-Knowledge-Upload-Token": uploadToken,
+          },
+          body: data.file,
+        },
+      );
+      if (!response.ok) throw new Error("The secure file transfer was rejected.");
+      await finalizeKnowledgeMaterialUpload({
+        uploadIntentId: upload.uploadIntentId as never,
       } as never);
       appToast.success("Material uploaded", {
         description: "The material is securely stored and queued for indexing.",

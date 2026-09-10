@@ -92,6 +92,7 @@ const userRemapStage = (table: string) => `__user_fk_remap__:${table}`;
 // Knowledge hub & AI tables to wipe clean
 export const KNOWLEDGE_AI_TABLES = [
   "knowledgeTopics",
+  "knowledgeMaterialUploadIntents",
   "knowledgeMaterials",
   "knowledgeMaterialClassBindings",
   "knowledgeMaterialChunks",
@@ -180,6 +181,7 @@ export const SCHOOL_PURGE_TABLES = [
   "knowledgeOcrJobs",
   "knowledgeMaterialChunks",
   "knowledgeMaterialClassBindings",
+  "knowledgeMaterialUploadIntents",
   "knowledgeMaterials",
   "knowledgeTopics",
   "rateLimitCounters",
@@ -1235,6 +1237,7 @@ const STORAGE_REFERENCE_TABLES = [
   "schoolSiteAssets",
   "admissionsDocuments",
   "knowledgeMaterials",
+  "knowledgeMaterialUploadIntents",
   "knowledgeOcrJobs",
   "demoSeedRuns",
   "demoSeedStorageCleanup",

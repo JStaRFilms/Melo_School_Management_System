@@ -18,6 +18,7 @@ const TENANT_STORAGE_TABLES = [
   "students",
   "issuedReportCards",
   "knowledgeMaterials",
+  "knowledgeMaterialUploadIntents",
   "knowledgeOcrJobs",
   "demoSeedRuns",
   "demoSeedStorageCleanup",

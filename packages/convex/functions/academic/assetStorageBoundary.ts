@@ -25,6 +25,7 @@ type StorageClaimPurpose =
   | "schoolLogo"
   | "studentPhoto"
   | "knowledgeMaterial"
+  | "knowledgeMaterialUploadIntent"
   | "assetUploadIntent"
   | "schoolAsset"
   | "schoolAssetRollback"
@@ -44,12 +45,13 @@ type CollectedStorageClaim = ExpectedStorageClaim & {
 
 /** Every durable owner or historical reference must block destructive reuse. */
 async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
-  const [admissions, siteAssets, schools, students, materials, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
+  const [admissions, siteAssets, schools, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
     ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(101),
     ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(2),
     ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
+    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("assetUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schoolAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schoolAssets").withIndex("by_rollback_storage", q => q.eq("rollbackStorageId", storageId)).take(2),
@@ -64,6 +66,10 @@ async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Pr
     ...schools.map(row => ({ purpose: "schoolLogo" as const, ownerId: String(row._id) })),
     ...students.map(row => ({ purpose: "studentPhoto" as const, ownerId: String(row._id) })),
     ...materials.map(row => ({ purpose: "knowledgeMaterial" as const, ownerId: String(row._id) })),
+    ...knowledgeUploadIntents.map(row => ({
+      purpose: "knowledgeMaterialUploadIntent" as const,
+      ownerId: String(row._id),
+    })),
     ...intents.map(row => ({
       purpose: "assetUploadIntent" as const,
       ownerId: String(row._id),

@@ -74,6 +74,7 @@ import type * as functions_academic_lessonKnowledgeSourceProof from "../function
 import type * as functions_academic_lessonKnowledgeTeacher from "../functions/academic/lessonKnowledgeTeacher.js";
 import type * as functions_academic_lessonKnowledgeTemplates from "../functions/academic/lessonKnowledgeTemplates.js";
 import type * as functions_academic_lessonKnowledgeTemplatesHelpers from "../functions/academic/lessonKnowledgeTemplatesHelpers.js";
+import type * as functions_academic_lessonKnowledgeUploadHttp from "../functions/academic/lessonKnowledgeUploadHttp.js";
 import type * as functions_academic_metering from "../functions/academic/metering.js";
 import type * as functions_academic_migrateSplitBranches from "../functions/academic/migrateSplitBranches.js";
 import type * as functions_academic_migrateSplitBranchesAction from "../functions/academic/migrateSplitBranchesAction.js";
@@ -204,6 +205,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/lessonKnowledgeTeacher": typeof functions_academic_lessonKnowledgeTeacher;
   "functions/academic/lessonKnowledgeTemplates": typeof functions_academic_lessonKnowledgeTemplates;
   "functions/academic/lessonKnowledgeTemplatesHelpers": typeof functions_academic_lessonKnowledgeTemplatesHelpers;
+  "functions/academic/lessonKnowledgeUploadHttp": typeof functions_academic_lessonKnowledgeUploadHttp;
   "functions/academic/metering": typeof functions_academic_metering;
   "functions/academic/migrateSplitBranches": typeof functions_academic_migrateSplitBranches;
   "functions/academic/migrateSplitBranchesAction": typeof functions_academic_migrateSplitBranchesAction;

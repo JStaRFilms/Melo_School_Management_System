@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Id, TableNames } from "../../../_generated/dataModel";
 
 import {
+  assertKnowledgeMaterialBytesMatchContentType,
   assertKnowledgeMaterialUploadIsSupported,
   assertYouTubeUrl,
   buildKnowledgeMaterialSearchText,
@@ -184,6 +185,39 @@ describe("lessonKnowledgeIngestionHelpers", () => {
         size: MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES + 1,
       })
     ).toThrowError("Uploaded file is too large for the planning library. Keep uploads at or below 12 MB.");
+  });
+
+  it("checks uploaded bytes against their declared file type", () => {
+    expect(() =>
+      assertKnowledgeMaterialBytesMatchContentType(
+        new TextEncoder().encode("%PDF-1.7\n"),
+        "application/pdf",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertKnowledgeMaterialBytesMatchContentType(
+        new TextEncoder().encode("Readable planning notes"),
+        "text/plain",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertKnowledgeMaterialBytesMatchContentType(
+        new TextEncoder().encode("not a pdf"),
+        "application/pdf",
+      ),
+    ).toThrowError("contents do not match");
+    expect(() =>
+      assertKnowledgeMaterialBytesMatchContentType(
+        new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00]),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ),
+    ).toThrowError("contents do not match");
+    expect(() =>
+      assertKnowledgeMaterialBytesMatchContentType(
+        new Uint8Array([0x41, 0x00, 0x42]),
+        "text/plain",
+      ),
+    ).toThrowError("contents do not match");
   });
 
   it("normalizes and bounds search text", () => {
