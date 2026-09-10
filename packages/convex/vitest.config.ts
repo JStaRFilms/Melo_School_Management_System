@@ -13,6 +13,7 @@ export default defineConfig({
     fileParallelism: false,
     env: {
       CONVEX_SITE_URL: "https://deployment-auth.test",
+      LEGACY_SUBJECT_FALLBACK_ENABLED: "true",
       LEGACY_SUBJECT_TRUSTED_ISSUER: "https://legacy-auth.test",
     },
   },

@@ -1,7 +1,7 @@
 import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
 import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { createAuth } from "../../betterAuth";
@@ -43,6 +43,29 @@ function getBetterAuthTokenIdentifier(authId: string) {
 
 function archivedRecordNotice(recordType: string) {
   return `This failed because the ${recordType} was previously archived. Check the archives.`;
+}
+
+async function getCanonicalTeacherLink(
+  ctx: MutationCtx,
+  teacher: Doc<"users">,
+) {
+  if (!teacher.personId) return null;
+  const person = await ctx.db.get(teacher.personId);
+  if (!person)
+    throw new ConvexError("Teacher identity requires operator reconciliation");
+  const memberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_school", (q) =>
+      q.eq("personId", person._id).eq("schoolId", teacher.schoolId),
+    )
+    .take(2);
+  if (
+    memberships.length !== 1 ||
+    memberships[0].legacyUserId !== teacher._id
+  ) {
+    throw new ConvexError("Teacher membership requires operator reconciliation");
+  }
+  return { person, membership: memberships[0] };
 }
 
 async function findSubjectsByCode(
@@ -573,11 +596,14 @@ export const updateTeacherRecordInternal = internalMutation({
       throw new ConvexError("Teacher not found");
     }
 
-    await ctx.db.patch(args.teacherId, {
-      name: normalizeHumanName(args.name),
-      email: normalizeTeacherEmail(args.email),
-      updatedAt: Date.now(),
-    });
+    const name = normalizeHumanName(args.name);
+    const email = normalizeTeacherEmail(args.email);
+    const canonical = await getCanonicalTeacherLink(ctx, teacher);
+    const updatedAt = Date.now();
+    await ctx.db.patch(args.teacherId, { name, email, updatedAt });
+    if (canonical) {
+      await ctx.db.patch(canonical.person._id, { name, email, updatedAt });
+    }
 
     return null;
   },
@@ -731,12 +757,32 @@ export const archiveTeacher = mutation({
       teacherId: args.teacherId,
     });
 
+    const canonical = await getCanonicalTeacherLink(ctx, teacher);
+    const updatedAt = Date.now();
     await ctx.db.patch(args.teacherId, {
       isArchived: true,
-      archivedAt: Date.now(),
+      archivedAt: updatedAt,
       archivedBy: userId,
-      updatedAt: Date.now(),
+      updatedAt,
     });
+    if (canonical) {
+      await ctx.db.patch(canonical.membership._id, {
+        status: "archived",
+        updatedAt,
+      });
+      const otherActiveMembership = await ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_status", (q) =>
+          q.eq("personId", canonical.person._id).eq("status", "active"),
+        )
+        .first();
+      if (!otherActiveMembership) {
+        await ctx.db.patch(canonical.person._id, {
+          status: "archived",
+          updatedAt,
+        });
+      }
+    }
 
     return null;
   },
@@ -778,10 +824,26 @@ export const restoreTeacher = mutation({
       );
     }
 
+    const canonical = await getCanonicalTeacherLink(ctx, teacher);
+    const updatedAt = Date.now();
     await ctx.db.patch(args.teacherId, {
       isArchived: false,
-      updatedAt: Date.now(),
+      archivedAt: undefined,
+      archivedBy: undefined,
+      updatedAt,
     });
+    if (canonical) {
+      await ctx.db.patch(canonical.membership._id, {
+        status: "active",
+        updatedAt,
+      });
+      if (canonical.person.status === "archived") {
+        await ctx.db.patch(canonical.person._id, {
+          status: "active",
+          updatedAt,
+        });
+      }
+    }
 
     return null;
   },

@@ -20,7 +20,9 @@ export interface IdentityLookup<Row extends LegacyIdentityRow> {
 export function isTrustedLegacySubjectIssuer(issuer: string | undefined): boolean {
   const normalizedIssuer = issuer?.replace(/\/$/, "");
   const trustedIssuers = [
-    process.env.CONVEX_SITE_URL,
+    process.env.LEGACY_SUBJECT_FALLBACK_ENABLED === "true"
+      ? process.env.CONVEX_SITE_URL
+      : undefined,
     process.env.LEGACY_SUBJECT_TRUSTED_ISSUER,
   ]
     .map((value) => value?.trim().replace(/\/$/, ""))

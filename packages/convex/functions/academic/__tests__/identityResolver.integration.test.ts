@@ -8,6 +8,7 @@ import * as academicSetup from "../academicSetup";
 import * as groups from "../groups";
 import * as migrationWorkspace from "../migrationWorkspace";
 import * as lessonKnowledgePortal from "../lessonKnowledgePortal";
+import { isTrustedLegacySubjectIssuer } from "../identityResolver";
 
 declare global {
   interface ImportMeta {
@@ -25,8 +26,23 @@ const getPortalTopicIndexData = lessonKnowledgePortal.getPortalTopicIndexData as
 const getViewerAccess = auth.getViewerAccess as unknown as QueryRef;
 const listUserBranches = groups.listUserBranches as unknown as QueryRef;
 const createTeacherRecordInternal = academicSetup.createTeacherRecordInternal as unknown as MutationRef;
+const updateTeacherRecordInternal = academicSetup.updateTeacherRecordInternal as unknown as MutationRef;
+const archiveTeacher = academicSetup.archiveTeacher as unknown as MutationRef;
+const restoreTeacher = academicSetup.restoreTeacher as unknown as MutationRef;
 
 describe("token-first trusted legacy identity endpoints", () => {
+  it("keeps same-deployment subject fallback behind an explicit switch", () => {
+    const original = process.env.LEGACY_SUBJECT_FALLBACK_ENABLED;
+    try {
+      process.env.LEGACY_SUBJECT_FALLBACK_ENABLED = "false";
+      expect(isTrustedLegacySubjectIssuer("https://deployment-auth.test")).toBe(false);
+      process.env.LEGACY_SUBJECT_FALLBACK_ENABLED = "true";
+      expect(isTrustedLegacySubjectIssuer("https://deployment-auth.test/")).toBe(true);
+    } finally {
+      process.env.LEGACY_SUBJECT_FALLBACK_ENABLED = original;
+    }
+  });
+
   it("denies untrusted legacy issuers at migration and portal endpoints", async () => {
     const t = convexTest(schema, modules);
     const schoolId = await t.run(async (ctx) => {
@@ -172,6 +188,64 @@ describe("token-first trusted legacy identity endpoints", () => {
     ).resolves.toEqual([
       expect.objectContaining({ schoolId, membershipRoleTitle: "Teacher" }),
     ]);
+
+    await t.mutation(updateTeacherRecordInternal, {
+      teacherId: canonicalTeacherId,
+      schoolId,
+      name: "Updated Teacher",
+      email: "updated@new.test",
+    });
+    const adminToken = "https://deployment-auth.test|school-admin";
+    await t.run(ctx =>
+      ctx.db.insert("users", {
+        schoolId,
+        authId: "school-admin",
+        authTokenIdentifier: adminToken,
+        name: "School Admin",
+        email: "admin@new.test",
+        role: "admin",
+        isSchoolAdmin: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+    );
+    const admin = t.withIdentity({
+      tokenIdentifier: adminToken,
+      subject: "school-admin",
+      issuer: "https://deployment-auth.test",
+    });
+    await admin.mutation(archiveTeacher, { teacherId: canonicalTeacherId });
+    let lifecycle = await t.run(async ctx => ({
+      teacher: await ctx.db.get(canonicalTeacherId),
+      person: records.person ? await ctx.db.get(records.person._id) : null,
+      membership: records.membership
+        ? await ctx.db.get(records.membership._id)
+        : null,
+    }));
+    expect(lifecycle.teacher).toMatchObject({
+      name: "Updated Teacher",
+      email: "updated@new.test",
+      isArchived: true,
+    });
+    expect(lifecycle.person).toMatchObject({
+      name: "Updated Teacher",
+      email: "updated@new.test",
+      status: "archived",
+    });
+    expect(lifecycle.membership).toMatchObject({ status: "archived" });
+
+    await admin.mutation(restoreTeacher, { teacherId: canonicalTeacherId });
+    lifecycle = await t.run(async ctx => ({
+      teacher: await ctx.db.get(canonicalTeacherId),
+      person: records.person ? await ctx.db.get(records.person._id) : null,
+      membership: records.membership
+        ? await ctx.db.get(records.membership._id)
+        : null,
+    }));
+    expect(lifecycle.teacher?.isArchived).toBe(false);
+    expect(lifecycle.teacher?.archivedAt).toBeUndefined();
+    expect(lifecycle.person?.status).toBe("active");
+    expect(lifecycle.membership?.status).toBe("active");
   });
 
   it("allows a trusted prelinked legacy identity only through its exact active membership", async () => {
