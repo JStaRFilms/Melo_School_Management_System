@@ -58,7 +58,7 @@ export interface RosterReviewTabProps {
   classes?: Array<{ id: string; name: string }>;
   isApplyingBulkAction?: boolean;
   onAssignClass?: (recordIds: string[], classId: string) => Promise<void>;
-  onCreateRecords?: (recordIds: string[]) => Promise<void>;
+  onCreateRecords?: (recordIds: string[], admissionMode: "preserve" | "official_all") => Promise<void>;
   onSkipRecords?: (recordIds: string[]) => Promise<void>;
 }
 
@@ -69,6 +69,7 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
   const [statusFilter, setStatusFilter] = useState<"all" | RosterState>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkClassId, setBulkClassId] = useState("");
+  const [admissionMode, setAdmissionMode] = useState<"preserve" | "official_all">("preserve");
   const readyIds = new Set(readyRecordIds);
   const creatableIds = new Set(createRecordIds);
   const getRosterState = (rec: StagedStudentRow): RosterState => {
@@ -161,7 +162,11 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
             {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
           <button type="button" disabled={!bulkClassId || isApplyingBulkAction} onClick={async () => { if (!bulkClassId || !onAssignClass) return; await onAssignClass(selectedIds, bulkClassId); setSelectedIds([]); }} className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 disabled:opacity-50">Assign class</button>
-          <button type="button" disabled={isApplyingBulkAction || selectedIds.some((id) => !creatableIds.has(id))} onClick={async () => { if (!onCreateRecords) return; await onCreateRecords(selectedIds); setSelectedIds([]); }} title={selectedIds.some((id) => !creatableIds.has(id)) ? "Resolve invalid data and class placement first" : undefined} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+          <select value={admissionMode} onChange={(event) => setAdmissionMode(event.target.value as "preserve" | "official_all")} className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-xs text-slate-800">
+            <option value="preserve">Keep supplied IDs; generate blanks</option>
+            <option value="official_all">Generate official IDs for all selected</option>
+          </select>
+          <button type="button" disabled={isApplyingBulkAction || selectedIds.some((id) => !creatableIds.has(id))} onClick={async () => { if (!onCreateRecords) return; await onCreateRecords(selectedIds, admissionMode); setSelectedIds([]); }} title={selectedIds.some((id) => !creatableIds.has(id)) ? "Resolve invalid data and class placement first" : undefined} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
             {isApplyingBulkAction && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Create new records
           </button>
           <button type="button" disabled={isApplyingBulkAction} onClick={async () => { if (!onSkipRecords) return; await onSkipRecords(selectedIds); setSelectedIds([]); }} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50">Skip selected</button>

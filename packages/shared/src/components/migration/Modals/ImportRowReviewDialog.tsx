@@ -113,9 +113,8 @@ export function ImportRowReviewDialog({
     record.manualNumberReason ??
       "Historical identifier preserved during reviewed import",
   );
-  const [advance, setAdvance] = useState(record.advanceCounterTo !== undefined);
-  const [advanceTo, setAdvanceTo] = useState(
-    String(record.advanceCounterTo ?? ""),
+  const [generateOfficial, setGenerateOfficial] = useState(
+    record.admissionNumberMode === "official_generated",
   );
   const terms =
     options.sessions.find((session) => session.id === sessionId)?.terms ?? [];
@@ -131,13 +130,7 @@ export function ImportRowReviewDialog({
   }, [termId, terms]);
 
   const generatedUnavailable =
-    !supplied && action === "create_new" && !selectedNumbering.available;
-  const parsedAdvance = Number(advanceTo);
-  const validAdvance =
-    !advance ||
-    (selectedNumbering.available &&
-      Number.isSafeInteger(parsedAdvance) &&
-      parsedAdvance > selectedNumbering.nextSequence);
+    (!supplied || generateOfficial) && action === "create_new" && !selectedNumbering.available;
   const canSave =
     action === "ignore" ||
     (grade
@@ -146,8 +139,8 @@ export function ImportRowReviewDialog({
       : action === "merge_existing"
         ? Boolean(studentId)
         : Boolean(classId) &&
-          (supplied
-            ? confirmed && reason.trim().length >= 8 && validAdvance
+          (supplied && !generateOfficial
+            ? confirmed && reason.trim().length >= 8
             : !generatedUnavailable));
 
   return (
@@ -172,54 +165,33 @@ export function ImportRowReviewDialog({
             selectedTermId: termId || undefined,
             admissionNumberMode:
               action === "create_new" && !grade
-                ? supplied
+                ? supplied && !generateOfficial
                   ? "supplied"
                   : "official_generated"
                 : undefined,
             manualNumberConfirmed:
-              supplied && action === "create_new" ? confirmed : undefined,
+              supplied && !generateOfficial && action === "create_new" ? confirmed : undefined,
             manualNumberReason:
-              supplied && action === "create_new" ? reason : undefined,
-            advanceCounterTo:
-              supplied && action === "create_new" && advance
-                ? parsedAdvance
-                : undefined,
+              supplied && !generateOfficial && action === "create_new" ? reason : undefined,
+            advanceCounterTo: undefined,
             expectedNumberPolicyVersion:
-              action === "create_new" &&
-              !grade &&
-              selectedNumbering.available &&
-              (!supplied || advance)
-                ? selectedNumbering.policyVersion
-                : undefined,
+              action === "create_new" && !grade && selectedNumbering.available && (!supplied || generateOfficial)
+                ? selectedNumbering.policyVersion : undefined,
             expectedNumberFormatVersion:
-              action === "create_new" &&
-              !grade &&
-              selectedNumbering.available &&
-              (!supplied || advance)
-                ? selectedNumbering.formatVersion
-                : undefined,
+              action === "create_new" && !grade && selectedNumbering.available && (!supplied || generateOfficial)
+                ? selectedNumbering.formatVersion : undefined,
             expectedNumberCounterKey:
-              action === "create_new" &&
-              !grade &&
-              selectedNumbering.available &&
-              (!supplied || advance)
-                ? selectedNumbering.counterKey
-                : undefined,
+              action === "create_new" && !grade && selectedNumbering.available && (!supplied || generateOfficial)
+                ? selectedNumbering.counterKey : undefined,
             expectedNumberCounterVersion:
-              action === "create_new" &&
-              !grade &&
-              selectedNumbering.available &&
-              (!supplied || advance)
-                ? selectedNumbering.counterVersion
-                : undefined,
+              action === "create_new" && !grade && selectedNumbering.available && (!supplied || generateOfficial)
+                ? selectedNumbering.counterVersion : undefined,
             expectedNumberSessionId:
-              action === "create_new" && !grade && selectedNumbering.available && (!supplied || advance)
-                ? selectedNumbering.sessionId
-                : undefined,
+              action === "create_new" && !grade && selectedNumbering.available && (!supplied || generateOfficial)
+                ? selectedNumbering.sessionId : undefined,
             expectedNumberResetPeriod:
-              action === "create_new" && !grade && selectedNumbering.available && (!supplied || advance)
-                ? selectedNumbering.resetPeriod
-                : undefined,
+              action === "create_new" && !grade && selectedNumbering.available && (!supplied || generateOfficial)
+                ? selectedNumbering.resetPeriod : undefined,
           });
         }}
       >
@@ -305,45 +277,22 @@ export function ImportRowReviewDialog({
               />
               {supplied ? (
                 <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                  <p className="font-semibold text-amber-900">
-                    Keep spreadsheet admission ID:{" "}
-                    <span className="font-mono">
-                      {record.parsedData.admissionNumber}
-                    </span>
-                  </p>
-                  <label className="flex gap-2">
-                    <input
-                      type="checkbox"
-                      checked={confirmed}
-                      onChange={(event) => setConfirmed(event.target.checked)}
-                    />
-                    Confirm this admission ID belongs to this student. The system will still block duplicate IDs.
+                  <p className="font-semibold text-amber-900">Spreadsheet admission ID: <span className="font-mono">{record.parsedData.admissionNumber}</span></p>
+                  <label className="flex gap-2 rounded-lg border border-amber-200 bg-white/60 p-3">
+                    <input type="checkbox" checked={generateOfficial} onChange={(event) => setGenerateOfficial(event.target.checked)} />
+                    <span><strong>Generate an official ID instead</strong><span className="mt-1 block text-xs text-amber-800">The spreadsheet ID remains in migration evidence but will not become the student’s admission ID.</span></span>
                   </label>
-                  <label className="block">
-                    Audit reason
-                    <input
-                      aria-label="Historical number reason"
-                      value={reason}
-                      onChange={(event) => setReason(event.target.value)}
-                      className="mt-1 block w-full rounded-lg border border-amber-300 bg-white p-2"
-                    />
-                  </label>
-                  <details className="rounded-lg border border-amber-200 bg-white/60 p-3 text-sm text-amber-900">
-                    <summary className="cursor-pointer font-semibold">Advanced: update the school’s next generated number</summary>
-                    <p className="mt-2 text-xs leading-relaxed text-amber-800">
-                      This does not apply the numbering format to this row. It only moves the official counter forward so later automatically generated IDs do not reuse an earlier sequence.
-                    </p>
-                    <label className="mt-3 flex gap-2">
-                      <input type="checkbox" checked={advance} onChange={(event) => setAdvance(event.target.checked)} />
-                      Move the official counter forward
-                    </label>
-                    {advance && selectedNumbering.available && (
-                      <input aria-label="Official next sequence" type="number" min={selectedNumbering.nextSequence + 1} value={advanceTo} onChange={(event) => setAdvanceTo(event.target.value)} className="mt-2 block w-full rounded-lg border border-amber-300 bg-white p-2" />
-                    )}
-                    {advance && !selectedNumbering.available && (
-                      <p role="alert" className="mt-2 text-rose-800">Counter update unavailable: {selectedNumbering.reason}</p>
-                    )}
-                  </details>
+                  {!generateOfficial && (
+                    <>
+                      <label className="flex gap-2">
+                        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+                        Confirm this admission ID belongs to this student. The system will still block duplicate IDs.
+                      </label>
+                      <label className="block">Audit reason<input aria-label="Historical number reason" value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 block w-full rounded-lg border border-amber-300 bg-white p-2" /></label>
+                    </>
+                  )}
+                  {generateOfficial && selectedNumbering.available && <p className="text-xs text-amber-900">Next available preview: <span className="font-mono font-semibold">{selectedNumbering.nextNumber}</span>. Final allocation occurs at commit.</p>}
+                  {generateOfficial && !selectedNumbering.available && <p role="alert" className="text-sm text-rose-800">Official numbering unavailable: {selectedNumbering.reason}</p>}
                 </div>
               ) : selectedNumbering.available ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">

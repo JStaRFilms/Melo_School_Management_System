@@ -39,7 +39,7 @@ export function buildMigrationPrompt(context: MigrationPromptContext): string {
   const classList = context.classes.map((item) => `- ${item.name} (level: ${item.level})`).join("\n") || "- No classes configured";
   const subjectList = context.subjects.map((item) => `- ${item}`).join("\n") || "- No subjects configured";
   const sessionList = context.sessions.map((item) => `- ${item.name}: ${item.terms.join(", ") || "no terms"}`).join("\n") || "- No sessions configured";
-  return `You are preparing existing school documents for import into ${context.schoolName}. Do not generate sample or random data. Use only facts present in the documents I upload or paste after this prompt. Never guess a missing student, identifier, class, subject, score, date, or contact detail. Leave unknown values blank and describe any uncertainty in Migration Note.\n\nCreate separate UTF-8 CSV outputs for student rosters and academic results when both are present. Return each CSV in its own fenced csv block with one header row and one record per row. Preserve admission IDs exactly, including leading zeroes. Use YYYY-MM-DD dates and plain text phone numbers. Do not merge people merely because they share a surname, class, address, or guardian.\n\nSTUDENT ROSTER HEADERS\nFirst Name,Middle Name,Last Name,Class,Admission ID,Gender,Date of Birth,Guardian Name,Guardian Phone,Guardian Email,Address,Migration Note\n\nRESULT HEADERS\nFirst Name,Last Name,Admission ID,Class,Subject,CA1,CA2,Exam,Session,Term,Migration Note\n\nUse class, subject, session, and term spellings exactly as listed below. If a source value cannot be matched confidently, leave the target cell blank and put the original value in Migration Note.\n\nCLASSES\n${classList}\n\nSUBJECTS\n${subjectList}\n\nSESSIONS AND TERMS\n${sessionList}\n\nBefore producing CSV, briefly list any source pages or fields you could not interpret. Do not invent replacements.`;
+  return `You are preparing existing school documents for import into ${context.schoolName}. Do not generate sample or random data. Use only facts present in the documents I upload or paste after this prompt. Never guess a missing student, identifier, class, subject, score, date, or contact detail. Leave unknown values blank and describe any uncertainty in Migration Note.\n\nCreate separate UTF-8 CSV outputs for student rosters and academic results when both are present. Return each CSV in its own fenced csv block with one header row and one record per row. Preserve admission IDs exactly, including leading zeroes. Use YYYY-MM-DD dates and plain text phone numbers. Do not merge people merely because they share a surname, class, address, or guardian.\n\nSTUDENT ROSTER HEADERS\nFirst Name,Middle Name,Last Name,Class,Admission ID,Gender,Date of Birth,Guardian Name,Guardian Phone,Guardian Email,Address,Migration Note\n\nRESULT HEADERS\nFirst Name,Last Name,Admission ID,Class,Subject,CA1,CA2,Exam,Session,Term,Migration Note\n\nUse every underlying class name exactly as listed below, character for character. Preserve punctuation, hyphens, spacing, and class-arm wording. Do not shorten a class name and do not append its parenthesized level; the level shown after each class below is explanatory only and must not appear in the Class cell. If a source class cannot be matched to exactly one listed class, leave Class blank and put the original source value in Migration Note. Apply the same no-guessing rule to subjects, sessions, and terms. Preserve supplied admission IDs exactly, but never invent an admission ID; leave it blank so the school system can generate it.\n\nCLASSES\n${classList}\n\nSUBJECTS\n${subjectList}\n\nSESSIONS AND TERMS\n${sessionList}\n\nBefore producing CSV, briefly list any source pages or fields you could not interpret. Do not invent replacements.`;
 }
 
 export interface DataMigrationWorkbenchProps {
@@ -110,6 +110,11 @@ export function DataMigrationWorkbench({
     { schoolId } as never,
   ) as MigrationPromptContext | undefined;
 
+  const counterRecommendations = useQuery(
+    "functions/academic/migrationWorkspace:getWorkspaceCounterRecommendations" as never,
+    activeWorkspaceId ? ({ schoolId, workspaceId: activeWorkspaceId } as never) : ("skip" as never),
+  ) as Array<{ counterKey: string; currentNextSequence: number; recommendedNextSequence: number; compatibleRows: number }> | undefined;
+
   const featureSignals = useQuery(
     "functions/academic/migrationWorkspace:getWorkspaceFeatureSignals" as never,
     { schoolId, workspaceId: activeWorkspaceId ?? undefined } as never
@@ -123,6 +128,8 @@ export function DataMigrationWorkbench({
   const resolveRecordClash = useMutation("functions/academic/migrationAutosave:resolveRecordClash" as never);
   const reviewStagedRecord = useMutation("functions/academic/migrationAutosave:reviewStagedRecord" as never);
   const assignStudentClassBatch = useMutation("functions/academic/migrationAutosave:assignStudentClassBatch" as never);
+  const resolveStagedClassesBatch = useMutation("functions/academic/migrationAutosave:resolveStagedClassesBatch" as never);
+  const applyWorkspaceCounterRecommendations = useMutation("functions/academic/migrationAutosave:applyWorkspaceCounterRecommendations" as never);
   const approveImportWorkspace = useMutation("functions/academic/migrationMerge:approveImportWorkspace" as never);
   const reopenIncompleteImportReview = useMutation("functions/academic/migrationMerge:reopenIncompleteImportReview" as never);
   const commitImportWorkspace = useMutation("functions/academic/migrationMerge:commitImportWorkspace" as never);
@@ -299,7 +306,7 @@ export function DataMigrationWorkbench({
     (record) => record.validationStatus === "valid",
   );
 
-  const handleCreateRecords = async (recordIds: string[]) => {
+  const handleCreateRecords = async (recordIds: string[], admissionMode: "preserve" | "official_all") => {
     if (!reviewOptions) return;
     const selectedRows = createEligibleStudentRows.filter((record) => recordIds.includes(record._id));
     if (selectedRows.length !== recordIds.length) {
@@ -309,11 +316,20 @@ export function DataMigrationWorkbench({
     const suppliedCount = selectedRows.filter((record) =>
       record.parsedData.admissionNumber?.trim(),
     ).length;
+    const missingNumbering = selectedRows.some((record) => {
+      const selectedClass = reviewOptions.classes.find((item) => item.id === record.parsedData.matchedClassId);
+      const numbering = reviewOptions.numberingByLevel?.find((item) => item.level === selectedClass?.level)?.numbering ?? reviewOptions.numbering;
+      return (admissionMode === "official_all" || !record.parsedData.admissionNumber?.trim()) && !numbering.available;
+    });
+    if (missingNumbering) {
+      appToast.error("Configure official admission numbering for every selected class before generating IDs");
+      return;
+    }
     const duplicateCount = selectedRows.filter(
       (record) => record.validationStatus === "warning",
     ).length;
     if (!window.confirm(
-      `Create ${selectedRows.length} separate student records in the import plan? ${suppliedCount} supplied admission IDs will be kept after backend uniqueness checks.${duplicateCount ? ` You are explicitly rejecting ${duplicateCount} possible-duplicate suggestions.` : ""} Nothing is committed yet.`,
+      `Create ${selectedRows.length} separate student records in the import plan? ${admissionMode === "official_all" ? `Official IDs will replace ${suppliedCount} supplied spreadsheet IDs.` : `${suppliedCount} supplied admission IDs will be kept after backend uniqueness checks.`}${duplicateCount ? ` You are explicitly rejecting ${duplicateCount} possible-duplicate suggestions.` : ""} Nothing is committed yet.`,
     )) return;
     setIsReviewingReadyRows(true);
     try {
@@ -326,29 +342,30 @@ export function DataMigrationWorkbench({
           (item) => item.level === classOption.level,
         )?.numbering ?? reviewOptions.numbering;
         const supplied = Boolean(record.parsedData.admissionNumber?.trim());
+        const generateOfficial = admissionMode === "official_all" || !supplied;
         await reviewStagedRecord({
           schoolId,
           recordId: record._id,
           expectedRowRevision: record.rowRevision ?? 1,
           resolutionAction: "create_new",
           selectedClassId: classOption.id,
-          admissionNumberMode: supplied ? "supplied" : "official_generated",
-          manualNumberConfirmed: supplied ? true : undefined,
-          manualNumberReason: supplied
+          admissionNumberMode: generateOfficial ? "official_generated" : "supplied",
+          manualNumberConfirmed: !generateOfficial ? true : undefined,
+          manualNumberReason: !generateOfficial
             ? "Historical identifier preserved during reviewed bulk import"
             : undefined,
           expectedNumberPolicyVersion:
-            !supplied && numbering.available ? numbering.policyVersion : undefined,
+            generateOfficial && numbering.available ? numbering.policyVersion : undefined,
           expectedNumberFormatVersion:
-            !supplied && numbering.available ? numbering.formatVersion : undefined,
+            generateOfficial && numbering.available ? numbering.formatVersion : undefined,
           expectedNumberCounterKey:
-            !supplied && numbering.available ? numbering.counterKey : undefined,
+            generateOfficial && numbering.available ? numbering.counterKey : undefined,
           expectedNumberCounterVersion:
-            !supplied && numbering.available ? numbering.counterVersion : undefined,
+            generateOfficial && numbering.available ? numbering.counterVersion : undefined,
           expectedNumberSessionId:
-            !supplied && numbering.available ? numbering.sessionId : undefined,
+            generateOfficial && numbering.available ? numbering.sessionId : undefined,
           expectedNumberResetPeriod:
-            !supplied && numbering.available ? numbering.resetPeriod : undefined,
+            generateOfficial && numbering.available ? numbering.resetPeriod : undefined,
         } as never);
       }
       appToast.success(`Added ${selectedRows.length} new student records to the import plan`);
@@ -390,6 +407,27 @@ export function DataMigrationWorkbench({
     } finally {
       setIsReviewingReadyRows(false);
     }
+  };
+
+  const handleRecheckClasses = async () => {
+    if (!activeWorkspaceId) return;
+    setIsReviewingReadyRows(true);
+    try {
+      const result = await resolveStagedClassesBatch({ schoolId, workspaceId: activeWorkspaceId } as never) as { resolved: number };
+      appToast.success(result.resolved ? `Resolved ${result.resolved} class placements` : "No additional exact class matches found");
+    } catch (error) {
+      appToast.error(getErrorMessage(error, "Could not recheck class placements"));
+    } finally { setIsReviewingReadyRows(false); }
+  };
+
+  const handleApplyCounterRecommendations = async () => {
+    if (!activeWorkspaceId || !counterRecommendations?.length) return;
+    const summary = counterRecommendations.map((item) => `${item.counterKey}: ${item.currentNextSequence} → ${item.recommendedNextSequence}`).join("\n");
+    if (!window.confirm(`Apply these next-number recommendations?\n\n${summary}\n\nThis changes only the reviewed import plan; counters move when committed.`)) return;
+    try {
+      const result = await applyWorkspaceCounterRecommendations({ schoolId, workspaceId: activeWorkspaceId } as never) as { applied: number };
+      appToast.success(`Applied ${result.applied} counter recommendations`);
+    } catch (error) { appToast.error(getErrorMessage(error, "Could not apply counter recommendations")); }
   };
 
   const handleApprovePlan = async () => {
@@ -623,6 +661,10 @@ export function DataMigrationWorkbench({
             </div>
           ) : (
             <div className="space-y-6">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={isReviewingReadyRows} onClick={handleRecheckClasses} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Recheck class matches</button>
+                {counterRecommendations && counterRecommendations.length > 0 && <button type="button" onClick={handleApplyCounterRecommendations} className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">Apply recommended next numbers ({counterRecommendations.length})</button>}
+              </div>
               {(stagedRecords ?? []).some((record) => record.reviewStatus === "approved") && (
                 <section aria-labelledby="approved-plan-heading" className="rounded-2xl border border-slate-200 bg-white p-4">
                   <h2 id="approved-plan-heading" className="text-sm font-bold text-slate-900">Approved row decisions and placement</h2>

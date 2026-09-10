@@ -1,4 +1,4 @@
-import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
+import { findUniqueMigrationClass, getActiveMigrationClasses, getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import { mutation } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "../../_generated/server";
@@ -101,10 +101,7 @@ export const stageRecordsBatch = mutation({
     const now = Date.now();
 
     // 1. Fetch live classes and subjects for matching
-    const liveClasses = await ctx.db
-      .query("classes")
-      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .take(100);
+    const liveClasses = await getActiveMigrationClasses(ctx, args.schoolId);
 
     const liveSubjects = await ctx.db
       .query("subjects")
@@ -211,10 +208,7 @@ export const stageRecordsBatch = mutation({
       }
 
       // Match class
-      const matchedClass = liveClasses.find(
-        (c) =>
-          c.name.toLowerCase().trim() === data.className.toLowerCase().trim(),
-      );
+      const matchedClass = findUniqueMigrationClass(liveClasses, data.className);
       if (matchedClass) {
         data.matchedClassId = matchedClass._id;
       }

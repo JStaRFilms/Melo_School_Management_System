@@ -17,6 +17,8 @@ describe("buildMigrationPrompt", () => {
 
     expect(prompt).toContain("Do not generate sample or random data");
     expect(prompt).toContain("JSS 1A (level: JSS 1)");
+    expect(prompt).toContain("underlying class name exactly");
+    expect(prompt).toContain("never invent an admission ID");
     expect(prompt).toContain("Mathematics");
     expect(prompt).toContain("2026/2027: First Term");
   });

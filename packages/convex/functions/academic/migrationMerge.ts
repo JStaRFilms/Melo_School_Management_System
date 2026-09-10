@@ -154,6 +154,21 @@ export const approveImportWorkspace = mutation({
       ? []
       : [...(workspace.planningCounters ?? (legacyPlanningCounter ? [legacyPlanningCounter] : []))];
     const proposals: Array<{ rowNumber: number; admissionNumber: string }> = [];
+    if (starting) {
+      const reviewedRows = await ctx.db.query("stagedImportRecords").withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId)).take(1000);
+      for (const record of reviewedRows) {
+        if (record.advanceCounterTo === undefined || !record.selectedClassId) continue;
+        const selectedClass = await ctx.db.get(record.selectedClassId);
+        if (!selectedClass) continue;
+        const current = await proposeAdmissionNumberHelper(ctx, { schoolId: args.schoolId, level: selectedClass.level });
+        let state = planningCounters.find((item) => item.key === current.counterKey);
+        if (!state) {
+          state = { key: current.counterKey, policyVersion: current.policyVersion, formatVersion: current.formatVersion, counterVersion: current.counterVersion, sessionId: current.activeSessionId, resetPeriod: current.resetPeriod, baseSequence: current.sequenceNumber, nextSequence: current.sequenceNumber };
+          planningCounters.push(state);
+        }
+        state.nextSequence = Math.max(state.nextSequence, record.advanceCounterTo);
+      }
+    }
 
     for (const record of page.page) {
       if (record.isCommitted) {
@@ -269,7 +284,7 @@ export const approveImportWorkspace = mutation({
             admissionNumber: proposedAdmissionNumber,
           });
         } else if (record.advanceCounterTo !== undefined) {
-          if (record.advanceCounterTo <= counterState.nextSequence) {
+          if (record.advanceCounterTo < counterState.nextSequence) {
             throw new ConvexError(
               `Counter choice on row #${record.rowNumber} does not exceed the prior reviewed sequence`,
             );

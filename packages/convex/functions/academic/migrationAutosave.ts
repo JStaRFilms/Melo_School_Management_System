@@ -3,8 +3,9 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { generateFamilyClusterKey, normalizePhoneNumber } from "@school/shared";
-import { getPrivateMigrationWorkspace } from "./migrationWorkspace";
+import { findUniqueMigrationClass, getActiveMigrationClasses, getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import {
+  inferAdmissionNumberSequenceHelper,
   proposeAdmissionNumberHelper,
   validateSequence,
 } from "./admissionNumbers";
@@ -362,7 +363,7 @@ export async function validateReviewedRecord(
     }
 
     const suppliedNumber = record.parsedData.admissionNumber?.trim();
-    if (suppliedNumber) {
+    if (suppliedNumber && record.admissionNumberMode !== "official_generated") {
       if (
         record.admissionNumberMode !== "supplied" ||
         !record.manualNumberConfirmed ||
@@ -537,6 +538,67 @@ export async function validateReviewedRecord(
       `Grade row #${record.rowNumber} duplicates an existing assessment record`,
     );
 }
+
+export const applyWorkspaceCounterRecommendations = mutation({
+  args: { schoolId: v.id("schools"), workspaceId: v.id("importWorkspaces") },
+  handler: async (ctx, args) => {
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    assertEditable(workspace);
+    await requireCapability(ctx, args.schoolId, "enrollment.admissions.override_number");
+    const records = await ctx.db.query("stagedImportRecords").withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId)).take(1000);
+    const selected = new Map<string, { record: Doc<"stagedImportRecords">; inferred: NonNullable<Awaited<ReturnType<typeof inferAdmissionNumberSequenceHelper>>> }>();
+    for (const record of records) {
+      if (record.entityType !== "student" || record.reviewStatus !== "approved" || record.resolutionAction !== "create_new" || record.admissionNumberMode !== "supplied" || !record.selectedClassId) continue;
+      const selectedClass = await ctx.db.get(record.selectedClassId);
+      const number = record.parsedData.admissionNumber?.trim();
+      if (!selectedClass || !number) continue;
+      const inferred = await inferAdmissionNumberSequenceHelper(ctx, { schoolId: args.schoolId, number, level: selectedClass.level });
+      if (!inferred || inferred.recommendedNextSequence <= inferred.currentNextSequence) continue;
+      const prior = selected.get(inferred.counterKey);
+      if (!prior || inferred.recommendedNextSequence > prior.inferred.recommendedNextSequence) selected.set(inferred.counterKey, { record, inferred });
+    }
+    for (const record of records) {
+      if (record.admissionNumberMode === "supplied" && record.advanceCounterTo !== undefined) {
+        await ctx.db.patch(record._id, { advanceCounterTo: undefined });
+      }
+    }
+    for (const { record, inferred } of selected.values()) {
+      await ctx.db.patch(record._id, {
+        advanceCounterTo: inferred.recommendedNextSequence,
+        expectedNumberPolicyVersion: inferred.policyVersion,
+        expectedNumberFormatVersion: inferred.formatVersion,
+        expectedNumberCounterKey: inferred.counterKey,
+        expectedNumberCounterVersion: inferred.counterVersion,
+        expectedNumberSessionId: inferred.sessionId,
+        expectedNumberResetPeriod: inferred.resetPeriod,
+      });
+    }
+    if (selected.size) await invalidateWorkspaceReview(ctx, workspace);
+    return { applied: selected.size };
+  },
+});
+
+export const resolveStagedClassesBatch = mutation({
+  args: { schoolId: v.id("schools"), workspaceId: v.id("importWorkspaces") },
+  handler: async (ctx, args) => {
+    const { workspace } = await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    assertEditable(workspace);
+    const [classes, records] = await Promise.all([
+      getActiveMigrationClasses(ctx, args.schoolId),
+      ctx.db.query("stagedImportRecords").withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId)).take(1000),
+    ]);
+    const unresolved = records.filter((record) => record.entityType === "student" && record.reviewStatus !== "approved" && !record.parsedData.matchedClassId);
+    let resolved = 0;
+    for (const record of unresolved) {
+      const matched = findUniqueMigrationClass(classes, record.parsedData.className);
+      if (!matched) continue;
+      await ctx.db.patch(record._id, { parsedData: { ...record.parsedData, className: matched.name, matchedClassId: matched._id }, rowRevision: (record.rowRevision ?? 1) + 1 });
+      resolved += 1;
+    }
+    if (resolved) await invalidateWorkspaceReview(ctx, workspace);
+    return { resolved };
+  },
+});
 
 /** Resolves class placement for selected pending roster rows in one private workspace operation. */
 export const assignStudentClassBatch = mutation({

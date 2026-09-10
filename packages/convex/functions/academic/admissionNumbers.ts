@@ -1026,6 +1026,32 @@ export async function proposeAdmissionNumberHelper(
   };
 }
 
+export async function inferAdmissionNumberSequenceHelper(
+  ctx: Context,
+  args: { schoolId: Id<"schools">; number: string; level?: string },
+) {
+  const context = await getContext(ctx, args);
+  if (!context.policy || !context.session || !context.format || !context.counter || !context.period || context.sequence === undefined) return null;
+  const candidates = args.number.match(/\d+/g) ?? [];
+  for (const candidate of candidates) {
+    const sequence = Number(candidate);
+    if (!Number.isSafeInteger(sequence) || sequence < 1) continue;
+    if (formatProposal(context, args.level, sequence) !== args.number) continue;
+    return {
+      sequence,
+      recommendedNextSequence: Math.max(context.sequence, sequence + 1),
+      currentNextSequence: context.sequence,
+      policyVersion: context.policy.version ?? 0,
+      formatVersion: context.format.formatVersion,
+      counterKey: context.counter.key,
+      counterVersion: context.counter.configVersion,
+      sessionId: context.session._id,
+      resetPeriod: context.period,
+    };
+  }
+  return null;
+}
+
 /** Read-only preview at a specified sequence for reviewed multi-row import plans. */
 export async function proposeAdmissionNumberAtSequenceHelper(
   ctx: Context,

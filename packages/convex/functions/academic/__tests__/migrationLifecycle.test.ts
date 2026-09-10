@@ -130,12 +130,13 @@ describe("Migration Lifecycle Engine", () => {
       rowNumber: 1,
       entityType: "student" as const,
       rawPayload: { password: "must-not-persist" },
-      parsedData: { firstName: "Ada", lastName: "Example", gender: "Female", className: "JSS 1A" },
+      parsedData: { firstName: "Ada", lastName: "Example", gender: "Female", className: "JSS 1-A" },
       unrecognizedHeaders: [{ header: "Extra", sampleValue: "private-source-value", detectedType: "string" }],
     };
     await owner.mutation(stageRecordsBatch, { schoolId: schoolA, workspaceId, records: [row] });
     const records = await t.run((ctx) => ctx.db.query("stagedImportRecords").collect());
     expect(records[0].rawPayload).toEqual({});
+    expect(records[0].parsedData.matchedClassId).toBe(jss1Class);
     const signals = await owner.query(getWorkspaceFeatureSignals, { schoolId: schoolA, workspaceId });
     expect(signals[0]).not.toHaveProperty("sampleValue");
     expect(await owner.query(getMigrationPromptContext, { schoolId: schoolA })).toMatchObject({

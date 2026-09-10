@@ -2,8 +2,28 @@ import { mutation, query } from "../../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { assertMigrationAccess, type MigrationCtx } from "./migrationAuth";
-import type { Id } from "../../_generated/dataModel";
-import { proposeAdmissionNumberHelper } from "./admissionNumbers";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { inferAdmissionNumberSequenceHelper, proposeAdmissionNumberHelper } from "./admissionNumbers";
+
+export function normalizeMigrationCatalogName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export async function getActiveMigrationClasses(ctx: MigrationCtx, schoolId: Id<"schools">): Promise<Doc<"classes">[]> {
+  const [legacy, current] = await Promise.all([
+    ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", schoolId).eq("isArchived", undefined)).take(500),
+    ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", schoolId).eq("isArchived", false)).take(500),
+  ]);
+  return [...legacy, ...current];
+}
+
+export function findUniqueMigrationClass(classes: Doc<"classes">[], name: string): Doc<"classes"> | undefined {
+  const exact = classes.filter((item) => item.name.toLowerCase().trim() === name.toLowerCase().trim());
+  if (exact.length === 1) return exact[0];
+  const normalized = normalizeMigrationCatalogName(name);
+  const matches = classes.filter((item) => normalizeMigrationCatalogName(item.name) === normalized);
+  return matches.length === 1 ? matches[0] : undefined;
+}
 
 /** Staging content is private even to other administrators of the same branch. */
 export async function getPrivateMigrationWorkspace(
@@ -204,17 +224,15 @@ export const getMigrationPromptContext = query({
   args: { schoolId: v.id("schools") },
   handler: async (ctx, args) => {
     await assertMigrationAccess(ctx, args.schoolId);
-    const [school, legacyClasses, currentClasses, legacySubjects, currentSubjects, sessions] =
+    const [school, classes, legacySubjects, currentSubjects, sessions] =
       await Promise.all([
         ctx.db.get(args.schoolId),
-        ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", undefined)).take(200),
-        ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", false)).take(200),
+        getActiveMigrationClasses(ctx, args.schoolId),
         ctx.db.query("subjects").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", undefined)).take(200),
         ctx.db.query("subjects").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", false)).take(200),
         ctx.db.query("academicSessions").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(50),
       ]);
     if (!school) throw new ConvexError("School not found");
-    const classes = [...new Map([...legacyClasses, ...currentClasses].map((item) => [String(item._id), item])).values()];
     const subjects = [...new Map([...legacySubjects, ...currentSubjects].map((item) => [String(item._id), item])).values()];
     const sessionOptions = [];
     for (const session of sessions) {
@@ -230,6 +248,38 @@ export const getMigrationPromptContext = query({
   },
 });
 
+export const getWorkspaceCounterRecommendations = query({
+  args: { schoolId: v.id("schools"), workspaceId: v.id("importWorkspaces") },
+  handler: async (ctx, args) => {
+    await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
+    const records = await ctx.db.query("stagedImportRecords").withIndex("by_workspaceId", (q) => q.eq("workspaceId", args.workspaceId)).take(1000);
+    const recommendations = new Map<string, { counterKey: string; currentNextSequence: number; recommendedNextSequence: number; compatibleRows: number }>();
+    for (const record of records) {
+      if (record.entityType !== "student" || record.reviewStatus !== "approved" || record.resolutionAction !== "create_new" || record.admissionNumberMode !== "supplied" || !record.selectedClassId) continue;
+      const selectedClass = await ctx.db.get(record.selectedClassId);
+      const number = record.parsedData.admissionNumber?.trim();
+      if (!selectedClass || !number) continue;
+      const inferred = await inferAdmissionNumberSequenceHelper(ctx, { schoolId: args.schoolId, number, level: selectedClass.level });
+      if (!inferred || inferred.recommendedNextSequence <= inferred.currentNextSequence) continue;
+      const prior = recommendations.get(inferred.counterKey);
+      recommendations.set(inferred.counterKey, {
+        counterKey: inferred.counterKey,
+        currentNextSequence: inferred.currentNextSequence,
+        recommendedNextSequence: Math.max(prior?.recommendedNextSequence ?? 0, inferred.recommendedNextSequence),
+        compatibleRows: (prior?.compatibleRows ?? 0) + 1,
+      });
+    }
+    return [...recommendations.values()].filter(
+      (recommendation) =>
+        !records.some(
+          (record) =>
+            record.expectedNumberCounterKey === recommendation.counterKey &&
+            (record.advanceCounterTo ?? 0) >= recommendation.recommendedNextSequence,
+        ),
+    );
+  },
+});
+
 export const getWorkspaceReviewOptions = query({
   args: {
     schoolId: v.id("schools"),
@@ -238,8 +288,7 @@ export const getWorkspaceReviewOptions = query({
   handler: async (ctx, args) => {
     await getPrivateMigrationWorkspace(ctx, args.schoolId, args.workspaceId);
     const [
-      legacyClasses,
-      currentClasses,
+      classes,
       legacySubjects,
       currentSubjects,
       families,
@@ -248,18 +297,7 @@ export const getWorkspaceReviewOptions = query({
       users,
       sessions,
     ] = await Promise.all([
-      ctx.db
-        .query("classes")
-        .withIndex("by_school_and_archived", (q) =>
-          q.eq("schoolId", args.schoolId).eq("isArchived", undefined),
-        )
-        .take(200),
-      ctx.db
-        .query("classes")
-        .withIndex("by_school_and_archived", (q) =>
-          q.eq("schoolId", args.schoolId).eq("isArchived", false),
-        )
-        .take(200),
+      getActiveMigrationClasses(ctx, args.schoolId),
       ctx.db
         .query("subjects")
         .withIndex("by_school_and_archived", (q) =>
@@ -297,7 +335,6 @@ export const getWorkspaceReviewOptions = query({
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
         .take(50),
     ]);
-    const classes = [...legacyClasses, ...currentClasses].slice(0, 200);
     const subjects = [...legacySubjects, ...currentSubjects].slice(0, 200);
     const students = [...legacyStudents, ...currentStudents].slice(0, 500);
     const enrolledUserIds = new Set(
