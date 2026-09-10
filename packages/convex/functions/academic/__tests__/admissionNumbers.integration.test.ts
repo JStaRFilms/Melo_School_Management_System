@@ -360,14 +360,20 @@ it("corrects an existing student only with reason and explicit version-pinned ad
   });
 });
 
-it("does not infer manual override permission from the legacy admin title", async () => {
-  const { t, schoolId, classId } = await fixture();
+it("does not infer manual override permission from the managed admin title", async () => {
+  const { t, schoolId, classId, membershipId } = await fixture();
   await t.run(async (ctx) => {
     const link = await ctx.db
       .query("schoolGroupBranches")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
       .unique();
     if (link) await ctx.db.delete(link._id);
+    await ctx.db.patch(membershipId, { permissionsManagedAt: Date.now() });
+    await ctx.db.insert("membershipDirectGrants", {
+      membershipId,
+      capability: "enrollment.intakes.manage",
+      grantedAt: Date.now(),
+    });
   });
   const viewer = t.withIdentity({
     subject: "owner",

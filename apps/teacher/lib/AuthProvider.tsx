@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 import type { BranchSummary } from "@school/shared";
@@ -95,7 +95,27 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+interface ConvexAuthState {
+  isLoading: boolean;
+  isAuthenticated: boolean;
+}
+
+const UNCONFIGURED_CONVEX_AUTH: ConvexAuthState = {
+  isLoading: false,
+  isAuthenticated: false,
+};
+
+interface AuthProviderInternalProps {
+  children: ReactNode;
+  convexAuth: ConvexAuthState;
+  isConfigured: boolean;
+}
+
+function AuthProviderInternal({
+  children,
+  convexAuth,
+  isConfigured,
+}: AuthProviderInternalProps) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
   const [selectionAccountId, setSelectionAccountId] = useState<string | null>(null);
@@ -125,24 +145,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [accountId]);
 
   const selectionReady = Boolean(accountId && selectionAccountId === accountId);
+  const canQueryConvex =
+    isConfigured &&
+    Boolean(session?.user) &&
+    selectionReady &&
+    !convexAuth.isLoading &&
+    convexAuth.isAuthenticated;
+
   const resolvedWorkspaceAccess = useQuery(
     viewerAccessQuery,
-    isConvexConfigured() && session?.user && selectionReady
-      ? selectedSchoolId ? { schoolId: selectedSchoolId as Id<"schools"> } : {}
+    canQueryConvex
+      ? selectedSchoolId
+        ? { schoolId: selectedSchoolId as Id<"schools"> }
+        : {}
       : "skip",
   );
   const availableBranches = useQuery(
     userBranchesQuery,
-    isConvexConfigured() && session?.user && selectionReady ? {} : "skip",
+    canQueryConvex ? {} : "skip",
   );
   const selectedIsValidated = !selectedSchoolId || availableBranches === undefined ||
     availableBranches.some((branch) => branch.schoolId === selectedSchoolId);
   const resolvedMatchesSelection = !selectedSchoolId || resolvedWorkspaceAccess?.state !== "ready" ||
     resolvedWorkspaceAccess.branch.schoolId === selectedSchoolId;
-  const workspaceAccess = useMemo<WorkspaceAccessSummary | undefined>(() => !selectedIsValidated
-    ? { state: "reconciliation_required", message: "The saved branch is no longer an active membership. No branch data was opened. Return to your default branch or ask an administrator to review access." }
-    : resolvedMatchesSelection ? resolvedWorkspaceAccess : undefined,
-  [resolvedMatchesSelection, resolvedWorkspaceAccess, selectedIsValidated]);
+  const workspaceAccess = useMemo<WorkspaceAccessSummary | undefined>(() => {
+    if (!canQueryConvex) return undefined;
+    return !selectedIsValidated
+      ? { state: "reconciliation_required", message: "The saved branch is no longer an active membership. No branch data was opened. Return to your default branch or ask an administrator to review access." }
+      : resolvedMatchesSelection ? resolvedWorkspaceAccess : undefined;
+  }, [canQueryConvex, resolvedMatchesSelection, resolvedWorkspaceAccess, selectedIsValidated]);
 
   useEffect(() => {
     if (!accountId || !selectedSchoolId || availableBranches === undefined || selectedIsValidated) return;
@@ -176,13 +207,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setSelectedSchoolId(null);
   }, [accountId]);
+  const isConvexAuthPending =
+    isConfigured && Boolean(session?.user) && convexAuth.isLoading;
+  const isConvexUnauthenticated =
+    isConfigured &&
+    Boolean(session?.user) &&
+    !convexAuth.isLoading &&
+    !convexAuth.isAuthenticated;
+
   const mappedSession = useMemo(
-    () => mapSession(session, workspaceAccess?.state === "ready" &&
-      workspaceAccess.compatibility.legacyDefaultSchoolId === workspaceAccess.branch.schoolId ? {
-      role: workspaceAccess.compatibility.legacyRole ?? undefined,
-      schoolId: workspaceAccess.branch.schoolId,
-    } : null),
-    [session, workspaceAccess]
+    () => isConvexUnauthenticated || isConvexAuthPending
+      ? null
+      : mapSession(session, workspaceAccess?.state === "ready" &&
+          workspaceAccess.compatibility.legacyDefaultSchoolId === workspaceAccess.branch.schoolId ? {
+          role: workspaceAccess.compatibility.legacyRole ?? undefined,
+          schoolId: workspaceAccess.branch.schoolId,
+        } : null),
+    [isConvexAuthPending, isConvexUnauthenticated, session, workspaceAccess]
   );
 
   const signIn = useCallback(
@@ -239,10 +280,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  const isLoading =
-    isPending ||
-    (isConvexConfigured() && Boolean(session?.user) &&
-      (!selectionReady || workspaceAccess === undefined || (Boolean(selectedSchoolId) && availableBranches === undefined)));
+  const isConvexAuthLoading =
+    isConfigured && Boolean(session?.user) && convexAuth.isLoading;
+  const isWaitingForConvexData =
+    isConfigured &&
+    Boolean(session?.user) &&
+    !convexAuth.isLoading &&
+    convexAuth.isAuthenticated &&
+    (!selectionReady ||
+      workspaceAccess === undefined ||
+      (Boolean(selectedSchoolId) && availableBranches === undefined));
+  const isLoading = isPending || isConvexAuthLoading || isWaitingForConvexData;
 
   const value: AuthContextValue = {
     session: mappedSession,
@@ -259,6 +307,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function ConfiguredAuthProvider({ children }: { children: ReactNode }) {
+  const convexAuth = useConvexAuth();
+  return (
+    <AuthProviderInternal convexAuth={convexAuth} isConfigured={true}>
+      {children}
+    </AuthProviderInternal>
+  );
+}
+
+function UnconfiguredAuthProvider({ children }: { children: ReactNode }) {
+  return (
+    <AuthProviderInternal
+      convexAuth={UNCONFIGURED_CONVEX_AUTH}
+      isConfigured={false}
+    >
+      {children}
+    </AuthProviderInternal>
+  );
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  if (isConvexConfigured()) {
+    return <ConfiguredAuthProvider>{children}</ConfiguredAuthProvider>;
+  }
+  return <UnconfiguredAuthProvider>{children}</UnconfiguredAuthProvider>;
 }
 
 export function useAuth() {

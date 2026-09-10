@@ -625,6 +625,11 @@ export const acceptDestinationTransfer = mutation({
     let destinationAdmissionNumber: string;
     const manualAdmissionNumber = args.admissionNumberOverride?.trim();
     if (manualAdmissionNumber) {
+      await requireCapability(
+        ctx,
+        transfer.destinationSchoolId,
+        "enrollment.admissions.override_number",
+      );
       if (!args.admissionNumberOverrideConfirmed) {
         throw new ConvexError(
           "Manual admission number override must be explicitly confirmed",

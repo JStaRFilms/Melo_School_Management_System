@@ -265,11 +265,11 @@ it("lets a source-only operator choose an explicit same-group recipient without 
     expect(shared.rows[0]).not.toHaveProperty(privateField);
 });
 it("holds have separate removal authority; confirmed purge cannot override holds or release charged bytes", async () => {
-  const { t, p, principal, schoolId, assetId, size } = await fixture();
-  const hold = await principal.mutation(a.applyRetentionHold, { schoolId, assetId, holdReason: "Statutory retention" });
+  const { t, p, holdOperator, schoolId, assetId, size } = await fixture();
+  const hold = await holdOperator.mutation(a.applyRetentionHold, { schoolId, assetId, holdReason: "Statutory retention" });
   if (!hold) throw new Error("missing hold");
-  await expect(principal.mutation(a.removeRetentionHold, { schoolId, holdId: hold._id })).rejects.toThrow();
-  await principal.mutation(a.trashAsset, { schoolId, assetId });
+  await expect(holdOperator.mutation(a.removeRetentionHold, { schoolId, holdId: hold._id })).rejects.toThrow("assets.holds.remove");
+  await p.mutation(a.trashAsset, { schoolId, assetId });
   await expect(p.mutation(a.permanentPurgeAsset, { schoolId, assetId, confirmation: "PURGE wrong.pdf" })).rejects.toThrow("confirmation");
   await expect(p.mutation(a.permanentPurgeAsset, { schoolId, assetId, confirmation: "PURGE Policy.pdf" })).rejects.toThrow("hold");
   await t.run(ctx => ctx.db.patch(assetId, { purgeScheduledAt: Date.now() - 1 }));

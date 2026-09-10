@@ -118,7 +118,7 @@ export const startUsageCycle = mutation({
             tempStorageBytes: existing[0].tempStorageBytes ?? 0,
           }
         : { consumedUnits: 0, activeStorageBytes: 0, trashStorageBytes: 0, tempStorageBytes: 0 };
-      const value = { schoolId: args.schoolId, cycleId: id, meterType: row.meterType, allocatedUnits: row.baseUnits + row.graceUnits, baseUnits: row.baseUnits, graceUnits: row.graceUnits, topUpUnits: 0, exceptionUnits: 0, poolUnits: 0, ...carriedStorage, reservedUnits: 0, warningThresholdPercent: version.entitlement.warningPercent, criticalThresholdPercent: version.entitlement.criticalPercent, hardStopThresholdPercent: version.entitlement.hardStopPercent, resetCadence: contract.rate.cadence === "annually" ? "termly" as const : "termly" as const, lastResetAt: args.startAt, updatedAt: Date.now() };
+      const value = { schoolId: args.schoolId, cycleId: id, meterType: row.meterType, allocatedUnits: row.baseUnits + row.graceUnits, baseUnits: row.baseUnits, graceUnits: row.graceUnits, topUpUnits: 0, exceptionUnits: 0, poolUnits: 0, ...carriedStorage, reservedUnits: 0, warningThresholdPercent: version.entitlement.warningPercent, criticalThresholdPercent: version.entitlement.criticalPercent, hardStopThresholdPercent: version.entitlement.hardStopPercent, resetCadence: "termly" as const, lastResetAt: args.startAt, updatedAt: Date.now() };
       if (existing[0]) await ctx.db.replace(existing[0]._id, value); else await ctx.db.insert("usageMeterAllocations", value);
     }
     await audit(ctx, args.schoolId, "usage.cycle_started", id, "Activated explicit contract-bound entitlement cycle; no payment inferred"); return id;

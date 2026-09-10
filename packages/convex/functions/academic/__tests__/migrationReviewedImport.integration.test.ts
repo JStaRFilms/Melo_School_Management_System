@@ -494,6 +494,60 @@ describe("R1 reviewed import remediation", () => {
     ).toHaveLength(0);
   });
 
+  it("returns a chunked approval to review when its numbering counter drifts", async () => {
+    const f = await fixture();
+    const workspaceId = await createWorkspace(f, "Counter drift recovery");
+    const records = [
+      await stageStudent(f, workspaceId, 1),
+      await stageStudent(f, workspaceId, 2),
+    ];
+    for (const [index, record] of records.entries()) {
+      await f.session.mutation(
+        api.functions.academic.migrationAutosave.reviewStagedRecord,
+        {
+          schoolId: f.schoolId,
+          recordId: record._id,
+          expectedRowRevision: record.rowRevision ?? 1,
+          resolutionAction: "create_new",
+          selectedClassId: f.classId,
+          selectedUserId: f.studentUserIds[index],
+          selectedFamilyId: f.familyId,
+          admissionNumberMode: "official_generated",
+          expectedNumberPolicyVersion: 1,
+          expectedNumberFormatVersion: "branch:1:0",
+          expectedNumberCounterKey: "default",
+          expectedNumberCounterVersion: 0,
+          expectedNumberSessionId: f.sessionId,
+          expectedNumberResetPeriod: "continuous",
+        },
+      );
+    }
+
+    const firstBatch = await f.session.mutation(
+      api.functions.academic.migrationMerge.approveImportWorkspace,
+      { schoolId: f.schoolId, workspaceId, batchSize: 1 },
+    );
+    expect(firstBatch.done).toBe(false);
+    await f.t.run(ctx =>
+      ctx.db.patch(f.policyId, { currentSequence: 20, updatedAt: Date.now() }),
+    );
+
+    const recovery = await f.session.mutation(
+      api.functions.academic.migrationMerge.approveImportWorkspace,
+      { schoolId: f.schoolId, workspaceId, batchSize: 1 },
+    );
+    expect(recovery).toMatchObject({
+      success: false,
+      done: false,
+      restartRequired: true,
+      processedRecords: 0,
+    });
+    const workspace = await f.t.run(ctx => ctx.db.get(workspaceId));
+    expect(workspace).toMatchObject({ status: "reviewing" });
+    expect(workspace?.planningCursor).toBeUndefined();
+    expect(workspace?.planningCounters).toBeUndefined();
+  });
+
   it("creates only with reviewed existing identities/classes and allocates exact H4 proposals transactionally", async () => {
     const f = await fixture();
     const workspaceId = await createWorkspace(f);

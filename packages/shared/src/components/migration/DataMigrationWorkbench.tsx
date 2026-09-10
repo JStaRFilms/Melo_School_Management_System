@@ -557,9 +557,18 @@ export function DataMigrationWorkbench({
       let skippedOccupiedNumbers = 0;
       while (!done) {
         const result = await approveImportWorkspace({ schoolId, workspaceId: activeWorkspaceId } as never) as {
-          done: boolean; processedRecords: number; totalRecords: number; skippedOccupiedNumbers?: number;
+          done: boolean;
+          processedRecords: number;
+          totalRecords: number;
+          skippedOccupiedNumbers?: number;
+          restartRequired?: boolean;
+          message?: string;
         };
         setCommitProgress({ processed: result.processedRecords, total: result.totalRecords });
+        if (result.restartRequired) {
+          appToast.error(result.message ?? "Numbering changed during approval. Reload recommendations and approve again.");
+          return;
+        }
         skippedOccupiedNumbers += result.skippedOccupiedNumbers ?? 0;
         done = result.done;
       }
