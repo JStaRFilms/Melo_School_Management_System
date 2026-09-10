@@ -89,10 +89,10 @@ it("retains report edits made during an in-flight domain save", async () => {
   const description = await screen.findByPlaceholderText("e.g. Used for Primary affective evaluation");
   fireEvent.change(description, { target: { value: "Submitted snapshot" } });
   fireEvent.click(screen.getByText("Save Scale"));
-  await screen.findByText("Processing...");
+  await screen.findByText(/(Saving|Processing)\.\.\./);
   fireEvent.change(description, { target: { value: "Newer local edit" } });
   await act(async () => { resolveSave("scale-one"); });
   expect(description).toHaveValue("Newer local edit");
-  expect(screen.getByText("Unsaved Changes")).toBeInTheDocument();
+  expect(screen.getByText(/Unsaved [Cc]hanges/)).toBeInTheDocument();
   expect(onSaveScaleTemplate).toHaveBeenCalledTimes(1);
 });

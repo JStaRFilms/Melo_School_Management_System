@@ -120,10 +120,6 @@ it("truthfully gates commit until explicit row review and plan approval", async 
       /This decision is saved for the final import/,
     ),
   ).toBeTruthy();
-  fireEvent.change(
-    screen.getByLabelText("Prepared student identity (required)"),
-    { target: { value: "user" } },
-  );
   fireEvent.change(screen.getByLabelText("Class placement (required)"), {
     target: { value: "class" },
   });
@@ -134,7 +130,6 @@ it("truthfully gates commit until explicit row review and plan approval", async 
     expect(mocks.review).toHaveBeenCalledWith(
       expect.objectContaining({
         recordId: "row",
-        selectedUserId: "user",
         selectedClassId: "class",
         admissionNumberMode: "official_generated",
         expectedNumberPolicyVersion: 1,

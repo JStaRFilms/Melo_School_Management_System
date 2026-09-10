@@ -1190,8 +1190,7 @@ function StudentsPageContent() {
       `}} />
 
       {creationTab === "family" && (
-        <div className="relative z-20 px-4 pt-2">
-          <PersistentFormDraftControls
+        <PersistentFormDraftControls
             draft={familyDraft}
             formTitle="family enrollment"
             isDirty={familyDraftIsDirty}
@@ -1202,7 +1201,6 @@ function StudentsPageContent() {
               setFamilyDraftInstanceKey((key) => key + 1);
             }}
           />
-        </div>
       )}
 
       {/* Unified Mobile Sheet - Rendered at Top level for avoid clipping issues */}

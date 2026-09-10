@@ -14,7 +14,6 @@ import type { BundleDraft, ScaleTemplateRecord } from "../app/assessments/setup/
 const mockScaleTemplates: ScaleTemplateRecord[] = [
   {
     _id: "scale_1",
-    schoolId: "school_1" as any,
     name: "5-Point Scale",
     description: "Standard scale",
     options: [
@@ -24,7 +23,6 @@ const mockScaleTemplates: ScaleTemplateRecord[] = [
       { id: "2", label: "Fair", shortLabel: "2", order: 3 },
       { id: "1", label: "Poor", shortLabel: "1", order: 4 },
     ],
-    createdAt: 1000,
     updatedAt: 1000,
   },
 ];

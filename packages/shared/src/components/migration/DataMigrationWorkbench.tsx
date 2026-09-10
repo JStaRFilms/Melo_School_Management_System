@@ -5,7 +5,7 @@ import {
   FileSpreadsheet,
   Home,
   GraduationCap,
-  Sparkles,
+  Database,
   Plus,
   ArrowLeft,
   Loader2,
@@ -24,6 +24,10 @@ import {
   type ImportRowReviewInput,
 } from "./Modals/ImportRowReviewDialog";
 import { ColumnMappingDialog } from "./Modals/ColumnMappingDialog";
+import {
+  ImportConfirmationModal,
+  type ImportConfirmationStat,
+} from "./Modals/ImportConfirmationModal";
 import { StagingActionBar } from "./StagingActionBar";
 import { appToast, getErrorMessage } from "../../toast";
 import { type SpreadsheetParseResult } from "../../migration";
@@ -70,6 +74,20 @@ export function DataMigrationWorkbench({
   const [isReviewingReadyRows, setIsReviewingReadyRows] = useState(false);
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
+
+  // Confirmation Modal State (replaces browser confirm)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    badge?: string;
+    description: string;
+    stats?: ImportConfirmationStat[];
+    infoNotice?: string;
+    customDetails?: React.ReactNode;
+    confirmLabel?: string;
+    confirmVariant?: "primary" | "danger" | "warning" | "emerald";
+    onConfirm: () => Promise<void> | void;
+  } | null>(null);
 
   // Queries
   const workspaces = useQuery(
@@ -240,25 +258,37 @@ export function DataMigrationWorkbench({
     }
   };
 
-  const handleDeleteWorkspace = async (workspaceId: string, name: string) => {
-    if (!window.confirm(`Delete the abandoned import workspace "${name}" and all of its staged rows? This cannot be undone.`)) return;
-    setDeletingWorkspaceId(workspaceId);
-    try {
-      let done = false;
-      while (!done) {
-        const result = await deleteWorkspace({
-          schoolId,
-          workspaceId,
-          confirmation: "DELETE",
-        } as never) as { done: boolean };
-        done = result.done;
-      }
-      appToast.success(`Deleted import workspace "${name}"`);
-    } catch (error) {
-      appToast.error(getErrorMessage(error, "Could not delete import workspace"));
-    } finally {
-      setDeletingWorkspaceId(null);
-    }
+  const handleDeleteWorkspace = (workspaceId: string, name: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Delete Import Workspace",
+      badge: "Permanent Deletion",
+      confirmVariant: "danger",
+      confirmLabel: "Delete Workspace",
+      description: `Delete the abandoned import workspace "${name}" and all of its staged rows?`,
+      infoNotice:
+        "All uploaded spreadsheet rows and draft decisions in this workspace will be permanently removed. This action cannot be undone.",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setDeletingWorkspaceId(workspaceId);
+        try {
+          let done = false;
+          while (!done) {
+            const result = (await deleteWorkspace({
+              schoolId,
+              workspaceId,
+              confirmation: "DELETE",
+            } as never)) as { done: boolean };
+            done = result.done;
+          }
+          appToast.success(`Deleted import workspace "${name}"`);
+        } catch (error) {
+          appToast.error(getErrorMessage(error, "Could not delete import workspace"));
+        } finally {
+          setDeletingWorkspaceId(null);
+        }
+      },
+    });
   };
 
   const handleReviewRow = async (input: ImportRowReviewInput) => {
@@ -328,52 +358,100 @@ export function DataMigrationWorkbench({
     const duplicateCount = selectedRows.filter(
       (record) => record.validationStatus === "warning",
     ).length;
-    if (!window.confirm(
-      `Create ${selectedRows.length} separate student records in the import plan? ${admissionMode === "official_all" ? `Official IDs will replace ${suppliedCount} supplied spreadsheet IDs.` : `${suppliedCount} supplied admission IDs will be kept after backend uniqueness checks.`}${duplicateCount ? ` You are explicitly rejecting ${duplicateCount} possible-duplicate suggestions.` : ""} Nothing is committed yet.`,
-    )) return;
-    setIsReviewingReadyRows(true);
-    try {
-      for (const record of selectedRows) {
-        const classOption = reviewOptions.classes.find(
-          (item) => item.id === record.parsedData.matchedClassId,
-        );
-        if (!classOption) continue;
-        const numbering = reviewOptions.numberingByLevel?.find(
-          (item) => item.level === classOption.level,
-        )?.numbering ?? reviewOptions.numbering;
-        const supplied = Boolean(record.parsedData.admissionNumber?.trim());
-        const generateOfficial = admissionMode === "official_all" || !supplied;
-        await reviewStagedRecord({
-          schoolId,
-          recordId: record._id,
-          expectedRowRevision: record.rowRevision ?? 1,
-          resolutionAction: "create_new",
-          selectedClassId: classOption.id,
-          admissionNumberMode: generateOfficial ? "official_generated" : "supplied",
-          manualNumberConfirmed: !generateOfficial ? true : undefined,
-          manualNumberReason: !generateOfficial
-            ? "Historical identifier preserved during reviewed bulk import"
-            : undefined,
-          expectedNumberPolicyVersion:
-            generateOfficial && numbering.available ? numbering.policyVersion : undefined,
-          expectedNumberFormatVersion:
-            generateOfficial && numbering.available ? numbering.formatVersion : undefined,
-          expectedNumberCounterKey:
-            generateOfficial && numbering.available ? numbering.counterKey : undefined,
-          expectedNumberCounterVersion:
-            generateOfficial && numbering.available ? numbering.counterVersion : undefined,
-          expectedNumberSessionId:
-            generateOfficial && numbering.available ? numbering.sessionId : undefined,
-          expectedNumberResetPeriod:
-            generateOfficial && numbering.available ? numbering.resetPeriod : undefined,
-        } as never);
+
+    const executeCreateRecords = async () => {
+      setConfirmDialog(null);
+      setIsReviewingReadyRows(true);
+      try {
+        for (const record of selectedRows) {
+          const classOption = reviewOptions.classes.find(
+            (item) => item.id === record.parsedData.matchedClassId,
+          );
+          if (!classOption) continue;
+          const numbering = reviewOptions.numberingByLevel?.find(
+            (item) => item.level === classOption.level,
+          )?.numbering ?? reviewOptions.numbering;
+          const supplied = Boolean(record.parsedData.admissionNumber?.trim());
+          const generateOfficial = admissionMode === "official_all" || !supplied;
+          await reviewStagedRecord({
+            schoolId,
+            recordId: record._id,
+            expectedRowRevision: record.rowRevision ?? 1,
+            resolutionAction: "create_new",
+            selectedClassId: classOption.id,
+            admissionNumberMode: generateOfficial ? "official_generated" : "supplied",
+            manualNumberConfirmed: !generateOfficial ? true : undefined,
+            manualNumberReason: !generateOfficial
+              ? "Historical identifier preserved during reviewed bulk import"
+              : undefined,
+            expectedNumberPolicyVersion:
+              generateOfficial && numbering.available ? numbering.policyVersion : undefined,
+            expectedNumberFormatVersion:
+              generateOfficial && numbering.available ? numbering.formatVersion : undefined,
+            expectedNumberCounterKey:
+              generateOfficial && numbering.available ? numbering.counterKey : undefined,
+            expectedNumberCounterVersion:
+              generateOfficial && numbering.available ? numbering.counterVersion : undefined,
+            expectedNumberSessionId:
+              generateOfficial && numbering.available ? numbering.sessionId : undefined,
+            expectedNumberResetPeriod:
+              generateOfficial && numbering.available ? numbering.resetPeriod : undefined,
+          } as never);
+        }
+        appToast.success(`Added ${selectedRows.length} new student records to the import plan`);
+      } catch (error) {
+        appToast.error(getErrorMessage(error, "Bulk row review stopped; completed decisions remain saved"));
+      } finally {
+        setIsReviewingReadyRows(false);
       }
-      appToast.success(`Added ${selectedRows.length} new student records to the import plan`);
-    } catch (error) {
-      appToast.error(getErrorMessage(error, "Bulk row review stopped; completed decisions remain saved"));
-    } finally {
-      setIsReviewingReadyRows(false);
+    };
+
+    const stats: ImportConfirmationStat[] = [
+      {
+        label: "Students Selected",
+        value: `${selectedRows.length} ${selectedRows.length === 1 ? "record" : "records"}`,
+        variant: "info",
+      },
+      {
+        label: "ID Strategy",
+        value:
+          admissionMode === "official_all"
+            ? suppliedCount > 0
+              ? `Official IDs (${suppliedCount} replaced)`
+              : "Official Auto-ID"
+            : `${suppliedCount} Preserved IDs`,
+        variant: admissionMode === "official_all" ? "default" : "success",
+      },
+    ];
+
+    if (duplicateCount > 0) {
+      stats.push({
+        label: "Duplicates Flagged",
+        value: `${duplicateCount} proceeding`,
+        variant: "warning",
+      });
     }
+
+    setConfirmDialog({
+      isOpen: true,
+      title: `Prepare ${selectedRows.length} Student ${selectedRows.length === 1 ? "Record" : "Records"}`,
+      badge: "Reviewed Import Plan",
+      confirmVariant: "primary",
+      confirmLabel: `Stage ${selectedRows.length} in Plan`,
+      description: `Create ${selectedRows.length} separate student ${selectedRows.length === 1 ? "record" : "records"} in the import plan. ${
+        admissionMode === "official_all"
+          ? `Official IDs will replace ${suppliedCount} supplied spreadsheet IDs.`
+          : `${suppliedCount} supplied admission IDs will be kept after backend uniqueness checks.`
+      }${
+        duplicateCount
+          ? ` Note: You are proceeding past ${duplicateCount} potential duplicate warnings.`
+          : ""
+      }`,
+      stats,
+      infoNotice:
+        "Nothing is committed to the live school roster yet. This action updates the reviewed staging plan so you can verify each record before final batch approval.",
+      onConfirm: executeCreateRecords,
+    });
   };
 
   const handleAssignClass = async (recordIds: string[], classId: string) => {
@@ -390,23 +468,42 @@ export function DataMigrationWorkbench({
   };
 
   const handleSkipRecords = async (recordIds: string[]) => {
-    if (!window.confirm(`Skip ${recordIds.length} selected spreadsheet rows? They will not create records when committed.`)) return;
-    setIsReviewingReadyRows(true);
-    try {
-      for (const record of stagedRecords.filter((item) => recordIds.includes(item._id))) {
-        await reviewStagedRecord({
-          schoolId,
-          recordId: record._id,
-          expectedRowRevision: record.rowRevision ?? 1,
-          resolutionAction: "ignore",
-        } as never);
-      }
-      appToast.success(`Skipped ${recordIds.length} rows`);
-    } catch (error) {
-      appToast.error(getErrorMessage(error, "Bulk skip stopped; completed decisions remain saved"));
-    } finally {
-      setIsReviewingReadyRows(false);
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: `Skip ${recordIds.length} Spreadsheet ${recordIds.length === 1 ? "Row" : "Rows"}`,
+      badge: "Exclude from Import",
+      confirmVariant: "warning",
+      confirmLabel: `Skip ${recordIds.length} ${recordIds.length === 1 ? "Row" : "Rows"}`,
+      description: `Skip ${recordIds.length} selected spreadsheet ${recordIds.length === 1 ? "row" : "rows"}? They will be marked as ignored and will not create student records or change school data when committed.`,
+      stats: [
+        {
+          label: "Rows to Skip",
+          value: `${recordIds.length}`,
+          variant: "warning",
+        },
+      ],
+      infoNotice:
+        "Skipped rows remain in your staging workspace. You can un-skip or review them at any time before the final plan commit.",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setIsReviewingReadyRows(true);
+        try {
+          for (const record of stagedRecords.filter((item) => recordIds.includes(item._id))) {
+            await reviewStagedRecord({
+              schoolId,
+              recordId: record._id,
+              expectedRowRevision: record.rowRevision ?? 1,
+              resolutionAction: "ignore",
+            } as never);
+          }
+          appToast.success(`Skipped ${recordIds.length} rows`);
+        } catch (error) {
+          appToast.error(getErrorMessage(error, "Bulk skip stopped; completed decisions remain saved"));
+        } finally {
+          setIsReviewingReadyRows(false);
+        }
+      },
+    });
   };
 
   const handleRecheckClasses = async () => {
@@ -420,14 +517,36 @@ export function DataMigrationWorkbench({
     } finally { setIsReviewingReadyRows(false); }
   };
 
-  const handleApplyCounterRecommendations = async () => {
+  const handleApplyCounterRecommendations = () => {
     if (!activeWorkspaceId || !counterRecommendations?.length) return;
-    const summary = counterRecommendations.map((item) => `${item.counterKey}: ${item.currentNextSequence} → ${item.recommendedNextSequence}`).join("\n");
-    if (!window.confirm(`Apply these next-number recommendations?\n\n${summary}\n\nThis changes only the reviewed import plan; counters move when committed.`)) return;
-    try {
-      const result = await applyWorkspaceCounterRecommendations({ schoolId, workspaceId: activeWorkspaceId } as never) as { applied: number };
-      appToast.success(`Applied ${result.applied} counter recommendations`);
-    } catch (error) { appToast.error(getErrorMessage(error, "Could not apply counter recommendations")); }
+    const summary = counterRecommendations
+      .map((item) => `${item.counterKey}: ${item.currentNextSequence} → ${item.recommendedNextSequence}`)
+      .join("\n");
+
+    setConfirmDialog({
+      isOpen: true,
+      title: "Apply Sequence Counter Recommendations",
+      badge: "Admission Alignment",
+      confirmVariant: "primary",
+      confirmLabel: "Apply Recommendations",
+      description:
+        "Update the planned next-number sequence for the classes below based on historical spreadsheet records:",
+      customDetails: summary,
+      infoNotice:
+        "This changes only the reviewed import plan; official counter sequences will only advance when the batch is committed.",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const result = (await applyWorkspaceCounterRecommendations({
+            schoolId,
+            workspaceId: activeWorkspaceId,
+          } as never)) as { applied: number };
+          appToast.success(`Applied ${result.applied} counter recommendations`);
+        } catch (error) {
+          appToast.error(getErrorMessage(error, "Could not apply counter recommendations"));
+        }
+      },
+    });
   };
 
   const handleApprovePlan = async () => {
@@ -560,7 +679,7 @@ export function DataMigrationWorkbench({
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50 disabled:opacity-50"
             >
               {promptCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-              <span>{promptCopied ? "Prompt copied" : "Copy AI prompt"}</span>
+              <span>{promptCopied ? "Prompt copied" : "Copy migration prompt"}</span>
             </button>
             {featureSignals && featureSignals.length > 0 && (
               <button
@@ -568,7 +687,7 @@ export function DataMigrationWorkbench({
                 onClick={() => setIsColumnMappingOpen(true)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
               >
-                <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                <Database className="h-3.5 w-3.5 text-indigo-600" />
                 <span>Product Attic ({featureSignals.length})</span>
               </button>
             )}
@@ -822,6 +941,23 @@ export function DataMigrationWorkbench({
         <ColumnMappingDialog
           signals={(featureSignals ?? []) as any}
           onClose={() => setIsColumnMappingOpen(false)}
+        />
+      )}
+
+      {confirmDialog && confirmDialog.isOpen && (
+        <ImportConfirmationModal
+          isOpen={confirmDialog.isOpen}
+          onClose={() => setConfirmDialog(null)}
+          onConfirm={confirmDialog.onConfirm}
+          title={confirmDialog.title}
+          badge={confirmDialog.badge}
+          description={confirmDialog.description}
+          stats={confirmDialog.stats}
+          infoNotice={confirmDialog.infoNotice}
+          customDetails={confirmDialog.customDetails}
+          confirmLabel={confirmDialog.confirmLabel}
+          confirmVariant={confirmDialog.confirmVariant}
+          isLoading={isReviewingReadyRows || deletingWorkspaceId !== null}
         />
       )}
     </div>

@@ -517,9 +517,7 @@ export default function BillingPage() {
 
   return (
     <main className="h-full min-h-0 w-full overflow-hidden bg-slate-50/50 flex flex-col">
-      {(sidebarVariant === "plan" || persistentFeePlanDraft.serverDraft || persistentFeePlanDraft.memoryDraft) && (
-        <div className="shrink-0 p-2">
-          <PersistentFormDraftControls
+      <PersistentFormDraftControls
             draft={persistentFeePlanDraft}
             formTitle="fee plan"
             isDirty={feePlanDirty}
@@ -530,8 +528,6 @@ export default function BillingPage() {
               setFeePlanDraftInstanceKey((key) => key + 1);
             }}
           />
-        </div>
-      )}
       <div className="flex-1 flex lg:overflow-hidden min-h-0">
         {/* Main Content Area */}
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">

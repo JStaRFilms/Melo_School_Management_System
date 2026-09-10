@@ -378,6 +378,19 @@ This document tracks all observations, issues, UX refinements, completed changes
 
 ---
 
+### 15. Platform-Wide Silent Autosave & Non-Intrusive Draft Status Architecture
+- [x] **Elimination of Layout-Shifting Draft Banner Platform-Wide (`DraftStatusIndicator.tsx`, `PersistentFormDraftControls.tsx`, `billing/page.tsx`, `students/page.tsx`, `students/onboarding/page.tsx`)**
+  - **Issue & Annoyance:** Across forms in the application, autosave previously rendered a full-width bordered banner that expanded whenever a user typed or an autosave fired. This caused disruptive Cumulative Layout Shift (CLS), pushed page headers down by 40–60px, obstructed controls, and caused visual flickering.
+  - **Silent-on-Success Architecture:**
+    - Upgraded `DraftStatusIndicator.tsx` with a `silentOnSuccess` prop (default `true` in `PersistentFormDraftControls`). During normal typing and saving, `"saved"` and `"saving"` states return `null` (0px height, 0 margin, 0 CLS). The UI remains completely calm and stationary.
+    - Re-architected `PersistentFormDraftControls.tsx` to eliminate the full-width outer banner container across all screens. Clean/saved forms have zero DOM footprint.
+    - Preserved manual workflows: when a form is dirty and uses default controls, an unobtrusive `Save draft` button appears inline so users or manual tests can trigger immediate saves without waiting for debounce timers.
+  - **Truthful Error & Conflict Surfaces Preserved:**
+    - Failure states (`"save_failed"`, `"connection_lost"`, `"conflict"`, `"expired"`, `"reauth_required"`) immediately surface an actionable pill with `Retry` or `Preview draft` buttons.
+    - `DraftRecoveryModal.tsx` remains available to prompt users when restorable session edits or server drafts exist, keeping the form layout clean underneath.
+
+---
+
 ## 💥 The Damage: Downstream Blast Radius & Verification Checkpoints
 
 *Whenever core schemas and shared workflows are modified, downstream modules may be affected. Use this checklist during subsequent testing passes:*

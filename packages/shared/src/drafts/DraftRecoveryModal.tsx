@@ -171,6 +171,9 @@ export function DraftRecoveryModal({
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Draft Preview
             </div>
+            <pre className="sr-only" aria-hidden="true">
+              {JSON.stringify(payload, null, 2)}
+            </pre>
             <div className="divide-y divide-slate-100">
               {Object.entries(payload).map(([key, val]) => {
                 if (val === null || val === undefined || val === "") return null;

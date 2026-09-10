@@ -101,7 +101,7 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
       <MobileProgressIndicator mode="sections" topOffset="top-0" sections={[
         { id: "plan", title: "Plan name", isValid: Boolean(draft.name.trim()) },
         { id: "fees", title: "Fees and schedule", isValid: feePlanValidation({ ...draft, name: "validation" }) === null },
-      ]} draftStatus={draftStatus} lastSavedAt={draftLastSavedAt} saveStatusText={draftStatus ? undefined : "Draft recovery unavailable"} />
+      ]} draftStatus={draftStatus} lastSavedAt={draftLastSavedAt} />
       {/* Scrollable Form Body */}
       <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 custom-scrollbar pb-10">
         {/* Plan Name */}

@@ -17,6 +17,8 @@ export interface DraftStatusIndicatorProps {
   onRetry?: () => void;
   className?: string;
   showExplanation?: boolean;
+  /** When true, saved, saving, and idle states render nothing (zero layout shift / noise) */
+  silentOnSuccess?: boolean;
 }
 
 function formatSavedTime(dateOrTimestamp?: number | Date | null): string {
@@ -44,11 +46,16 @@ export function DraftStatusIndicator({
   onRetry,
   className = "",
   showExplanation = false,
+  silentOnSuccess = false,
 }: DraftStatusIndicatorProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const config = DRAFT_STATUS_CONFIGS[status] || DRAFT_STATUS_CONFIGS.idle;
 
   if (status === "idle") {
+    return null;
+  }
+
+  if (silentOnSuccess && (status === "saved" || status === "saving")) {
     return null;
   }
 
@@ -92,7 +99,7 @@ export function DraftStatusIndicator({
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
             aria-label="View connectivity recovery information"
-            className="ml-0.5 text-amber-700 hover:text-amber-900 focus:outline-none"
+            className="ml-0.5 text-amber-700 hover:text-amber-900 focus:outline-none cursor-pointer"
           >
             <Info className="h-3 w-3" />
           </button>
@@ -102,7 +109,7 @@ export function DraftStatusIndicator({
           <button
             type="button"
             onClick={onRetry}
-            className="ml-1 underline font-semibold text-rose-800 hover:text-rose-950 focus:outline-none"
+            className="ml-1 underline font-semibold text-rose-800 hover:text-rose-950 focus:outline-none cursor-pointer"
           >
             Retry
           </button>

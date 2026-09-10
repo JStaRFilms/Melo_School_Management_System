@@ -562,8 +562,7 @@ export default function StudentOnboardingPage() {
 
   return (
     <div className="flex flex-col h-full min-h-0 w-full lg:overflow-hidden">
-      <section className="shrink-0 space-y-2 px-4 pt-3 pb-2 sm:px-6 lg:px-8">
-        <PersistentFormDraftControls
+      <PersistentFormDraftControls
           draft={draft}
           formTitle="student enrollment"
           isDirty={draftIsDirty}
@@ -574,6 +573,7 @@ export default function StudentOnboardingPage() {
             setDraftInstanceKey((key) => key + 1);
           }}
         />
+      <section className="shrink-0 space-y-2 px-4 pt-3 pb-2 sm:px-6 lg:px-8">
         {followUpPending && (
           <p role="alert">
             Student created; follow-up setup is pending. Retry uses the same
