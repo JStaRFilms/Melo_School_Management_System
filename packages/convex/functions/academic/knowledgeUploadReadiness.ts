@@ -272,7 +272,12 @@ export const backfillKnowledgeMaterialFileFingerprints = internalMutation({
     const page = await ctx.db
       .query("knowledgeMaterials")
       .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-      .paginate({ cursor: args.cursor ?? null, numItems: args.batchSize });
+      .paginate({
+        cursor: args.cursor ?? null,
+        numItems: args.batchSize,
+        maximumRowsRead: args.batchSize,
+        maximumBytesRead: 2 * 1024 * 1024,
+      });
     let processed = 0;
     for (const material of page.page) {
       if (!material.storageId) continue;

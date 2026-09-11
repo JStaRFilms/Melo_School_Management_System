@@ -4,6 +4,7 @@ import schema from "../../../schema";
 import { api, internal } from "../../../_generated/api";
 import type { Id } from "../../../_generated/dataModel";
 import type { PermissionCapability } from "../rbac";
+import { storageSha256ToHex } from "../knowledgeUploadReadiness";
 import { seedReviewedTenantOperatorWithCapabilities } from "./securityFixtures";
 
 const root = new URL("../../../", import.meta.url).pathname;
@@ -521,6 +522,94 @@ describe("managed teacher planning capability contract", () => {
       ctx.db.system.query("_storage").collect(),
     );
     expect(storageEntries).toHaveLength(1);
+  });
+
+  it("re-keys the fingerprint when selected-page extraction replaces the source PDF", async () => {
+    const f = await fixture();
+    const replacement = await f.t.run(async (ctx) => {
+      const previousStorageId = await ctx.storage.store(
+        new Blob([new TextEncoder().encode("original-pdf")], { type: "application/pdf" }),
+      );
+      const nextStorageId = await ctx.storage.store(
+        new Blob([new TextEncoder().encode("selected-pages-pdf")], { type: "application/pdf" }),
+      );
+      const previousMetadata = await ctx.db.system.get("_storage", previousStorageId);
+      const nextMetadata = await ctx.db.system.get("_storage", nextStorageId);
+      if (!previousMetadata || !nextMetadata) throw new Error("Storage metadata missing");
+      const now = Date.now();
+      const materialId = await ctx.db.insert("knowledgeMaterials", {
+        schoolId: f.schoolId,
+        ownerUserId: f.userIds.planningUpload,
+        ownerRole: "teacher",
+        sourceType: "file_upload",
+        visibility: "private_owner",
+        reviewStatus: "draft",
+        title: "Selected PDF",
+        subjectId: f.subjectId,
+        level: "JSS 1",
+        topicLabel: "Algebra",
+        storageId: previousStorageId,
+        searchStatus: "not_indexed",
+        searchText: "selected pdf algebra",
+        processingStatus: "extracting",
+        ingestionErrorMessage: null,
+        ingestionAttemptCount: 1,
+        labelSuggestions: [],
+        chunkCount: 0,
+        indexedAt: null,
+        selectedPageRanges: "1",
+        selectedPageNumbers: [1],
+        createdAt: now,
+        updatedAt: now,
+        createdBy: f.userIds.planningUpload,
+        updatedBy: f.userIds.planningUpload,
+      });
+      await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId: f.schoolId,
+        sha256: storageSha256ToHex(previousMetadata.sha256),
+        materialId,
+        status: "completed",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return {
+        materialId,
+        previousStorageId,
+        nextStorageId,
+        nextSha256: storageSha256ToHex(nextMetadata.sha256),
+      };
+    });
+
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal,
+      {
+        materialId: replacement.materialId,
+        schoolId: f.schoolId,
+        previousStorageId: replacement.previousStorageId,
+        nextStorageId: replacement.nextStorageId,
+        actorUserId: f.userIds.planningUpload,
+        sourcePdfPageCount: 1,
+      },
+    );
+
+    const state = await f.t.run(async (ctx) => ({
+      material: await ctx.db.get(replacement.materialId),
+      fingerprints: await ctx.db
+        .query("knowledgeMaterialFileFingerprints")
+        .withIndex("by_material", (q) => q.eq("materialId", replacement.materialId))
+        .collect(),
+      previousExists: Boolean(await ctx.storage.get(replacement.previousStorageId)),
+      nextExists: Boolean(await ctx.storage.get(replacement.nextStorageId)),
+    }));
+    expect(state.material).toMatchObject({
+      storageId: replacement.nextStorageId,
+      sourceFileMode: "selected_pages",
+    });
+    expect(state.fingerprints).toEqual([
+      expect.objectContaining({ sha256: replacement.nextSha256, status: "completed" }),
+    ]);
+    expect(state.previousExists).toBe(false);
+    expect(state.nextExists).toBe(true);
   });
 
   it("uses a bounded resumable marker for legacy fingerprint backfill", async () => {

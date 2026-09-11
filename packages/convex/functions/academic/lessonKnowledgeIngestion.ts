@@ -1964,14 +1964,53 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
       ownerId: String(material._id),
     });
     await assertStorageUnclaimed(ctx, args.nextStorageId);
+    const nextStorageMetadata = await ctx.db.system.get("_storage", args.nextStorageId);
+    if (!nextStorageMetadata) {
+      throw new ConvexError("Replacement storage metadata is unavailable");
+    }
+    const nextSha256 = storageSha256ToHex(nextStorageMetadata.sha256);
+    const materialFingerprints = await ctx.db
+      .query("knowledgeMaterialFileFingerprints")
+      .withIndex("by_material", (q) => q.eq("materialId", material._id))
+      .take(2);
+    if (materialFingerprints.length > 1) {
+      throw new ConvexError("Knowledge material fingerprints require reconciliation");
+    }
+    const matchingFingerprints = await ctx.db
+      .query("knowledgeMaterialFileFingerprints")
+      .withIndex("by_school_and_sha256", (q) =>
+        q.eq("schoolId", material.schoolId).eq("sha256", nextSha256),
+      )
+      .take(2);
+    if (matchingFingerprints.some((row) => row._id !== materialFingerprints[0]?._id)) {
+      throw new ConvexError(
+        "The selected PDF pages duplicate an existing school knowledge material",
+      );
+    }
 
+    const now = Date.now();
     await ctx.db.patch(args.materialId, {
       storageId: args.nextStorageId,
       sourceFileMode: "selected_pages",
       sourcePdfPageCount: args.sourcePdfPageCount,
-      updatedAt: Date.now(),
+      updatedAt: now,
       updatedBy: args.actorUserId,
     });
+    if (materialFingerprints[0]) {
+      await ctx.db.patch(materialFingerprints[0]._id, {
+        sha256: nextSha256,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId: material.schoolId,
+        sha256: nextSha256,
+        materialId: material._id,
+        status: "completed",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
 
     await ctx.storage.delete(args.previousStorageId);
     return null;

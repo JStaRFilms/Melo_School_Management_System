@@ -88,6 +88,37 @@ it("provisions reviewed free-trial contracts and storage exactly once", async ()
     },
   )).rejects.toThrow("not effective for the requested storage period");
 
+  const mismatchedCatalogSchoolId = await t.run(async (ctx) => {
+    const rateVersion = await ctx.db
+      .query("commercialRateVersions")
+      .withIndex("by_code_and_version", (q) =>
+        q.eq("code", "free_trial").eq("version", 2),
+      )
+      .unique();
+    if (!rateVersion) throw new Error("Free-trial rate version missing");
+    await ctx.db.patch(rateVersion._id, {
+      rate: { ...rateVersion.rate, currency: "USD" },
+    });
+    return await ctx.db.insert("schools", {
+      name: "Mismatched Catalog School",
+      slug: "mismatched-catalog-school",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+  });
+  await expect(t.mutation(
+    internal.functions.academic.storageEntitlementProvisioning.provisionReviewedFreeTrialStorage,
+    {
+      schoolIds: [mismatchedCatalogSchoolId],
+      bytesPerSchool: 100 * 1024 * 1024,
+      startAt,
+      endAt,
+      actorEmail: "operator@example.com",
+      confirmation: "PROVISION FREE TRIAL STORAGE",
+    },
+  )).rejects.toThrow("differs from the reviewed storage preset");
+
   await expect(t.mutation(
     internal.functions.academic.storageEntitlementProvisioning.provisionReviewedFreeTrialStorage,
     {

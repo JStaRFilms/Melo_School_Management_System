@@ -84,18 +84,36 @@ async function getOrCreateFreeTrialCatalog(
     throw new ConvexError("Free-trial catalog is incomplete and requires reconciliation");
   }
   if (existingRate && existingEntitlement) {
-    const allowance = existingEntitlement.entitlement.allowances.find(
-      (row) => row.meterType === "storage_bytes",
-    );
+    const expectedRate = freeTrialRate();
+    const expectedEntitlement = freeTrialEntitlement();
+    const rate = existingRate.rate;
+    const entitlement = existingEntitlement.entitlement;
+    const allowance = entitlement.allowances[0];
+    const profile = entitlement.profiles[0];
     if (
-      existingRate.rate.perStudentMinor !== 0 ||
-      existingRate.rate.setupMinor !== 0 ||
-      existingRate.rate.minimumMinor !== 0 ||
-      !allowance ||
+      rate.currency !== expectedRate.currency ||
+      rate.perStudentMinor !== expectedRate.perStudentMinor ||
+      rate.setupMinor !== expectedRate.setupMinor ||
+      rate.minimumMinor !== expectedRate.minimumMinor ||
+      rate.discountBps !== expectedRate.discountBps ||
+      rate.cadence !== expectedRate.cadence ||
+      rate.proration !== expectedRate.proration ||
+      rate.bands.length !== 0 ||
+      entitlement.allowances.length !== 1 ||
+      allowance?.meterType !== "storage_bytes" ||
       allowance.baseUnits !== FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL ||
       allowance.graceUnits !== 0 ||
-      existingEntitlement.entitlement.maxFileSizeBytes !== 12 * 1024 * 1024 ||
-      existingEntitlement.entitlement.maxPagesPerOperation !== 80
+      entitlement.warningPercent !== expectedEntitlement.warningPercent ||
+      entitlement.criticalPercent !== expectedEntitlement.criticalPercent ||
+      entitlement.hardStopPercent !== expectedEntitlement.hardStopPercent ||
+      entitlement.maxFileSizeBytes !== expectedEntitlement.maxFileSizeBytes ||
+      entitlement.maxPagesPerOperation !== expectedEntitlement.maxPagesPerOperation ||
+      entitlement.profiles.length !== 1 ||
+      profile?.task !== "knowledge_upload" ||
+      profile.meterType !== "storage_bytes" ||
+      profile.unitsPerItem !== 1 ||
+      profile.maxItems !== 12 * 1024 * 1024 ||
+      profile.modelProfile !== "secure-upload"
     ) {
       throw new ConvexError("Free-trial catalog differs from the reviewed storage preset");
     }
