@@ -45,11 +45,22 @@ export interface KnowledgeMaterialUploadInput {
   selectedPageRanges: string;
 }
 
+export interface KnowledgeMaterialUploadReadiness {
+  isLoading: boolean;
+  hasPlanningPermission: boolean;
+  hasUploadPermission: boolean;
+  hasAssignedContext: boolean;
+  storageStatus: "missing_entitlement" | "exhausted" | "ready";
+  availableBytes: number;
+  allocatedBytes: number;
+}
+
 interface KnowledgeMaterialUploadFormProps {
   subjects: KnowledgeMaterialUploadSubject[];
   levelOptions: KnowledgeMaterialUploadOption[];
   isAdmin: boolean;
   isUploading: boolean;
+  readiness: KnowledgeMaterialUploadReadiness;
   onUpload: (input: KnowledgeMaterialUploadInput) => Promise<void>;
 }
 
@@ -116,6 +127,7 @@ export function KnowledgeMaterialUploadForm({
   levelOptions,
   isAdmin,
   isUploading,
+  readiness,
   onUpload,
 }: KnowledgeMaterialUploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -170,12 +182,24 @@ export function KnowledgeMaterialUploadForm({
   const isPdf = file
     ? inferKnowledgeMaterialContentType(file).includes("pdf")
     : false;
+  const missingFields = [
+    !file ? "file" : null,
+    !title.trim() ? "title" : null,
+    !level ? "level" : null,
+    !topicLabel.trim()
+      ? isCurriculumReference ? "planning reference label" : "topic label"
+      : null,
+    subjectRequired && !subjectId ? "subject" : null,
+  ].filter((field): field is string => field !== null);
+  const permissionsReady = readiness.hasPlanningPermission && readiness.hasUploadPermission;
+  const contextReady = isAdmin || readiness.hasAssignedContext;
+  const storageReady = readiness.storageStatus === "ready";
   const canSubmit = Boolean(
-    file &&
-      title.trim() &&
-      level &&
-      topicLabel.trim() &&
-      (!subjectRequired || subjectId),
+    !readiness.isLoading &&
+      permissionsReady &&
+      contextReady &&
+      storageReady &&
+      missingFields.length === 0,
   );
 
   const handleSubmit = async (event: FormEvent) => {
@@ -225,8 +249,28 @@ export function KnowledgeMaterialUploadForm({
         : "border-slate-100 bg-white text-slate-400 hover:border-slate-200"
     }`;
 
+  const formatBytes = (bytes: number) => {
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+    return `${bytes} bytes`;
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <section aria-label="Upload readiness" className="space-y-1 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-700">
+        <p>{readiness.isLoading ? "…" : readiness.hasPlanningPermission ? "✓" : "!"} Planning or curriculum permission</p>
+        <p>{readiness.isLoading ? "…" : readiness.hasUploadPermission ? "✓" : "!"} Upload permission</p>
+        <p>{readiness.isLoading ? "…" : contextReady ? "✓" : "!"} {contextReady ? "Assigned teaching context available" : "No assigned class and subject are available"}</p>
+        <p>
+          {readiness.isLoading
+            ? "… Checking storage entitlement"
+            : readiness.storageStatus === "missing_entitlement"
+              ? "! No active contract-bound storage entitlement"
+              : readiness.storageStatus === "exhausted"
+                ? "! Storage quota exhausted"
+                : `✓ ${formatBytes(readiness.availableBytes)} storage available of ${formatBytes(readiness.allocatedBytes)}`}
+        </p>
+      </section>
       <div
         role="button"
         tabIndex={0}
@@ -414,6 +458,12 @@ export function KnowledgeMaterialUploadForm({
           </div>
         </div>
       </div>
+
+      {missingFields.length > 0 ? (
+        <p role="status" className="text-xs font-semibold text-amber-700">
+          Complete required fields: {missingFields.join(", ")}.
+        </p>
+      ) : null}
 
       <button
         type="submit"

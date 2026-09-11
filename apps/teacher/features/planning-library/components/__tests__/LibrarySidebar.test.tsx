@@ -12,6 +12,15 @@ const props = {
   subjects: [],
   levelOptions: [],
   subjectsReady: [],
+  uploadReadiness: {
+    isLoading: false,
+    hasPlanningPermission: true,
+    hasUploadPermission: true,
+    hasAssignedContext: true,
+    storageStatus: "ready" as const,
+    availableBytes: 100 * 1024 * 1024,
+    allocatedBytes: 100 * 1024 * 1024,
+  },
   onUpload: vi.fn(async () => undefined),
   isUploading: false,
   isAdmin: false,
@@ -19,18 +28,42 @@ const props = {
 };
 
 describe("LibrarySidebar upload availability", () => {
-  it("shows the secure transport gate instead of upload controls", () => {
-    render(<LibrarySidebar {...props} canUpload={false} />);
+  it("shows missing upload authority while keeping readiness visible", () => {
+    render(
+      <LibrarySidebar
+        {...props}
+        canUpload={false}
+        uploadReadiness={{ ...props.uploadReadiness, hasUploadPermission: false }}
+      />,
+    );
 
-    expect(screen.getByRole("note")).toHaveTextContent("do not have permission to upload");
-    expect(screen.queryByRole("button", { name: "Choose material file" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Upload material" })).not.toBeInTheDocument();
+    expect(screen.getByText("! Upload permission")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose material file" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload material" })).toBeDisabled();
   });
 
   it("renders upload controls only when upload authority is present", () => {
     render(<LibrarySidebar {...props} canUpload />);
 
     expect(screen.getByRole("button", { name: "Choose material file" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload material" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("file, title, level, topic label, subject");
+  });
+
+  it("shows an exhausted storage quota before submission", () => {
+    render(
+      <LibrarySidebar
+        {...props}
+        canUpload
+        uploadReadiness={{
+          ...props.uploadReadiness,
+          storageStatus: "exhausted",
+          availableBytes: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("! Storage quota exhausted")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upload material" })).toBeDisabled();
   });
 
