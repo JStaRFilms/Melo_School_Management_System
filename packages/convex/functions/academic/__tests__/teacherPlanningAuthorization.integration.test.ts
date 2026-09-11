@@ -265,6 +265,21 @@ describe("managed teacher planning capability contract", () => {
 
     const subjects = await f.teacher("planning").query(academic.lessonKnowledgeTeacher.listTeacherLibrarySubjects, {});
     expect(subjects).toEqual([{ id: f.subjectId, name: "Mathematics", code: "MTH" }]);
+    const link = await f.teacher("planning").mutation(
+      academic.lessonKnowledgeIngestion.registerKnowledgeMaterialLink,
+      {
+        title: "Algebra video",
+        externalUrl: "https://www.youtube.com/watch?v=algebra123",
+        description: null,
+        subjectId: f.subjectId,
+        level: "JSS 1",
+        topicLabel: "Algebra",
+      },
+    );
+    expect(await f.t.run((ctx) => ctx.db.get(link.materialId))).toMatchObject({
+      sourceType: "youtube_link",
+      fingerprintVersion: 1,
+    });
     await expect(f.teacher("planning").query(academic.curriculumReadiness.getAdminCurriculumReadiness, {
       subjectId: f.subjectId,
       termId: f.termId,

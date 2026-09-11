@@ -318,7 +318,10 @@ export function KnowledgeMaterialUploadForm({
       const bytes = await readFileBytes(file);
       if (inferKnowledgeMaterialContentType(file).includes("pdf")) {
         const { PDFDocument } = await import("pdf-lib");
-        const pdf = await PDFDocument.load(bytes, { updateMetadata: false });
+        const pdf = await PDFDocument.load(bytes, {
+          ignoreEncryption: true,
+          updateMetadata: false,
+        });
         const pdfError = validateKnowledgeMaterialPdfSelection({
           pageCount: pdf.getPageCount(),
           selectedPageRanges,

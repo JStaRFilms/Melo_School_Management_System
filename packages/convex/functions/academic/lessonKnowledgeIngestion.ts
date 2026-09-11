@@ -296,6 +296,7 @@ function buildKnowledgeMaterialRecord(args: {
     ...(args.externalUrl ? { externalUrl: args.externalUrl } : {}),
     ...(args.selectedPageRanges ? { selectedPageRanges: args.selectedPageRanges } : {}),
     ...(args.selectedPageNumbers?.length ? { selectedPageNumbers: args.selectedPageNumbers } : {}),
+    ...(args.sourceType === "youtube_link" ? { fingerprintVersion: 1 as const } : {}),
     ...(args.maxPagesPerOperation !== undefined
       ? { maxPagesPerOperation: args.maxPagesPerOperation }
       : {}),
