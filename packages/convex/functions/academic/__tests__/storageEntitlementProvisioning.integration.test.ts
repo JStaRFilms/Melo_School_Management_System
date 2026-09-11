@@ -13,15 +13,23 @@ const modules = Object.fromEntries(
 
 it("provisions reviewed free-trial contracts and storage exactly once", async () => {
   const t = convexTest(schema, modules);
-  const schoolId = await t.run((ctx) =>
-    ctx.db.insert("schools", {
+  const schoolId = await t.run(async (ctx) => {
+    const id = await ctx.db.insert("schools", {
       name: "Trial School",
       slug: "trial-school",
       status: "active",
       createdAt: 1,
       updatedAt: 1,
-    }),
-  );
+    });
+    await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+      schoolId: id,
+      sha256: "backfill:complete:v1",
+      status: "backfill_complete",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    return id;
+  });
   const startAt = 1_800_057_600_000;
   const endAt = startAt + 365 * 86_400_000;
 
@@ -46,6 +54,7 @@ it("provisions reviewed free-trial contracts and storage exactly once", async ()
     cycle: await ctx.db.query("usageCycles").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).unique(),
     meter: await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique(),
     audits: await ctx.db.query("auditEvents").withIndex("by_school_and_timestamp", (q) => q.eq("schoolId", schoolId)).take(10),
+    completionMarkers: await ctx.db.query("knowledgeMaterialFileFingerprints").withIndex("by_school_and_sha256", (q) => q.eq("schoolId", schoolId).eq("sha256", "backfill:complete:v1")).collect(),
   }));
   expect(records.contract).toMatchObject({ code: "free_trial", version: 2, setupHandling: "waived" });
   expect(records.cycle).toMatchObject({
@@ -59,6 +68,7 @@ it("provisions reviewed free-trial contracts and storage exactly once", async ()
     allocatedUnits: 100 * 1024 * 1024,
     consumedUnits: 0,
   });
+  expect(records.completionMarkers).toHaveLength(1);
   expect(records.audits).toEqual([
     expect.objectContaining({
       action: "usage.free_trial_storage_provisioned",
@@ -174,9 +184,18 @@ it("automatically provisions bounded storage for a newly activated school", asyn
     throw new Error("Storage contract, cycle, or meter was not provisioned");
   }
   const contractId = records.contract._id;
+  const contractRate = records.contract.rate;
   const contractEndAt = records.contract.effectiveTo;
   const cycleId = records.cycle._id;
   const meterId = records.meter._id;
+  await t.run((ctx) => ctx.db.patch(contractId, {
+    rate: { ...contractRate, currency: "USD" },
+  }));
+  await expect(t.mutation(
+    internal.functions.academic.storageEntitlementProvisioning.ensureSchoolFreeTrialStorage,
+    { schoolId, actorEmail: "new.operator@example.com" },
+  )).resolves.toEqual({ status: "requires_review" });
+  await t.run((ctx) => ctx.db.patch(contractId, { rate: contractRate }));
   await t.run((ctx) => ctx.db.patch(contractId, { effectiveTo: Date.now() - 1 }));
   await expect(t.mutation(
     internal.functions.academic.storageEntitlementProvisioning.ensureSchoolFreeTrialStorage,

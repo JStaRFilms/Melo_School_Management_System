@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../../_generated/server";
 import { recordAuditEventHelper } from "./audit";
 import { validateEntitlement } from "../foundation/usageContract";
@@ -13,6 +13,7 @@ const FREE_TRIAL_DURATION_DAYS = 365;
 export const FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL = 100 * 1024 * 1024;
 export const FREE_TRIAL_STORAGE_POOL_BYTES = 750 * 1024 * 1024;
 const REVIEWED_EXISTING_SCHOOL_LIMIT = 5;
+const FINGERPRINT_BACKFILL_COMPLETE = "backfill:complete:v1";
 
 type ProvisioningStatus =
   | "created"
@@ -59,6 +60,43 @@ function freeTrialEntitlement() {
   };
 }
 
+function isReviewedFreeTrialRate(
+  rate: Doc<"commercialRateVersions">["rate"],
+): boolean {
+  const expected = freeTrialRate();
+  return rate.currency === expected.currency &&
+    rate.perStudentMinor === expected.perStudentMinor &&
+    rate.setupMinor === expected.setupMinor &&
+    rate.minimumMinor === expected.minimumMinor &&
+    rate.discountBps === expected.discountBps &&
+    rate.cadence === expected.cadence &&
+    rate.proration === expected.proration &&
+    rate.bands.length === 0;
+}
+
+function isReviewedFreeTrialEntitlement(
+  entitlement: Doc<"usageEntitlementVersions">["entitlement"],
+): boolean {
+  const expected = freeTrialEntitlement();
+  const allowance = entitlement.allowances[0];
+  const profile = entitlement.profiles[0];
+  return entitlement.allowances.length === 1 &&
+    allowance?.meterType === "storage_bytes" &&
+    allowance.baseUnits === FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL &&
+    allowance.graceUnits === 0 &&
+    entitlement.warningPercent === expected.warningPercent &&
+    entitlement.criticalPercent === expected.criticalPercent &&
+    entitlement.hardStopPercent === expected.hardStopPercent &&
+    entitlement.maxFileSizeBytes === expected.maxFileSizeBytes &&
+    entitlement.maxPagesPerOperation === expected.maxPagesPerOperation &&
+    entitlement.profiles.length === 1 &&
+    profile?.task === "knowledge_upload" &&
+    profile.meterType === "storage_bytes" &&
+    profile.unitsPerItem === 1 &&
+    profile.maxItems === 12 * 1024 * 1024 &&
+    profile.modelProfile === "secure-upload";
+}
+
 async function getOrCreateFreeTrialCatalog(
   ctx: MutationCtx,
   effectiveFrom: number,
@@ -84,36 +122,9 @@ async function getOrCreateFreeTrialCatalog(
     throw new ConvexError("Free-trial catalog is incomplete and requires reconciliation");
   }
   if (existingRate && existingEntitlement) {
-    const expectedRate = freeTrialRate();
-    const expectedEntitlement = freeTrialEntitlement();
-    const rate = existingRate.rate;
-    const entitlement = existingEntitlement.entitlement;
-    const allowance = entitlement.allowances[0];
-    const profile = entitlement.profiles[0];
     if (
-      rate.currency !== expectedRate.currency ||
-      rate.perStudentMinor !== expectedRate.perStudentMinor ||
-      rate.setupMinor !== expectedRate.setupMinor ||
-      rate.minimumMinor !== expectedRate.minimumMinor ||
-      rate.discountBps !== expectedRate.discountBps ||
-      rate.cadence !== expectedRate.cadence ||
-      rate.proration !== expectedRate.proration ||
-      rate.bands.length !== 0 ||
-      entitlement.allowances.length !== 1 ||
-      allowance?.meterType !== "storage_bytes" ||
-      allowance.baseUnits !== FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL ||
-      allowance.graceUnits !== 0 ||
-      entitlement.warningPercent !== expectedEntitlement.warningPercent ||
-      entitlement.criticalPercent !== expectedEntitlement.criticalPercent ||
-      entitlement.hardStopPercent !== expectedEntitlement.hardStopPercent ||
-      entitlement.maxFileSizeBytes !== expectedEntitlement.maxFileSizeBytes ||
-      entitlement.maxPagesPerOperation !== expectedEntitlement.maxPagesPerOperation ||
-      entitlement.profiles.length !== 1 ||
-      profile?.task !== "knowledge_upload" ||
-      profile.meterType !== "storage_bytes" ||
-      profile.unitsPerItem !== 1 ||
-      profile.maxItems !== 12 * 1024 * 1024 ||
-      profile.modelProfile !== "secure-upload"
+      !isReviewedFreeTrialRate(existingRate.rate) ||
+      !isReviewedFreeTrialEntitlement(existingEntitlement.entitlement)
     ) {
       throw new ConvexError("Free-trial catalog differs from the reviewed storage preset");
     }
@@ -185,9 +196,12 @@ async function provisionSchoolStorage(
     const meter = storageMeters[0];
     const cycle = meter.cycleId ? await ctx.db.get(meter.cycleId) : null;
     const contract = cycle?.contractId ? await ctx.db.get(cycle.contractId) : null;
-    const storageAllowance = cycle?.entitlement.allowances.find(
-      (allowance) => allowance.meterType === "storage_bytes",
-    );
+    const rateVersion = contract?.rateVersionId
+      ? await ctx.db.get(contract.rateVersionId)
+      : null;
+    const entitlementVersion = cycle?.entitlementVersionId
+      ? await ctx.db.get(cycle.entitlementVersionId)
+      : null;
     const now = Date.now();
     const isValidExistingStorage =
       contracts.length === 1 &&
@@ -202,16 +216,37 @@ async function provisionSchoolStorage(
       contract._id === contracts[0]?._id &&
       contract.schoolId === args.schoolId &&
       contract._id === cycle.contractId &&
+      contract.code === FREE_TRIAL_RATE_CODE &&
+      contract.version === FREE_TRIAL_CATALOG_VERSION &&
+      contract.effectiveFrom === cycle.startAt &&
+      contract.effectiveTo === cycle.endAt &&
       contract.effectiveFrom <= now &&
-      (contract.effectiveTo === undefined || now < contract.effectiveTo) &&
-      storageAllowance?.baseUnits === FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL &&
-      storageAllowance.graceUnits === 0 &&
+      now < contract.effectiveTo &&
+      contract.setupHandling === "waived" &&
+      isReviewedFreeTrialRate(contract.rate) &&
+      rateVersion !== null &&
+      rateVersion.code === FREE_TRIAL_RATE_CODE &&
+      rateVersion.version === FREE_TRIAL_CATALOG_VERSION &&
+      rateVersion.effectiveFrom <= contract.effectiveFrom &&
+      isReviewedFreeTrialRate(rateVersion.rate) &&
+      cycle.code === FREE_TRIAL_ENTITLEMENT_CODE &&
+      cycle.version === FREE_TRIAL_CATALOG_VERSION &&
+      isReviewedFreeTrialEntitlement(cycle.entitlement) &&
+      entitlementVersion !== null &&
+      entitlementVersion.code === FREE_TRIAL_ENTITLEMENT_CODE &&
+      entitlementVersion.version === FREE_TRIAL_CATALOG_VERSION &&
+      entitlementVersion.effectiveFrom <= cycle.startAt &&
+      isReviewedFreeTrialEntitlement(entitlementVersion.entitlement) &&
       meter.allocatedUnits === FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL &&
       meter.baseUnits === FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL &&
       meter.graceUnits === 0 &&
       meter.topUpUnits === 0 &&
       meter.exceptionUnits === 0 &&
-      meter.poolUnits === 0;
+      meter.poolUnits === 0 &&
+      meter.warningThresholdPercent === 75 &&
+      meter.criticalThresholdPercent === 90 &&
+      meter.hardStopThresholdPercent === 100 &&
+      meter.resetCadence === "termly";
     return { status: isValidExistingStorage ? "already_configured" : "requires_review" };
   }
   if (contracts.length || cycles.length) return { status: "requires_review" };
@@ -288,13 +323,24 @@ async function provisionSchoolStorage(
     .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
     .first();
   if (!existingKnowledgeMaterial) {
-    await ctx.db.insert("knowledgeMaterialFileFingerprints", {
-      schoolId: args.schoolId,
-      sha256: "backfill:complete:v1",
-      status: "backfill_complete",
-      createdAt: now,
-      updatedAt: now,
-    });
+    const completionMarkers = await ctx.db
+      .query("knowledgeMaterialFileFingerprints")
+      .withIndex("by_school_and_sha256", (q) =>
+        q.eq("schoolId", args.schoolId).eq("sha256", FINGERPRINT_BACKFILL_COMPLETE),
+      )
+      .take(2);
+    if (completionMarkers.length > 1) {
+      throw new ConvexError("Fingerprint backfill markers require reconciliation");
+    }
+    if (!completionMarkers[0]) {
+      await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId: args.schoolId,
+        sha256: FINGERPRINT_BACKFILL_COMPLETE,
+        status: "backfill_complete",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
   }
   await recordAuditEventHelper(ctx, {
     schoolId: args.schoolId,
