@@ -196,6 +196,20 @@ it("automatically provisions bounded storage for a newly activated school", asyn
     { schoolId, actorEmail: "new.operator@example.com" },
   )).resolves.toEqual({ status: "requires_review" });
   await t.run((ctx) => ctx.db.patch(contractId, { rate: contractRate }));
+  await t.run((ctx) => ctx.db.patch(meterId, { consumedUnits: -1 }));
+  await expect(t.mutation(
+    internal.functions.academic.storageEntitlementProvisioning.ensureSchoolFreeTrialStorage,
+    { schoolId, actorEmail: "new.operator@example.com" },
+  )).resolves.toEqual({ status: "requires_review" });
+  await t.run((ctx) => ctx.db.patch(meterId, {
+    consumedUnits: 0,
+    reservedUnits: 100 * 1024 * 1024 + 1,
+  }));
+  await expect(t.mutation(
+    internal.functions.academic.storageEntitlementProvisioning.ensureSchoolFreeTrialStorage,
+    { schoolId, actorEmail: "new.operator@example.com" },
+  )).resolves.toEqual({ status: "requires_review" });
+  await t.run((ctx) => ctx.db.patch(meterId, { reservedUnits: 0 }));
   await t.run((ctx) => ctx.db.patch(contractId, { effectiveTo: Date.now() - 1 }));
   await expect(t.mutation(
     internal.functions.academic.storageEntitlementProvisioning.ensureSchoolFreeTrialStorage,

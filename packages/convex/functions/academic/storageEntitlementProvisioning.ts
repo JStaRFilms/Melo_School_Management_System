@@ -25,6 +25,10 @@ function utcMidnight(timestamp: number): number {
   return Math.floor(timestamp / DAY) * DAY;
 }
 
+function isSafeNonnegativeInteger(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
 function freeTrialRate() {
   return {
     currency: "NGN",
@@ -202,6 +206,9 @@ async function provisionSchoolStorage(
     const entitlementVersion = cycle?.entitlementVersionId
       ? await ctx.db.get(cycle.entitlementVersionId)
       : null;
+    const activeStorageBytes = meter.activeStorageBytes ?? 0;
+    const trashStorageBytes = meter.trashStorageBytes ?? 0;
+    const tempStorageBytes = meter.tempStorageBytes ?? 0;
     const now = Date.now();
     const isValidExistingStorage =
       contracts.length === 1 &&
@@ -243,6 +250,13 @@ async function provisionSchoolStorage(
       meter.topUpUnits === 0 &&
       meter.exceptionUnits === 0 &&
       meter.poolUnits === 0 &&
+      isSafeNonnegativeInteger(meter.consumedUnits) &&
+      isSafeNonnegativeInteger(meter.reservedUnits) &&
+      meter.consumedUnits + meter.reservedUnits <= meter.allocatedUnits &&
+      isSafeNonnegativeInteger(activeStorageBytes) &&
+      isSafeNonnegativeInteger(trashStorageBytes) &&
+      isSafeNonnegativeInteger(tempStorageBytes) &&
+      activeStorageBytes + trashStorageBytes + tempStorageBytes === meter.consumedUnits &&
       meter.warningThresholdPercent === 75 &&
       meter.criticalThresholdPercent === 90 &&
       meter.hardStopThresholdPercent === 100 &&
