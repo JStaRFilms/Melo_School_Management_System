@@ -40,7 +40,13 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
     api.functions.academic.teacherSelectors.getTeacherAssignableClasses,
     canLoad && branchScopedRoute && activeSchoolId ? { schoolId: activeSchoolId } : "skip",
   );
-  const assignmentDenied = branchScopedRoute && assignedClasses !== undefined && assignedClasses.length === 0;
+  const assignmentDenied =
+    branchScopedRoute &&
+    access?.state === "ready" &&
+    access.compatibility.legacyRole === "teacher" &&
+    !access.compatibility.legacyIsSchoolAdmin &&
+    assignedClasses !== undefined &&
+    assignedClasses.length === 0;
   const schoolBranding = useQuery(
     api.functions.academic.schoolBranding.getCurrentSchoolBranding,
     canLoad && activeSchoolId ? { schoolId: activeSchoolId } : "skip",
@@ -109,7 +115,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       {assignmentDenied ? <AuthoritativeForbiddenView
         moduleTitle="Teacher workspace"
         state="forbidden"
-        message="This branch has no active class assignment for your teacher account. No class, student, or assessment data was opened."
+        message="No class has been assigned to your teacher account in this branch. Ask a school administrator to assign you as a form teacher or subject teacher before opening Exam Entry."
         returnLabel={selectedSchoolId ? "Return to default branch" : "Sign out / use another account"}
         onReturnToDashboard={() => selectedSchoolId ? clearSelectedSchool() : void handleSignOut()}
       /> : moduleDenial?.state === "module_disabled" ? <AuthoritativeForbiddenView moduleTitle="This module" state="module_disabled" message={moduleDenial.message} onReturnToDashboard={() => router.push("/assessments/exams/entry")} /> : children}

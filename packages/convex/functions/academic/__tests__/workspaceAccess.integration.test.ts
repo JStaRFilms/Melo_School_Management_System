@@ -126,6 +126,67 @@ describe("U1a selected workspace contract", () => {
     expect(await f.viewer.query(accessQuery, {})).toMatchObject({ state: "suspended" });
   });
 
+  it("preserves assessment access for a legacy admin stored with a teacher role", async () => {
+    const f = await fixture(false);
+    const ids = await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.userId, { role: "teacher", isSchoolAdmin: true });
+      const classId = await ctx.db.insert("classes", {
+        schoolId: f.schoolA,
+        name: "Legacy admin class",
+        level: "primary",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const subjectId = await ctx.db.insert("subjects", {
+        schoolId: f.schoolA,
+        name: "English",
+        code: "ENG",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const sessionId = await ctx.db.insert("academicSessions", {
+        schoolId: f.schoolA,
+        name: "2026",
+        startDate: 1,
+        endDate: 2,
+        isActive: true,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const termId = await ctx.db.insert("academicTerms", {
+        schoolId: f.schoolA,
+        sessionId,
+        name: "First Term",
+        startDate: 1,
+        endDate: 2,
+        isActive: true,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.insert("gradingBands", {
+        schoolId: f.schoolA,
+        minScore: 0,
+        maxScore: 100,
+        gradeLetter: "A",
+        remark: "Pass",
+        isActive: true,
+        createdAt: 1,
+        updatedAt: 1,
+        updatedBy: f.userId,
+      });
+      return { classId, subjectId, sessionId, termId };
+    });
+
+    await expect(f.viewer.query(
+      api.functions.academic.assessmentRecords.getExamEntrySheet,
+      { schoolId: f.schoolA, ...ids },
+    )).resolves.toBeDefined();
+    await expect(f.viewer.mutation(
+      api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk,
+      { schoolId: f.schoolA, ...ids, records: [] },
+    )).resolves.toEqual({ updated: 0, created: 0, errors: [] });
+  });
+
   it("scopes a teacher to the reviewed branch projection and exact assignments", async () => {
     const f = await fixture();
     const selected = await f.t.run(async (ctx) => {

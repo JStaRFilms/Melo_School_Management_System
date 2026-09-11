@@ -150,7 +150,7 @@ export const getExamEntrySheet = query({
     }
 
     // Authorization check
-    if (role === "teacher") {
+    if (role === "teacher" && !isSchoolAdmin) {
       await assertTeacherAssignment(ctx, userId, args.classId, args.subjectId);
     } else if (!isSchoolAdmin && role !== "admin") {
       throw new ConvexError("Unauthorized");
@@ -359,7 +359,7 @@ export const upsertAssessmentRecordsBulk = mutation({
     }
 
     // Authorization check
-    if (role === "teacher") {
+    if (role === "teacher" && !isSchoolAdmin) {
       await assertTeacherAssignment(ctx, userId, args.classId, args.subjectId);
     } else if (!isSchoolAdmin && role !== "admin") {
       throw new ConvexError("Unauthorized");

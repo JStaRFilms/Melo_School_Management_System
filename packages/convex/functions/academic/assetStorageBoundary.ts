@@ -7,6 +7,19 @@ type Context = QueryCtx | MutationCtx;
 export const SECURE_UPLOAD_UNAVAILABLE_MESSAGE =
   "Uploads unavailable: the current storage transport cannot prove tenant and caller provenance, reserve purchased quota before transfer, or guarantee abandoned-upload cleanup";
 
+const STORAGE_OWNERSHIP_DENIAL_MESSAGES = new Set([
+  "Storage object is already bound to an upload, asset, or compression candidate",
+  "Storage object has conflicting ownership and cannot be served",
+]);
+
+export function isStorageOwnershipDenied(error: unknown): boolean {
+  return (
+    error instanceof ConvexError &&
+    typeof error.data === "string" &&
+    STORAGE_OWNERSHIP_DENIAL_MESSAGES.has(error.data)
+  );
+}
+
 /**
  * Generic Convex upload URLs do not carry an authoritative school/caller/purpose
  * claim and cannot reserve or clean up bytes that never reach finalization.
