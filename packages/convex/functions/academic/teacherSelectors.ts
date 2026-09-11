@@ -78,6 +78,21 @@ export const getTeacherActiveTerms = query({
   },
 });
 
+export const hasTeacherAssignments = query({
+  args: { schoolId: v.optional(v.id("schools")) },
+  returns: v.boolean(),
+  handler: async (ctx: any, args: { schoolId?: Id<"schools"> }) => {
+    const { schoolId, userId, role, isSchoolAdmin } =
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId });
+
+    if (isSchoolAdmin || role === "admin") return true;
+    if (role !== "teacher") throw new ConvexError("Unauthorized");
+
+    const classIds = await getTeacherAssignableClassIds(ctx, userId, schoolId);
+    return classIds.length > 0;
+  },
+});
+
 export const getTeacherAssignableClasses = query({
   args: { schoolId: v.optional(v.id("schools")) },
   returns: v.array(

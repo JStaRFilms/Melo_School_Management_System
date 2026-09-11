@@ -5,6 +5,7 @@ import {
   getLegacyWorkspaceAccess,
   getWorkspaceModuleDenial,
   getWorkspaceCapabilityDenial,
+  isTeacherAssignmentRequiredRoute,
   isWorkspaceBranchScopedRoute,
 } from "../workspace-route-access";
 import { getAccessibleWorkspaceSections, isWorkspaceSectionActive } from "../workspace-navigation";
@@ -146,6 +147,25 @@ describe("selected branch route adapters", () => {
       .toEqual(["/assessments/exams/entry", "/enrollment/subjects"]);
     expect(getAccessibleWorkspaceSections("teacher", { access: teacher, branchScopedOnly: true, teacherHasAssignments: false })).toEqual([]);
     expect(getBranchScopedWorkspaceAccess("teacher", "/planning/lesson-plans", teacher).state).toBe("reconciliation_required");
+  });
+
+  it("keeps the dashboard and non-class tools visible for an unassigned legacy teacher", () => {
+    const teacher = {
+      ...ready,
+      compatibility: { ...ready.compatibility, legacyRole: "teacher" },
+      teacherAssignments: { source: "domain_checks_required" as const, legacyTeacherId: "teacher" },
+    };
+    const paths = getAccessibleWorkspaceSections("teacher", {
+      access: teacher,
+      teacherHasAssignments: false,
+    }).map((section) => section.href);
+
+    expect(paths).toEqual(expect.arrayContaining(["/", "/planning", "/planning/library", "/planning/videos"]));
+    expect(paths).not.toContain("/assessments/exams/entry");
+    expect(paths).not.toContain("/assessments/report-card-workbench");
+    expect(paths).not.toContain("/enrollment/subjects");
+    expect(isTeacherAssignmentRequiredRoute("/assessments/report-cards")).toBe(true);
+    expect(isTeacherAssignmentRequiredRoute("/planning/library")).toBe(false);
   });
 });
 

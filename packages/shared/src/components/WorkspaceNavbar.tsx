@@ -221,6 +221,11 @@ export function WorkspaceNavbar({
         }
       : workspace === "teacher"
         ? {
+            overview: {
+              label: "Overview",
+              icon: <LayoutDashboard className="h-4 w-4" />,
+              links: sections.filter((section) => section.href === "/"),
+            },
             planning: {
               label: "Planning Studio",
               icon: <BookOpenText className="h-4 w-4" />,
