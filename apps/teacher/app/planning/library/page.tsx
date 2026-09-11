@@ -136,12 +136,13 @@ export default function TeacherLibraryPage() {
   const uploadReadinessData = useQuery(
     "functions/academic/knowledgeUploadReadiness:getKnowledgeMaterialUploadReadiness" as never,
     schoolId ? ({ schoolId, now: readinessObservedAt } as never) : ("skip" as never),
-  ) as { fingerprintVersion?: 0 | 1 } & Omit<KnowledgeMaterialUploadReadiness, "isLoading" | "storageStatus" | "availableBytes" | "allocatedBytes" | "maxFileSizeBytes"> & {
+  ) as { fingerprintVersion?: 0 | 1 } & Omit<KnowledgeMaterialUploadReadiness, "isLoading" | "storageStatus" | "availableBytes" | "allocatedBytes" | "maxFileSizeBytes" | "maxPagesPerOperation"> & {
     storage: {
       status: KnowledgeMaterialUploadReadiness["storageStatus"];
       availableBytes: number;
       allocatedBytes: number;
       maxFileSizeBytes: number | null;
+      maxPagesPerOperation: number | null;
     };
   } | undefined;
 
@@ -215,6 +216,7 @@ export default function TeacherLibraryPage() {
     availableBytes: uploadReadinessData?.storage.availableBytes ?? 0,
     allocatedBytes: uploadReadinessData?.storage.allocatedBytes ?? 0,
     maxFileSizeBytes: uploadReadinessData?.storage.maxFileSizeBytes ?? null,
+    maxPagesPerOperation: uploadReadinessData?.storage.maxPagesPerOperation ?? null,
   };
 
   const summary = activeMaterialsData?.summary ?? {

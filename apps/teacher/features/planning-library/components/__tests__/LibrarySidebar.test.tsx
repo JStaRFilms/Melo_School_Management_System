@@ -23,6 +23,7 @@ const props = {
     availableBytes: 100 * 1024 * 1024,
     allocatedBytes: 100 * 1024 * 1024,
     maxFileSizeBytes: 12 * 1024 * 1024,
+    maxPagesPerOperation: 80,
   },
   checkDuplicate: vi.fn(async () => false),
   onUpload: vi.fn(async () => undefined),

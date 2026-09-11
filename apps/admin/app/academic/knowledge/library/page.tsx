@@ -198,6 +198,7 @@ export default function KnowledgeLibraryPage() {
       availableBytes: number;
       allocatedBytes: number;
       maxFileSizeBytes: number | null;
+      maxPagesPerOperation: number | null;
     };
   } | undefined;
 
@@ -224,6 +225,7 @@ export default function KnowledgeLibraryPage() {
     availableBytes: uploadReadinessData?.storage.availableBytes ?? 0,
     allocatedBytes: uploadReadinessData?.storage.allocatedBytes ?? 0,
     maxFileSizeBytes: uploadReadinessData?.storage.maxFileSizeBytes ?? null,
+    maxPagesPerOperation: uploadReadinessData?.storage.maxPagesPerOperation ?? null,
   };
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);

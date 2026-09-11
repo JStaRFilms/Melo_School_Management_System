@@ -63,6 +63,7 @@ export type KnowledgeMaterialIngestionSnapshot = {
   storageContentType?: string;
   selectedPageRanges?: string;
   selectedPageNumbers?: number[];
+  maxPagesPerOperation?: number;
   sourceFileMode?: "original" | "selected_pages";
   externalUrl?: string;
   searchText: string;
@@ -432,6 +433,7 @@ export function parsePdfPageRanges(value: string): number[] {
 export function assertPdfPageSelectionWithinLimit(args: {
   selectedPageNumbers: number[];
   maxPageCount?: number;
+  maxSelectedPageCount?: number;
 }) {
   const invalidPage = args.selectedPageNumbers.find(
     (page) => !Number.isInteger(page) || page < 1
@@ -439,8 +441,12 @@ export function assertPdfPageSelectionWithinLimit(args: {
   if (invalidPage !== undefined) {
     throw new ConvexError(`Selected page ${invalidPage} is not a valid page number`);
   }
-  if (args.selectedPageNumbers.length > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
-    throw new ConvexError(`Index at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages per material`);
+  const maxSelectedPageCount = Math.min(
+    MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES,
+    args.maxSelectedPageCount ?? MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES,
+  );
+  if (args.selectedPageNumbers.length > maxSelectedPageCount) {
+    throw new ConvexError(`Index at most ${maxSelectedPageCount} PDF pages per material`);
   }
   if (args.maxPageCount !== undefined) {
     const invalid = args.selectedPageNumbers.find((page) => page > args.maxPageCount!);

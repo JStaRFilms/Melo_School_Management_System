@@ -57,6 +57,7 @@ export interface KnowledgeMaterialUploadReadiness {
   availableBytes: number;
   allocatedBytes: number;
   maxFileSizeBytes: number | null;
+  maxPagesPerOperation: number | null;
 }
 
 interface KnowledgeMaterialUploadFormProps {
@@ -148,7 +149,11 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function selectedPdfPages(value: string, pageCount: number): number[] {
+function selectedPdfPages(
+  value: string,
+  pageCount: number,
+  maxPagesPerOperation: number,
+): number[] {
   const pages = new Set<number>();
   for (const token of value.split(",").map((entry) => entry.trim()).filter(Boolean)) {
     const range = token.match(/^(\d+)\s*-\s*(\d+)$/);
@@ -163,8 +168,8 @@ function selectedPdfPages(value: string, pageCount: number): number[] {
     }
     for (let page = start; page <= end; page += 1) {
       pages.add(page);
-      if (pages.size > MAX_KNOWLEDGE_MATERIAL_PDF_PAGES) {
-        throw new Error(`Index at most ${MAX_KNOWLEDGE_MATERIAL_PDF_PAGES} PDF pages per material.`);
+      if (pages.size > maxPagesPerOperation) {
+        throw new Error(`Index at most ${maxPagesPerOperation} PDF pages per material.`);
       }
     }
   }
@@ -174,14 +179,23 @@ function selectedPdfPages(value: string, pageCount: number): number[] {
 export function validateKnowledgeMaterialPdfSelection(args: {
   pageCount: number;
   selectedPageRanges: string;
+  maxPagesPerOperation?: number | null;
 }): string | null {
   if (!Number.isSafeInteger(args.pageCount) || args.pageCount < 1) {
     return "This PDF does not contain any readable pages.";
   }
+  const maxPagesPerOperation = Math.min(
+    MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+    args.maxPagesPerOperation ?? MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+  );
   try {
-    const selectedPages = selectedPdfPages(args.selectedPageRanges, args.pageCount);
-    if (!args.selectedPageRanges.trim() && args.pageCount > MAX_KNOWLEDGE_MATERIAL_PDF_PAGES) {
-      return `This PDF has ${args.pageCount} pages. Choose a range containing at most ${MAX_KNOWLEDGE_MATERIAL_PDF_PAGES} pages before uploading.`;
+    const selectedPages = selectedPdfPages(
+      args.selectedPageRanges,
+      args.pageCount,
+      maxPagesPerOperation,
+    );
+    if (!args.selectedPageRanges.trim() && args.pageCount > maxPagesPerOperation) {
+      return `This PDF has ${args.pageCount} pages. Choose a range containing at most ${maxPagesPerOperation} pages before uploading.`;
     }
     if (args.selectedPageRanges.trim() && selectedPages.length === 0) {
       return "Choose at least one PDF page to index.";
@@ -215,6 +229,10 @@ export function KnowledgeMaterialUploadForm({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isInspecting, setIsInspecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const maxPdfPages = Math.min(
+    MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+    readiness.maxPagesPerOperation ?? MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+  );
 
   const clearFile = () => {
     setFile(null);
@@ -304,6 +322,7 @@ export function KnowledgeMaterialUploadForm({
         const pdfError = validateKnowledgeMaterialPdfSelection({
           pageCount: pdf.getPageCount(),
           selectedPageRanges,
+          maxPagesPerOperation: maxPdfPages,
         });
         if (pdfError) {
           setValidationError(pdfError);
@@ -523,7 +542,7 @@ export function KnowledgeMaterialUploadForm({
               className="h-10 w-full rounded-xl border border-sky-100 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all placeholder:text-slate-300 focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
             />
             <span className="block text-[10px] font-semibold leading-relaxed text-sky-700">
-              Leave blank to index the whole PDF when it has at most {MAX_KNOWLEDGE_MATERIAL_PDF_PAGES} pages. Larger PDFs require a range containing no more than {MAX_KNOWLEDGE_MATERIAL_PDF_PAGES} pages.
+              Leave blank to index the whole PDF when it has at most {maxPdfPages} pages. Larger PDFs require a range containing no more than {maxPdfPages} pages.
             </span>
           </label>
         ) : null}

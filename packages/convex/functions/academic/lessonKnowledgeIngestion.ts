@@ -43,6 +43,7 @@ import {
 import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import type { QuotaReservationResult } from "./metering";
 import {
+  getContractBoundStorageReadiness,
   hasDuplicateKnowledgeMaterialFile,
   isKnowledgeMaterialFingerprintProtectionReady,
   requireContractBoundStorageForUpload,
@@ -249,6 +250,7 @@ function buildKnowledgeMaterialRecord(args: {
   externalUrl?: string;
   selectedPageRanges?: string;
   selectedPageNumbers?: number[];
+  maxPagesPerOperation?: number;
   uploadIntent?: KnowledgeMaterialUploadIntent;
   defaultsMode?: "actor_default" | "private_first";
 }) {
@@ -294,6 +296,9 @@ function buildKnowledgeMaterialRecord(args: {
     ...(args.externalUrl ? { externalUrl: args.externalUrl } : {}),
     ...(args.selectedPageRanges ? { selectedPageRanges: args.selectedPageRanges } : {}),
     ...(args.selectedPageNumbers?.length ? { selectedPageNumbers: args.selectedPageNumbers } : {}),
+    ...(args.maxPagesPerOperation !== undefined
+      ? { maxPagesPerOperation: args.maxPagesPerOperation }
+      : {}),
     searchStatus: "not_indexed" as const,
     searchText,
     processingStatus: defaults.processingStatus,
@@ -558,6 +563,15 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
     ) {
       throw new ConvexError("Page selection is only available for PDF uploads.");
     }
+    if (
+      selectedPageNumbers?.length &&
+      args.maxPagesPerOperation !== undefined &&
+      selectedPageNumbers.length > args.maxPagesPerOperation
+    ) {
+      throw new ConvexError(
+        `Index at most ${args.maxPagesPerOperation} PDF pages under this school's active entitlement`,
+      );
+    }
 
     const record = buildKnowledgeMaterialRecord({
       actorUserId: userId,
@@ -572,6 +586,9 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
       ...(args.topicId ? { topicId: args.topicId } : {}),
       ...(selectedPageRanges ? { selectedPageRanges } : {}),
       ...(selectedPageNumbers?.length ? { selectedPageNumbers } : {}),
+      ...(args.maxPagesPerOperation !== undefined
+        ? { maxPagesPerOperation: args.maxPagesPerOperation }
+        : {}),
       ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
       defaultsMode: args.defaultsMode,
     });
@@ -754,7 +771,9 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
     ) {
       throw new ConvexError("Page selection is only available for PDF uploads.");
     }
-    if (selectedPageRanges) parsePdfPageRanges(selectedPageRanges);
+    const selectedPageNumbers = selectedPageRanges
+      ? parsePdfPageRanges(selectedPageRanges)
+      : undefined;
     if (!expectedSha256 && !await isKnowledgeMaterialFingerprintProtectionReady(ctx, schoolId)) {
       throw new ConvexError("Duplicate-file protection is still being set up for this school. Try again in a moment.");
     }
@@ -764,13 +783,21 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
     ) {
       throw new ConvexError("This exact file already exists in the school knowledge library. Open the existing material instead of uploading another copy.");
     }
+    const storage = await requireContractBoundStorageForUpload(ctx, schoolId, args.size);
+    if (
+      selectedPageNumbers?.length &&
+      storage.maxPagesPerOperation !== null &&
+      selectedPageNumbers.length > storage.maxPagesPerOperation
+    ) {
+      throw new ConvexError(
+        `Index at most ${storage.maxPagesPerOperation} PDF pages under this school's active entitlement`,
+      );
+    }
     await assertLessonKnowledgeRateLimit(ctx, {
       action: "knowledge_material_upload_url",
       schoolId,
       actorUserId: userId,
     });
-
-    await requireContractBoundStorageForUpload(ctx, schoolId, args.size);
     const quotaReservationKey = `knowledge-upload:${args.uploadToken}`;
     const reservation: QuotaReservationResult = await ctx.runMutation(
       internal.functions.academic.metering.reserveUsageQuota,
@@ -812,6 +839,9 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
       ...(args.defaultsMode ? { defaultsMode: args.defaultsMode } : {}),
       ...(selectedPageRanges ? { selectedPageRanges } : {}),
+      ...(storage.maxPagesPerOperation !== null
+        ? { maxPagesPerOperation: storage.maxPagesPerOperation }
+        : {}),
       status: "pending",
       expiresAt,
       createdAt: now,
@@ -1856,6 +1886,21 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
     const storageMeta = material.storageId
       ? ((await ctx.db.system.get("_storage", material.storageId)) as StorageMetadata | null)
       : null;
+    let maxPagesPerOperation = material.maxPagesPerOperation;
+    if (
+      maxPagesPerOperation === undefined &&
+      isKnowledgeMaterialPdfContentType(storageMeta?.contentType)
+    ) {
+      const storage = await getContractBoundStorageReadiness(
+        ctx,
+        material.schoolId,
+        Date.now(),
+      );
+      if (storage.maxPagesPerOperation === null) {
+        throw new ConvexError("An active PDF page entitlement is required for ingestion");
+      }
+      maxPagesPerOperation = storage.maxPagesPerOperation;
+    }
 
     const snapshot: KnowledgeMaterialIngestionSnapshot = {
       materialId: material._id,
@@ -1875,6 +1920,7 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       ...(storageMeta?.contentType ? { storageContentType: storageMeta.contentType } : {}),
       ...(material.selectedPageRanges ? { selectedPageRanges: material.selectedPageRanges } : {}),
       ...(material.selectedPageNumbers?.length ? { selectedPageNumbers: material.selectedPageNumbers } : {}),
+      ...(maxPagesPerOperation !== undefined ? { maxPagesPerOperation } : {}),
       ...(material.sourceFileMode ? { sourceFileMode: material.sourceFileMode } : {}),
       ...(material.externalUrl ? { externalUrl: material.externalUrl } : {}),
       searchText: material.searchText,

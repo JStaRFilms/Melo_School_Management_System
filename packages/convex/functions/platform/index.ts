@@ -476,19 +476,27 @@ export const provisionSchoolAdmin = action({
       const authUsage = await ctx.runQuery(
         internal.functions.platform.index.inspectProvisioningAuthIdInternal,
         { authId },
-      ).catch(() => null);
-      if (!authUsage || authUsage.schoolUserId || authUsage.platformAdminId) {
+      ).catch(() => {
+        throw new ConvexError(
+          "School administrator provisioning needs operator reconciliation; the authentication account state could not be verified",
+        );
+      });
+      if (authUsage.schoolUserId || authUsage.platformAdminId) {
         throw new ConvexError(
           "School administrator provisioning needs operator reconciliation; the authentication account remains linked",
         );
       }
-      const cleanupVerified = await cleanupProvisionedSchoolAdminAuthUser(ctx, {
+      const cleanupStatus = await cleanupProvisionedSchoolAdminAuthUser(ctx, {
         authId,
         adminEmail,
-      }).catch(() => false);
-      if (!cleanupVerified) {
+      }).catch(() => {
         throw new ConvexError(
           "School administrator provisioning needs operator reconciliation; the authentication rollback could not be verified",
+        );
+      });
+      if (cleanupStatus === "email_conflict") {
+        throw new ConvexError(
+          "School administrator provisioning needs operator reconciliation; the email now belongs to a different authentication account",
         );
       }
       if (error instanceof ConvexError) throw error;

@@ -12,7 +12,10 @@ import {
   getTeacherAssignableSubjectIds,
 } from "./auth";
 import { TEACHER_PLANNING_CAPABILITIES, type PermissionCapability } from "./rbac";
-import { assertKnowledgeMaterialIngestionAccess } from "./lessonKnowledgeIngestionHelpers";
+import {
+  assertKnowledgeMaterialIngestionAccess,
+  MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+} from "./lessonKnowledgeIngestionHelpers";
 import { recordAuditEventHelper } from "./audit";
 
 type Context = QueryCtx | MutationCtx;
@@ -25,6 +28,7 @@ export type ContractBoundStorageReadiness = {
   reservedBytes: number;
   availableBytes: number;
   maxFileSizeBytes: number | null;
+  maxPagesPerOperation: number | null;
 };
 
 async function hasCapability(
@@ -164,6 +168,7 @@ export async function getContractBoundStorageReadiness(
       reservedBytes: 0,
       availableBytes: 0,
       maxFileSizeBytes: null,
+      maxPagesPerOperation: null,
     };
   }
 
@@ -185,6 +190,10 @@ export async function getContractBoundStorageReadiness(
       reservedBytes: meter?.reservedUnits ?? 0,
       availableBytes: 0,
       maxFileSizeBytes: cycle.entitlement.maxFileSizeBytes,
+      maxPagesPerOperation: Math.min(
+        MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+        cycle.entitlement.maxPagesPerOperation,
+      ),
     };
   }
 
@@ -199,6 +208,10 @@ export async function getContractBoundStorageReadiness(
     reservedBytes: meter.reservedUnits,
     availableBytes,
     maxFileSizeBytes: cycle.entitlement.maxFileSizeBytes,
+    maxPagesPerOperation: Math.min(
+      MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+      cycle.entitlement.maxPagesPerOperation,
+    ),
   };
 }
 
@@ -206,7 +219,7 @@ export async function requireContractBoundStorageForUpload(
   ctx: MutationCtx,
   schoolId: Id<"schools">,
   size: number,
-): Promise<void> {
+): Promise<ContractBoundStorageReadiness> {
   const storage = await getContractBoundStorageReadiness(ctx, schoolId, Date.now());
   if (storage.status === "missing_entitlement") {
     throw new ConvexError("Storage entitlement is not active for this school");
@@ -219,6 +232,7 @@ export async function requireContractBoundStorageForUpload(
       `File exceeds the contract upload limit of ${storage.maxFileSizeBytes} bytes`,
     );
   }
+  return storage;
 }
 
 export const backfillKnowledgeMaterialFileFingerprints = internalMutation({
@@ -405,6 +419,7 @@ export const getKnowledgeMaterialUploadReadiness = query({
       reservedBytes: v.number(),
       availableBytes: v.number(),
       maxFileSizeBytes: v.union(v.number(), v.null()),
+      maxPagesPerOperation: v.union(v.number(), v.null()),
     }),
   }),
   handler: async (ctx, args) => {

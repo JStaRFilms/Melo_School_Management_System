@@ -202,6 +202,7 @@ async function fixture() {
       subjectId,
       otherSubjectId,
       termId,
+      cycleId,
       userIds,
       adminUserId: adminOperator.memberships[0].userId,
     };
@@ -289,7 +290,12 @@ describe("managed teacher planning capability contract", () => {
       hasPlanningPermission: true,
       hasUploadPermission: false,
       hasAssignedContext: true,
-      storage: { status: "ready", allocatedBytes: 100_000, availableBytes: 100_000 },
+      storage: {
+        status: "ready",
+        allocatedBytes: 100_000,
+        availableBytes: 100_000,
+        maxPagesPerOperation: 80,
+      },
     });
     await expect(f.teacher("unassigned").query(
       academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
@@ -329,6 +335,41 @@ describe("managed teacher planning capability contract", () => {
       academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
       secureUploadArgs(f.subjectId, "missing-entitlement-upload-token-0001"),
     )).rejects.toThrow("Storage entitlement is not active");
+  });
+
+  it("enforces the active entitlement PDF page cap before reserving quota", async () => {
+    const f = await fixture();
+    await f.t.run(async (ctx) => {
+      const cycle = await ctx.db.get(f.cycleId);
+      if (!cycle) throw new Error("Usage cycle missing");
+      await ctx.db.patch(f.cycleId, {
+        entitlement: { ...cycle.entitlement, maxPagesPerOperation: 20 },
+      });
+    });
+
+    await expect(f.teacher("planningUpload").query(
+      academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
+      { schoolId: f.schoolId, now: Date.now() },
+    )).resolves.toMatchObject({ storage: { maxPagesPerOperation: 20 } });
+    await expect(f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      {
+        ...secureUploadArgs(f.subjectId, "pdf-page-cap-upload-token-00000001"),
+        fileName: "bounded.pdf",
+        contentType: "application/pdf",
+        selectedPageRanges: "1-21",
+      },
+    )).rejects.toThrow("at most 20 PDF pages");
+
+    const meter = await f.t.run((ctx) =>
+      ctx.db
+        .query("usageMeterAllocations")
+        .withIndex("by_school_and_meter", (q) =>
+          q.eq("schoolId", f.schoolId).eq("meterType", "storage_bytes"),
+        )
+        .unique(),
+    );
+    expect(meter?.reservedUnits).toBe(0);
   });
 
   it("keeps source upload capability independent and securely stores assigned material", async () => {

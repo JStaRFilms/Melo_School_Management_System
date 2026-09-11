@@ -2639,6 +2639,7 @@ export default defineSchema({
       v.union(v.literal("actor_default"), v.literal("private_first")),
     ),
     selectedPageRanges: v.optional(v.string()),
+    maxPagesPerOperation: v.optional(v.number()),
     activeAttemptId: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
@@ -2704,6 +2705,7 @@ export default defineSchema({
     indexedAt: v.union(v.number(), v.null()),
     selectedPageRanges: v.optional(v.string()),
     selectedPageNumbers: v.optional(v.array(v.number())),
+    maxPagesPerOperation: v.optional(v.number()),
     pdfPageCount: v.optional(v.number()),
     sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
     sourcePdfPageCount: v.optional(v.number()),

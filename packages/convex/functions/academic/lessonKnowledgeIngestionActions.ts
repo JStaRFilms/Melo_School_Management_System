@@ -118,6 +118,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
     storageContentType: v.optional(v.string()),
     selectedPageRanges: v.optional(v.string()),
     selectedPageNumbers: v.optional(v.array(v.number())),
+    maxPagesPerOperation: v.optional(v.number()),
     sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
     externalUrl: v.optional(v.string()),
     searchText: v.string(),
@@ -169,6 +170,15 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       let extractionBuffer = buffer;
       let extractionSelectedPageNumbers =
         args.sourceFileMode === "selected_pages" ? undefined : args.selectedPageNumbers;
+      if (
+        args.selectedPageNumbers?.length &&
+        args.maxPagesPerOperation !== undefined &&
+        args.selectedPageNumbers.length > args.maxPagesPerOperation
+      ) {
+        throw new ConvexError(
+          `Index at most ${args.maxPagesPerOperation} PDF pages under this school's active entitlement`,
+        );
+      }
 
       if (args.selectedPageNumbers?.length && args.sourceFileMode !== "selected_pages") {
         const selectedPdfBuffer = await buildSelectedPagesPdfBuffer({
@@ -199,6 +209,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       const extracted = await extractReadableTextFromBuffer(extractionBuffer, {
         contentType: args.storageContentType,
         selectedPageNumbers: extractionSelectedPageNumbers,
+        maxPdfPages: args.maxPagesPerOperation,
       });
       const extractedPages =
         extracted.status === "ready" &&
