@@ -274,7 +274,15 @@ export const commitUsageQuota = internalMutation({
     const consumedUnits = allocation.consumedUnits + args.actualUnits;
     const availableUnits = Math.max(0, allocation.allocatedUnits - consumedUnits - reservedUnits);
     const utilizationPercent = allocation.allocatedUnits === 0 ? 100 : Math.min(100, Math.round(((consumedUnits + reservedUnits) / allocation.allocatedUnits) * 100));
-    await ctx.db.patch(allocation._id, { reservedUnits, consumedUnits, updatedAt: now });
+    const activeStorageBytes = args.meterType === "storage_bytes"
+      ? (allocation.activeStorageBytes ?? 0) + args.actualUnits
+      : allocation.activeStorageBytes;
+    await ctx.db.patch(allocation._id, {
+      reservedUnits,
+      consumedUnits,
+      ...(activeStorageBytes !== undefined ? { activeStorageBytes } : {}),
+      updatedAt: now,
+    });
     await ctx.db.insert("usageEvents", { schoolId: args.schoolId, meterType: args.meterType, unitsDelta: args.actualUnits, reservationId: args.idempotencyKey, measurementMetadata: args.measurementMetadata, actorUserId: args.actorUserId, actorPersonId: args.actorPersonId, operationName: args.operationName, description: args.description, timestamp: now });
     await ctx.db.patch(reservation._id, { status: "committed", actualUnits: args.actualUnits, measurementMetadata: args.measurementMetadata, consumedUnits, reservedUnits, availableUnits, utilizationPercent, committedAt: now, updatedAt: now });
     return { success: true, totalConsumed: consumedUnits, reservedUnits, remainingUnits: availableUnits, allocatedUnits: allocation.allocatedUnits, utilizationPercent };
@@ -296,11 +304,55 @@ export const releaseUsageQuota = internalMutation({
       .unique();
     if (!reservation || !reservation.allowed) throw new ConvexError("Usage reservation was not accepted");
     if (reservation.status === "released") return { success: true, reservedUnits: reservation.reservedUnits, remainingUnits: reservation.availableUnits, allocatedUnits: reservation.allocatedUnits };
-    if (reservation.status !== "reserved") throw new ConvexError("Only reserved usage can be released");
 
     const allocation = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", args.schoolId).eq("meterType", args.meterType)).first();
-    if (!allocation || allocation.reservedUnits < reservation.unitsReserved) throw new ConvexError("Usage reservation is no longer available");
+    if (!allocation) throw new ConvexError("Usage allocation is no longer available");
     const now = Date.now();
+
+    if (reservation.status === "committed" && args.meterType === "storage_bytes") {
+      const actualUnits = reservation.actualUnits ?? 0;
+      const activeStorageBytes = allocation.activeStorageBytes ?? 0;
+      if (allocation.consumedUnits < actualUnits || activeStorageBytes < actualUnits) {
+        throw new ConvexError("Committed storage usage cannot be safely reversed");
+      }
+      const consumedUnits = allocation.consumedUnits - actualUnits;
+      const nextActiveStorageBytes = activeStorageBytes - actualUnits;
+      const availableUnits = Math.max(0, allocation.allocatedUnits - consumedUnits - allocation.reservedUnits);
+      const utilizationPercent = allocation.allocatedUnits === 0
+        ? 100
+        : Math.min(100, Math.round(((consumedUnits + allocation.reservedUnits) / allocation.allocatedUnits) * 100));
+      await ctx.db.patch(allocation._id, {
+        consumedUnits,
+        activeStorageBytes: nextActiveStorageBytes,
+        updatedAt: now,
+      });
+      await ctx.db.insert("usageEvents", {
+        schoolId: args.schoolId,
+        meterType: args.meterType,
+        unitsDelta: -actualUnits,
+        reservationId: args.idempotencyKey,
+        measurementMetadata: {
+          source: "committed_storage_rollback",
+          measuredAt: now,
+        },
+        operationName: reservation.operationName,
+        description: "Reversed storage usage after upload cleanup",
+        timestamp: now,
+      });
+      await ctx.db.patch(reservation._id, {
+        status: "released",
+        consumedUnits,
+        reservedUnits: allocation.reservedUnits,
+        availableUnits,
+        utilizationPercent,
+        releasedAt: now,
+        updatedAt: now,
+      });
+      return { success: true, reservedUnits: allocation.reservedUnits, remainingUnits: availableUnits, allocatedUnits: allocation.allocatedUnits };
+    }
+
+    if (reservation.status !== "reserved") throw new ConvexError("Only reserved usage can be released");
+    if (allocation.reservedUnits < reservation.unitsReserved) throw new ConvexError("Usage reservation is no longer available");
     const reservedUnits = allocation.reservedUnits - reservation.unitsReserved;
     const availableUnits = Math.max(0, allocation.allocatedUnits - allocation.consumedUnits - reservedUnits);
     await ctx.db.patch(allocation._id, { reservedUnits, updatedAt: now });

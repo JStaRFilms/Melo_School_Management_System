@@ -806,5 +806,98 @@ describe("managed teacher planning capability contract", () => {
         title: "School curriculum",
       }),
     ]);
+    expect(await f.t.run(async (ctx) => {
+      const meter = await ctx.db
+        .query("usageMeterAllocations")
+        .withIndex("by_school_and_meter", (q) =>
+          q.eq("schoolId", f.schoolId).eq("meterType", "storage_bytes"),
+        )
+        .unique();
+      return { consumed: meter?.consumedUnits, active: meter?.activeStorageBytes };
+    })).toEqual({ consumed: bytes.byteLength, active: bytes.byteLength });
+
+    const duplicateStorageId = await f.t.run(async (ctx) => {
+      const candidate = await ctx.storage.store(new Blob([bytes], { type: "text/plain" }));
+      const metadata = await ctx.db.system.get("_storage", candidate);
+      if (!metadata) throw new Error("Storage metadata missing");
+      const now = Date.now();
+      const existingMaterialId = await ctx.db.insert("knowledgeMaterials", {
+        schoolId: f.schoolId,
+        ownerUserId: f.adminUserId,
+        ownerRole: "admin",
+        sourceType: "text_entry",
+        visibility: "staff_shared",
+        reviewStatus: "approved",
+        title: "Existing duplicate",
+        level: "JSS 1",
+        topicLabel: "National curriculum",
+        searchStatus: "indexed",
+        searchText: "existing duplicate",
+        processingStatus: "ready",
+        ingestionErrorMessage: null,
+        ingestionAttemptCount: 0,
+        labelSuggestions: [],
+        chunkCount: 0,
+        indexedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: f.adminUserId,
+        updatedBy: f.adminUserId,
+      });
+      await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId: f.schoolId,
+        sha256: storageSha256ToHex(metadata.sha256),
+        materialId: existingMaterialId,
+        status: "completed",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return candidate;
+    });
+    await expect(f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal,
+      {
+        materialId: result.materialId,
+        schoolId: f.schoolId,
+        previousStorageId: storageId,
+        nextStorageId: duplicateStorageId,
+        actorUserId: f.adminUserId,
+        sourcePdfPageCount: 1,
+      },
+    )).resolves.toEqual({ status: "duplicate_removed" });
+    expect(await f.t.run(async (ctx) => {
+      const meter = await ctx.db
+        .query("usageMeterAllocations")
+        .withIndex("by_school_and_meter", (q) =>
+          q.eq("schoolId", f.schoolId).eq("meterType", "storage_bytes"),
+        )
+        .unique();
+      const intent = await ctx.db.get(upload.uploadIntentId);
+      const reservation = await ctx.db
+        .query("usageQuotaReservations")
+        .withIndex("by_school_and_meter_and_idempotency_key", (q) =>
+          q.eq("schoolId", f.schoolId)
+            .eq("meterType", "storage_bytes")
+            .eq("idempotencyKey", `knowledge-upload:${uploadToken}`),
+        )
+        .unique();
+      return {
+        material: await ctx.db.get(result.materialId),
+        originalStorage: await ctx.storage.get(storageId),
+        duplicateStorage: await ctx.storage.get(duplicateStorageId),
+        intentStatus: intent?.status,
+        reservationStatus: reservation?.status,
+        consumed: meter?.consumedUnits,
+        active: meter?.activeStorageBytes,
+      };
+    })).toEqual({
+      material: null,
+      originalStorage: null,
+      duplicateStorage: null,
+      intentStatus: "failed",
+      reservationStatus: "released",
+      consumed: 0,
+      active: 0,
+    });
   });
 });

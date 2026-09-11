@@ -1949,7 +1949,9 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
     actorUserId: v.id("users"),
     sourcePdfPageCount: v.number(),
   },
-  returns: v.null(),
+  returns: v.object({
+    status: v.union(v.literal("replaced"), v.literal("duplicate_removed")),
+  }),
   handler: async (ctx, args) => {
     const material = await ctx.db.get(args.materialId);
     if (!material || material.schoolId !== args.schoolId) {
@@ -1985,9 +1987,37 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
       )
       .take(2);
     if (matchingFingerprints.some((row) => row._id !== materialFingerprints[0]?._id)) {
-      throw new ConvexError(
-        "The selected PDF pages duplicate an existing school knowledge material",
+      const materialFingerprint = materialFingerprints[0];
+      const uploadIntent = materialFingerprint?.uploadIntentId
+        ? await ctx.db.get(materialFingerprint.uploadIntentId)
+        : null;
+      if (
+        !materialFingerprint ||
+        !uploadIntent ||
+        uploadIntent.materialId !== material._id ||
+        uploadIntent.status !== "completed"
+      ) {
+        throw new ConvexError("Duplicate upload cleanup requires operator reconciliation");
+      }
+      await ctx.runMutation(
+        internal.functions.academic.metering.releaseUsageQuota,
+        {
+          schoolId: material.schoolId,
+          meterType: "storage_bytes",
+          idempotencyKey: uploadIntent.quotaReservationKey,
+        },
       );
+      await ctx.storage.delete(args.previousStorageId);
+      await ctx.storage.delete(args.nextStorageId);
+      await ctx.db.delete(materialFingerprint._id);
+      await ctx.db.patch(uploadIntent._id, {
+        status: "failed",
+        materialId: undefined,
+        failureReason: "Selected PDF pages duplicate an existing school knowledge material",
+        updatedAt: Date.now(),
+      });
+      await ctx.db.delete(material._id);
+      return { status: "duplicate_removed" as const };
     }
 
     const now = Date.now();
@@ -2016,7 +2046,7 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
     }
 
     await ctx.storage.delete(args.previousStorageId);
-    return null;
+    return { status: "replaced" as const };
   },
 });
 

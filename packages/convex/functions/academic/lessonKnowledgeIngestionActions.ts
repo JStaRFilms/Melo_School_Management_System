@@ -200,14 +200,18 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
           new Blob([new Uint8Array(selectedPdfBuffer)], { type: "application/pdf" })
         );
         try {
-          await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal, {
-            materialId: args.materialId,
-            schoolId: args.schoolId,
-            previousStorageId: args.storageId,
-            nextStorageId: selectedStorageId,
-            actorUserId: args.ownerUserId,
-            sourcePdfPageCount: args.selectedPageNumbers.length,
-          });
+          const replacement = await ctx.runMutation(
+            internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal,
+            {
+              materialId: args.materialId,
+              schoolId: args.schoolId,
+              previousStorageId: args.storageId,
+              nextStorageId: selectedStorageId,
+              actorUserId: args.ownerUserId,
+              sourcePdfPageCount: args.selectedPageNumbers.length,
+            },
+          );
+          if (replacement.status === "duplicate_removed") return;
         } catch (error) {
           await ctx.storage.delete(selectedStorageId);
           throw error;

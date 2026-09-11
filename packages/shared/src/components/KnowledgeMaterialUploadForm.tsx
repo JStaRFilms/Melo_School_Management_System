@@ -316,8 +316,17 @@ export function KnowledgeMaterialUploadForm({
     setIsInspecting(true);
     try {
       const bytes = await readFileBytes(file);
+      const sha256 = await sha256Hex(bytes);
       if (inferKnowledgeMaterialContentType(file).includes("pdf")) {
-        const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const { getDocument, GlobalWorkerOptions } = await import(
+          "pdfjs-dist/legacy/build/pdf.mjs"
+        );
+        if (!GlobalWorkerOptions.workerSrc) {
+          GlobalWorkerOptions.workerSrc = new URL(
+            "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+            import.meta.url,
+          ).toString();
+        }
         const loadingTask = getDocument({ data: bytes, password: "" });
         try {
           const pdf = await loadingTask.promise;
@@ -339,7 +348,6 @@ export function KnowledgeMaterialUploadForm({
           await loadingTask.destroy();
         }
       }
-      const sha256 = await sha256Hex(bytes);
       if (await checkDuplicate(sha256)) {
         setValidationError("This exact file already exists in the school knowledge library. Open the existing material instead of uploading another copy.");
         return;
