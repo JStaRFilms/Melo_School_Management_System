@@ -50,6 +50,26 @@ async function cleanupOrphanedBetterAuthUser(
   return true;
 }
 
+export async function cleanupProvisionedSchoolAdminAuthUser(
+  ctx: ActionCtx,
+  args: { authId: string; adminEmail: string },
+): Promise<boolean> {
+  const auth = createAuth(ctx);
+  const authContext = await auth.$context;
+  const normalizedEmail = args.adminEmail.trim().toLowerCase();
+  const existingAuth = (await authContext.internalAdapter.findUserByEmail(
+    normalizedEmail,
+    { includeAccounts: true },
+  )) as ExistingAuthLookup | null;
+
+  if (!existingAuth?.user?.id) return true;
+  if (existingAuth.user.id !== args.authId) return false;
+
+  await cleanupOrphanedBetterAuthUser(ctx, existingAuth);
+  const remaining = await authContext.internalAdapter.findUserByEmail(normalizedEmail);
+  return !remaining?.user?.id;
+}
+
 export async function provisionSchoolAdminAuthUser(
   ctx: ActionCtx,
   args: {

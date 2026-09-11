@@ -99,6 +99,12 @@ async function getOrCreateFreeTrialCatalog(
     ) {
       throw new ConvexError("Free-trial catalog differs from the reviewed storage preset");
     }
+    if (
+      existingRate.effectiveFrom > effectiveFrom ||
+      existingEntitlement.effectiveFrom > effectiveFrom
+    ) {
+      throw new ConvexError("Free-trial catalog is not effective for the requested storage period");
+    }
     return {
       rateVersionId: existingRate._id,
       entitlementVersionId: existingEntitlement._id,

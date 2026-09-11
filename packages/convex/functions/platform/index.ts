@@ -10,16 +10,21 @@ import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { getAuthenticatedPlatformAdmin } from "./auth";
-import { provisionSchoolAdminAuthUser } from "./provisioningHelpers";
+import {
+  cleanupProvisionedSchoolAdminAuthUser,
+  provisionSchoolAdminAuthUser,
+} from "./provisioningHelpers";
 import { createAuth } from "../../betterAuth";
 import { ensureSchoolFreeTrialStorageHelper } from "../academic/storageEntitlementProvisioning";
 
-function getBetterAuthTokenIdentifier(authId: string): string {
+function getBetterAuthIssuer(): string {
   const issuer = process.env.CONVEX_SITE_URL?.trim();
-  if (!issuer) {
-    throw new ConvexError("Authentication issuer is not configured");
-  }
-  return `${issuer}|${authId}`;
+  if (!issuer) throw new ConvexError("Authentication issuer is not configured");
+  return issuer;
+}
+
+function getBetterAuthTokenIdentifier(authId: string): string {
+  return `${getBetterAuthIssuer()}|${authId}`;
 }
 
 async function ensureVerifiedSchoolAdminIdentity(
@@ -446,31 +451,51 @@ export const provisionSchoolAdmin = action({
       throw new ConvexError("Password must be at least 8 characters");
     }
 
+    const authIssuer = getBetterAuthIssuer();
     const authId = await provisionSchoolAdminAuthUser(ctx, {
       adminEmail,
       adminName,
       adminPassword,
     });
-    const authTokenIdentifier = getBetterAuthTokenIdentifier(authId);
+    const authTokenIdentifier = `${authIssuer}|${authId}`;
 
-    // Call internal mutation to create user row and transition school
-    const result: {
-      success: boolean;
-      schoolId: Id<"schools">;
-      adminEmail: string;
-    } = await ctx.runMutation(
-      internal.functions.platform.index.assignSchoolAdminInternal,
-      {
-        schoolId: args.schoolId,
-        adminName,
-        adminEmail,
-        authId,
-        authTokenIdentifier,
-        actorEmail: platformAdmin.email,
+    // Call internal mutation to create user row and transition school.
+    try {
+      return await ctx.runMutation(
+        internal.functions.platform.index.assignSchoolAdminInternal,
+        {
+          schoolId: args.schoolId,
+          adminName,
+          adminEmail,
+          authId,
+          authTokenIdentifier,
+          actorEmail: platformAdmin.email,
+        }
+      );
+    } catch (error) {
+      const authUsage = await ctx.runQuery(
+        internal.functions.platform.index.inspectProvisioningAuthIdInternal,
+        { authId },
+      ).catch(() => null);
+      if (!authUsage || authUsage.schoolUserId || authUsage.platformAdminId) {
+        throw new ConvexError(
+          "School administrator provisioning needs operator reconciliation; the authentication account remains linked",
+        );
       }
-    );
-
-    return result;
+      const cleanupVerified = await cleanupProvisionedSchoolAdminAuthUser(ctx, {
+        authId,
+        adminEmail,
+      }).catch(() => false);
+      if (!cleanupVerified) {
+        throw new ConvexError(
+          "School administrator provisioning needs operator reconciliation; the authentication rollback could not be verified",
+        );
+      }
+      if (error instanceof ConvexError) throw error;
+      throw new ConvexError(
+        "School administrator provisioning failed after the authentication account was rolled back",
+      );
+    }
   },
 });
 

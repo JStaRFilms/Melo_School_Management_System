@@ -67,6 +67,27 @@ it("provisions reviewed free-trial contracts and storage exactly once", async ()
     }),
   ]);
 
+  const earlierSchoolId = await t.run((ctx) =>
+    ctx.db.insert("schools", {
+      name: "Earlier Trial School",
+      slug: "earlier-trial-school",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  );
+  await expect(t.mutation(
+    internal.functions.academic.storageEntitlementProvisioning.provisionReviewedFreeTrialStorage,
+    {
+      schoolIds: [earlierSchoolId],
+      bytesPerSchool: 100 * 1024 * 1024,
+      startAt: startAt - 86_400_000,
+      endAt: endAt - 86_400_000,
+      actorEmail: "operator@example.com",
+      confirmation: "PROVISION FREE TRIAL STORAGE",
+    },
+  )).rejects.toThrow("not effective for the requested storage period");
+
   await expect(t.mutation(
     internal.functions.academic.storageEntitlementProvisioning.provisionReviewedFreeTrialStorage,
     {
