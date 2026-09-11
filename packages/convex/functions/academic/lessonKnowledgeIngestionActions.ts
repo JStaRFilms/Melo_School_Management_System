@@ -44,6 +44,14 @@ async function buildSelectedPagesPdfBuffer(args: {
     outputPdf.addPage(page);
   }
 
+  // pdf-lib otherwise stamps the current time into generated documents, which
+  // would give the same source and page selection a different fingerprint.
+  const deterministicDate = new Date(0);
+  outputPdf.setCreationDate(deterministicDate);
+  outputPdf.setModificationDate(deterministicDate);
+  outputPdf.setCreator("Melo");
+  outputPdf.setProducer("Melo");
+
   const bytes = await outputPdf.save();
   return Buffer.from(bytes);
 }

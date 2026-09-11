@@ -317,19 +317,26 @@ export function KnowledgeMaterialUploadForm({
     try {
       const bytes = await readFileBytes(file);
       if (inferKnowledgeMaterialContentType(file).includes("pdf")) {
-        const { PDFDocument } = await import("pdf-lib");
-        const pdf = await PDFDocument.load(bytes, {
-          ignoreEncryption: true,
-          updateMetadata: false,
-        });
-        const pdfError = validateKnowledgeMaterialPdfSelection({
-          pageCount: pdf.getPageCount(),
-          selectedPageRanges,
-          maxPagesPerOperation: maxPdfPages,
-        });
-        if (pdfError) {
-          setValidationError(pdfError);
-          return;
+        const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const loadingTask = getDocument({ data: bytes, password: "" });
+        try {
+          const pdf = await loadingTask.promise;
+          const pdfError = validateKnowledgeMaterialPdfSelection({
+            pageCount: pdf.numPages,
+            selectedPageRanges,
+            maxPagesPerOperation: maxPdfPages,
+          });
+          if (pdfError) {
+            setValidationError(pdfError);
+            return;
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === "PasswordException") {
+            throw new Error("Password-protected PDFs cannot be uploaded. Remove the password and try again.");
+          }
+          throw error;
+        } finally {
+          await loadingTask.destroy();
         }
       }
       const sha256 = await sha256Hex(bytes);
