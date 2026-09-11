@@ -514,7 +514,7 @@ export async function extractReadableTextFromBuffer(
     return buildResult({
       status: "failed",
       text: "",
-      errorMessage: `This PDF exceeds the ${MAX_KNOWLEDGE_MATERIAL_PDF_PAGES}-page limit for the planning library.`,
+      errorMessage: `This PDF has ${parserResult.pageCount} pages. Choose a range containing at most ${MAX_KNOWLEDGE_MATERIAL_PDF_PAGES} pages and upload it again.`,
       extractionPath: "none",
       fallbackReason: "insufficient_text",
     });

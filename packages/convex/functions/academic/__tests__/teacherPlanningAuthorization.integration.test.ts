@@ -229,6 +229,7 @@ const uploadArgs = (subjectId: Id<"subjects">) => ({
 });
 
 const UPLOAD_BYTES = new TextEncoder().encode("Assigned planning source");
+const EXPIRING_UPLOAD_BYTES = new TextEncoder().encode("Expiring planning source");
 
 const secureUploadArgs = (subjectId: Id<"subjects">, uploadToken: string) => ({
   ...uploadArgs(subjectId),
@@ -236,6 +237,7 @@ const secureUploadArgs = (subjectId: Id<"subjects">, uploadToken: string) => ({
   fileName: "assigned-source.txt",
   contentType: "text/plain",
   size: UPLOAD_BYTES.byteLength,
+  sha256: "afd92c1b0571e32cabc736a0fe6fcedd746d3f9b32fbca657402c3e34aecdbe4",
 });
 
 describe("managed teacher planning capability contract", () => {
@@ -283,6 +285,7 @@ describe("managed teacher planning capability contract", () => {
       academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
       { schoolId: f.schoolId, now },
     )).resolves.toMatchObject({
+      fingerprintVersion: 1,
       hasPlanningPermission: true,
       hasUploadPermission: false,
       hasAssignedContext: true,
@@ -345,6 +348,10 @@ describe("managed teacher planning capability contract", () => {
       academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
       secureUploadArgs(f.subjectId, uploadToken),
     );
+    await expect(f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, "concurrent-duplicate-upload-token-00001"),
+    )).rejects.toThrow("already exists");
     await f.t.mutation(
       internal.functions.academic.lessonKnowledgeIngestion.beginKnowledgeMaterialHttpUpload,
       { uploadIntentId: upload.uploadIntentId, uploadToken, uploadAttemptId },
@@ -376,6 +383,14 @@ describe("managed teacher planning capability contract", () => {
     const materialStorageId = material?.storageId;
     if (!materialStorageId) throw new Error("Material storage was not assigned");
     expect(await f.t.run(async (ctx) => Boolean(await ctx.storage.get(materialStorageId)))).toBe(true);
+    await expect(f.teacher("planningUpload").query(
+      academic.knowledgeUploadReadiness.checkKnowledgeMaterialFileDuplicate,
+      { schoolId: f.schoolId, sha256: secureUploadArgs(f.subjectId, "ignored").sha256 },
+    )).resolves.toEqual({ duplicate: true });
+    await expect(f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, "duplicate-upload-token-000000000001"),
+    )).rejects.toThrow("already exists");
 
     await expect(f.teacher("unassigned").mutation(
       academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
@@ -392,9 +407,15 @@ describe("managed teacher planning capability contract", () => {
 
     const expiringToken = "expiring-upload-intent-token-000001";
     const expiringAttemptId = "expiring-upload-attempt-token-00001";
+    const expiringArgs = {
+      ...secureUploadArgs(f.subjectId, expiringToken),
+      fileName: "expiring-source.txt",
+      size: EXPIRING_UPLOAD_BYTES.byteLength,
+      sha256: "bdf33c932728c2c40e64da182fd753e54513c7d038ec6233297d3c6f52cefde7",
+    };
     const expiringUpload = await f.teacher("planningUpload").mutation(
       academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
-      secureUploadArgs(f.subjectId, expiringToken),
+      expiringArgs,
     );
     await f.t.mutation(
       internal.functions.academic.lessonKnowledgeIngestion.beginKnowledgeMaterialHttpUpload,
@@ -405,7 +426,7 @@ describe("managed teacher planning capability contract", () => {
       },
     );
     const expiringStorageId = await f.t.run((ctx) =>
-      ctx.storage.store(new Blob([UPLOAD_BYTES], { type: "text/plain" })),
+      ctx.storage.store(new Blob([EXPIRING_UPLOAD_BYTES], { type: "text/plain" })),
     );
     await f.t.mutation(
       internal.functions.academic.lessonKnowledgeIngestion.recordKnowledgeMaterialUploadStorage,
@@ -424,6 +445,20 @@ describe("managed teacher planning capability contract", () => {
       { uploadIntentId: expiringUpload.uploadIntentId },
     );
     expect(await f.t.run((ctx) => ctx.storage.get(expiringStorageId))).toBeNull();
+    await expect(f.teacher("planningUpload").query(
+      academic.knowledgeUploadReadiness.checkKnowledgeMaterialFileDuplicate,
+      { schoolId: f.schoolId, sha256: expiringArgs.sha256 },
+    )).resolves.toEqual({ duplicate: false });
+    const retryToken = "retry-after-cleanup-upload-token-000001";
+    const retryUpload = await f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      { ...expiringArgs, uploadToken: retryToken },
+    );
+    await f.t.run((ctx) => ctx.db.patch(retryUpload.uploadIntentId, { expiresAt: 0 }));
+    await f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.cleanupKnowledgeMaterialUploadIntent,
+      { uploadIntentId: retryUpload.uploadIntentId },
+    );
     const quotaReservations = await f.t.run((ctx) =>
       ctx.db
         .query("usageQuotaReservations")
@@ -445,6 +480,75 @@ describe("managed teacher planning capability contract", () => {
       ctx.db.system.query("_storage").collect(),
     );
     expect(storageEntries).toHaveLength(1);
+  });
+
+  it("uses a bounded resumable marker for legacy fingerprint backfill", async () => {
+    const f = await fixture();
+    await f.t.run(async (ctx) => {
+      for (let index = 0; index < 201; index += 1) {
+        await ctx.db.insert("knowledgeMaterials", {
+          schoolId: f.schoolId,
+          ownerUserId: f.adminUserId,
+          ownerRole: "admin",
+          sourceType: "youtube_link",
+          visibility: "staff_shared",
+          reviewStatus: "approved",
+          title: `Legacy material ${index + 1}`,
+          level: "JSS 1",
+          topicLabel: "Legacy",
+          externalUrl: `https://www.youtube.com/watch?v=legacy${index + 1}`,
+          searchStatus: "not_indexed",
+          searchText: "legacy",
+          processingStatus: "ready",
+          ingestionErrorMessage: null,
+          ingestionAttemptCount: 0,
+          labelSuggestions: [],
+          chunkCount: 0,
+          indexedAt: null,
+          createdAt: index + 1,
+          updatedAt: index + 1,
+          createdBy: f.adminUserId,
+          updatedBy: f.adminUserId,
+        });
+      }
+    });
+    await expect(f.teacher("planningUpload").query(
+      academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
+      { schoolId: f.schoolId, now: Date.now() },
+    )).resolves.toMatchObject({ fingerprintVersion: 0 });
+    const { sha256: _omittedSha256, ...legacyClientArgs } = secureUploadArgs(
+      f.subjectId,
+      "legacy-client-before-backfill-token-01",
+    );
+    await expect(f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      legacyClientArgs,
+    )).rejects.toThrow("being prepared");
+    expect(await f.t.run((ctx) =>
+      ctx.db.query("usageQuotaReservations").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).collect()
+    )).toHaveLength(0);
+
+    let cursor: string | undefined;
+    let isDone = false;
+    for (let batch = 0; batch < 3 && !isDone; batch += 1) {
+      const result = await f.t.mutation(
+        internal.functions.academic.knowledgeUploadReadiness.backfillKnowledgeMaterialFileFingerprints,
+        {
+          schoolId: f.schoolId,
+          ...(cursor ? { cursor } : {}),
+          batchSize: 100,
+          actorEmail: "operator@example.com",
+          confirmation: "BACKFILL KNOWLEDGE FILE FINGERPRINTS",
+        },
+      );
+      cursor = result.continueCursor || undefined;
+      isDone = result.isDone;
+    }
+    expect(isDone).toBe(true);
+    await expect(f.teacher("planningUpload").query(
+      academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
+      { schoolId: f.schoolId, now: Date.now() },
+    )).resolves.toMatchObject({ fingerprintVersion: 1 });
   });
 
   it("allows an admin to upload a staff-shared curriculum reference", async () => {
@@ -495,5 +599,14 @@ describe("managed teacher planning capability contract", () => {
       ownerRole: "admin",
       sourceType: "imported_curriculum",
     });
+    await expect(f.admin.query(
+      academic.knowledgeUploadReadiness.getTrackedKnowledgeMaterialProcessingStatuses,
+      { schoolId: f.schoolId, materialIds: [result.materialId] },
+    )).resolves.toEqual([
+      expect.objectContaining({
+        materialId: result.materialId,
+        title: "School curriculum",
+      }),
+    ]);
   });
 });

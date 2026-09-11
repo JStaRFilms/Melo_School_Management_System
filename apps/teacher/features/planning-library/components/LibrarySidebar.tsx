@@ -21,6 +21,7 @@ interface LibrarySidebarProps {
   subjectsReady: TeacherLibrarySubject[];
   canUpload: boolean;
   uploadReadiness: KnowledgeMaterialUploadReadiness;
+  checkDuplicate: (sha256: string) => Promise<boolean>;
   onUpload: (data: KnowledgeMaterialUploadInput) => Promise<void>;
   isUploading: boolean;
   isAdmin: boolean;
@@ -39,6 +40,7 @@ export function LibrarySidebar({
   subjectsReady,
   canUpload,
   uploadReadiness,
+  checkDuplicate,
   onUpload,
   isUploading,
   isAdmin,
@@ -147,6 +149,7 @@ export function LibrarySidebar({
                 isAdmin={isAdmin}
                 isUploading={isUploading}
                 readiness={uploadReadiness}
+                checkDuplicate={checkDuplicate}
                 onUpload={onUpload}
               />
             </div>

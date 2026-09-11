@@ -2620,6 +2620,7 @@ export default defineSchema({
     fileName: v.string(),
     contentType: v.string(),
     expectedSize: v.number(),
+    expectedSha256: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.string()),
     subjectId: v.optional(v.id("subjects")),
@@ -2659,6 +2660,24 @@ export default defineSchema({
     .index("by_school_and_upload_token", ["schoolId", "uploadToken"])
     .index("by_school_and_owner", ["schoolId", "ownerUserId"])
     .index("by_status_and_expiry", ["status", "expiresAt"]),
+
+  knowledgeMaterialFileFingerprints: defineTable({
+    schoolId: v.id("schools"),
+    sha256: v.string(),
+    uploadIntentId: v.optional(v.id("knowledgeMaterialUploadIntents")),
+    materialId: v.optional(v.id("knowledgeMaterials")),
+    status: v.union(
+      v.literal("reserved"),
+      v.literal("completed"),
+      v.literal("backfill_complete"),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_sha256", ["schoolId", "sha256"])
+    .index("by_upload_intent", ["uploadIntentId"])
+    .index("by_material", ["materialId"]),
 
   knowledgeMaterials: defineTable({
     schoolId: v.id("schools"),

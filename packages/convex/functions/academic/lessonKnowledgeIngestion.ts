@@ -42,7 +42,12 @@ import {
 } from "./lessonKnowledgeIngestionHelpers";
 import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import type { QuotaReservationResult } from "./metering";
-import { requireContractBoundStorageForUpload } from "./knowledgeUploadReadiness";
+import {
+  hasDuplicateKnowledgeMaterialFile,
+  isKnowledgeMaterialFingerprintProtectionReady,
+  requireContractBoundStorageForUpload,
+  storageSha256ToHex,
+} from "./knowledgeUploadReadiness";
 
 const MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS = 2 * 60 * 1000;
 
@@ -511,6 +516,32 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
     if (!storageMeta) {
       throw new ConvexError("Stored file was not found during upload");
     }
+    const actualSha256 = storageSha256ToHex(storageMeta.sha256);
+    if (args.expectedSha256 && actualSha256 !== args.expectedSha256) {
+      throw new ConvexError("Stored file fingerprint does not match the inspected upload");
+    }
+    const reservedFingerprint = await ctx.db
+      .query("knowledgeMaterialFileFingerprints")
+      .withIndex("by_upload_intent", (q) => q.eq("uploadIntentId", args._id))
+      .unique();
+    if (reservedFingerprint && reservedFingerprint.sha256 !== actualSha256) {
+      throw new ConvexError("Upload fingerprint reservation does not match the stored file");
+    }
+    let fingerprintId = reservedFingerprint?._id;
+    if (!fingerprintId) {
+      if (await hasDuplicateKnowledgeMaterialFile(ctx, schoolId, actualSha256)) {
+        throw new ConvexError("This exact file already exists in the school knowledge library. Open the existing material instead of uploading another copy.");
+      }
+      const fingerprintNow = Date.now();
+      fingerprintId = await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId,
+        sha256: actualSha256,
+        uploadIntentId: args._id,
+        status: "reserved",
+        createdAt: fingerprintNow,
+        updatedAt: fingerprintNow,
+      });
+    }
     assertKnowledgeMaterialUploadIsSupported({
       contentType: args.contentType,
       size: args.expectedSize,
@@ -592,6 +623,11 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
         actorUserId: userId,
       },
     );
+    await ctx.db.patch(fingerprintId, {
+      materialId,
+      status: "completed",
+      updatedAt: now,
+    });
     await ctx.db.patch(args._id, {
       status: "completed",
       activeAttemptId: undefined,
@@ -614,6 +650,7 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
     fileName: v.string(),
     contentType: v.string(),
     size: v.number(),
+    sha256: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
     subjectId: v.optional(v.union(v.id("subjects"), v.null())),
@@ -668,6 +705,10 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       throw new ConvexError("Use a file name between 1 and 200 characters");
     }
     const contentType = normalizeKnowledgeMaterialContentType(args.contentType) ?? "";
+    const expectedSha256 = args.sha256?.trim().toLowerCase();
+    if (expectedSha256 && !/^[a-f0-9]{64}$/.test(expectedSha256)) {
+      throw new ConvexError("A valid SHA-256 file fingerprint is required");
+    }
     assertKnowledgeMaterialUploadIsSupported({
       contentType,
       size: args.size,
@@ -714,6 +755,15 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       throw new ConvexError("Page selection is only available for PDF uploads.");
     }
     if (selectedPageRanges) parsePdfPageRanges(selectedPageRanges);
+    if (!expectedSha256 && !await isKnowledgeMaterialFingerprintProtectionReady(ctx, schoolId)) {
+      throw new ConvexError("Duplicate-file protection is being prepared for this school. Try again after the bounded fingerprint backfill completes.");
+    }
+    if (
+      expectedSha256 &&
+      await hasDuplicateKnowledgeMaterialFile(ctx, schoolId, expectedSha256)
+    ) {
+      throw new ConvexError("This exact file already exists in the school knowledge library. Open the existing material instead of uploading another copy.");
+    }
     await assertLessonKnowledgeRateLimit(ctx, {
       action: "knowledge_material_upload_url",
       schoolId,
@@ -751,6 +801,7 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       fileName,
       contentType,
       expectedSize: args.size,
+      ...(expectedSha256 ? { expectedSha256 } : {}),
       title,
       ...(description ? { description } : {}),
       ...(args.subjectId ? { subjectId: args.subjectId } : {}),
@@ -766,6 +817,16 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    if (expectedSha256) {
+      await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId,
+        sha256: expectedSha256,
+        uploadIntentId,
+        status: "reserved",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
     await ctx.scheduler.runAt(
       expiresAt,
       internal.functions.academic.lessonKnowledgeIngestion
@@ -830,6 +891,14 @@ export const recordKnowledgeMaterialUploadStorage = internalMutation({
       throw new ConvexError("Knowledge material upload is no longer available");
     }
     await assertStorageUnclaimed(ctx, args.storageId);
+    const metadata = await ctx.db.system.get("_storage", args.storageId);
+    if (!metadata) throw new ConvexError("Stored upload metadata is unavailable");
+    if (
+      intent.expectedSha256 &&
+      storageSha256ToHex(metadata.sha256) !== intent.expectedSha256
+    ) {
+      throw new ConvexError("Stored file fingerprint does not match the inspected upload");
+    }
     await ctx.db.patch(intent._id, {
       storageId: args.storageId,
       status: "stored",
@@ -861,6 +930,11 @@ async function closeKnowledgeMaterialUploadIntent(
     }
     await ctx.storage.delete(intent.storageId);
   }
+  const fingerprint = await ctx.db
+    .query("knowledgeMaterialFileFingerprints")
+    .withIndex("by_upload_intent", (q) => q.eq("uploadIntentId", intent._id))
+    .unique();
+  if (fingerprint?.status === "reserved") await ctx.db.delete(fingerprint._id);
   await ctx.runMutation(
     internal.functions.academic.metering.releaseUsageQuota,
     {

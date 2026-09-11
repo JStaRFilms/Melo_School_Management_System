@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { validateKnowledgeMaterialPdfSelection } from "@school/shared";
 import { LibrarySidebar } from "../LibrarySidebar";
 
 const props = {
@@ -17,10 +18,13 @@ const props = {
     hasPlanningPermission: true,
     hasUploadPermission: true,
     hasAssignedContext: true,
+    supportsDuplicateProtection: true,
     storageStatus: "ready" as const,
     availableBytes: 100 * 1024 * 1024,
     allocatedBytes: 100 * 1024 * 1024,
+    maxFileSizeBytes: 12 * 1024 * 1024,
   },
+  checkDuplicate: vi.fn(async () => false),
   onUpload: vi.fn(async () => undefined),
   isUploading: false,
   isAdmin: false,
@@ -67,12 +71,14 @@ describe("LibrarySidebar upload availability", () => {
     expect(screen.getByRole("button", { name: "Upload material" })).toBeDisabled();
   });
 
-  it("submits a validated file through the shared upload form", async () => {
+  it("submits a validated, fingerprinted file through the shared upload form", async () => {
     const onUpload = vi.fn(async () => undefined);
+    const checkDuplicate = vi.fn(async () => false);
     const { container } = render(
       <LibrarySidebar
         {...props}
         canUpload
+        checkDuplicate={checkDuplicate}
         subjectsReady={[{ id: "subject-1", name: "Mathematics", code: "MTH" }]}
         levelOptions={[{ value: "JSS 1", label: "JSS 1" }]}
         onUpload={onUpload}
@@ -80,8 +86,8 @@ describe("LibrarySidebar upload availability", () => {
     );
     const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
     if (!fileInput) throw new Error("File input was not rendered");
-    const file = new File(["%PDF-test"], "assigned-source.pdf", {
-      type: "application/octet-stream",
+    const file = new File(["assigned source"], "assigned-source.txt", {
+      type: "text/plain",
     });
 
     fireEvent.change(fileInput, { target: { files: [file] } });
@@ -94,16 +100,27 @@ describe("LibrarySidebar upload availability", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload material" }));
 
     await waitFor(() => expect(onUpload).toHaveBeenCalledOnce());
+    expect(checkDuplicate).toHaveBeenCalledWith(expect.stringMatching(/^[a-f0-9]{64}$/));
     expect(onUpload).toHaveBeenCalledWith(
       expect.objectContaining({
         file,
-        contentType: "application/pdf",
+        contentType: "text/plain",
         title: "assigned source",
         subjectId: "subject-1",
         level: "JSS 1",
         topicLabel: "Algebra",
         uploadIntent: "private_draft",
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     );
+  });
+
+  it("uses one 80-page PDF policy before upload", () => {
+    expect(validateKnowledgeMaterialPdfSelection({ pageCount: 81, selectedPageRanges: "" }))
+      .toContain("at most 80 pages");
+    expect(validateKnowledgeMaterialPdfSelection({ pageCount: 81, selectedPageRanges: "1-80" }))
+      .toBeNull();
+    expect(validateKnowledgeMaterialPdfSelection({ pageCount: 81, selectedPageRanges: "1-81" }))
+      .toContain("at most 80 PDF pages");
   });
 });

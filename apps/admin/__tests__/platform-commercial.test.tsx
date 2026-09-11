@@ -29,7 +29,17 @@ vi.mock("convex/react", () => ({
         : getFunctionName(reference).endsWith("getLatestCommercialRateVersion")
           ? null
           : getFunctionName(reference).includes("usageEntitlements")
-            ? { versions: [], cycles: [], requests: [] }
+            ? {
+                versions: [],
+                cycles: [],
+                requests: [],
+                storage: {
+                  status: "missing_entitlement",
+                  allocatedBytes: 0,
+                  availableBytes: 0,
+                },
+                closingCycle: null,
+              }
             : {
           mandates: [],
           choices: [],
@@ -66,6 +76,7 @@ it("publishes only a confirmed explicit version and retains values after failure
     target: { value: "school" },
   });
   expect(screen.getByText(/No catalog configured/)).toBeTruthy();
+  expect(screen.getByLabelText("Max pages per operation")).toHaveValue(80);
   expect(
     screen.getByRole("button", { name: /Purchase/ }).hasAttribute("disabled"),
   ).toBe(true);

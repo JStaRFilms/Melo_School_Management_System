@@ -12,6 +12,7 @@ import type { MutationCtx } from "../../_generated/server";
 import { getAuthenticatedPlatformAdmin } from "./auth";
 import { provisionSchoolAdminAuthUser } from "./provisioningHelpers";
 import { createAuth } from "../../betterAuth";
+import { ensureSchoolFreeTrialStorageHelper } from "../academic/storageEntitlementProvisioning";
 
 function getBetterAuthTokenIdentifier(authId: string): string {
   const issuer = process.env.CONVEX_SITE_URL?.trim();
@@ -253,6 +254,7 @@ export const assignSchoolAdminInternal = internalMutation({
     adminEmail: v.string(),
     authId: v.string(),
     authTokenIdentifier: v.string(),
+    actorEmail: v.string(),
   },
   handler: async (ctx, args) => {
     const school = await ctx.db.get(args.schoolId);
@@ -316,6 +318,20 @@ export const assignSchoolAdminInternal = internalMutation({
       status: "active",
       updatedAt: now,
     });
+    const storageProvisioning = await ensureSchoolFreeTrialStorageHelper(ctx, {
+      schoolId: args.schoolId,
+      actorEmail: args.actorEmail,
+    });
+    if (
+      storageProvisioning.status === "pool_exhausted" ||
+      storageProvisioning.status === "requires_review"
+    ) {
+      throw new ConvexError(
+        storageProvisioning.status === "pool_exhausted"
+          ? "School activation requires additional reviewed storage capacity"
+          : "Existing commercial history requires storage reconciliation before activation",
+      );
+    }
 
     return {
       success: true,
@@ -409,7 +425,7 @@ export const provisionSchoolAdmin = action({
     schoolId: Id<"schools">;
     adminEmail: string;
   }> => {
-    await ctx.runQuery(
+    const platformAdmin = await ctx.runQuery(
       internal.functions.platform.auth.requirePlatformAdminInternal,
       {}
     );
@@ -450,6 +466,7 @@ export const provisionSchoolAdmin = action({
         adminEmail,
         authId,
         authTokenIdentifier,
+        actorEmail: platformAdmin.email,
       }
     );
 
