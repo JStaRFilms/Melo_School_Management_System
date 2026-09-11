@@ -2706,6 +2706,7 @@ export default defineSchema({
     selectedPageRanges: v.optional(v.string()),
     selectedPageNumbers: v.optional(v.array(v.number())),
     maxPagesPerOperation: v.optional(v.number()),
+    fingerprintVersion: v.optional(v.literal(1)),
     pdfPageCount: v.optional(v.number()),
     sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
     sourcePdfPageCount: v.optional(v.number()),
@@ -2715,6 +2716,7 @@ export default defineSchema({
     updatedBy: v.id("users"),
   })
     .index("by_school", ["schoolId"])
+    .index("by_school_and_fingerprint_version", ["schoolId", "fingerprintVersion"])
     .index("by_storage", ["storageId"])
     .index("by_school_and_owner_user", ["schoolId", "ownerUserId"])
     .index("by_school_and_owner_role", ["schoolId", "ownerRole"])

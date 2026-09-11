@@ -596,6 +596,7 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
     const materialId = await ctx.db.insert("knowledgeMaterials", {
       ...record,
       storageId: args.storageId,
+      fingerprintVersion: 1,
       processingStatus: "queued",
       createdAt: now,
       updatedAt: now,
@@ -1993,6 +1994,7 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
       storageId: args.nextStorageId,
       sourceFileMode: "selected_pages",
       sourcePdfPageCount: args.sourcePdfPageCount,
+      fingerprintVersion: 1,
       updatedAt: now,
       updatedBy: args.actorUserId,
     });

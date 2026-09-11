@@ -615,7 +615,7 @@ describe("managed teacher planning capability contract", () => {
   it("uses a bounded resumable marker for legacy fingerprint backfill", async () => {
     const f = await fixture();
     await f.t.run(async (ctx) => {
-      for (let index = 0; index < 201; index += 1) {
+      for (let index = 0; index < 200; index += 1) {
         await ctx.db.insert("knowledgeMaterials", {
           schoolId: f.schoolId,
           ownerUserId: f.adminUserId,
@@ -641,7 +641,60 @@ describe("managed teacher planning capability contract", () => {
           updatedBy: f.adminUserId,
         });
       }
+      await ctx.db.insert("knowledgeMaterials", {
+        schoolId: f.schoolId,
+        ownerUserId: f.adminUserId,
+        ownerRole: "admin",
+        sourceType: "youtube_link",
+        visibility: "staff_shared",
+        reviewStatus: "approved",
+        title: "Protected material",
+        level: "JSS 1",
+        topicLabel: "Current",
+        externalUrl: "https://www.youtube.com/watch?v=protected",
+        searchStatus: "not_indexed",
+        searchText: "protected",
+        processingStatus: "ready",
+        ingestionErrorMessage: null,
+        ingestionAttemptCount: 0,
+        labelSuggestions: [],
+        chunkCount: 0,
+        indexedAt: null,
+        fingerprintVersion: 1,
+        createdAt: 201,
+        updatedAt: 201,
+        createdBy: f.adminUserId,
+        updatedBy: f.adminUserId,
+      });
     });
+    await expect(f.teacher("planningUpload").query(
+      academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
+      { schoolId: f.schoolId, now: Date.now() },
+    )).resolves.toMatchObject({ fingerprintVersion: 1 });
+    await f.t.run((ctx) => ctx.db.insert("knowledgeMaterials", {
+      schoolId: f.schoolId,
+      ownerUserId: f.adminUserId,
+      ownerRole: "admin",
+      sourceType: "youtube_link",
+      visibility: "staff_shared",
+      reviewStatus: "approved",
+      title: "Legacy material 201",
+      level: "JSS 1",
+      topicLabel: "Legacy",
+      externalUrl: "https://www.youtube.com/watch?v=legacy201",
+      searchStatus: "not_indexed",
+      searchText: "legacy",
+      processingStatus: "ready",
+      ingestionErrorMessage: null,
+      ingestionAttemptCount: 0,
+      labelSuggestions: [],
+      chunkCount: 0,
+      indexedAt: null,
+      createdAt: 202,
+      updatedAt: 202,
+      createdBy: f.adminUserId,
+      updatedBy: f.adminUserId,
+    }));
     await expect(f.teacher("planningUpload").query(
       academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
       { schoolId: f.schoolId, now: Date.now() },

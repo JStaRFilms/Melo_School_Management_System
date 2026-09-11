@@ -79,7 +79,9 @@ export async function isKnowledgeMaterialFingerprintProtectionReady(
   if (completed) return true;
   const legacyMaterials = await ctx.db
     .query("knowledgeMaterials")
-    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .withIndex("by_school_and_fingerprint_version", (q) =>
+      q.eq("schoolId", schoolId).eq("fingerprintVersion", undefined),
+    )
     .take(201);
   return legacyMaterials.length <= 200;
 }
@@ -110,7 +112,9 @@ export async function hasDuplicateKnowledgeMaterialFile(
   if (completed) return false;
   const legacyMaterials = await ctx.db
     .query("knowledgeMaterials")
-    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .withIndex("by_school_and_fingerprint_version", (q) =>
+      q.eq("schoolId", schoolId).eq("fingerprintVersion", undefined),
+    )
     .order("desc")
     .take(201);
   if (legacyMaterials.length > 200) {
@@ -280,9 +284,15 @@ export const backfillKnowledgeMaterialFileFingerprints = internalMutation({
       });
     let processed = 0;
     for (const material of page.page) {
-      if (!material.storageId) continue;
+      if (!material.storageId) {
+        await ctx.db.patch(material._id, { fingerprintVersion: 1 });
+        continue;
+      }
       const metadata = await ctx.db.system.get("_storage", material.storageId);
-      if (!metadata) continue;
+      if (!metadata) {
+        await ctx.db.patch(material._id, { fingerprintVersion: 1 });
+        continue;
+      }
       const sha256 = storageSha256ToHex(metadata.sha256);
       const existing = await ctx.db
         .query("knowledgeMaterialFileFingerprints")
@@ -304,6 +314,7 @@ export const backfillKnowledgeMaterialFileFingerprints = internalMutation({
           updatedAt: now,
         });
       }
+      await ctx.db.patch(material._id, { fingerprintVersion: 1 });
       processed += 1;
     }
     if (page.isDone) {
