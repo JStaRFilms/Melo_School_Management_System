@@ -10,7 +10,7 @@ import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
 } from "./auth";
-import { requireCapability, TEACHER_PLANNING_CAPABILITIES } from "./rbac";
+import { TEACHER_PLANNING_CAPABILITIES, type PermissionCapability } from "./rbac";
 
 type Context = QueryCtx | MutationCtx;
 
@@ -26,10 +26,12 @@ export type ContractBoundStorageReadiness = {
 async function hasCapability(
   ctx: Context,
   schoolId: Id<"schools">,
-  capability: string | readonly string[],
+  capability: PermissionCapability | readonly PermissionCapability[],
 ): Promise<boolean> {
   try {
-    await requireCapability(ctx, schoolId, capability);
+    // Match the operation gate exactly: managed memberships enforce capability
+    // grants, while reviewed legacy callers retain the existing domain checks.
+    await getAuthenticatedSchoolMembership(ctx, { schoolId, capability });
     return true;
   } catch {
     return false;

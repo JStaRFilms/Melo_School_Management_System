@@ -191,10 +191,11 @@ export default function TeacherLibraryPage() {
     return true;
   }), [materials, subjectFilter, levelFilter, searchQuery]);
 
-  const canUploadMaterials =
-    hasEffectiveCapability(workspaceAccess, "assets.upload") &&
-    (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
-      hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
+  const canUploadMaterials = uploadReadinessData
+    ? uploadReadinessData.hasUploadPermission && uploadReadinessData.hasPlanningPermission
+    : hasEffectiveCapability(workspaceAccess, "assets.upload") &&
+      (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
+        hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
   const uploadReadiness: KnowledgeMaterialUploadReadiness = {
     isLoading: uploadReadinessData === undefined,
     hasPlanningPermission: uploadReadinessData?.hasPlanningPermission ??

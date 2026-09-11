@@ -199,10 +199,11 @@ export default function KnowledgeLibraryPage() {
     () => (subjects ?? []).map((subject) => ({ id: subject._id, name: subject.name })),
     [subjects],
   );
-  const canUploadMaterials =
-    hasEffectiveCapability(workspaceAccess, "assets.upload") &&
-    (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
-      hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
+  const canUploadMaterials = uploadReadinessData
+    ? uploadReadinessData.hasUploadPermission && uploadReadinessData.hasPlanningPermission
+    : hasEffectiveCapability(workspaceAccess, "assets.upload") &&
+      (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
+        hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
   const uploadReadiness: KnowledgeMaterialUploadReadiness = {
     isLoading: uploadReadinessData === undefined,
     hasPlanningPermission: uploadReadinessData?.hasPlanningPermission ??
