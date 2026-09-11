@@ -19,6 +19,7 @@ import {
   KnowledgeMaterialUploadForm,
   resolveKnowledgeMaterialUploadEndpoint,
   type KnowledgeMaterialUploadInput,
+  type KnowledgeMaterialUploadReadiness,
 } from "@school/shared";
 import { appToast } from "@school/shared/toast";
 
@@ -28,6 +29,7 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useAuth } from "@/AuthProvider";
 import type { SubjectRecord } from "@/types";
+import type { Id } from "@school/convex/_generated/dataModel";
 
 import { KnowledgeLibraryFilters } from "./components/KnowledgeLibraryFilters";
 
@@ -162,6 +164,9 @@ function matchesSearch(material: KnowledgeLibraryListResponse["materials"][numbe
 
 export default function KnowledgeLibraryPage() {
   const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? workspaceAccess.branch.schoolId as Id<"schools">
+    : undefined;
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
   const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
   const topics = useQuery("functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeTopics" as never) as Array<{ _id: string; title: string; subjectId: string; subjectName: string; level: string; termId: string; status: string; }> | undefined;
@@ -174,6 +179,20 @@ export default function KnowledgeLibraryPage() {
     "functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeMaterials" as never,
     queryArgs as never
   ) as KnowledgeLibraryListResponse | undefined;
+  const [readinessNow] = useState(() => Date.now());
+  const uploadReadinessData = useQuery(
+    "functions/academic/knowledgeUploadReadiness:getKnowledgeMaterialUploadReadiness" as never,
+    schoolId ? ({ schoolId, now: readinessNow } as never) : ("skip" as never),
+  ) as {
+    hasPlanningPermission: boolean;
+    hasUploadPermission: boolean;
+    hasAssignedContext: boolean;
+    storage: {
+      status: KnowledgeMaterialUploadReadiness["storageStatus"];
+      availableBytes: number;
+      allocatedBytes: number;
+    };
+  } | undefined;
 
   const levelOptions = useMemo(() => buildLevelOptions(classes), [classes]);
   const uploadSubjects = useMemo(
@@ -184,6 +203,18 @@ export default function KnowledgeLibraryPage() {
     hasEffectiveCapability(workspaceAccess, "assets.upload") &&
     (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
       hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
+  const uploadReadiness: KnowledgeMaterialUploadReadiness = {
+    isLoading: uploadReadinessData === undefined,
+    hasPlanningPermission: uploadReadinessData?.hasPlanningPermission ??
+      (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
+        hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage")),
+    hasUploadPermission: uploadReadinessData?.hasUploadPermission ??
+      hasEffectiveCapability(workspaceAccess, "assets.upload"),
+    hasAssignedContext: uploadReadinessData?.hasAssignedContext ?? true,
+    storageStatus: uploadReadinessData?.storage.status ?? "missing_entitlement",
+    availableBytes: uploadReadinessData?.storage.availableBytes ?? 0,
+    allocatedBytes: uploadReadinessData?.storage.allocatedBytes ?? 0,
+  };
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [activeDetail, setActiveDetail] = useState<KnowledgeLibraryDetailResponse | null>(null);
@@ -532,6 +563,7 @@ export default function KnowledgeLibraryPage() {
           levelOptions={levelOptions}
           isAdmin
           isUploading={isUploading}
+          readiness={uploadReadiness}
           onUpload={handleUpload}
         />
       </AdminSheet>
@@ -584,16 +616,15 @@ export default function KnowledgeLibraryPage() {
               className="gap-1.5"
               actions={
                 <div className="flex items-center gap-2">
-                  {canUploadMaterials ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsUploadOpen(true)}
-                      className="group flex h-7 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-[8px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition-all hover:bg-slate-800"
-                    >
-                      <Upload className="h-3 w-3" />
-                      Upload
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setIsUploadOpen(true)}
+                    aria-label={canUploadMaterials ? "Upload material" : "Review upload readiness"}
+                    className="group flex h-7 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-[8px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition-all hover:bg-slate-800"
+                  >
+                    <Upload className="h-3 w-3" />
+                    Upload
+                  </button>
                   <Link
                     href="/academic/knowledge/assessment-profiles"
                     className="group flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 shadow-sm transition-all hover:border-slate-950 hover:bg-slate-950 hover:text-white"

@@ -27,6 +27,88 @@ async function fixture() {
       createdAt: 1,
       updatedAt: 1,
     });
+    const now = Date.now();
+    const rate = {
+      currency: "NGN",
+      perStudentMinor: 100_000,
+      setupMinor: 0,
+      minimumMinor: 0,
+      discountBps: 0,
+      bands: [],
+      cadence: "termly" as const,
+      proration: "daily" as const,
+    };
+    const rateVersionId = await ctx.db.insert("commercialRateVersions", {
+      code: "test_rate",
+      name: "Test rate",
+      version: 1,
+      effectiveFrom: now - 1_000,
+      rate,
+      createdAt: now,
+    });
+    const contractId = await ctx.db.insert("commercialContracts", {
+      schoolId,
+      rateVersionId,
+      rate,
+      code: "test_rate",
+      version: 1,
+      effectiveFrom: now - 1_000,
+      effectiveTo: now + 86_400_000,
+      setupHandling: "waived",
+      setupReason: "Test storage entitlement",
+      createdAt: now,
+    });
+    const entitlement = {
+      allowances: [{ meterType: "storage_bytes" as const, baseUnits: 100_000, graceUnits: 0 }],
+      warningPercent: 75,
+      criticalPercent: 90,
+      hardStopPercent: 100,
+      maxFileSizeBytes: 12 * 1024 * 1024,
+      maxPagesPerOperation: 500,
+      profiles: [{ task: "knowledge_upload" as const, meterType: "storage_bytes" as const, unitsPerItem: 1, maxItems: 12 * 1024 * 1024, modelProfile: "secure-upload" }],
+    };
+    const entitlementVersionId = await ctx.db.insert("usageEntitlementVersions", {
+      code: "test_storage",
+      name: "Test storage",
+      version: 1,
+      effectiveFrom: now - 1_000,
+      entitlement,
+      createdAt: now,
+    });
+    const cycleId = await ctx.db.insert("usageCycles", {
+      schoolId,
+      contractId,
+      entitlementVersionId,
+      code: "test_storage",
+      version: 1,
+      entitlement,
+      startAt: now - 1_000,
+      endAt: now + 86_400_000,
+      status: "active",
+      createdAt: now,
+    });
+    await ctx.db.insert("usageMeterAllocations", {
+      schoolId,
+      cycleId,
+      meterType: "storage_bytes",
+      allocatedUnits: 100_000,
+      baseUnits: 100_000,
+      graceUnits: 0,
+      topUpUnits: 0,
+      exceptionUnits: 0,
+      poolUnits: 0,
+      consumedUnits: 0,
+      activeStorageBytes: 0,
+      trashStorageBytes: 0,
+      tempStorageBytes: 0,
+      reservedUnits: 0,
+      warningThresholdPercent: 75,
+      criticalThresholdPercent: 90,
+      hardStopThresholdPercent: 100,
+      resetCadence: "termly",
+      lastResetAt: now,
+      updatedAt: now,
+    });
     const classId = await ctx.db.insert("classes", {
       schoolId,
       name: "JSS 1A",
@@ -193,13 +275,61 @@ describe("managed teacher planning capability contract", () => {
     })).rejects.toThrow("Admin access required");
   });
 
+  it("reports assignment and contract-bound storage readiness", async () => {
+    const f = await fixture();
+    const now = Date.now();
+
+    await expect(f.teacher("planning").query(
+      academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
+      { schoolId: f.schoolId, now },
+    )).resolves.toMatchObject({
+      hasPlanningPermission: true,
+      hasUploadPermission: false,
+      hasAssignedContext: true,
+      storage: { status: "ready", allocatedBytes: 100_000, availableBytes: 100_000 },
+    });
+    await expect(f.teacher("unassigned").query(
+      academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
+      { schoolId: f.schoolId, now },
+    )).resolves.toMatchObject({
+      hasPlanningPermission: true,
+      hasUploadPermission: true,
+      hasAssignedContext: false,
+    });
+
+    await f.t.run(async (ctx) => {
+      const meter = await ctx.db
+        .query("usageMeterAllocations")
+        .withIndex("by_school_and_meter", (q) =>
+          q.eq("schoolId", f.schoolId).eq("meterType", "storage_bytes"),
+        )
+        .unique();
+      if (!meter) throw new Error("Storage meter missing");
+      await ctx.db.patch(meter._id, { consumedUnits: meter.allocatedUnits });
+    });
+    await expect(f.teacher("planningUpload").query(
+      academic.knowledgeUploadReadiness.getKnowledgeMaterialUploadReadiness,
+      { schoolId: f.schoolId, now },
+    )).resolves.toMatchObject({ storage: { status: "exhausted", availableBytes: 0 } });
+
+    await f.t.run(async (ctx) => {
+      const meter = await ctx.db
+        .query("usageMeterAllocations")
+        .withIndex("by_school_and_meter", (q) =>
+          q.eq("schoolId", f.schoolId).eq("meterType", "storage_bytes"),
+        )
+        .unique();
+      if (!meter) throw new Error("Storage meter missing");
+      await ctx.db.patch(meter._id, { cycleId: undefined });
+    });
+    await expect(f.teacher("planningUpload").mutation(
+      academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
+      secureUploadArgs(f.subjectId, "missing-entitlement-upload-token-0001"),
+    )).rejects.toThrow("Storage entitlement is not active");
+  });
+
   it("keeps source upload capability independent and securely stores assigned material", async () => {
     const f = await fixture();
-    await f.t.mutation(internal.functions.academic.metering.allocateQuota, {
-      schoolId: f.schoolId,
-      meterType: "storage_bytes",
-      allocatedUnits: 100_000,
-    });
     await expect(f.teacher("planning").mutation(
       academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
       secureUploadArgs(f.subjectId, "planning-denied-upload-token-00001"),
@@ -319,12 +449,6 @@ describe("managed teacher planning capability contract", () => {
 
   it("allows an admin to upload a staff-shared curriculum reference", async () => {
     const f = await fixture();
-    await f.t.mutation(internal.functions.academic.metering.allocateQuota, {
-      schoolId: f.schoolId,
-      meterType: "storage_bytes",
-      allocatedUnits: 100_000,
-    });
-
     const bytes = new TextEncoder().encode("School curriculum source");
     const uploadToken = "admin-curriculum-upload-token-000001";
     const uploadAttemptId = "admin-curriculum-upload-attempt-0001";

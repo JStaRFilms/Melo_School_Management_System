@@ -56,6 +56,7 @@ import type * as functions_academic_identityResolver from "../functions/academic
 import type * as functions_academic_institutionalEmail from "../functions/academic/institutionalEmail.js";
 import type * as functions_academic_judgeCurriculumSeed from "../functions/academic/judgeCurriculumSeed.js";
 import type * as functions_academic_judgeLessonSeed from "../functions/academic/judgeLessonSeed.js";
+import type * as functions_academic_knowledgeUploadReadiness from "../functions/academic/knowledgeUploadReadiness.js";
 import type * as functions_academic_lessonKnowledgeAccess from "../functions/academic/lessonKnowledgeAccess.js";
 import type * as functions_academic_lessonKnowledgeAdmin from "../functions/academic/lessonKnowledgeAdmin.js";
 import type * as functions_academic_lessonKnowledgeAssessmentDrafts from "../functions/academic/lessonKnowledgeAssessmentDrafts.js";
@@ -96,6 +97,7 @@ import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
 import type * as functions_academic_seedRunnerSecurity from "../functions/academic/seedRunnerSecurity.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
+import type * as functions_academic_storageEntitlementProvisioning from "../functions/academic/storageEntitlementProvisioning.js";
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
 import type * as functions_academic_subjectAggregationHelpers from "../functions/academic/subjectAggregationHelpers.js";
@@ -187,6 +189,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/institutionalEmail": typeof functions_academic_institutionalEmail;
   "functions/academic/judgeCurriculumSeed": typeof functions_academic_judgeCurriculumSeed;
   "functions/academic/judgeLessonSeed": typeof functions_academic_judgeLessonSeed;
+  "functions/academic/knowledgeUploadReadiness": typeof functions_academic_knowledgeUploadReadiness;
   "functions/academic/lessonKnowledgeAccess": typeof functions_academic_lessonKnowledgeAccess;
   "functions/academic/lessonKnowledgeAdmin": typeof functions_academic_lessonKnowledgeAdmin;
   "functions/academic/lessonKnowledgeAssessmentDrafts": typeof functions_academic_lessonKnowledgeAssessmentDrafts;
@@ -227,6 +230,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
   "functions/academic/seedRunnerSecurity": typeof functions_academic_seedRunnerSecurity;
   "functions/academic/settings": typeof functions_academic_settings;
+  "functions/academic/storageEntitlementProvisioning": typeof functions_academic_storageEntitlementProvisioning;
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;
   "functions/academic/subjectAggregationHelpers": typeof functions_academic_subjectAggregationHelpers;

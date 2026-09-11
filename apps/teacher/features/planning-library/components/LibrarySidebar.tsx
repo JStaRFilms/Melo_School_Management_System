@@ -3,6 +3,7 @@
 import {
   KnowledgeMaterialUploadForm,
   type KnowledgeMaterialUploadInput,
+  type KnowledgeMaterialUploadReadiness,
 } from "@school/shared";
 import { Filter, Plus, Search, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ interface LibrarySidebarProps {
   levelOptions: LevelOption[];
   subjectsReady: TeacherLibrarySubject[];
   canUpload: boolean;
+  uploadReadiness: KnowledgeMaterialUploadReadiness;
   onUpload: (data: KnowledgeMaterialUploadInput) => Promise<void>;
   isUploading: boolean;
   isAdmin: boolean;
@@ -36,6 +38,7 @@ export function LibrarySidebar({
   levelOptions,
   subjectsReady,
   canUpload,
+  uploadReadiness,
   onUpload,
   isUploading,
   isAdmin,
@@ -137,19 +140,16 @@ export function LibrarySidebar({
                 : "rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm",
             )}
           >
-            {!canUpload ? (
-              <div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                You do not have permission to upload library materials.
-              </div>
-            ) : (
+            <div aria-disabled={!canUpload}>
               <KnowledgeMaterialUploadForm
                 subjects={subjectsReady}
                 levelOptions={levelOptions}
                 isAdmin={isAdmin}
                 isUploading={isUploading}
+                readiness={uploadReadiness}
                 onUpload={onUpload}
               />
-            )}
+            </div>
           </div>
 
           {!isEmbedded ? (

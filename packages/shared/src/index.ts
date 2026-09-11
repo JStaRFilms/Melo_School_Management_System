@@ -34,6 +34,7 @@ export type {
   KnowledgeMaterialUploadInput,
   KnowledgeMaterialUploadIntent,
   KnowledgeMaterialUploadOption,
+  KnowledgeMaterialUploadReadiness,
   KnowledgeMaterialUploadSubject,
 } from "./components/KnowledgeMaterialUploadForm";
 export { ChangePasswordModal } from "./components/ChangePasswordModal";

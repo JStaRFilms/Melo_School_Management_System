@@ -6,6 +6,7 @@ import { requireGroupOwner } from "./groupSettings";
 import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 import { heavyUsageTask, safePositive, usageEntitlement, usageMeterType, validateEntitlement, type HeavyUsageTask } from "../foundation/usageContract";
+import { getContractBoundStorageReadiness } from "./knowledgeUploadReadiness";
 
 type Context = QueryCtx | MutationCtx;
 const DAY = 86400000;
@@ -347,6 +348,7 @@ export const getPlatformEntitlementWorkspace = query({
         throw new ConvexError("Closing meter allocation requires reconciliation");
       closingMeters.push({ meterType: allowance.meterType, allocatedUnits: effective.allocatedUnits, consumedUnits: meter.consumedUnits, reservedUnits: meter.reservedUnits });
     }
-    return { versions, cycles, requests, closingCycle: endedCycle ? { _id: endedCycle._id, code: endedCycle.code, endAt: endedCycle.endAt, meters: closingMeters } : null, providerExecutionAvailable: false };
+    const storage = await getContractBoundStorageReadiness(ctx, args.schoolId, Date.now());
+    return { versions, cycles, requests, storage, closingCycle: endedCycle ? { _id: endedCycle._id, code: endedCycle.code, endAt: endedCycle.endAt, meters: closingMeters } : null, providerExecutionAvailable: false };
   },
 });

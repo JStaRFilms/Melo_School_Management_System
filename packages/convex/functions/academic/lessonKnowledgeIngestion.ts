@@ -42,6 +42,7 @@ import {
 } from "./lessonKnowledgeIngestionHelpers";
 import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import type { QuotaReservationResult } from "./metering";
+import { requireContractBoundStorageForUpload } from "./knowledgeUploadReadiness";
 
 const MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS = 2 * 60 * 1000;
 
@@ -719,6 +720,7 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       actorUserId: userId,
     });
 
+    await requireContractBoundStorageForUpload(ctx, schoolId, args.size);
     const quotaReservationKey = `knowledge-upload:${args.uploadToken}`;
     const reservation: QuotaReservationResult = await ctx.runMutation(
       internal.functions.academic.metering.reserveUsageQuota,

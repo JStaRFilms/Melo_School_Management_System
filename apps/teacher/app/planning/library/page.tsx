@@ -24,6 +24,7 @@ import {
   hasEffectiveCapability,
   resolveKnowledgeMaterialUploadEndpoint,
   type KnowledgeMaterialUploadInput,
+  type KnowledgeMaterialUploadReadiness,
 } from "@school/shared";
 
 // Feature Imports
@@ -126,6 +127,18 @@ export default function TeacherLibraryPage() {
     topicQueryArgs as never
   ) as TeacherKnowledgeTopic[] | undefined;
 
+  const [readinessNow] = useState(() => Date.now());
+  const uploadReadinessData = useQuery(
+    "functions/academic/knowledgeUploadReadiness:getKnowledgeMaterialUploadReadiness" as never,
+    schoolId ? ({ schoolId, now: readinessNow } as never) : ("skip" as never),
+  ) as Omit<KnowledgeMaterialUploadReadiness, "isLoading" | "storageStatus" | "availableBytes" | "allocatedBytes"> & {
+    storage: {
+      status: KnowledgeMaterialUploadReadiness["storageStatus"];
+      availableBytes: number;
+      allocatedBytes: number;
+    };
+  } | undefined;
+
   // Mutations
   const requestKnowledgeMaterialUpload = useMutation(
     "functions/academic/lessonKnowledgeIngestion:requestSecureKnowledgeMaterialUpload" as never,
@@ -182,6 +195,18 @@ export default function TeacherLibraryPage() {
     hasEffectiveCapability(workspaceAccess, "assets.upload") &&
     (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
       hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage"));
+  const uploadReadiness: KnowledgeMaterialUploadReadiness = {
+    isLoading: uploadReadinessData === undefined,
+    hasPlanningPermission: uploadReadinessData?.hasPlanningPermission ??
+      (hasEffectiveCapability(workspaceAccess, "academic.planning.use") ||
+        hasEffectiveCapability(workspaceAccess, "academic.curriculum.manage")),
+    hasUploadPermission: uploadReadinessData?.hasUploadPermission ??
+      hasEffectiveCapability(workspaceAccess, "assets.upload"),
+    hasAssignedContext: uploadReadinessData?.hasAssignedContext ?? false,
+    storageStatus: uploadReadinessData?.storage.status ?? "missing_entitlement",
+    availableBytes: uploadReadinessData?.storage.availableBytes ?? 0,
+    allocatedBytes: uploadReadinessData?.storage.allocatedBytes ?? 0,
+  };
 
   const summary = activeMaterialsData?.summary ?? {
     loaded: 0,
@@ -363,6 +388,7 @@ export default function TeacherLibraryPage() {
     levelOptions,
     subjectsReady: subjects ?? [],
     canUpload: canUploadMaterials,
+    uploadReadiness,
     onUpload: handleUpload,
     isUploading,
     isAdmin: session?.user?.role === "admin",
@@ -604,12 +630,9 @@ export default function TeacherLibraryPage() {
       {/* Primary Mobile Action */}
       <button
         type="button"
-        disabled={!canUploadMaterials}
         onClick={() => setIsMobileUploadOpen(true)}
-        aria-label={canUploadMaterials ? "Upload library material" : "Upload permission required"}
-        className={`fixed bottom-8 right-8 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 lg:hidden ${
-          canUploadMaterials ? "" : "cursor-not-allowed opacity-50"
-        }`}
+        aria-label="Open upload readiness"
+        className="fixed bottom-8 right-8 z-50 flex h-16 w-16 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl shadow-slate-950/40 lg:hidden"
       >
         <Plus className="h-7 w-7" />
       </button>
