@@ -57,6 +57,25 @@ describe("U1a selected workspace contract", () => {
     }))).rejects.toThrow("Required operation capability is missing");
   });
 
+  it("allows a managed teacher with no capabilities to check only their own assignment state", async () => {
+    const f = await fixture();
+    const membershipId = f.membershipId;
+    if (!membershipId) throw new Error("Missing fixture membership");
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.userId, { role: "teacher" });
+      await ctx.db.patch(membershipId, { permissionsManagedAt: 1 });
+    });
+
+    await expect(f.viewer.query(
+      api.functions.academic.teacherSelectors.hasTeacherAssignments,
+      { schoolId: f.schoolA },
+    )).resolves.toBe(false);
+    await expect(f.viewer.query(
+      api.functions.academic.teacherSelectors.getTeacherAssignableClasses,
+      { schoolId: f.schoolA },
+    )).rejects.toThrow("Required operation capability is missing");
+  });
+
   it("preserves a reviewed canonical membership linked to an exact trusted-subject default", async () => {
     const f = await fixture();
     await f.t.run((ctx) => ctx.db.patch(f.userId, { authTokenIdentifier: undefined }));

@@ -40,6 +40,18 @@ function within(path: string, prefix: string) {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
+const TEACHER_ASSIGNMENT_REQUIRED_ROUTES = [
+  "/assessments/exams",
+  "/assessments/report-card-workbench",
+  "/assessments/report-cards",
+  "/assessments/report-card-extras",
+  "/enrollment/subjects",
+] as const;
+
+export function isTeacherAssignmentRequiredRoute(path: string) {
+  return TEACHER_ASSIGNMENT_REQUIRED_ROUTES.some((prefix) => within(path, prefix));
+}
+
 const BRANCH_SCOPED_ROUTES = {
   admin: [
     "/admin/audit",

@@ -9,7 +9,8 @@ import type { Id } from "@school/convex/_generated/dataModel";
 import {
   AuthoritativeForbiddenView, BranchSwitcher, MeloLoader, WorkspaceNavbar,
   getBranchScopedWorkspaceAccess, getLegacyWorkspaceAccess, getWorkspaceModuleDenial,
-  getWorkspaceCapabilityDenial, isWorkspaceBranchScopedRoute, LEGACY_BRANCH_SWITCH_REASON,
+  getWorkspaceCapabilityDenial, isTeacherAssignmentRequiredRoute,
+  isWorkspaceBranchScopedRoute, LEGACY_BRANCH_SWITCH_REASON,
 } from "@school/shared";
 import { useAuth } from "@/lib/AuthProvider";
 import { useDepartureGuard } from "@school/shared/drafts";
@@ -36,17 +37,20 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
     : shellDecision;
   const activeSchoolId = access?.state === "ready" ? access.branch.schoolId as Id<"schools"> : undefined;
   const canLoad = configured && !isLoading && isAuthenticated && capabilityDecision.state === "allowed";
-  const assignedClasses = useQuery(
-    api.functions.academic.teacherSelectors.getTeacherAssignableClasses,
-    canLoad && branchScopedRoute && activeSchoolId ? { schoolId: activeSchoolId } : "skip",
-  );
-  const assignmentDenied =
-    branchScopedRoute &&
+  const assignmentQueryRequired =
     access?.state === "ready" &&
     access.compatibility.legacyRole === "teacher" &&
-    !access.compatibility.legacyIsSchoolAdmin &&
-    assignedClasses !== undefined &&
-    assignedClasses.length === 0;
+    !access.compatibility.legacyIsSchoolAdmin;
+  const hasTeacherAssignments = useQuery(
+    api.functions.academic.teacherSelectors.hasTeacherAssignments,
+    canLoad && assignmentQueryRequired && activeSchoolId
+      ? { schoolId: activeSchoolId }
+      : "skip",
+  );
+  const assignmentDenied =
+    assignmentQueryRequired && hasTeacherAssignments === false;
+  const assignmentRouteDenied =
+    assignmentDenied && isTeacherAssignmentRequiredRoute(pathname);
   const schoolBranding = useQuery(
     api.functions.academic.schoolBranding.getCurrentSchoolBranding,
     canLoad && activeSchoolId ? { schoolId: activeSchoolId } : "skip",
@@ -64,7 +68,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
   };
 
   if (configured && (isLoading || capabilityDecision.state === "loading" ||
-    (branchScopedRoute && capabilityDecision.state === "allowed" && assignedClasses === undefined) ||
+    (assignmentQueryRequired && capabilityDecision.state === "allowed" && hasTeacherAssignments === undefined) ||
     (capabilityDecision.state === "allowed" && schoolBranding === undefined))) {
     return <MeloLoader message="Checking workspace access…" />;
   }
@@ -112,13 +116,41 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       /> : undefined}
       renderLink={props => <Link key={props.href} href={props.href} className={props.className}>{props.children}</Link>}
     >
-      {assignmentDenied ? <AuthoritativeForbiddenView
-        moduleTitle="Teacher workspace"
-        state="forbidden"
-        message="No class has been assigned to your teacher account in this branch. Ask a school administrator to assign you as a form teacher or subject teacher before opening Exam Entry."
-        returnLabel={selectedSchoolId ? "Return to default branch" : "Sign out / use another account"}
-        onReturnToDashboard={() => selectedSchoolId ? clearSelectedSchool() : void handleSignOut()}
-      /> : moduleDenial?.state === "module_disabled" ? <AuthoritativeForbiddenView moduleTitle="This module" state="module_disabled" message={moduleDenial.message} onReturnToDashboard={() => router.push("/assessments/exams/entry")} /> : children}
+      {assignmentRouteDenied ? (
+        <section role="alert" className="mx-auto flex min-h-[60vh] max-w-2xl items-center px-6 py-12" aria-labelledby="assignment-required-title">
+          <div className="w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-sm font-semibold text-[var(--school-primary)]">You are signed in</p>
+            <h1 id="assignment-required-title" className="mt-2 text-2xl font-semibold text-slate-950">
+              No class or subject assignment yet
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {session?.user.name ? `${session.user.name}, ` : ""}your account is active at {schoolBranding?.name ?? "this school"}, but this page requires an active form-teacher or subject-teacher assignment. Contact your school administrator to receive one.
+            </p>
+            <button
+              type="button"
+              className="mt-6 rounded-lg bg-[var(--school-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--school-primary-contrast)]"
+              onClick={() => {
+                if (selectedSchoolId) clearSelectedSchool();
+                router.push("/");
+              }}
+            >
+              Go to teacher dashboard
+            </button>
+          </div>
+        </section>
+      ) : moduleDenial?.state === "module_disabled" ? (
+        <AuthoritativeForbiddenView moduleTitle="This module" state="module_disabled" message={moduleDenial.message} onReturnToDashboard={() => router.push("/")} />
+      ) : (
+        <>
+          {assignmentDenied && pathname === "/" ? (
+            <div role="status" className="mx-auto mt-6 max-w-5xl rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+              <p className="font-semibold text-slate-950">No class or subject has been assigned yet.</p>
+              <p className="mt-1 text-sm text-slate-600">You can continue using the available Teacher tools. Contact your school administrator before using class-based assessment and enrollment pages.</p>
+            </div>
+          ) : null}
+          {children}
+        </>
+      )}
     </WorkspaceNavbar>
   );
 }

@@ -1,5 +1,5 @@
 import type { WorkspaceAccessSummary } from "./workspace-access";
-import { getBranchScopedWorkspaceAccess, getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, isWorkspaceBranchScopedRoute, type WorkspaceFeatures } from "./workspace-route-access";
+import { getBranchScopedWorkspaceAccess, getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial, isTeacherAssignmentRequiredRoute, isWorkspaceBranchScopedRoute, type WorkspaceFeatures } from "./workspace-route-access";
 
 export type WorkspaceKey = "admin" | "teacher" | "portal";
 
@@ -132,6 +132,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
     available: true,
     description: "Open teacher workflows for exam entry, planning, and enrollment edits.",
     sections: [
+      { href: "/", label: "Dashboard", matchers: ["/$"] },
       {
         href: "/assessments/exams/entry",
         label: "Exam Entry",
@@ -218,7 +219,11 @@ export function getAccessibleWorkspaceSections(
 ) {
   if (workspace !== "portal" && options.access && !options.branchScopedOnly && getLegacyWorkspaceAccess(workspace, options.access).state !== "allowed") return [];
   return getWorkspaceSections(workspace).filter(section =>
-    !(workspace === "teacher" && options.teacherHasAssignments === false) &&
+    !(
+      workspace === "teacher" &&
+      options.teacherHasAssignments === false &&
+      isTeacherAssignmentRequiredRoute(section.href)
+    ) &&
     (!options.branchScopedOnly || isWorkspaceBranchScopedRoute(workspace, section.href)) &&
     !getWorkspaceModuleDenial(workspace, section.href, options.features) &&
     (!options.access || (options.branchScopedOnly

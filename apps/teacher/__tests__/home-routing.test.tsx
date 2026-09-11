@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 
@@ -8,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   auth: {
     isAuthenticated: true,
     isLoading: false,
-    session: { user: { role: "teacher" } },
+    session: { user: { role: "teacher", name: "Joan Teacher" } },
     workspaceAccess: undefined as WorkspaceAccessSummary | undefined,
   },
 }));
@@ -16,6 +18,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/lib/AuthProvider", () => ({ useAuth: () => mocks.auth }));
 vi.mock("@/lib/convex-runtime", () => ({ isConvexConfigured: () => true }));
+vi.mock("@/lib/StaffWorkspace", () => ({
+  StaffWorkspace: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 
 import HomePage from "../app/page";
 
@@ -26,7 +31,7 @@ const readyAccess = (
   state: "ready",
   branch: {
     schoolId: "school",
-    name: "School",
+    name: "Villanova School",
     slug: "school",
     status: "active",
   },
@@ -48,24 +53,31 @@ const readyAccess = (
   },
 });
 
-describe("teacher home routing", () => {
+describe("teacher home", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.auth.isAuthenticated = true;
     mocks.auth.isLoading = false;
-    mocks.auth.session = { user: { role: "teacher" } };
+    mocks.auth.session = { user: { role: "teacher", name: "Joan Teacher" } };
+    mocks.auth.workspaceAccess = undefined;
   });
 
-  it("opens planning for an unmanaged legacy teacher without capability records", () => {
+  it("shows a signed-in school dashboard instead of forcing a workflow redirect", () => {
     mocks.auth.workspaceAccess = readyAccess(false);
 
-    expect(() => HomePage()).toThrow("redirect:/planning");
-    expect(mocks.redirect).toHaveBeenCalledWith("/planning");
+    render(<HomePage />);
+
+    expect(screen.getByRole("heading", { name: "Welcome, Joan Teacher" })).toBeInTheDocument();
+    expect(screen.getByText(/logged in to Villanova School/)).toBeInTheDocument();
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
-  it("keeps a managed teacher without capabilities fail-closed", () => {
+  it("keeps a managed teacher on the dashboard when no workflow capability is available", () => {
     mocks.auth.workspaceAccess = readyAccess(true);
 
-    expect(() => HomePage()).toThrow("redirect:/sign-in?error=unauthorized");
+    render(<HomePage />);
+
+    expect(screen.getByRole("heading", { name: "Welcome, Joan Teacher" })).toBeInTheDocument();
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 });

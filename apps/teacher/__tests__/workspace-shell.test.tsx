@@ -52,7 +52,7 @@ beforeEach(() => {
   mocks.query.mockImplementation((reference: unknown, args: unknown) => {
     if (args === "skip") return undefined;
     const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
-    if (name.includes("getTeacherAssignableClasses")) return [{ _id: "class", name: "Assigned Class" }];
+    if (name.includes("hasTeacherAssignments")) return true;
     return { schoolId: access?.state === "ready" ? access.branch.schoolId : "default", name: "School", status: "active", features: {} };
   });
 });
@@ -93,7 +93,7 @@ describe("teacher selected-branch shell", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("denies direct access and navigation when the selected branch lacks capability or assignment", () => {
+  it("keeps navigation available while blocking assignment-dependent routes", () => {
     selectedSchoolId = "branch-two";
     access = { ...branchAccess, effectiveCapabilities: [] };
     const denied = render(<StaffWorkspace><p>Branch student data</p></StaffWorkspace>);
@@ -104,13 +104,45 @@ describe("teacher selected-branch shell", () => {
     mocks.query.mockImplementation((reference: unknown, args: unknown) => {
       if (args === "skip") return undefined;
       const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
-      return name.includes("getTeacherAssignableClasses") ? [] : { schoolId: "branch-two", name: "Branch Two", status: "active", features: {} };
+      return name.includes("hasTeacherAssignments") ? false : { schoolId: "branch-two", name: "Branch Two", status: "active", features: {} };
     });
     denied.rerender(<StaffWorkspace><p>Branch student data</p></StaffWorkspace>);
-    expect(screen.getByRole("alert")).toHaveTextContent("No class has been assigned");
+    expect(screen.getByRole("alert")).toHaveTextContent("No class or subject assignment yet");
     expect(screen.getByRole("navigation")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Exam Entry" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Report Cards" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Go to teacher dashboard" }));
+    expect(mocks.clear).toHaveBeenCalled();
+    expect(mocks.push).toHaveBeenCalledWith("/");
+    expect(screen.queryByText(/Sign out \/ use another account/)).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Active branch" })).toBeInTheDocument();
+  });
+
+  it("welcomes an unassigned teacher on the dashboard without ending the session", () => {
+    path = "/";
+    access = {
+      ...defaultAccess,
+      membership: null,
+      compatibility: {
+        ...defaultAccess.compatibility,
+        mode: "legacy_default",
+        permissionManaged: false,
+      },
+    };
+    mocks.query.mockImplementation((reference: unknown, args: unknown) => {
+      if (args === "skip") return undefined;
+      const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
+      return name.includes("hasTeacherAssignments")
+        ? false
+        : { schoolId: "default", name: "Default", status: "active", features: {} };
+    });
+
+    render(<StaffWorkspace><p>Teacher dashboard content</p></StaffWorkspace>);
+
+    expect(screen.getByText("Teacher dashboard content")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("No class or subject has been assigned yet");
+    expect(screen.getByRole("link", { name: "Planning" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Exam Entry" })).not.toBeInTheDocument();
   });
 
   it("does not require a teacher assignment from an authorized school administrator", () => {
@@ -133,8 +165,8 @@ describe("teacher selected-branch shell", () => {
     mocks.query.mockImplementation((reference: unknown, args: unknown) => {
       if (args === "skip") return undefined;
       const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
-      return name.includes("getTeacherAssignableClasses")
-        ? []
+      return name.includes("hasTeacherAssignments")
+        ? false
         : { schoolId: "default", name: "Default", status: "active", features: {} };
     });
 
