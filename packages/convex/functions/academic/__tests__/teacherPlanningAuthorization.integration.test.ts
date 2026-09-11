@@ -523,7 +523,7 @@ describe("managed teacher planning capability contract", () => {
     await expect(f.teacher("planningUpload").mutation(
       academic.lessonKnowledgeIngestion.requestSecureKnowledgeMaterialUpload,
       legacyClientArgs,
-    )).rejects.toThrow("being prepared");
+    )).rejects.toThrow("still being set up");
     expect(await f.t.run((ctx) =>
       ctx.db.query("usageQuotaReservations").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).collect()
     )).toHaveLength(0);

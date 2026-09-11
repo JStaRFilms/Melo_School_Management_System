@@ -382,7 +382,6 @@ export const provisionReviewedFreeTrialStorage = internalMutation({
       }
     }
 
-    await getOrCreateFreeTrialCatalog(ctx, args.startAt);
     for (const schoolId of args.schoolIds) {
       const result = await provisionSchoolStorage(ctx, {
         schoolId,

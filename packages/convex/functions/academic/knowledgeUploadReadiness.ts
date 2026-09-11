@@ -110,7 +110,7 @@ export async function hasDuplicateKnowledgeMaterialFile(
     .order("desc")
     .take(201);
   if (legacyMaterials.length > 200) {
-    throw new ConvexError("Duplicate-file protection is being prepared for this school. Try again after the bounded fingerprint backfill completes.");
+    throw new ConvexError("Duplicate-file protection is still being set up for this school. Try again in a moment.");
   }
   for (const material of legacyMaterials) {
     if (!material.storageId) continue;

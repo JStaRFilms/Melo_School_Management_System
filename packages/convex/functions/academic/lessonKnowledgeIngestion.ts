@@ -756,7 +756,7 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
     }
     if (selectedPageRanges) parsePdfPageRanges(selectedPageRanges);
     if (!expectedSha256 && !await isKnowledgeMaterialFingerprintProtectionReady(ctx, schoolId)) {
-      throw new ConvexError("Duplicate-file protection is being prepared for this school. Try again after the bounded fingerprint backfill completes.");
+      throw new ConvexError("Duplicate-file protection is still being set up for this school. Try again in a moment.");
     }
     if (
       expectedSha256 &&
