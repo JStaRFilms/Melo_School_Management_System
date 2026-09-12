@@ -362,6 +362,7 @@ export default defineSchema({
     purpose: v.optional(v.string()),
     validationJson: v.string(),
     conditionalRuleJson: v.optional(v.string()),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     order: v.number(),
     status: v.union(v.literal("active"), v.literal("retired")),
     createdAt: v.number(),
@@ -385,6 +386,7 @@ export default defineSchema({
     sensitivity: admissionsDataClassValidator,
     purpose: v.string(),
     conditionJson: v.optional(v.string()),
+    approvalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
     order: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -461,6 +463,7 @@ export default defineSchema({
     feeDisclosureSnapshot: v.string(),
     state: admissionsPurchaseStateValidator,
     providerAuthorizationReference: v.optional(v.string()),
+    providerAuthorizationUrl: v.optional(v.string()),
     verifiedAt: v.optional(v.number()),
     failureCode: v.optional(v.string()),
     entitlementId: v.optional(v.id("admissionsEntitlements")),
@@ -483,6 +486,8 @@ export default defineSchema({
     eventType: v.string(),
     bodyDigest: v.string(),
     signatureValid: v.boolean(),
+    verifiedAmountMinor: v.optional(v.number()),
+    verifiedCurrency: v.optional(v.string()),
     processingStatus: v.union(v.literal("received"), v.literal("verified"), v.literal("processed"), v.literal("ignored"), v.literal("rejected")),
     processingMessage: v.optional(v.string()),
     receivedAt: v.number(),
@@ -511,6 +516,7 @@ export default defineSchema({
   })
     .index("by_source_purchase_attempt", ["sourcePurchaseAttemptId"])
     .index("by_guardian_and_state_and_created_at", ["guardianId", "state", "createdAt"])
+    .index("by_school_and_guardian_and_created_at", ["schoolId", "guardianId", "createdAt"])
     .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"])
     .index("by_application", ["applicationId"])
     .index("by_school", ["schoolId"]),
@@ -533,12 +539,20 @@ export default defineSchema({
     conversionId: v.optional(v.id("admissionsConversions")),
     requestedEntryLabel: v.optional(v.string()),
     draftVersion: v.number(),
+    lastDraftMutationKey: v.optional(v.string()),
+    lastDraftMutationDigest: v.optional(v.string()),
+    lastSubmissionKey: v.optional(v.string()),
+    terminalOutcomeAt: v.optional(v.number()),
+    retentionPolicyId: v.optional(v.id("admissionsRetentionPolicies")),
+    financialHoldAt: v.optional(v.number()),
+    financialHoldReason: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_entitlement", ["entitlementId"])
     .index("by_school_and_public_id", ["schoolId", "publicId"])
     .index("by_guardian_and_updated_at", ["guardianId", "updatedAt"])
+    .index("by_school_and_guardian_and_updated_at", ["schoolId", "guardianId", "updatedAt"])
     .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
     .index("by_school_and_intake_and_state", ["schoolId", "intakeId", "state"])
     .index("by_school", ["schoolId"]),
@@ -635,6 +649,10 @@ export default defineSchema({
     uploadedByGuardianId: v.optional(v.id("admissionsGuardians")),
     supersedesDocumentId: v.optional(v.id("admissionsDocuments")),
     retentionHold: v.boolean(),
+    quotaReservationKey: v.optional(v.string()),
+    storageAccountingInitializedAt: v.optional(v.number()),
+    archivedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -643,6 +661,41 @@ export default defineSchema({
     .index("by_storage", ["storageId"])
     .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
     .index("by_application_and_requirement", ["applicationId", "requirementId"])
+    .index("by_school", ["schoolId"]),
+
+  admissionsDocumentUploadIntents: defineTable({
+    schoolId: v.id("schools"),
+    guardianId: v.id("admissionsGuardians"),
+    applicationId: v.id("admissionsApplications"),
+    requirementId: v.id("admissionsDocumentRequirements"),
+    purpose: v.literal("admissions_document"),
+    tokenHash: v.string(),
+    quotaReservationKey: v.string(),
+    fileName: v.string(),
+    contentType: v.string(),
+    expectedSize: v.number(),
+    expectedSha256: v.string(),
+    activeAttemptId: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    documentId: v.optional(v.id("admissionsDocuments")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("uploading"),
+      v.literal("stored"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("expired")
+    ),
+    failureReason: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_storage_id", ["storageId"])
+    .index("by_school_id_and_guardian_id", ["schoolId", "guardianId"])
+    .index("by_application_id_and_requirement_id", ["applicationId", "requirementId"])
+    .index("by_status_and_expires_at", ["status", "expiresAt"])
     .index("by_school", ["schoolId"]),
 
   admissionsDocumentAccessAudits: defineTable({
@@ -666,6 +719,7 @@ export default defineSchema({
     version: v.number(),
     state: admissionsDecisionStateValidator,
     reasonCode: v.optional(v.string()),
+    guardianMessage: v.optional(v.string()),
     rationale: v.optional(v.string()),
     decidedBy: v.id("users"),
     decidedAt: v.number(),
@@ -683,13 +737,35 @@ export default defineSchema({
     acceptedDecisionId: v.id("admissionsDecisions"),
     snapshotId: v.id("admissionsSubmissionSnapshots"),
     idempotencyKey: v.string(),
-    state: v.union(v.literal("pending"), v.literal("running"), v.literal("succeeded"), v.literal("failed_retryable"), v.literal("failed_terminal")),
+    state: v.union(v.literal("requested"), v.literal("running"), v.literal("succeeded"), v.literal("failed_retryable"), v.literal("failed_terminal")),
+    requestedByUserId: v.optional(v.id("users")),
+    attemptCount: v.optional(v.number()),
+    leaseExpiresAt: v.optional(v.number()),
     classId: v.optional(v.id("classes")),
+    requestedAdmissionNumber: v.optional(v.string()),
+    familyResolutionKind: v.optional(v.union(v.literal("create"), v.literal("existing"))),
+    requestedFamilyId: v.optional(v.id("families")),
+    requestedFamilyName: v.optional(v.string()),
+    photoDocumentKey: v.optional(v.string()),
+    overrideReason: v.optional(v.string()),
+    overrideConfirmed: v.optional(v.boolean()),
+    overrideCounterDecision: v.optional(v.union(v.literal("keep"), v.literal("advance"))),
+    advanceCounterTo: v.optional(v.number()),
+    numberingVersion: v.optional(v.number()),
+    numberingFormatVersion: v.optional(v.string()),
+    numberingCounterKey: v.optional(v.string()),
+    numberingCounterVersion: v.optional(v.number()),
+    numberingSessionId: v.optional(v.id("academicSessions")),
+    numberingResetPeriod: v.optional(v.string()),
     admissionNumber: v.optional(v.string()),
     familyId: v.optional(v.id("families")),
+    familyMemberId: v.optional(v.id("familyMembers")),
+    guardianUserId: v.optional(v.id("users")),
+    studentUserId: v.optional(v.id("users")),
     studentId: v.optional(v.id("students")),
     errorCode: v.optional(v.string()),
     completedAt: v.optional(v.number()),
+    onboardingQueuedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -857,6 +933,21 @@ export default defineSchema({
     .index("by_school_and_action_and_created_at", ["schoolId", "action", "createdAt"])
     .index("by_school", ["schoolId"]),
 
+  admissionsRetentionPolicies: defineTable({
+    schoolId: v.id("schools"),
+    version: v.number(),
+    mode: v.union(v.literal("never"), v.literal("archive")),
+    archiveAfterDays: v.optional(v.number()),
+    status: v.union(v.literal("current"), v.literal("superseded")),
+    effectiveFrom: v.number(),
+    createdByUserId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_school_id_and_status", ["schoolId", "status"])
+    .index("by_school_id_and_version", ["schoolId", "version"])
+    .index("by_status_and_effective_from", ["status", "effectiveFrom"])
+    .index("by_school", ["schoolId"]),
+
   admissionsRetentionJobs: defineTable({
     schoolId: v.id("schools"),
     applicationId: v.optional(v.id("admissionsApplications")),
@@ -874,6 +965,7 @@ export default defineSchema({
     .index("by_school_and_state_and_scheduled_at", ["schoolId", "state", "scheduledAt"])
     .index("by_application", ["applicationId"])
     .index("by_school_and_policy_key", ["schoolId", "policyKey"])
+    .index("by_state_and_scheduled_at", ["state", "scheduledAt"])
     .index("by_school", ["schoolId"]),
 
   schoolCapabilityGrants: defineTable({
@@ -1318,6 +1410,7 @@ export default defineSchema({
     .index("by_auth_and_archived", ["authId", "isArchived"])
     .index("by_auth_token_identifier", ["authTokenIdentifier"])
     .index("by_auth_token_identifier_and_archived", ["authTokenIdentifier", "isArchived"])
+    .index("by_school_and_auth_token_identifier", ["schoolId", "authTokenIdentifier"])
     .index("by_email", ["email"])
     .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
     .index("by_person", ["personId"]),

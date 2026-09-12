@@ -302,11 +302,14 @@ sequenceDiagram
   C->>C: atomically reserve entitlement + create/get application
   G->>C: save typed section (expectedVersion)
   C-->>G: nextVersion
-  G->>C: requestDocumentUpload(application, requirement)
-  C-->>G: one-time upload URL
-  G->>S: upload
-  G->>C: bindDocument(storageId, metadata)
-  C->>C: validate storage metadata and ownership
+  G->>C: requestUploadIntent(application, requirement, MIME, size, SHA-256)
+  C->>C: reserve shared storage quota; persist hashed one-time token
+  C-->>G: opaque intent ID + one-time token + fixed upload path
+  G->>C: authenticated upload(intent ID, token, bytes)
+  C->>C: validate tenant, requirement, token, MIME/magic, measured size, hash, expiry
+  C->>S: store only after transport validation
+  C->>C: verify storage size/hash and bind intent; never return storage ID
+  G->>C: finalizeUpload(intent ID)
   G->>C: submit(application, expectedVersion, declarationVersion)
   C->>C: validate + create immutable snapshot/items + consume slot
   R->>C: requestChanges(fields/requirements, reason)
@@ -321,7 +324,7 @@ Optimistic `expectedVersion` prevents silent overwrite from two devices. Autosav
 
 ### Permission vocabulary
 
-`settings.view`, `settings.manage`, `applications.list`, `applications.view_basic`, `applications.view_sensitive`, `documents.review`, `documents.download`, `reviews.assign`, `reviews.record`, `decisions.record`, `conversions.execute`, `audit.view`, `retention.manage`, `grants.manage`.
+Phase 2 uses the current canonical membership/RBAC resolver and only the established `enrollment.*` capabilities: `enrollment.intakes.manage`, `enrollment.applications.list`, `enrollment.applications.view_basic`, `enrollment.applications.view_sensitive`, `enrollment.documents.review`, `enrollment.decisions.record`, and `enrollment.admissions.override_number`. Historical admissions-specific grant rows are not an authorization source. Sensitive document access remains separate from list/basic access.
 
 ### Matrix
 
@@ -383,8 +386,9 @@ Public resolver contract: `getApplicationLink({ schoolSlug, intakeSlug? })` retu
 | `applications.createOrResume` | mutation | Own available/reserved entitlement; atomic reserve |
 | `applications.getDraft` | query | Own application; current form/version and safe status |
 | `applications.saveCoreSection` / `saveAnswer` / `deleteAnswer` | mutations | Own editable application; expected version; server field validation |
-| `documents.createUploadUrl` | mutation | Own editable application/requirement; rate/size/category policy checked |
-| `documents.bindUpload` | mutation | Validate `_storage` metadata; bind once; reject orphan/mismatch |
+| `documents.requestUploadIntent` | mutation | Own editable application/requirement; MIME/size/category and contract-bound quota checked; return hashed-token transport credentials, never a storage ID |
+| `/admissions/document-upload` | HTTP action | Authenticated tenant-bound one-time transport; strict MIME/magic/size/hash/expiry checks and orphan cleanup |
+| `documents.finalizeUpload` | mutation | Own stored intent; revalidate `_storage` size/hash and ownership; commit measured shared quota once |
 | `documents.getOwnAccess` | mutation | Own document and allowed state; write the audit event and generate the immediate signed URL after the same authorization check |
 | `applications.submit` | mutation | Atomic validation, snapshot, state, entitlement consumption |
 | `applications.withdraw` | mutation | Own application and permitted state; reason/audit |
@@ -431,9 +435,9 @@ Every high-risk field has an explicit purpose or remains unavailable. The histor
 
 ## 13. Private storage and document access
 
-1. Authorize guardian ownership or explicit school grant before issuing an upload URL.
-2. Bind an upload to one application/requirement promptly. Validate metadata through `ctx.db.system.get("_storage", storageId)`, allowed MIME, size, expected category, and one-time binding.
-3. Use opaque application/document keys in client routes. Never return raw `storageId` in queue/list contracts.
+1. Authorize verified guardian ownership before reserving a one-time upload intent. The intent is tenant/application/requirement bound, short-lived, stores only a token hash, and reserves shared `storage_bytes` quota before transport starts.
+2. The dedicated `/admissions/document-upload` transport checks the authenticated guardian, one-time token, MIME header and file magic, exact measured body size, SHA-256, expiry, and active attempt before storing bytes. Convex `_storage` metadata then independently confirms size and hash before binding. Failed or expired attempts delete any known object before releasing quota.
+3. Use opaque application/document keys in client routes. Never return raw `storageId` in upload responses, queue/list contracts, or route-facing document payloads.
 4. Generate a signed URL only after a fresh authorization check. Do not persist it. Treat URL lifetime as storage-platform behavior and keep the app exchange immediate.
 5. Audit staff view/download, guardian download, quarantine, review, supersession, retention hold, and deletion. List views show document status/category, not previews.
 6. Keep medical/government documents behind explicit grants separate from ordinary review. Platform support has no default access.
@@ -517,9 +521,9 @@ B0 should add or freeze: `students.by_school_id_and_admission_number`; an applic
 | Payment accounting record | 7 years (finance/legal approval required) | Retain minimized financial ledger; delete gateway payload detail earlier |
 | Raw/encrypted webhook payload, if retained | 30 days | Delete raw body; retain digest and normalized event result |
 | Security/business audit | 7 years, with sensitive values excluded | Retain append-only event/tombstone |
-| Unbound storage upload | 24 hours | Batch delete after reference check |
+| Unbound storage upload | 15-minute one-time intent | Delete any known object after ownership check, then release its reservation |
 
-Retention jobs are dry-run first, require a policy version and authorized approval, process bounded batches, respect legal holds/appeals, and leave non-sensitive tombstones. No automatic destructive cleanup ships until windows and notices are approved.
+The Phase 2 backend makes document retention prospective and versioned. A school's current setting is either `never` or `archive` after at least 30 days. Each terminal application records the policy version that governed it; legacy applications without that linkage fail closed. Eligible documents first become `archived`, and physical deletion is not due until 30 additional days have elapsed. Both manual and six-hour cron cleanup are bounded and idempotent. They block on legal/retention holds, waitlists or nonterminal applications, incomplete conversion, pending assignments/conversions/outbox/jobs, selected canonical student-photo provenance, conflicting storage ownership, and missing trusted quota/storage provenance. Physical deletion precedes quota release and leaves a tombstone.
 
 ## 16. Error and recovery contract
 

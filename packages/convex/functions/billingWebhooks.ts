@@ -1,6 +1,7 @@
 import { httpAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { matchesPaymentDispatchProviderModeV1 } from "./foundation/paymentDispatch";
+import { recordVerifiedPaymentRef } from "./admissions/refs";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -24,37 +25,38 @@ function normalizeWebhookText(value: unknown) {
   return trimmed || undefined;
 }
 
-function extractPayloadMetadata(payload: any) {
-  const data = payload?.data ?? {};
-  const metadata = data?.metadata ?? payload?.metadata ?? {};
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value))
+    : {};
+}
 
+function extractPayloadMetadata(payload: unknown) {
+  const root = objectValue(payload);
+  const data = objectValue(root.data);
+  const metadata = objectValue(data.metadata ?? root.metadata);
+  const customer = objectValue(data.customer);
+  const authorization = objectValue(data.authorization);
   return {
-    schoolId: normalizeWebhookText(metadata.schoolId ?? payload?.schoolId),
+    schoolId: normalizeWebhookText(metadata.schoolId ?? root.schoolId),
     invoiceId: normalizeWebhookText(metadata.invoiceId),
     invoiceNumber: normalizeWebhookText(metadata.invoiceNumber),
-    gatewayReference: normalizeWebhookText(
-      data.reference ?? data.gateway_reference ?? payload?.reference
-    ),
-    providerMode: normalizeWebhookText(metadata.paymentProviderMode ?? payload?.paymentProviderMode),
-    amountReceived:
-      typeof data.amount === "number"
-        ? data.amount / 100
-        : typeof payload?.amount === "number"
-          ? payload.amount
-          : undefined,
-    payerEmail: normalizeWebhookText(
-      data?.customer?.email ?? data?.authorization?.customer_email ?? metadata.email
-    ),
-    payerName: normalizeWebhookText(
-      data?.customer?.name ?? metadata.payerName ?? data?.customer?.first_name
-    ),
+    gatewayReference: normalizeWebhookText(data.reference ?? data.gateway_reference ?? root.reference),
+    providerMode: normalizeWebhookText(metadata.paymentProviderMode ?? root.paymentProviderMode),
+    amountReceived: typeof data.amount === "number" ? data.amount / 100 : typeof root.amount === "number" ? root.amount : undefined,
+    amountMinor: typeof data.amount === "number" && Number.isSafeInteger(data.amount) ? data.amount : undefined,
+    currency: normalizeWebhookText(data.currency)?.toUpperCase(),
+    payerEmail: normalizeWebhookText(customer.email ?? authorization.customer_email ?? metadata.email),
+    payerName: normalizeWebhookText(customer.name ?? metadata.payerName ?? customer.first_name),
   };
 }
 
-function buildPaystackEventId(payload: any) {
-  const data = payload?.data ?? {};
-  const reference = normalizeWebhookText(data.reference ?? payload?.reference) ?? "unknown";
-  const eventMarker = normalizeWebhookText(data.id ?? payload?.event_id) ?? reference;
+function buildPaystackEventId(payload: unknown) {
+  const root = objectValue(payload);
+  const data = objectValue(root.data);
+  const reference = normalizeWebhookText(data.reference ?? root.reference) ?? "unknown";
+  const marker = data.id ?? root.event_id;
+  const eventMarker = typeof marker === "number" ? String(marker) : normalizeWebhookText(marker) ?? reference;
   return `paystack:${eventMarker}`;
 }
 
@@ -120,21 +122,18 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
   }
 
   const rawBody = await request.text();
-  let payload: any;
+  let payload: unknown;
   try {
-    payload = JSON.parse(rawBody);
+    payload = JSON.parse(rawBody) as unknown;
   } catch {
     return jsonResponse({ ok: false, message: "Webhook body must be valid JSON." }, 400);
   }
 
   const metadata = extractPayloadMetadata(payload);
-  const reference =
-    metadata.gatewayReference ??
-    normalizeWebhookText(payload?.data?.reference) ??
-    buildPaystackEventId(payload);
+  const reference = metadata.gatewayReference ?? buildPaystackEventId(payload);
 
-  const referenceContext: any = await ctx.runQuery(
-    (internal as any).functions.foundation.paymentDispatch.resolvePaymentDispatchContextInternal,
+  const referenceContext = await ctx.runQuery(
+    internal.functions.foundation.paymentDispatch.resolvePaymentDispatchContextInternal,
     { reference }
   );
 
@@ -162,8 +161,8 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
     );
   }
 
-  const gatewayContext: any = await ctx.runQuery(
-    (internal as any).functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal,
+  const gatewayContext = await ctx.runQuery(
+    internal.functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal,
     {
       schoolId: referenceContext.schoolId,
       mode: referenceContext.providerMode,
@@ -187,12 +186,12 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
   }
 
   const eventId = buildPaystackEventId(payload);
-  const eventType = normalizeWebhookText(payload?.event) ?? "payment.webhook";
+  const eventType = normalizeWebhookText(objectValue(payload).event) ?? "payment.webhook";
 
   const receivedAt = Date.now();
   if (referenceContext.domain === "billing") {
     await ctx.runMutation(
-      (internal as any).functions.billing.recordVerifiedGatewayEventInternal,
+      internal.functions.billing.recordVerifiedGatewayEventInternal,
       {
         schoolId: referenceContext.schoolId,
         provider: "paystack",
@@ -215,10 +214,13 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
       }
     );
   } else {
-    // Admissions payloads never persist raw webhook bodies. B1 will consume the
-    // verified replay-safe envelope to create an entitlement transactionally.
+    // Admissions payloads never persist raw webhook bodies. The signed,
+    // merchant-resolved envelope is fulfilled transactionally and replay-safe.
+    if (metadata.amountMinor === undefined || !metadata.currency) {
+      return jsonResponse({ ok: false, message: "Verified admissions payment metadata is incomplete." }, 400);
+    }
     await ctx.runMutation(
-      (internal as any).functions.foundation.paymentDispatch.recordVerifiedAdmissionsPaymentEventInternal,
+      recordVerifiedPaymentRef,
       {
         schoolId: referenceContext.schoolId,
         purchaseAttemptId: referenceContext.purchaseAttemptId,
@@ -227,6 +229,8 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
         providerEventId: eventId,
         eventType,
         bodyDigest: await sha256Hex(rawBody),
+        amountMinor: metadata.amountMinor,
+        currency: metadata.currency,
         receivedAt,
       }
     );

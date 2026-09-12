@@ -12,8 +12,9 @@ import {
 } from "./tenantPurgeManifest";
 
 const MAX_PURGE_BATCHES = 10_000;
-const TENANT_STORAGE_TABLES = [
+export const TENANT_STORAGE_TABLES = [
   "admissionsDocuments",
+  "admissionsDocumentUploadIntents",
   "schoolSiteAssets",
   "students",
   "issuedReportCards",
