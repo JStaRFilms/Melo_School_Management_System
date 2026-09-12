@@ -1986,7 +1986,15 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
         q.eq("schoolId", material.schoolId).eq("sha256", nextSha256),
       )
       .take(2);
-    if (matchingFingerprints.some((row) => row._id !== materialFingerprints[0]?._id)) {
+    const competingFingerprints = matchingFingerprints.filter(
+      (row) => row._id !== materialFingerprints[0]?._id,
+    );
+    if (competingFingerprints.some((row) => row.status === "reserved")) {
+      throw new ConvexError(
+        "Matching PDF pages are still being uploaded. Retry after that upload completes.",
+      );
+    }
+    if (competingFingerprints.some((row) => row.status === "completed" && row.materialId)) {
       const materialFingerprint = materialFingerprints[0];
       const uploadIntent = materialFingerprint?.uploadIntentId
         ? await ctx.db.get(materialFingerprint.uploadIntentId)
@@ -2018,6 +2026,9 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
       });
       await ctx.db.delete(material._id);
       return { status: "duplicate_removed" as const };
+    }
+    if (competingFingerprints.length > 0) {
+      throw new ConvexError("Matching PDF fingerprint requires operator reconciliation");
     }
 
     const now = Date.now();

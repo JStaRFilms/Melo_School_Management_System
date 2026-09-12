@@ -595,6 +595,32 @@ describe("managed teacher planning capability contract", () => {
       };
     });
 
+    const competingReservationId = await f.t.run((ctx) =>
+      ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId: f.schoolId,
+        sha256: replacement.nextSha256,
+        status: "reserved",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+    );
+    await expect(f.t.mutation(
+      internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal,
+      {
+        materialId: replacement.materialId,
+        schoolId: f.schoolId,
+        previousStorageId: replacement.previousStorageId,
+        nextStorageId: replacement.nextStorageId,
+        actorUserId: f.userIds.planningUpload,
+        sourcePdfPageCount: 1,
+      },
+    )).rejects.toThrow("still being uploaded");
+    expect(await f.t.run((ctx) => ctx.db.get(replacement.materialId))).toMatchObject({
+      storageId: replacement.previousStorageId,
+      processingStatus: "extracting",
+    });
+    await f.t.run((ctx) => ctx.db.delete(competingReservationId));
+
     await f.t.mutation(
       internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal,
       {
