@@ -185,3 +185,64 @@ it("returns requires_review when the selected school has conflicting storage his
     }),
   ).resolves.toEqual({ status: "requires_review" });
 });
+
+it("requires review instead of creating a zeroed meter for existing storage", async () => {
+  const t = convexTest(schema, modules);
+  const schoolId = await t.run(async (ctx) => {
+    const now = Date.now();
+    await ctx.db.insert("platformAdmins", {
+      authId: "storage-review-operator",
+      email: "storage-review@example.test",
+      name: "Storage Review Operator",
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const id = await ctx.db.insert("schools", {
+      name: "Legacy Storage Academy",
+      slug: "legacy-storage-academy",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const storageId = await ctx.storage.store(new Blob(["legacy school asset"]));
+    await ctx.db.insert("schoolAssets", {
+      schoolId: id,
+      storageId,
+      fileName: "legacy.txt",
+      mimeType: "text/plain",
+      byteSize: 19,
+      sha256: "legacy-storage-sha256",
+      category: "document",
+      scanStatus: "clean",
+      isTrashed: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return id;
+  });
+  const platform = t.withIdentity({
+    subject: "storage-review-operator",
+    tokenIdentifier: "test|storage-review-operator",
+  });
+
+  await expect(
+    platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, {
+      schoolId,
+    }),
+  ).resolves.toMatchObject({ recordState: "requires_review" });
+  await expect(
+    platform.mutation(api.functions.platform.index.provisionSchoolFreeTrialStorage, {
+      schoolId,
+      confirmation: "PROVISION FREE TRIAL STORAGE",
+    }),
+  ).resolves.toEqual({ status: "requires_review" });
+  expect(
+    await t.run((ctx) =>
+      ctx.db
+        .query("usageMeterAllocations")
+        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+        .collect(),
+    ),
+  ).toHaveLength(0);
+});

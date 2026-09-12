@@ -1,6 +1,10 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { internalMutation, type MutationCtx } from "../../_generated/server";
+import {
+  internalMutation,
+  type MutationCtx,
+  type QueryCtx,
+} from "../../_generated/server";
 import { recordAuditEventHelper } from "./audit";
 import { validateEntitlement } from "../foundation/usageContract";
 import { validateRate } from "../foundation/commercialContract";
@@ -168,6 +172,67 @@ async function getOrCreateFreeTrialCatalog(
   return { rateVersionId, entitlementVersionId };
 }
 
+export async function schoolHasExistingStorageClaims(
+  ctx: MutationCtx | QueryCtx,
+  school: Doc<"schools">,
+): Promise<boolean> {
+  if (school.logoStorageId) return true;
+
+  const storageOwners = await Promise.all([
+    ctx.db
+      .query("admissionsDocuments")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("schoolSiteAssets")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("students")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("photoStorageId"), undefined))
+      .first(),
+    ctx.db
+      .query("knowledgeMaterials")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
+      .query("knowledgeMaterialUploadIntents")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
+      .query("schoolAssets")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("assetUploadIntents")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
+      .query("pdfCompressionCandidates")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("demoSeedStorageCleanup")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("issuedReportCards")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) =>
+        q.or(
+          q.neq(q.field("schoolLogoStorageId"), undefined),
+          q.neq(q.field("studentPhotoStorageId"), undefined),
+        ),
+      )
+      .first(),
+  ]);
+  return storageOwners.some((owner) => owner !== null);
+}
+
 async function provisionSchoolStorage(
   ctx: MutationCtx,
   args: {
@@ -264,6 +329,9 @@ async function provisionSchoolStorage(
     return { status: isValidExistingStorage ? "already_configured" : "requires_review" };
   }
   if (contracts.length || cycles.length) return { status: "requires_review" };
+  if (await schoolHasExistingStorageClaims(ctx, school)) {
+    return { status: "requires_review" };
+  }
 
   const allocationRows = await ctx.db.query("usageMeterAllocations").take(1001);
   if (allocationRows.length > 1000) {

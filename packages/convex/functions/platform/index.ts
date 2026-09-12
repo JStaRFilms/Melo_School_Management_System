@@ -19,6 +19,7 @@ import {
   ensureSchoolFreeTrialStorageHelper,
   FREE_TRIAL_DURATION_DAYS,
   FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
+  schoolHasExistingStorageClaims,
 } from "../academic/storageEntitlementProvisioning";
 
 function getBetterAuthIssuer(): string {
@@ -289,12 +290,16 @@ export const getSchoolStorageProvisioningState = query({
       meters.length === 1 &&
       cycle?.contractId === contract?._id &&
       meter?.cycleId === cycle?._id;
+    const hasUnmeteredStorage =
+      hasNoRecords && (await schoolHasExistingStorageClaims(ctx, school));
     const recordState: "not_configured" | "configured" | "requires_review" =
-      hasNoRecords
-        ? "not_configured"
-        : hasOneLinkedRecordSet
-          ? "configured"
-          : "requires_review";
+      hasUnmeteredStorage
+        ? "requires_review"
+        : hasNoRecords
+          ? "not_configured"
+          : hasOneLinkedRecordSet
+            ? "configured"
+            : "requires_review";
 
     return {
       school: {
