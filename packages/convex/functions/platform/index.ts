@@ -15,7 +15,11 @@ import {
   provisionSchoolAdminAuthUser,
 } from "./provisioningHelpers";
 import { createAuth } from "../../betterAuth";
-import { ensureSchoolFreeTrialStorageHelper } from "../academic/storageEntitlementProvisioning";
+import {
+  ensureSchoolFreeTrialStorageHelper,
+  FREE_TRIAL_DURATION_DAYS,
+  FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
+} from "../academic/storageEntitlementProvisioning";
 
 function getBetterAuthIssuer(): string {
   const issuer = process.env.CONVEX_SITE_URL?.trim();
@@ -198,6 +202,176 @@ export const listSchools = query({
  * School starts in "pending" status.
  * Platform-admin only.
  */
+const storageProvisioningStateValidator = v.object({
+  school: v.object({
+    _id: v.id("schools"),
+    name: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("suspended"),
+    ),
+  }),
+  recordState: v.union(
+    v.literal("not_configured"),
+    v.literal("configured"),
+    v.literal("requires_review"),
+  ),
+  proposal: v.object({
+    allocatedUnits: v.number(),
+    durationDays: v.number(),
+  }),
+  contract: v.union(
+    v.object({
+      _id: v.id("commercialContracts"),
+      code: v.string(),
+      version: v.number(),
+      effectiveFrom: v.number(),
+      effectiveTo: v.number(),
+    }),
+    v.null(),
+  ),
+  cycle: v.union(
+    v.object({
+      _id: v.id("usageCycles"),
+      code: v.string(),
+      version: v.number(),
+      startAt: v.number(),
+      endAt: v.number(),
+      status: v.union(v.literal("active"), v.literal("closed")),
+    }),
+    v.null(),
+  ),
+  meter: v.union(
+    v.object({
+      _id: v.id("usageMeterAllocations"),
+      allocatedUnits: v.number(),
+      consumedUnits: v.number(),
+      reservedUnits: v.number(),
+      availableUnits: v.number(),
+    }),
+    v.null(),
+  ),
+});
+
+export const getSchoolStorageProvisioningState = query({
+  args: { schoolId: v.id("schools") },
+  returns: storageProvisioningStateValidator,
+  handler: async (ctx, args) => {
+    await getAuthenticatedPlatformAdmin(ctx);
+
+    const [school, contracts, cycles, meters] = await Promise.all([
+      ctx.db.get(args.schoolId),
+      ctx.db
+        .query("commercialContracts")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .take(2),
+      ctx.db
+        .query("usageCycles")
+        .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+        .take(2),
+      ctx.db
+        .query("usageMeterAllocations")
+        .withIndex("by_school_and_meter", (q) =>
+          q.eq("schoolId", args.schoolId).eq("meterType", "storage_bytes"),
+        )
+        .take(2),
+    ]);
+    if (!school) throw new ConvexError("School not found");
+
+    const contract = contracts[0] ?? null;
+    const cycle = cycles[0] ?? null;
+    const meter = meters[0] ?? null;
+    const hasNoRecords = !contract && !cycle && !meter;
+    const hasOneLinkedRecordSet =
+      contracts.length === 1 &&
+      cycles.length === 1 &&
+      meters.length === 1 &&
+      cycle?.contractId === contract?._id &&
+      meter?.cycleId === cycle?._id;
+    const recordState: "not_configured" | "configured" | "requires_review" =
+      hasNoRecords
+        ? "not_configured"
+        : hasOneLinkedRecordSet
+          ? "configured"
+          : "requires_review";
+
+    return {
+      school: {
+        _id: school._id,
+        name: school.name,
+        status: school.status ?? "active",
+      },
+      recordState,
+      proposal: {
+        allocatedUnits: FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
+        durationDays: FREE_TRIAL_DURATION_DAYS,
+      },
+      contract: contract
+        ? {
+            _id: contract._id,
+            code: contract.code,
+            version: contract.version,
+            effectiveFrom: contract.effectiveFrom,
+            effectiveTo: contract.effectiveTo,
+          }
+        : null,
+      cycle: cycle
+        ? {
+            _id: cycle._id,
+            code: cycle.code,
+            version: cycle.version,
+            startAt: cycle.startAt,
+            endAt: cycle.endAt,
+            status: cycle.status,
+          }
+        : null,
+      meter: meter
+        ? {
+            _id: meter._id,
+            allocatedUnits: meter.allocatedUnits,
+            consumedUnits: meter.consumedUnits,
+            reservedUnits: meter.reservedUnits,
+            availableUnits: Math.max(
+              0,
+              meter.allocatedUnits - meter.consumedUnits - meter.reservedUnits,
+            ),
+          }
+        : null,
+    };
+  },
+});
+
+export const provisionSchoolFreeTrialStorage = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    confirmation: v.string(),
+  },
+  returns: v.object({
+    status: v.union(
+      v.literal("created"),
+      v.literal("already_configured"),
+      v.literal("pool_exhausted"),
+      v.literal("requires_review"),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const platformAdmin = await getAuthenticatedPlatformAdmin(ctx);
+    if (args.confirmation !== "PROVISION FREE TRIAL STORAGE") {
+      throw new ConvexError(
+        "Type PROVISION FREE TRIAL STORAGE after reviewing the selected school",
+      );
+    }
+
+    const result = await ensureSchoolFreeTrialStorageHelper(ctx, {
+      schoolId: args.schoolId,
+      actorEmail: platformAdmin.email,
+      auditSummary: `Provisioned the reviewed ${FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL}-byte free-trial storage entitlement for an existing school through Platform; no invoice or payment created`,
+    });
+    return { status: result.status };
+  },
+});
+
 export const createSchool = mutation({
   args: {
     name: v.string(),

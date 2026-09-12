@@ -9,7 +9,7 @@ const DAY = 86_400_000;
 const FREE_TRIAL_RATE_CODE = "free_trial";
 const FREE_TRIAL_ENTITLEMENT_CODE = "free_trial_storage";
 const FREE_TRIAL_CATALOG_VERSION = 2;
-const FREE_TRIAL_DURATION_DAYS = 365;
+export const FREE_TRIAL_DURATION_DAYS = 365;
 export const FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL = 100 * 1024 * 1024;
 export const FREE_TRIAL_STORAGE_POOL_BYTES = 750 * 1024 * 1024;
 const REVIEWED_EXISTING_SCHOOL_LIMIT = 5;
@@ -374,7 +374,11 @@ async function provisionSchoolStorage(
 
 export async function ensureSchoolFreeTrialStorageHelper(
   ctx: MutationCtx,
-  args: { schoolId: Id<"schools">; actorEmail: string },
+  args: {
+    schoolId: Id<"schools">;
+    actorEmail: string;
+    auditSummary?: string;
+  },
 ): Promise<{ status: ProvisioningStatus; cycleId?: Id<"usageCycles"> }> {
   const actorEmail = args.actorEmail.trim().toLowerCase();
   if (!actorEmail || actorEmail.length > 240) {
@@ -387,7 +391,9 @@ export async function ensureSchoolFreeTrialStorageHelper(
     endAt: startAt + FREE_TRIAL_DURATION_DAYS * DAY,
     actorKind: "platform_admin",
     actorEmail,
-    auditSummary: `Activated the reviewed ${FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL}-byte free-trial storage entitlement during school provisioning; no invoice or payment created`,
+    auditSummary:
+      args.auditSummary ??
+      `Activated the reviewed ${FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL}-byte free-trial storage entitlement during school provisioning; no invoice or payment created`,
   });
 }
 
