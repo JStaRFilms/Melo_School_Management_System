@@ -27,7 +27,9 @@ export { MeloLoader } from "./components/MeloLoader";
 export {
   KnowledgeMaterialUploadForm,
   MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
+  MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
   inferKnowledgeMaterialContentType,
+  validateKnowledgeMaterialPdfSelection,
   resolveKnowledgeMaterialUploadEndpoint,
 } from "./components/KnowledgeMaterialUploadForm";
 export type {

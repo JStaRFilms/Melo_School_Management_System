@@ -64,7 +64,7 @@ type TextQuality = {
 
 type PdfParserOutcome =
   | { kind: "success"; text: string; pages: Array<{ pageNumber: number; text: string }>; quality: TextQuality; pageCount: number }
-  | { kind: "page_limit"; pageCount: number }
+  | { kind: "page_limit"; pageCount: number; maxPdfPages: number }
   | { kind: "error"; pageCount: number; errorMessage: string };
 
 export type KnowledgeMaterialTextExtractionResult = {
@@ -87,6 +87,7 @@ export type KnowledgeMaterialTextExtractionOptions = {
   contentType?: string | null;
   pdfParseTimeoutMs?: number;
   selectedPageNumbers?: number[];
+  maxPdfPages?: number;
   /** @deprecated OpenRouter PDF OCR is no longer used; retained for test/backward-call compatibility. */
   openRouterApiKey?: string | null;
   /** @deprecated OpenRouter PDF OCR is no longer used; retained for test/backward-call compatibility. */
@@ -166,7 +167,11 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () =>
   });
 }
 
-async function parsePdfBuffer(buffer: Buffer, options: { timeoutMs: number; selectedPageNumbers?: number[] }): Promise<PdfParserOutcome> {
+async function parsePdfBuffer(buffer: Buffer, options: {
+  timeoutMs: number;
+  selectedPageNumbers?: number[];
+  maxPdfPages?: number;
+}): Promise<PdfParserOutcome> {
   const { getDocument } = await getPdfJsModule();
   const loadingTask = getDocument({ data: new Uint8Array(buffer) });
   const timeoutMs = options.timeoutMs;
@@ -187,12 +192,20 @@ async function parsePdfBuffer(buffer: Buffer, options: { timeoutMs: number; sele
     );
 
     const pageCount = documentProxy.numPages;
+    const maxPdfPages = Math.min(
+      MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+      options.maxPdfPages ?? MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+    );
     const selectedPageNumbers = options.selectedPageNumbers?.length ? Array.from(new Set(options.selectedPageNumbers)).sort((a, b) => a - b) : undefined;
     if (selectedPageNumbers) {
-      assertPdfPageSelectionWithinLimit({ selectedPageNumbers, maxPageCount: pageCount });
+      assertPdfPageSelectionWithinLimit({
+        selectedPageNumbers,
+        maxPageCount: pageCount,
+        maxSelectedPageCount: maxPdfPages,
+      });
     }
-    if (!selectedPageNumbers && pageCount > MAX_KNOWLEDGE_MATERIAL_PDF_PAGES) {
-      return { kind: "page_limit", pageCount };
+    if (!selectedPageNumbers && pageCount > maxPdfPages) {
+      return { kind: "page_limit", pageCount, maxPdfPages };
     }
 
     const pageTexts: string[] = [];
@@ -508,15 +521,17 @@ export async function extractReadableTextFromBuffer(
   const parserResult = await parsePdfBuffer(buffer, {
     timeoutMs: options.pdfParseTimeoutMs ?? DEFAULT_PDF_PARSE_TIMEOUT_MS,
     selectedPageNumbers: options.selectedPageNumbers,
+    maxPdfPages: options.maxPdfPages,
   });
 
   if (parserResult.kind === "page_limit") {
     return buildResult({
       status: "failed",
       text: "",
-      errorMessage: `This PDF exceeds the ${MAX_KNOWLEDGE_MATERIAL_PDF_PAGES}-page limit for the planning library.`,
+      errorMessage: `This PDF has ${parserResult.pageCount} pages. Choose a range containing at most ${parserResult.maxPdfPages} pages and upload it again.`,
       extractionPath: "none",
       fallbackReason: "insufficient_text",
+      pageCount: parserResult.pageCount,
     });
   }
 

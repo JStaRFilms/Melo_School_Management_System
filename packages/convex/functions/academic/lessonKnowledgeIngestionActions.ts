@@ -44,6 +44,14 @@ async function buildSelectedPagesPdfBuffer(args: {
     outputPdf.addPage(page);
   }
 
+  // pdf-lib otherwise stamps the current time into generated documents, which
+  // would give the same source and page selection a different fingerprint.
+  const deterministicDate = new Date(0);
+  outputPdf.setCreationDate(deterministicDate);
+  outputPdf.setModificationDate(deterministicDate);
+  outputPdf.setCreator("Melo");
+  outputPdf.setProducer("Melo");
+
   const bytes = await outputPdf.save();
   return Buffer.from(bytes);
 }
@@ -118,6 +126,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
     storageContentType: v.optional(v.string()),
     selectedPageRanges: v.optional(v.string()),
     selectedPageNumbers: v.optional(v.array(v.number())),
+    maxPagesPerOperation: v.optional(v.number()),
     sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
     externalUrl: v.optional(v.string()),
     searchText: v.string(),
@@ -169,6 +178,15 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       let extractionBuffer = buffer;
       let extractionSelectedPageNumbers =
         args.sourceFileMode === "selected_pages" ? undefined : args.selectedPageNumbers;
+      if (
+        args.selectedPageNumbers?.length &&
+        args.maxPagesPerOperation !== undefined &&
+        args.selectedPageNumbers.length > args.maxPagesPerOperation
+      ) {
+        throw new ConvexError(
+          `Index at most ${args.maxPagesPerOperation} PDF pages under this school's active entitlement`,
+        );
+      }
 
       if (args.selectedPageNumbers?.length && args.sourceFileMode !== "selected_pages") {
         const selectedPdfBuffer = await buildSelectedPagesPdfBuffer({
@@ -182,14 +200,18 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
           new Blob([new Uint8Array(selectedPdfBuffer)], { type: "application/pdf" })
         );
         try {
-          await ctx.runMutation(internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal, {
-            materialId: args.materialId,
-            schoolId: args.schoolId,
-            previousStorageId: args.storageId,
-            nextStorageId: selectedStorageId,
-            actorUserId: args.ownerUserId,
-            sourcePdfPageCount: args.selectedPageNumbers.length,
-          });
+          const replacement = await ctx.runMutation(
+            internal.functions.academic.lessonKnowledgeIngestion.replaceKnowledgeMaterialStorageInternal,
+            {
+              materialId: args.materialId,
+              schoolId: args.schoolId,
+              previousStorageId: args.storageId,
+              nextStorageId: selectedStorageId,
+              actorUserId: args.ownerUserId,
+              sourcePdfPageCount: args.selectedPageNumbers.length,
+            },
+          );
+          if (replacement.status === "duplicate_removed") return;
         } catch (error) {
           await ctx.storage.delete(selectedStorageId);
           throw error;
@@ -199,6 +221,7 @@ export const processKnowledgeMaterialIngestionInternal = internalAction({
       const extracted = await extractReadableTextFromBuffer(extractionBuffer, {
         contentType: args.storageContentType,
         selectedPageNumbers: extractionSelectedPageNumbers,
+        maxPdfPages: args.maxPagesPerOperation,
       });
       const extractedPages =
         extracted.status === "ready" &&

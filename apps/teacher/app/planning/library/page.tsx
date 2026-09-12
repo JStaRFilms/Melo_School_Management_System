@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState, useEffect, useRef } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { appToast } from "@school/shared/toast";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/AuthProvider";
@@ -49,6 +49,7 @@ import { StatGroup } from "@/lib/components/ui/StatGroup";
 
 export default function TeacherLibraryPage() {
   const { session, workspaceAccess } = useAuth();
+  const convex = useConvex();
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const router = useRouter();
   const pathname = usePathname();
@@ -127,15 +128,21 @@ export default function TeacherLibraryPage() {
     topicQueryArgs as never
   ) as TeacherKnowledgeTopic[] | undefined;
 
-  const [readinessNow] = useState(() => Date.now());
+  const [readinessObservedAt, setReadinessObservedAt] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setReadinessObservedAt(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const uploadReadinessData = useQuery(
     "functions/academic/knowledgeUploadReadiness:getKnowledgeMaterialUploadReadiness" as never,
-    schoolId ? ({ schoolId, now: readinessNow } as never) : ("skip" as never),
-  ) as Omit<KnowledgeMaterialUploadReadiness, "isLoading" | "storageStatus" | "availableBytes" | "allocatedBytes"> & {
+    schoolId ? ({ schoolId, now: readinessObservedAt } as never) : ("skip" as never),
+  ) as { fingerprintVersion?: 0 | 1 } & Omit<KnowledgeMaterialUploadReadiness, "isLoading" | "storageStatus" | "availableBytes" | "allocatedBytes" | "maxFileSizeBytes" | "maxPagesPerOperation"> & {
     storage: {
       status: KnowledgeMaterialUploadReadiness["storageStatus"];
       availableBytes: number;
       allocatedBytes: number;
+      maxFileSizeBytes: number | null;
+      maxPagesPerOperation: number | null;
     };
   } | undefined;
 
@@ -204,9 +211,12 @@ export default function TeacherLibraryPage() {
     hasUploadPermission: uploadReadinessData?.hasUploadPermission ??
       hasEffectiveCapability(workspaceAccess, "assets.upload"),
     hasAssignedContext: uploadReadinessData?.hasAssignedContext ?? false,
+    supportsDuplicateProtection: uploadReadinessData?.fingerprintVersion === 1,
     storageStatus: uploadReadinessData?.storage.status ?? "missing_entitlement",
     availableBytes: uploadReadinessData?.storage.availableBytes ?? 0,
     allocatedBytes: uploadReadinessData?.storage.allocatedBytes ?? 0,
+    maxFileSizeBytes: uploadReadinessData?.storage.maxFileSizeBytes ?? null,
+    maxPagesPerOperation: uploadReadinessData?.storage.maxPagesPerOperation ?? null,
   };
 
   const summary = activeMaterialsData?.summary ?? {
@@ -285,6 +295,7 @@ export default function TeacherLibraryPage() {
         fileName: data.file.name,
         contentType: data.contentType,
         size: data.file.size,
+        sha256: data.sha256,
         title: data.title,
         description: data.description || null,
         subjectId: data.subjectId ? (data.subjectId as never) : null,
@@ -324,6 +335,15 @@ export default function TeacherLibraryPage() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleDuplicateCheck = async (sha256: string): Promise<boolean> => {
+    if (!schoolId) throw new Error("Select an active school before uploading.");
+    const result = await convex.query(
+      "functions/academic/knowledgeUploadReadiness:checkKnowledgeMaterialFileDuplicate" as never,
+      { schoolId, sha256 } as never,
+    ) as { duplicate: boolean };
+    return result.duplicate;
   };
 
   const handleSaveDraft = async (draft: MaterialDraft) => {
@@ -390,6 +410,7 @@ export default function TeacherLibraryPage() {
     subjectsReady: subjects ?? [],
     canUpload: canUploadMaterials,
     uploadReadiness,
+    checkDuplicate: handleDuplicateCheck,
     onUpload: handleUpload,
     isUploading,
     isAdmin: session?.user?.role === "admin",

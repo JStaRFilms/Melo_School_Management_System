@@ -16,6 +16,7 @@ import {
 } from "react";
 
 export const MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES = 12 * 1024 * 1024;
+export const MAX_KNOWLEDGE_MATERIAL_PDF_PAGES = 80;
 
 export type KnowledgeMaterialUploadIntent =
   | "private_draft"
@@ -43,6 +44,7 @@ export interface KnowledgeMaterialUploadInput {
   isCurriculumReference: boolean;
   uploadIntent: KnowledgeMaterialUploadIntent;
   selectedPageRanges: string;
+  sha256: string;
 }
 
 export interface KnowledgeMaterialUploadReadiness {
@@ -50,9 +52,12 @@ export interface KnowledgeMaterialUploadReadiness {
   hasPlanningPermission: boolean;
   hasUploadPermission: boolean;
   hasAssignedContext: boolean;
+  supportsDuplicateProtection: boolean;
   storageStatus: "missing_entitlement" | "exhausted" | "ready";
   availableBytes: number;
   allocatedBytes: number;
+  maxFileSizeBytes: number | null;
+  maxPagesPerOperation: number | null;
 }
 
 interface KnowledgeMaterialUploadFormProps {
@@ -61,6 +66,7 @@ interface KnowledgeMaterialUploadFormProps {
   isAdmin: boolean;
   isUploading: boolean;
   readiness: KnowledgeMaterialUploadReadiness;
+  checkDuplicate: (sha256: string) => Promise<boolean>;
   onUpload: (input: KnowledgeMaterialUploadInput) => Promise<void>;
 }
 
@@ -122,12 +128,91 @@ function titleFromFileName(fileName: string): string {
     .trim();
 }
 
+async function readFileBytes(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") return await file.arrayBuffer();
+  return await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) resolve(reader.result);
+      else reject(new Error("The selected file could not be read."));
+    };
+    reader.onerror = () => reject(new Error("The selected file could not be read."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("This browser cannot securely fingerprint files before upload.");
+  }
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function selectedPdfPages(
+  value: string,
+  pageCount: number,
+  maxPagesPerOperation: number,
+): number[] {
+  const pages = new Set<number>();
+  for (const token of value.split(",").map((entry) => entry.trim()).filter(Boolean)) {
+    const range = token.match(/^(\d+)\s*-\s*(\d+)$/);
+    const single = token.match(/^(\d+)$/);
+    const start = Number(range?.[1] ?? single?.[1]);
+    const end = Number(range?.[2] ?? single?.[1]);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || start > end) {
+      throw new Error("Page ranges must use positive ascending numbers such as 1-5,7-8.");
+    }
+    if (end > pageCount) {
+      throw new Error(`Selected page ${end} is outside this PDF's ${pageCount} pages.`);
+    }
+    for (let page = start; page <= end; page += 1) {
+      pages.add(page);
+      if (pages.size > maxPagesPerOperation) {
+        throw new Error(`Index at most ${maxPagesPerOperation} PDF pages per material.`);
+      }
+    }
+  }
+  return Array.from(pages);
+}
+
+export function validateKnowledgeMaterialPdfSelection(args: {
+  pageCount: number;
+  selectedPageRanges: string;
+  maxPagesPerOperation?: number | null;
+}): string | null {
+  if (!Number.isSafeInteger(args.pageCount) || args.pageCount < 1) {
+    return "This PDF does not contain any readable pages.";
+  }
+  const maxPagesPerOperation = Math.min(
+    MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+    args.maxPagesPerOperation ?? MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+  );
+  try {
+    const selectedPages = selectedPdfPages(
+      args.selectedPageRanges,
+      args.pageCount,
+      maxPagesPerOperation,
+    );
+    if (!args.selectedPageRanges.trim() && args.pageCount > maxPagesPerOperation) {
+      return `This PDF has ${args.pageCount} pages. Choose a range containing at most ${maxPagesPerOperation} pages before uploading.`;
+    }
+    if (args.selectedPageRanges.trim() && selectedPages.length === 0) {
+      return "Choose at least one PDF page to index.";
+    }
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "Review the selected PDF pages.";
+  }
+}
+
 export function KnowledgeMaterialUploadForm({
   subjects,
   levelOptions,
   isAdmin,
   isUploading,
   readiness,
+  checkDuplicate,
   onUpload,
 }: KnowledgeMaterialUploadFormProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -142,7 +227,12 @@ export function KnowledgeMaterialUploadForm({
   );
   const [selectedPageRanges, setSelectedPageRanges] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [isInspecting, setIsInspecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const maxPdfPages = Math.min(
+    MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+    readiness.maxPagesPerOperation ?? MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
+  );
 
   const clearFile = () => {
     setFile(null);
@@ -155,8 +245,17 @@ export function KnowledgeMaterialUploadForm({
     if (!isSupportedContentType(contentType)) {
       return "Choose a supported PDF, Office document, text file, or image.";
     }
-    if (selectedFile.size > MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES) {
-      return "File must be 12 MB or smaller.";
+    const contractFileLimit = readiness.maxFileSizeBytes ?? MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES;
+    const availableQuotaLimit = readiness.storageStatus === "ready"
+      ? readiness.availableBytes
+      : MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES;
+    const maxAllowedBytes = Math.min(
+      MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
+      contractFileLimit,
+      availableQuotaLimit,
+    );
+    if (selectedFile.size > maxAllowedBytes) {
+      return `File is ${formatBytes(selectedFile.size)}; the current upload limit is ${formatBytes(maxAllowedBytes)}.`;
     }
     return null;
   };
@@ -199,6 +298,8 @@ export function KnowledgeMaterialUploadForm({
       permissionsReady &&
       contextReady &&
       storageReady &&
+      readiness.supportsDuplicateProtection &&
+      !isInspecting &&
       missingFields.length === 0,
   );
 
@@ -212,7 +313,45 @@ export function KnowledgeMaterialUploadForm({
       return;
     }
     setValidationError(null);
+    setIsInspecting(true);
     try {
+      const bytes = await readFileBytes(file);
+      const sha256 = await sha256Hex(bytes);
+      if (inferKnowledgeMaterialContentType(file).includes("pdf")) {
+        const { getDocument, GlobalWorkerOptions } = await import(
+          "pdfjs-dist/legacy/build/pdf.mjs"
+        );
+        if (!GlobalWorkerOptions.workerSrc) {
+          GlobalWorkerOptions.workerSrc = new URL(
+            "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+            import.meta.url,
+          ).toString();
+        }
+        const loadingTask = getDocument({ data: bytes, password: "" });
+        try {
+          const pdf = await loadingTask.promise;
+          const pdfError = validateKnowledgeMaterialPdfSelection({
+            pageCount: pdf.numPages,
+            selectedPageRanges,
+            maxPagesPerOperation: maxPdfPages,
+          });
+          if (pdfError) {
+            setValidationError(pdfError);
+            return;
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === "PasswordException") {
+            throw new Error("Password-protected PDFs cannot be uploaded. Remove the password and try again.");
+          }
+          throw error;
+        } finally {
+          await loadingTask.destroy();
+        }
+      }
+      if (await checkDuplicate(sha256)) {
+        setValidationError("This exact file already exists in the school knowledge library. Open the existing material instead of uploading another copy.");
+        return;
+      }
       await onUpload({
         file,
         contentType: inferKnowledgeMaterialContentType(file),
@@ -224,9 +363,13 @@ export function KnowledgeMaterialUploadForm({
         isCurriculumReference,
         uploadIntent,
         selectedPageRanges: selectedPageRanges.trim(),
+        sha256,
       });
-    } catch {
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : "Unable to inspect this file before upload.");
       return;
+    } finally {
+      setIsInspecting(false);
     }
     clearFile();
     setTitle("");
@@ -261,6 +404,7 @@ export function KnowledgeMaterialUploadForm({
         <p>{readiness.isLoading ? "…" : readiness.hasPlanningPermission ? "✓" : "!"} Planning or curriculum permission</p>
         <p>{readiness.isLoading ? "…" : readiness.hasUploadPermission ? "✓" : "!"} Upload permission</p>
         <p>{readiness.isLoading ? "…" : contextReady ? "✓" : "!"} {contextReady ? "Assigned teaching context available" : "No assigned class and subject are available"}</p>
+        <p>{readiness.isLoading ? "…" : readiness.supportsDuplicateProtection ? "✓" : "!"} {readiness.supportsDuplicateProtection ? "Duplicate-file protection ready" : "Duplicate-file protection is being prepared"}</p>
         <p>
           {readiness.isLoading
             ? "… Checking storage entitlement"
@@ -317,7 +461,15 @@ export function KnowledgeMaterialUploadForm({
             <p className="text-[11px] font-bold text-slate-400">
               Choose PDF, DOCX, PPTX, TXT, MD, or image
             </p>
-            <p className="mt-1 text-[9px] font-medium text-slate-300">Max 12 MB</p>
+            <p className="mt-1 text-[9px] font-medium text-slate-300">
+              Max {formatBytes(Math.min(
+                MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
+                readiness.maxFileSizeBytes ?? MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
+                readiness.storageStatus === "ready"
+                  ? readiness.availableBytes
+                  : MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,
+              ))}
+            </p>
           </>
         )}
       </div>
@@ -408,7 +560,7 @@ export function KnowledgeMaterialUploadForm({
               className="h-10 w-full rounded-xl border border-sky-100 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all placeholder:text-slate-300 focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10"
             />
             <span className="block text-[10px] font-semibold leading-relaxed text-sky-700">
-              Leave blank to index the whole PDF, or enter the pages to include in search and AI generation.
+              Leave blank to index the whole PDF when it has at most {maxPdfPages} pages. Larger PDFs require a range containing no more than {maxPdfPages} pages.
             </span>
           </label>
         ) : null}
@@ -467,14 +619,14 @@ export function KnowledgeMaterialUploadForm({
 
       <button
         type="submit"
-        disabled={isUploading || !canSubmit}
+        disabled={isUploading || isInspecting || !canSubmit}
         className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all ${
-          isUploading || !canSubmit
+          isUploading || isInspecting || !canSubmit
             ? "cursor-not-allowed bg-slate-100 text-slate-400"
             : "bg-slate-950 text-white shadow-lg shadow-slate-950/10 hover:bg-slate-800"
         }`}
       >
-        {isUploading ? "Uploading securely..." : "Upload material"}
+        {isInspecting ? "Checking file..." : isUploading ? "Uploading securely..." : "Upload material"}
       </button>
     </form>
   );

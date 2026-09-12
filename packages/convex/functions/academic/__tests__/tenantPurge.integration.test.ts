@@ -80,7 +80,28 @@ it("purges only the exact development tenant in bounded dependency order", async
       createdAt: 1,
       updatedAt: 1,
     });
-    return { target, retained, membershipId, grantId };
+    const targetFingerprintId = await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+      schoolId: target,
+      sha256: "a".repeat(64),
+      status: "reserved",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const retainedFingerprintId = await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+      schoolId: retained,
+      sha256: "b".repeat(64),
+      status: "reserved",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    return {
+      target,
+      retained,
+      membershipId,
+      grantId,
+      targetFingerprintId,
+      retainedFingerprintId,
+    };
   });
 
   await expect(t.mutation(purgeBatch, {
@@ -103,10 +124,14 @@ it("purges only the exact development tenant in bounded dependency order", async
     retainedClasses: await ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", fixture.retained)).take(10),
     membership: await ctx.db.get(fixture.membershipId),
     grant: await ctx.db.get(fixture.grantId),
+    targetFingerprint: await ctx.db.get(fixture.targetFingerprintId),
+    retainedFingerprint: await ctx.db.get(fixture.retainedFingerprintId),
   }));
   expect(state.target).toBeNull();
   expect(state.retained).not.toBeNull();
   expect(state.retainedClasses).toHaveLength(1);
   expect(state.membership).toBeNull();
   expect(state.grant).toBeNull();
+  expect(state.targetFingerprint).toBeNull();
+  expect(state.retainedFingerprint).not.toBeNull();
 });

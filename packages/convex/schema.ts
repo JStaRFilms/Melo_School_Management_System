@@ -2620,6 +2620,7 @@ export default defineSchema({
     fileName: v.string(),
     contentType: v.string(),
     expectedSize: v.number(),
+    expectedSha256: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.string()),
     subjectId: v.optional(v.id("subjects")),
@@ -2638,6 +2639,7 @@ export default defineSchema({
       v.union(v.literal("actor_default"), v.literal("private_first")),
     ),
     selectedPageRanges: v.optional(v.string()),
+    maxPagesPerOperation: v.optional(v.number()),
     activeAttemptId: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
@@ -2659,6 +2661,24 @@ export default defineSchema({
     .index("by_school_and_upload_token", ["schoolId", "uploadToken"])
     .index("by_school_and_owner", ["schoolId", "ownerUserId"])
     .index("by_status_and_expiry", ["status", "expiresAt"]),
+
+  knowledgeMaterialFileFingerprints: defineTable({
+    schoolId: v.id("schools"),
+    sha256: v.string(),
+    uploadIntentId: v.optional(v.id("knowledgeMaterialUploadIntents")),
+    materialId: v.optional(v.id("knowledgeMaterials")),
+    status: v.union(
+      v.literal("reserved"),
+      v.literal("completed"),
+      v.literal("backfill_complete"),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_sha256", ["schoolId", "sha256"])
+    .index("by_upload_intent", ["uploadIntentId"])
+    .index("by_material", ["materialId"]),
 
   knowledgeMaterials: defineTable({
     schoolId: v.id("schools"),
@@ -2685,6 +2705,8 @@ export default defineSchema({
     indexedAt: v.union(v.number(), v.null()),
     selectedPageRanges: v.optional(v.string()),
     selectedPageNumbers: v.optional(v.array(v.number())),
+    maxPagesPerOperation: v.optional(v.number()),
+    fingerprintVersion: v.optional(v.literal(1)),
     pdfPageCount: v.optional(v.number()),
     sourceFileMode: v.optional(v.union(v.literal("original"), v.literal("selected_pages"))),
     sourcePdfPageCount: v.optional(v.number()),
@@ -2694,6 +2716,7 @@ export default defineSchema({
     updatedBy: v.id("users"),
   })
     .index("by_school", ["schoolId"])
+    .index("by_school_and_fingerprint_version", ["schoolId", "fingerprintVersion"])
     .index("by_storage", ["storageId"])
     .index("by_school_and_owner_user", ["schoolId", "ownerUserId"])
     .index("by_school_and_owner_role", ["schoolId", "ownerRole"])

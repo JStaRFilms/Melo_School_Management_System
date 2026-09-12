@@ -36,7 +36,7 @@ export type KnowledgeMaterialUploadIntent =
 
 export const MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES = 12 * 1024 * 1024;
 export const MAX_KNOWLEDGE_MATERIAL_PDF_PAGES = 80;
-export const MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES = 30;
+export const MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES = MAX_KNOWLEDGE_MATERIAL_PDF_PAGES;
 export const MAX_KNOWLEDGE_MATERIAL_INGESTION_ATTEMPTS = 8;
 
 export type KnowledgeMaterialIngestionOwnerRole =
@@ -63,6 +63,7 @@ export type KnowledgeMaterialIngestionSnapshot = {
   storageContentType?: string;
   selectedPageRanges?: string;
   selectedPageNumbers?: number[];
+  maxPagesPerOperation?: number;
   sourceFileMode?: "original" | "selected_pages";
   externalUrl?: string;
   searchText: string;
@@ -410,7 +411,7 @@ export function parsePdfPageRanges(value: string): number[] {
         if (pages.size + newPagesInRange > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) break;
       }
       if (pages.size + newPagesInRange > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
-        throw new ConvexError(`Select at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages at a time`);
+        throw new ConvexError(`Index at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages per material`);
       }
       for (let page = start; page <= end; page += 1) pages.add(page);
     } else if (single) {
@@ -423,7 +424,7 @@ export function parsePdfPageRanges(value: string): number[] {
       throw new ConvexError("Page ranges must use numbers like 1-5,7-8,70-72");
     }
     if (pages.size > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
-      throw new ConvexError(`Select at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages at a time`);
+      throw new ConvexError(`Index at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages per material`);
     }
   }
   return Array.from(pages).sort((a, b) => a - b);
@@ -432,6 +433,7 @@ export function parsePdfPageRanges(value: string): number[] {
 export function assertPdfPageSelectionWithinLimit(args: {
   selectedPageNumbers: number[];
   maxPageCount?: number;
+  maxSelectedPageCount?: number;
 }) {
   const invalidPage = args.selectedPageNumbers.find(
     (page) => !Number.isInteger(page) || page < 1
@@ -439,8 +441,12 @@ export function assertPdfPageSelectionWithinLimit(args: {
   if (invalidPage !== undefined) {
     throw new ConvexError(`Selected page ${invalidPage} is not a valid page number`);
   }
-  if (args.selectedPageNumbers.length > MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES) {
-    throw new ConvexError(`Select at most ${MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES} PDF pages at a time`);
+  const maxSelectedPageCount = Math.min(
+    MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES,
+    args.maxSelectedPageCount ?? MAX_KNOWLEDGE_MATERIAL_SELECTED_PDF_PAGES,
+  );
+  if (args.selectedPageNumbers.length > maxSelectedPageCount) {
+    throw new ConvexError(`Index at most ${maxSelectedPageCount} PDF pages per material`);
   }
   if (args.maxPageCount !== undefined) {
     const invalid = args.selectedPageNumbers.find((page) => page > args.maxPageCount!);

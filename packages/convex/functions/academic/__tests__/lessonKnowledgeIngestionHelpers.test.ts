@@ -306,6 +306,24 @@ describe("lessonKnowledgeIngestionHelpers", () => {
     expect(result.errorMessage).toBeNull();
   });
 
+  it("enforces a lower active-entitlement PDF page cap during extraction", async () => {
+    const samplePdf = readFileSync(
+      new URL(
+        "../../../../../docs/School curriculum example/JSS1 SOCIAL STUDIES SECOND TERM LESSON NOTES.pdf",
+        import.meta.url
+      )
+    );
+
+    const result = await extractReadableTextFromBuffer(samplePdf, {
+      contentType: "application/pdf",
+      maxPdfPages: 10,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.pageCount).toBe(11);
+    expect(result.errorMessage).toContain("at most 10 pages");
+  });
+
   it("routes to OCR instead of indexing partial PDF text when the global parse budget expires", async () => {
     const samplePdf = readFileSync(
       new URL(

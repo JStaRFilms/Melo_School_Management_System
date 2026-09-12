@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   BookOpenText,
   Clock3,
@@ -164,6 +164,7 @@ function matchesSearch(material: KnowledgeLibraryListResponse["materials"][numbe
 
 export default function KnowledgeLibraryPage() {
   const { workspaceAccess } = useAuth();
+  const convex = useConvex();
   const schoolId = workspaceAccess?.state === "ready"
     ? workspaceAccess.branch.schoolId as Id<"schools">
     : undefined;
@@ -179,11 +180,16 @@ export default function KnowledgeLibraryPage() {
     "functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeMaterials" as never,
     queryArgs as never
   ) as KnowledgeLibraryListResponse | undefined;
-  const [readinessNow] = useState(() => Date.now());
+  const [readinessObservedAt, setReadinessObservedAt] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setReadinessObservedAt(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const uploadReadinessData = useQuery(
     "functions/academic/knowledgeUploadReadiness:getKnowledgeMaterialUploadReadiness" as never,
-    schoolId ? ({ schoolId, now: readinessNow } as never) : ("skip" as never),
+    schoolId ? ({ schoolId, now: readinessObservedAt } as never) : ("skip" as never),
   ) as {
+    fingerprintVersion?: 0 | 1;
     hasPlanningPermission: boolean;
     hasUploadPermission: boolean;
     hasAssignedContext: boolean;
@@ -191,6 +197,8 @@ export default function KnowledgeLibraryPage() {
       status: KnowledgeMaterialUploadReadiness["storageStatus"];
       availableBytes: number;
       allocatedBytes: number;
+      maxFileSizeBytes: number | null;
+      maxPagesPerOperation: number | null;
     };
   } | undefined;
 
@@ -212,9 +220,12 @@ export default function KnowledgeLibraryPage() {
     hasUploadPermission: uploadReadinessData?.hasUploadPermission ??
       hasEffectiveCapability(workspaceAccess, "assets.upload"),
     hasAssignedContext: uploadReadinessData?.hasAssignedContext ?? true,
+    supportsDuplicateProtection: uploadReadinessData?.fingerprintVersion === 1,
     storageStatus: uploadReadinessData?.storage.status ?? "missing_entitlement",
     availableBytes: uploadReadinessData?.storage.availableBytes ?? 0,
     allocatedBytes: uploadReadinessData?.storage.allocatedBytes ?? 0,
+    maxFileSizeBytes: uploadReadinessData?.storage.maxFileSizeBytes ?? null,
+    maxPagesPerOperation: uploadReadinessData?.storage.maxPagesPerOperation ?? null,
   };
 
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
@@ -224,6 +235,7 @@ export default function KnowledgeLibraryPage() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [trackedUploadIds, setTrackedUploadIds] = useState<string[]>([]);
 
   const requestKnowledgeMaterialUpload = useMutation(
     "functions/academic/lessonKnowledgeIngestion:requestSecureKnowledgeMaterialUpload" as never,
@@ -234,6 +246,16 @@ export default function KnowledgeLibraryPage() {
   const updateDetails = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialDetails" as never);
   const updateState = useMutation("functions/academic/lessonKnowledgeAdmin:updateAdminKnowledgeMaterialState" as never);
   const createTopic = useMutation("functions/academic/lessonKnowledgeAdmin:createAdminKnowledgeTopic" as never);
+  const trackedUploadStatuses = useQuery(
+    "functions/academic/knowledgeUploadReadiness:getTrackedKnowledgeMaterialProcessingStatuses" as never,
+    schoolId && trackedUploadIds.length > 0
+      ? ({ schoolId, materialIds: trackedUploadIds } as never)
+      : ("skip" as never),
+  ) as Array<{
+    materialId: string;
+    title: string;
+    processingStatus: "awaiting_upload" | "queued" | "extracting" | "ready" | "ocr_needed" | "failed";
+  }> | undefined;
 
   const detailQuery = useQuery(
     "functions/academic/lessonKnowledgeAdmin:getAdminKnowledgeMaterial" as never,
@@ -255,6 +277,31 @@ export default function KnowledgeLibraryPage() {
   }, [detailQuery, selectedMaterialId]);
 
   const materials = useMemo(() => libraryData?.materials ?? [], [libraryData]);
+
+  useEffect(() => {
+    if (!trackedUploadStatuses) return;
+    const terminalIds = new Set<string>();
+    for (const material of trackedUploadStatuses) {
+      if (material.processingStatus === "failed") {
+        appToast.error("Material ingestion failed", {
+          id: `knowledge-ingestion-failed-${material.materialId}`,
+          description: `${material.title} could not be indexed. Open it for details or retry ingestion.`,
+        });
+        terminalIds.add(material.materialId);
+      } else if (material.processingStatus === "ocr_needed") {
+        appToast.warning("Material needs OCR", {
+          id: `knowledge-ingestion-ocr-${material.materialId}`,
+          description: `${material.title} has no usable embedded text. Open it to request OCR when a provider is available.`,
+        });
+        terminalIds.add(material.materialId);
+      } else if (material.processingStatus === "ready") {
+        terminalIds.add(material.materialId);
+      }
+    }
+    if (terminalIds.size > 0) {
+      setTrackedUploadIds((current) => current.filter((id) => !terminalIds.has(id)));
+    }
+  }, [trackedUploadStatuses]);
 
   const showNotice = (notice: { tone: "success" | "error" | "warning"; title?: string; message: string }) => {
     const title = notice.title ?? (notice.tone === "success" ? "Success" : notice.tone === "warning" ? "Review required" : "Something went wrong");
@@ -333,6 +380,7 @@ export default function KnowledgeLibraryPage() {
         fileName: data.file.name,
         contentType: data.contentType,
         size: data.file.size,
+        sha256: data.sha256,
         title: data.title,
         description: data.description || null,
         subjectId: data.subjectId ? (data.subjectId as never) : null,
@@ -359,9 +407,14 @@ export default function KnowledgeLibraryPage() {
         },
       );
       if (!response.ok) throw new Error("The secure file transfer was rejected.");
-      await finalizeKnowledgeMaterialUpload({
+      const finalized = await finalizeKnowledgeMaterialUpload({
         uploadIntentId: upload.uploadIntentId as never,
-      } as never);
+      } as never) as { materialId: string };
+      setTrackedUploadIds((current) =>
+        current.includes(finalized.materialId)
+          ? current
+          : [...current, finalized.materialId].slice(-20),
+      );
       appToast.success("Material uploaded", {
         description: "The material is securely stored and queued for indexing.",
       });
@@ -374,6 +427,15 @@ export default function KnowledgeLibraryPage() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleDuplicateCheck = async (sha256: string): Promise<boolean> => {
+    if (!schoolId) throw new Error("Select an active school before uploading.");
+    const result = await convex.query(
+      "functions/academic/knowledgeUploadReadiness:checkKnowledgeMaterialFileDuplicate" as never,
+      { schoolId, sha256 } as never,
+    ) as { duplicate: boolean };
+    return result.duplicate;
   };
 
   const handleSaveDetails = async (args: {
@@ -565,6 +627,7 @@ export default function KnowledgeLibraryPage() {
           isAdmin
           isUploading={isUploading}
           readiness={uploadReadiness}
+          checkDuplicate={handleDuplicateCheck}
           onUpload={handleUpload}
         />
       </AdminSheet>

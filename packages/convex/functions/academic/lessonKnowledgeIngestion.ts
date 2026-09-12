@@ -42,7 +42,13 @@ import {
 } from "./lessonKnowledgeIngestionHelpers";
 import { assertLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import type { QuotaReservationResult } from "./metering";
-import { requireContractBoundStorageForUpload } from "./knowledgeUploadReadiness";
+import {
+  getContractBoundStorageReadiness,
+  hasDuplicateKnowledgeMaterialFile,
+  isKnowledgeMaterialFingerprintProtectionReady,
+  requireContractBoundStorageForUpload,
+  storageSha256ToHex,
+} from "./knowledgeUploadReadiness";
 
 const MAX_KNOWLEDGE_MATERIAL_STALE_EXTRACTION_MS = 2 * 60 * 1000;
 
@@ -244,6 +250,7 @@ function buildKnowledgeMaterialRecord(args: {
   externalUrl?: string;
   selectedPageRanges?: string;
   selectedPageNumbers?: number[];
+  maxPagesPerOperation?: number;
   uploadIntent?: KnowledgeMaterialUploadIntent;
   defaultsMode?: "actor_default" | "private_first";
 }) {
@@ -289,6 +296,10 @@ function buildKnowledgeMaterialRecord(args: {
     ...(args.externalUrl ? { externalUrl: args.externalUrl } : {}),
     ...(args.selectedPageRanges ? { selectedPageRanges: args.selectedPageRanges } : {}),
     ...(args.selectedPageNumbers?.length ? { selectedPageNumbers: args.selectedPageNumbers } : {}),
+    ...(args.sourceType === "youtube_link" ? { fingerprintVersion: 1 as const } : {}),
+    ...(args.maxPagesPerOperation !== undefined
+      ? { maxPagesPerOperation: args.maxPagesPerOperation }
+      : {}),
     searchStatus: "not_indexed" as const,
     searchText,
     processingStatus: defaults.processingStatus,
@@ -511,6 +522,32 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
     if (!storageMeta) {
       throw new ConvexError("Stored file was not found during upload");
     }
+    const actualSha256 = storageSha256ToHex(storageMeta.sha256);
+    if (args.expectedSha256 && actualSha256 !== args.expectedSha256) {
+      throw new ConvexError("Stored file fingerprint does not match the inspected upload");
+    }
+    const reservedFingerprint = await ctx.db
+      .query("knowledgeMaterialFileFingerprints")
+      .withIndex("by_upload_intent", (q) => q.eq("uploadIntentId", args._id))
+      .unique();
+    if (reservedFingerprint && reservedFingerprint.sha256 !== actualSha256) {
+      throw new ConvexError("Upload fingerprint reservation does not match the stored file");
+    }
+    let fingerprintId = reservedFingerprint?._id;
+    if (!fingerprintId) {
+      if (await hasDuplicateKnowledgeMaterialFile(ctx, schoolId, actualSha256)) {
+        throw new ConvexError("This exact file already exists in the school knowledge library. Open the existing material instead of uploading another copy.");
+      }
+      const fingerprintNow = Date.now();
+      fingerprintId = await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId,
+        sha256: actualSha256,
+        uploadIntentId: args._id,
+        status: "reserved",
+        createdAt: fingerprintNow,
+        updatedAt: fingerprintNow,
+      });
+    }
     assertKnowledgeMaterialUploadIsSupported({
       contentType: args.contentType,
       size: args.expectedSize,
@@ -527,6 +564,15 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
     ) {
       throw new ConvexError("Page selection is only available for PDF uploads.");
     }
+    if (
+      selectedPageNumbers?.length &&
+      args.maxPagesPerOperation !== undefined &&
+      selectedPageNumbers.length > args.maxPagesPerOperation
+    ) {
+      throw new ConvexError(
+        `Index at most ${args.maxPagesPerOperation} PDF pages under this school's active entitlement`,
+      );
+    }
 
     const record = buildKnowledgeMaterialRecord({
       actorUserId: userId,
@@ -541,6 +587,9 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
       ...(args.topicId ? { topicId: args.topicId } : {}),
       ...(selectedPageRanges ? { selectedPageRanges } : {}),
       ...(selectedPageNumbers?.length ? { selectedPageNumbers } : {}),
+      ...(args.maxPagesPerOperation !== undefined
+        ? { maxPagesPerOperation: args.maxPagesPerOperation }
+        : {}),
       ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
       defaultsMode: args.defaultsMode,
     });
@@ -548,6 +597,7 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
     const materialId = await ctx.db.insert("knowledgeMaterials", {
       ...record,
       storageId: args.storageId,
+      fingerprintVersion: 1,
       processingStatus: "queued",
       createdAt: now,
       updatedAt: now,
@@ -592,6 +642,11 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
         actorUserId: userId,
       },
     );
+    await ctx.db.patch(fingerprintId, {
+      materialId,
+      status: "completed",
+      updatedAt: now,
+    });
     await ctx.db.patch(args._id, {
       status: "completed",
       activeAttemptId: undefined,
@@ -614,6 +669,7 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
     fileName: v.string(),
     contentType: v.string(),
     size: v.number(),
+    sha256: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.union(v.string(), v.null())),
     subjectId: v.optional(v.union(v.id("subjects"), v.null())),
@@ -668,6 +724,10 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       throw new ConvexError("Use a file name between 1 and 200 characters");
     }
     const contentType = normalizeKnowledgeMaterialContentType(args.contentType) ?? "";
+    const expectedSha256 = args.sha256?.trim().toLowerCase();
+    if (expectedSha256 && !/^[a-f0-9]{64}$/.test(expectedSha256)) {
+      throw new ConvexError("A valid SHA-256 file fingerprint is required");
+    }
     assertKnowledgeMaterialUploadIsSupported({
       contentType,
       size: args.size,
@@ -713,14 +773,33 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
     ) {
       throw new ConvexError("Page selection is only available for PDF uploads.");
     }
-    if (selectedPageRanges) parsePdfPageRanges(selectedPageRanges);
+    const selectedPageNumbers = selectedPageRanges
+      ? parsePdfPageRanges(selectedPageRanges)
+      : undefined;
+    if (!expectedSha256 && !await isKnowledgeMaterialFingerprintProtectionReady(ctx, schoolId)) {
+      throw new ConvexError("Duplicate-file protection is still being set up for this school. Try again in a moment.");
+    }
+    if (
+      expectedSha256 &&
+      await hasDuplicateKnowledgeMaterialFile(ctx, schoolId, expectedSha256)
+    ) {
+      throw new ConvexError("This exact file already exists in the school knowledge library. Open the existing material instead of uploading another copy.");
+    }
+    const storage = await requireContractBoundStorageForUpload(ctx, schoolId, args.size);
+    if (
+      selectedPageNumbers?.length &&
+      storage.maxPagesPerOperation !== null &&
+      selectedPageNumbers.length > storage.maxPagesPerOperation
+    ) {
+      throw new ConvexError(
+        `Index at most ${storage.maxPagesPerOperation} PDF pages under this school's active entitlement`,
+      );
+    }
     await assertLessonKnowledgeRateLimit(ctx, {
       action: "knowledge_material_upload_url",
       schoolId,
       actorUserId: userId,
     });
-
-    await requireContractBoundStorageForUpload(ctx, schoolId, args.size);
     const quotaReservationKey = `knowledge-upload:${args.uploadToken}`;
     const reservation: QuotaReservationResult = await ctx.runMutation(
       internal.functions.academic.metering.reserveUsageQuota,
@@ -751,6 +830,7 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       fileName,
       contentType,
       expectedSize: args.size,
+      ...(expectedSha256 ? { expectedSha256 } : {}),
       title,
       ...(description ? { description } : {}),
       ...(args.subjectId ? { subjectId: args.subjectId } : {}),
@@ -761,11 +841,24 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       ...(args.uploadIntent ? { uploadIntent: args.uploadIntent } : {}),
       ...(args.defaultsMode ? { defaultsMode: args.defaultsMode } : {}),
       ...(selectedPageRanges ? { selectedPageRanges } : {}),
+      ...(storage.maxPagesPerOperation !== null
+        ? { maxPagesPerOperation: storage.maxPagesPerOperation }
+        : {}),
       status: "pending",
       expiresAt,
       createdAt: now,
       updatedAt: now,
     });
+    if (expectedSha256) {
+      await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId,
+        sha256: expectedSha256,
+        uploadIntentId,
+        status: "reserved",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
     await ctx.scheduler.runAt(
       expiresAt,
       internal.functions.academic.lessonKnowledgeIngestion
@@ -830,6 +923,14 @@ export const recordKnowledgeMaterialUploadStorage = internalMutation({
       throw new ConvexError("Knowledge material upload is no longer available");
     }
     await assertStorageUnclaimed(ctx, args.storageId);
+    const metadata = await ctx.db.system.get("_storage", args.storageId);
+    if (!metadata) throw new ConvexError("Stored upload metadata is unavailable");
+    if (
+      intent.expectedSha256 &&
+      storageSha256ToHex(metadata.sha256) !== intent.expectedSha256
+    ) {
+      throw new ConvexError("Stored file fingerprint does not match the inspected upload");
+    }
     await ctx.db.patch(intent._id, {
       storageId: args.storageId,
       status: "stored",
@@ -861,6 +962,11 @@ async function closeKnowledgeMaterialUploadIntent(
     }
     await ctx.storage.delete(intent.storageId);
   }
+  const fingerprint = await ctx.db
+    .query("knowledgeMaterialFileFingerprints")
+    .withIndex("by_upload_intent", (q) => q.eq("uploadIntentId", intent._id))
+    .unique();
+  if (fingerprint?.status === "reserved") await ctx.db.delete(fingerprint._id);
   await ctx.runMutation(
     internal.functions.academic.metering.releaseUsageQuota,
     {
@@ -1782,6 +1888,21 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
     const storageMeta = material.storageId
       ? ((await ctx.db.system.get("_storage", material.storageId)) as StorageMetadata | null)
       : null;
+    let maxPagesPerOperation = material.maxPagesPerOperation;
+    if (
+      maxPagesPerOperation === undefined &&
+      isKnowledgeMaterialPdfContentType(storageMeta?.contentType)
+    ) {
+      const storage = await getContractBoundStorageReadiness(
+        ctx,
+        material.schoolId,
+        Date.now(),
+      );
+      if (storage.maxPagesPerOperation === null) {
+        throw new ConvexError("An active PDF page entitlement is required for ingestion");
+      }
+      maxPagesPerOperation = storage.maxPagesPerOperation;
+    }
 
     const snapshot: KnowledgeMaterialIngestionSnapshot = {
       materialId: material._id,
@@ -1801,6 +1922,7 @@ export const queueKnowledgeMaterialProcessingInternal = internalMutation({
       ...(storageMeta?.contentType ? { storageContentType: storageMeta.contentType } : {}),
       ...(material.selectedPageRanges ? { selectedPageRanges: material.selectedPageRanges } : {}),
       ...(material.selectedPageNumbers?.length ? { selectedPageNumbers: material.selectedPageNumbers } : {}),
+      ...(maxPagesPerOperation !== undefined ? { maxPagesPerOperation } : {}),
       ...(material.sourceFileMode ? { sourceFileMode: material.sourceFileMode } : {}),
       ...(material.externalUrl ? { externalUrl: material.externalUrl } : {}),
       searchText: material.searchText,
@@ -1827,7 +1949,9 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
     actorUserId: v.id("users"),
     sourcePdfPageCount: v.number(),
   },
-  returns: v.null(),
+  returns: v.object({
+    status: v.union(v.literal("replaced"), v.literal("duplicate_removed")),
+  }),
   handler: async (ctx, args) => {
     const material = await ctx.db.get(args.materialId);
     if (!material || material.schoolId !== args.schoolId) {
@@ -1844,17 +1968,96 @@ export const replaceKnowledgeMaterialStorageInternal = internalMutation({
       ownerId: String(material._id),
     });
     await assertStorageUnclaimed(ctx, args.nextStorageId);
+    const nextStorageMetadata = await ctx.db.system.get("_storage", args.nextStorageId);
+    if (!nextStorageMetadata) {
+      throw new ConvexError("Replacement storage metadata is unavailable");
+    }
+    const nextSha256 = storageSha256ToHex(nextStorageMetadata.sha256);
+    const materialFingerprints = await ctx.db
+      .query("knowledgeMaterialFileFingerprints")
+      .withIndex("by_material", (q) => q.eq("materialId", material._id))
+      .take(2);
+    if (materialFingerprints.length > 1) {
+      throw new ConvexError("Knowledge material fingerprints require reconciliation");
+    }
+    const matchingFingerprints = await ctx.db
+      .query("knowledgeMaterialFileFingerprints")
+      .withIndex("by_school_and_sha256", (q) =>
+        q.eq("schoolId", material.schoolId).eq("sha256", nextSha256),
+      )
+      .take(2);
+    const competingFingerprints = matchingFingerprints.filter(
+      (row) => row._id !== materialFingerprints[0]?._id,
+    );
+    if (competingFingerprints.some((row) => row.status === "reserved")) {
+      throw new ConvexError(
+        "Matching PDF pages are still being uploaded. Retry after that upload completes.",
+      );
+    }
+    if (competingFingerprints.some((row) => row.status === "completed" && row.materialId)) {
+      const materialFingerprint = materialFingerprints[0];
+      const uploadIntent = materialFingerprint?.uploadIntentId
+        ? await ctx.db.get(materialFingerprint.uploadIntentId)
+        : null;
+      if (
+        !materialFingerprint ||
+        !uploadIntent ||
+        uploadIntent.materialId !== material._id ||
+        uploadIntent.status !== "completed"
+      ) {
+        throw new ConvexError("Duplicate upload cleanup requires operator reconciliation");
+      }
+      await ctx.runMutation(
+        internal.functions.academic.metering.releaseUsageQuota,
+        {
+          schoolId: material.schoolId,
+          meterType: "storage_bytes",
+          idempotencyKey: uploadIntent.quotaReservationKey,
+        },
+      );
+      await ctx.storage.delete(args.previousStorageId);
+      await ctx.storage.delete(args.nextStorageId);
+      await ctx.db.delete(materialFingerprint._id);
+      await ctx.db.patch(uploadIntent._id, {
+        status: "failed",
+        materialId: undefined,
+        failureReason: "Selected PDF pages duplicate an existing school knowledge material",
+        updatedAt: Date.now(),
+      });
+      await ctx.db.delete(material._id);
+      return { status: "duplicate_removed" as const };
+    }
+    if (competingFingerprints.length > 0) {
+      throw new ConvexError("Matching PDF fingerprint requires operator reconciliation");
+    }
 
+    const now = Date.now();
     await ctx.db.patch(args.materialId, {
       storageId: args.nextStorageId,
       sourceFileMode: "selected_pages",
       sourcePdfPageCount: args.sourcePdfPageCount,
-      updatedAt: Date.now(),
+      fingerprintVersion: 1,
+      updatedAt: now,
       updatedBy: args.actorUserId,
     });
+    if (materialFingerprints[0]) {
+      await ctx.db.patch(materialFingerprints[0]._id, {
+        sha256: nextSha256,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("knowledgeMaterialFileFingerprints", {
+        schoolId: material.schoolId,
+        sha256: nextSha256,
+        materialId: material._id,
+        status: "completed",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
 
     await ctx.storage.delete(args.previousStorageId);
-    return null;
+    return { status: "replaced" as const };
   },
 });
 
