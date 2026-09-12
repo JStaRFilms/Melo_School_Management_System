@@ -17,7 +17,9 @@ import {
   Play,
   AlertTriangle,
   Loader2,
+  HardDrive,
 } from "lucide-react";
+import { FreeTrialStorageModal } from "./FreeTrialStorageModal";
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
 import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
 import { appToast, getErrorMessage } from "@school/shared/toast";
@@ -46,11 +48,13 @@ function SchoolsTable({
   schools,
   onManageFeatures,
   onResetPassword,
+  onManageStorage,
   onToggleStatus,
 }: {
   schools: SchoolItem[];
   onManageFeatures: (school: SchoolItem) => void;
   onResetPassword: (school: SchoolItem) => void;
+  onManageStorage: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
   const [tableBodyRef] = useAutoAnimate<HTMLTableSectionElement>({
@@ -172,6 +176,17 @@ function SchoolsTable({
                           <KeyRound className="h-3.5 w-3.5" />
                           Password
                         </button>
+                        {school.status === "active" ? (
+                          <button
+                            type="button"
+                            onClick={() => onManageStorage(school)}
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                            title="Manage free-trial storage"
+                          >
+                            <HardDrive className="h-3.5 w-3.5" />
+                            Storage
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => onToggleStatus(school)}
@@ -211,11 +226,13 @@ function SchoolsCards({
   schools,
   onManageFeatures,
   onResetPassword,
+  onManageStorage,
   onToggleStatus,
 }: {
   schools: SchoolItem[];
   onManageFeatures: (school: SchoolItem) => void;
   onResetPassword: (school: SchoolItem) => void;
+  onManageStorage: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
   const [cardsRef] = useAutoAnimate<HTMLDivElement>({
@@ -332,7 +349,7 @@ function SchoolsCards({
                 </Link>
               ) : (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onManageFeatures(school)}
@@ -349,6 +366,16 @@ function SchoolsCards({
                       <KeyRound className="h-3.5 w-3.5 text-amber-500" />
                       Password
                     </button>
+                    {school.status === "active" ? (
+                      <button
+                        type="button"
+                        onClick={() => onManageStorage(school)}
+                        className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50"
+                      >
+                        <HardDrive className="h-3.5 w-3.5 text-indigo-500" />
+                        Storage
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => onToggleStatus(school)}
@@ -521,6 +548,7 @@ function StatusConfirmModal({
 function SchoolsListPageWithConvex() {
   const [featureModalSchool, setFeatureModalSchool] = useState<SchoolItem | null>(null);
   const [resetPasswordSchool, setResetPasswordSchool] = useState<SchoolItem | null>(null);
+  const [storageModalSchool, setStorageModalSchool] = useState<SchoolItem | null>(null);
   const [statusModalSchool, setStatusModalSchool] = useState<SchoolItem | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -668,12 +696,14 @@ function SchoolsListPageWithConvex() {
             schools={filteredSchools}
             onManageFeatures={(school) => setFeatureModalSchool(school)}
             onResetPassword={(school) => setResetPasswordSchool(school)}
+            onManageStorage={(school) => setStorageModalSchool(school)}
             onToggleStatus={(school) => setStatusModalSchool(school)}
           />
           <SchoolsCards
             schools={filteredSchools}
             onManageFeatures={(school) => setFeatureModalSchool(school)}
             onResetPassword={(school) => setResetPasswordSchool(school)}
+            onManageStorage={(school) => setStorageModalSchool(school)}
             onToggleStatus={(school) => setStatusModalSchool(school)}
           />
         </>
@@ -691,6 +721,13 @@ function SchoolsListPageWithConvex() {
         onClose={() => setResetPasswordSchool(null)}
         school={resetPasswordSchool}
       />
+
+      {storageModalSchool ? (
+        <FreeTrialStorageModal
+          school={storageModalSchool}
+          onClose={() => setStorageModalSchool(null)}
+        />
+      ) : null}
 
       <StatusConfirmModal
         school={statusModalSchool}

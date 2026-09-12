@@ -1,6 +1,10 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { internalMutation, type MutationCtx } from "../../_generated/server";
+import {
+  internalMutation,
+  type MutationCtx,
+  type QueryCtx,
+} from "../../_generated/server";
 import { recordAuditEventHelper } from "./audit";
 import { validateEntitlement } from "../foundation/usageContract";
 import { validateRate } from "../foundation/commercialContract";
@@ -9,7 +13,7 @@ const DAY = 86_400_000;
 const FREE_TRIAL_RATE_CODE = "free_trial";
 const FREE_TRIAL_ENTITLEMENT_CODE = "free_trial_storage";
 const FREE_TRIAL_CATALOG_VERSION = 2;
-const FREE_TRIAL_DURATION_DAYS = 365;
+export const FREE_TRIAL_DURATION_DAYS = 365;
 export const FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL = 100 * 1024 * 1024;
 export const FREE_TRIAL_STORAGE_POOL_BYTES = 750 * 1024 * 1024;
 const REVIEWED_EXISTING_SCHOOL_LIMIT = 5;
@@ -168,6 +172,72 @@ async function getOrCreateFreeTrialCatalog(
   return { rateVersionId, entitlementVersionId };
 }
 
+export async function schoolHasExistingStorageClaims(
+  ctx: MutationCtx | QueryCtx,
+  school: Doc<"schools">,
+): Promise<boolean> {
+  if (school.logoStorageId) return true;
+
+  const storageOwners = await Promise.all([
+    ctx.db
+      .query("admissionsDocuments")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("schoolSiteAssets")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("students")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("photoStorageId"), undefined))
+      .first(),
+    ctx.db
+      .query("knowledgeMaterials")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
+      .query("knowledgeMaterialUploadIntents")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
+      .query("schoolAssets")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("assetUploadIntents")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
+      .query("pdfCompressionCandidates")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("demoSeedStorageCleanup")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("issuedReportCards")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) =>
+        q.or(
+          q.neq(q.field("schoolLogoStorageId"), undefined),
+          q.neq(q.field("studentPhotoStorageId"), undefined),
+        ),
+      )
+      .first(),
+    ctx.db
+      .query("importWorkspaces")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("sourceFiles"), []))
+      .first(),
+  ]);
+  return storageOwners.some((owner) => owner !== null);
+}
+
 async function provisionSchoolStorage(
   ctx: MutationCtx,
   args: {
@@ -190,7 +260,7 @@ async function provisionSchoolStorage(
       )
       .take(2),
   ]);
-  if (!school || school.status !== "active") {
+  if (!school || (school.status ?? "active") !== "active") {
     throw new ConvexError("An active school is required for storage provisioning");
   }
   if (storageMeters.length > 1) {
@@ -264,6 +334,9 @@ async function provisionSchoolStorage(
     return { status: isValidExistingStorage ? "already_configured" : "requires_review" };
   }
   if (contracts.length || cycles.length) return { status: "requires_review" };
+  if (await schoolHasExistingStorageClaims(ctx, school)) {
+    return { status: "requires_review" };
+  }
 
   const allocationRows = await ctx.db.query("usageMeterAllocations").take(1001);
   if (allocationRows.length > 1000) {
@@ -374,7 +447,11 @@ async function provisionSchoolStorage(
 
 export async function ensureSchoolFreeTrialStorageHelper(
   ctx: MutationCtx,
-  args: { schoolId: Id<"schools">; actorEmail: string },
+  args: {
+    schoolId: Id<"schools">;
+    actorEmail: string;
+    auditSummary?: string;
+  },
 ): Promise<{ status: ProvisioningStatus; cycleId?: Id<"usageCycles"> }> {
   const actorEmail = args.actorEmail.trim().toLowerCase();
   if (!actorEmail || actorEmail.length > 240) {
@@ -387,7 +464,9 @@ export async function ensureSchoolFreeTrialStorageHelper(
     endAt: startAt + FREE_TRIAL_DURATION_DAYS * DAY,
     actorKind: "platform_admin",
     actorEmail,
-    auditSummary: `Activated the reviewed ${FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL}-byte free-trial storage entitlement during school provisioning; no invoice or payment created`,
+    auditSummary:
+      args.auditSummary ??
+      `Activated the reviewed ${FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL}-byte free-trial storage entitlement during school provisioning; no invoice or payment created`,
   });
 }
 
