@@ -189,10 +189,16 @@ Those package-level scripts route back to the repo root automatically.
 ### App `.env.local`
 
 - `NEXT_PUBLIC_CONVEX_URL`
-- `NEXT_PUBLIC_CONVEX_SITE_URL`
+- `NEXT_PUBLIC_CONVEX_SITE_URL` (general auth clients)
+- `CONVEX_SITE_URL` (the Apply app's server-only streaming upload proxy target)
 - `BETTER_AUTH_SECRET`
 - `SITE_URL`
 - `TRUSTED_ORIGINS`
+
+### Convex deployment
+
+- `APPLICATION_ORIGIN` (required in production for trusted Apply links and payment returns)
+- `RESEND_API_KEY` and `MELO_EMAIL_FROM` (both required; guardian email verification fails closed if either is missing)
 
 ## Troubleshooting
 

@@ -5,7 +5,7 @@ import schema from "../../../schema";
 import type { Id } from "../../../_generated/dataModel";
 import { internal } from "../../../_generated/api";
 import { seedReviewedTenantOperatorWithCapabilities } from "../../academic/__tests__/securityFixtures";
-import { recordVerifiedPaymentRef } from "../refs";
+import { listCampaignsRef, listGuardianWorkspaceBySlugRef, listPublishedOfferingsRef, recordVerifiedPaymentRef } from "../refs";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"])).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(root.length)}`, module]));
@@ -14,6 +14,7 @@ const guardianIdentityRef = makeFunctionReference<"mutation", Record<string, nev
 const createCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:createCampaignDraft");
 const publishCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:publishCampaign");
 const replacementCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:createReplacementDraft");
+const editCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:editCampaignDraft");
 const offeringRef = makeFunctionReference<"query">("functions/admissions/catalogue:getPublishedOffering");
 const createAttemptRef = makeFunctionReference<"mutation">("functions/admissions/payments:createAttempt");
 const initializeAttemptRef = makeFunctionReference<"action">("functions/admissions/payments:initializeAttempt");
@@ -27,6 +28,10 @@ const revealSensitiveApplicationDetailRef = makeFunctionReference<"mutation">("f
 const startReviewRef = makeFunctionReference<"mutation">("functions/admissions/staff:startReview");
 const requestChangesRef = makeFunctionReference<"mutation">("functions/admissions/staff:requestChanges");
 const decisionRef = makeFunctionReference<"mutation">("functions/admissions/staff:recordDecision");
+const documentReviewRef = makeFunctionReference<"mutation">("functions/admissions/staff:recordDocumentReview");
+const workflowRef = makeFunctionReference<"query">("functions/admissions/staff:getApplicationWorkflow");
+const conversionWorkflowRef = makeFunctionReference<"query">("functions/admissions/staff:getConversionWorkflow");
+const ownedApplicationRef = makeFunctionReference<"query">("functions/admissions/applications:getOwnedApplicationByPublicId");
 
 type CampaignIds = {
   programmeId: Id<"admissionsProgrammes">;
@@ -35,6 +40,7 @@ type CampaignIds = {
   declarationVersionId: Id<"admissionsDeclarationVersions">;
   productId: Id<"admissionsProducts">;
   priceId: Id<"admissionsProductPrices">;
+  draftRevision?: string;
 };
 
 async function fixture() {
@@ -77,7 +83,7 @@ async function fixture() {
     feeDisclosure: "Application processing fee",
     effectiveFrom: Date.now() - 10_000,
   }) as CampaignIds;
-  await staff.mutation(publishCampaignRef, campaign);
+  await staff.mutation(publishCampaignRef, { programmeId: campaign.programmeId, intakeId: campaign.intakeId, formVersionId: campaign.formVersionId, declarationVersionId: campaign.declarationVersionId, productId: campaign.productId, priceId: campaign.priceId });
   await guardian.mutation(guardianIdentityRef, {});
   await otherGuardian.mutation(guardianIdentityRef, {});
   return { t, staff, limited, guardian, otherGuardian, campaign, ...ids };
@@ -90,6 +96,36 @@ async function paidApplication(f: Awaited<ReturnType<typeof fixture>>, key = "pu
   const application = await f.guardian.mutation(createApplicationRef, { entitlementId: payment.entitlementId }) as { applicationId: Id<"admissionsApplications">; replayed: boolean };
   return { attempt, payment, application };
 }
+
+it("serves the restored UI read models without caller-supplied guardian identity", async () => {
+  const f = await fixture();
+  const campaigns = await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() });
+  expect(campaigns).toHaveLength(1);
+  expect(campaigns[0]).toMatchObject({ lifecycle: "published", programmeSlug: "primary", amountMinor: 500_000 });
+  const landing = await f.t.query(listPublishedOfferingsRef, { schoolSlug: "admissions-school", now: Date.now() });
+  expect(landing).toMatchObject({ available: true, offerings: [{ intakeSlug: "2026", availability: "open", amountMinor: 500_000 }] });
+  const paid = await paidApplication(f, "ui-owned-workspace");
+  const workspace = await f.guardian.query(listGuardianWorkspaceBySlugRef, { schoolSlug: "admissions-school" });
+  expect(workspace.applications).toEqual([expect.objectContaining({ applicationId: paid.application.applicationId })]);
+  const otherWorkspace = await f.otherGuardian.query(listGuardianWorkspaceBySlugRef, { schoolSlug: "admissions-school" });
+  expect(otherWorkspace.applications).toEqual([]);
+});
+
+it("returns canonical apply links and rejects stale campaign draft overwrites", async () => {
+  const f = await fixture();
+  const published = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() }))[0];
+  expect(published.applicationLink).toMatchObject({ version: "1", schoolSlug: "admissions-school", intakeSlug: "2026" });
+  expect(published.applicationLink.href).toMatch(/\/s\/admissions-school\/i\/2026$/);
+  const replacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: published.programmeId, intakeId: published.intakeId, productId: published.productId, schemaVersion: published.schemaVersion, fields: published.fields, requirements: published.requirements, declarationTitle: published.declarationTitle, declarationBody: published.declarationBody, declarationPurpose: published.declarationPurpose, amountMinor: published.amountMinor, currency: published.currency, refundPolicyKey: published.refundPolicyKey, feeDisclosure: published.feeDisclosure, effectiveFrom: Date.now() });
+  const draft = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.lifecycle === "draft");
+  if (!draft) throw new Error("replacement draft missing");
+  expect(draft.draftRevision).toBe(replacement.draftRevision);
+  const editArgs = { schoolId: f.schoolId, programmeId: draft.programmeId, intakeId: draft.intakeId, formVersionId: draft.formVersionId, declarationVersionId: draft.declarationVersionId, productId: draft.productId, priceId: draft.priceId, programmeSlug: draft.programmeSlug, programmeName: "Primary updated", ...(draft.programmeDescription ? { programmeDescription: draft.programmeDescription } : {}), intakeSlug: draft.intakeSlug, intakeName: draft.intakeName, cycleLabel: draft.cycleLabel, opensAt: draft.opensAt, closesAt: draft.closesAt, schemaVersion: draft.schemaVersion, fields: draft.fields, requirements: draft.requirements, declarationTitle: draft.declarationTitle, declarationBody: draft.declarationBody, declarationPurpose: draft.declarationPurpose, productSlug: draft.productSlug, productName: draft.productName, amountMinor: draft.amountMinor, currency: draft.currency, refundPolicyKey: draft.refundPolicyKey, feeDisclosure: draft.feeDisclosure, effectiveFrom: draft.effectiveFrom, expectedDraftRevision: draft.draftRevision };
+  const edited = await f.staff.mutation(editCampaignRef, editArgs);
+  expect(edited.draftRevision).not.toBe(draft.draftRevision);
+  await expect(f.staff.mutation(editCampaignRef, { ...editArgs, programmeName: "Stale overwrite" })).rejects.toThrow("CAMPAIGN_DRAFT_CONFLICT");
+  expect((await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.formVersionId === draft.formVersionId)?.programmeName).toBe("Primary updated");
+});
 
 it("publishes only the immutable campaign projection and deduplicates verified payment, entitlement, and application replays", async () => {
   const f = await fixture();
@@ -166,15 +202,15 @@ it("initializes guardian-owned checkout and fulfils only server-verified Paystac
     return new Response(JSON.stringify({ status: true, data: { id: 42, status: "success", reference: providerReference, amount: attempt.amountMinor, currency: attempt.currency } }), { status: 200, headers: { "content-type": "application/json" } });
   });
   try {
-    const initialized = await f.guardian.action(initializeAttemptRef, { reference: attempt.reference, callbackUrl: "https://apply.example.test/return" });
+    const initialized = await f.guardian.action(initializeAttemptRef, { reference: attempt.reference });
     expect(initialized).toMatchObject({ state: "checkout_pending", authorizationUrl: "https://checkout.paystack.test/session", replayed: false });
-    expect(await f.guardian.action(initializeAttemptRef, { reference: attempt.reference, callbackUrl: "https://apply.example.test/return" })).toMatchObject({ replayed: true });
+    expect(await f.guardian.action(initializeAttemptRef, { reference: attempt.reference })).toMatchObject({ replayed: true });
     const verified = await f.guardian.action(verifyReturnRef, { reference: attempt.reference });
     expect(verified).toMatchObject({ state: "paid" });
     expect(await f.guardian.action(verifyReturnRef, { reference: attempt.reference })).toMatchObject({ state: "paid", replayed: true });
     expect(await f.t.run((ctx) => ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", attempt.attemptId)).collect())).toHaveLength(1);
     const mismatch = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "mismatched-return" });
-    await f.guardian.action(initializeAttemptRef, { reference: mismatch.reference, callbackUrl: "https://apply.example.test/return" });
+    await f.guardian.action(initializeAttemptRef, { reference: mismatch.reference });
     providerReference = "another-merchant-reference";
     await expect(f.guardian.action(verifyReturnRef, { reference: mismatch.reference })).rejects.toThrow("does not match");
     expect(await f.t.run((ctx) => ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", mismatch.attemptId)).unique())).toBeNull();
@@ -222,6 +258,17 @@ it("handles draft replay/conflict, immutable resubmission snapshots, and correct
   expect(resubmitted.revision).toBe(2);
   expect(await f.t.run((ctx) => ctx.db.get(submitted.snapshotId))).toEqual(snapshotBefore);
   expect(await f.t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshots").withIndex("by_application_and_revision", (q) => q.eq("applicationId", application.applicationId)).collect())).toHaveLength(2);
+});
+
+it("atomically turns a needs-replacement document review into a guardian correction", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "document-review-correction");
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "document-review-save", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Fit" }] });
+  await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "document-review-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
+  const documentKey = "replacement-document";
+  const requirementId = await f.t.run(async (ctx) => { const now = Date.now(); const requirementId = await ctx.db.insert("admissionsDocumentRequirements", { schoolId: f.schoolId, formVersionId: f.campaign.formVersionId, requirementKey: "replacement", category: "identity", label: "Identity document", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 1000, maxFiles: 1, sensitivity: "personal", purpose: "Identity review", order: 2, createdAt: now, updatedAt: now }); const applicationRow = await ctx.db.get(application.applicationId); if (!applicationRow) throw new Error("application missing"); const storageId = await ctx.storage.store(new Blob(["document"])); await ctx.db.insert("admissionsDocuments", { schoolId: f.schoolId, applicationId: application.applicationId, requirementId, category: "identity", documentKey, storageId, fileName: "identity.pdf", mimeType: "application/pdf", byteSize: 8, sha256: "digest", version: 1, state: "uploaded", sensitivity: "personal", uploadedByGuardianId: applicationRow.guardianId, retentionHold: false, createdAt: now, updatedAt: now }); return requirementId; });
+  await f.staff.mutation(documentReviewRef, { schoolId: f.schoolId, documentKey, result: "needs_replacement", reasonCode: "BLURRY", guardianMessage: "Please upload a clearer copy." });
+  expect(await f.guardian.query(getDraftRef, { applicationId: application.applicationId })).toMatchObject({ state: "changes_requested", correction: { requirementIds: [requirementId], message: "Please upload a clearer copy." }, safeMessages: ["Please upload a clearer copy."] });
 });
 
 it("resumes primary contact and bound definitions and enforces every mutable core correction scope", async () => {
@@ -282,6 +329,16 @@ it("returns separate immutable basic and audited sensitive staff detail without 
   expect(sensitive).toMatchObject({ answers: [{ fieldKey: "medical-note", serializedValue: "Sensitive note" }], documents: [{ documentKey: "opaque-sensitive-document", fileName: "medical.pdf" }] });
   expect(JSON.stringify(sensitive)).not.toContain("storageId");
   expect(await f.t.run((ctx) => ctx.db.query("admissionsAuditEvents").withIndex("by_school_and_action_and_created_at", (q) => q.eq("schoolId", f.schoolId).eq("action", "application.reveal_sensitive")).unique())).toMatchObject({ applicationId: application.applicationId, actorUserId: f.staffUserId });
+});
+
+it("keeps conversion-only identities and internal status out of basic and guardian projections", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "projection-security");
+  expect(await f.limited.query(workflowRef, { schoolId: f.schoolId, applicationId: application.applicationId })).toMatchObject({ fieldKeys: expect.any(Array), requirements: [] });
+  await expect(f.limited.query(conversionWorkflowRef, { schoolId: f.schoolId, applicationId: application.applicationId })).rejects.toThrow("capability");
+  const owned = await f.guardian.query(ownedApplicationRef, { schoolSlug: "admissions-school", publicId: (await f.t.run((ctx) => ctx.db.get(application.applicationId)))?.publicId ?? "missing" });
+  expect(owned).toMatchObject({ safeMessages: [], conversion: null });
+  expect(JSON.stringify(owned)).not.toMatch(/familyId|idempotencyKey|errorCode/);
 });
 
 it("authorizes review and decisions from current enrollment capabilities, not historical capability grants", async () => {

@@ -2,8 +2,11 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { buildApplicationLinkV1 } from "@school/shared";
+import { resolveEffectiveTheme } from "../academic/groupSettings";
 import { admissionsDataClassValidator, applicationLinkV1Validator } from "../foundation/contracts";
+import { configuredApplicationOrigin } from "../foundation/applicationLinks";
 import {
+  MAX_ADMISSIONS_DOCUMENT_BYTES,
   normalizeRequiredText,
   normalizeSlug,
   recordAdmissionsAudit,
@@ -85,6 +88,12 @@ const campaignIdsValidator = v.object({
   priceId: v.id("admissionsProductPrices"),
 });
 
+const campaignDraftResultValidator = campaignIdsValidator.extend({ draftRevision: v.string() });
+
+function draftRevision(formVersionId: Id<"admissionsFormVersions">, revision: number | undefined) {
+  return `campaign-draft-v1:${formVersionId}:${revision ?? 1}`;
+}
+
 type FieldInput = {
   fieldKey: string;
   sectionKey: string;
@@ -148,7 +157,7 @@ function validateCampaign(args: {
   for (const requirement of args.requirements) {
     parseCondition(requirement.conditionJson);
     if (requirement.requiredMode === "conditional" && !requirement.conditionJson) throw new ConvexError("Conditional document requirements require a declarative condition");
-    if (!Number.isSafeInteger(requirement.maxBytes) || requirement.maxBytes < 1 ||
+    if (!Number.isSafeInteger(requirement.maxBytes) || requirement.maxBytes < 1 || requirement.maxBytes > MAX_ADMISSIONS_DOCUMENT_BYTES ||
         !Number.isSafeInteger(requirement.maxFiles) || requirement.maxFiles < 1 || requirement.maxFiles > 10 ||
         requirement.acceptedMimeTypes.length < 1 || requirement.acceptedMimeTypes.length > 10) {
       throw new ConvexError("Document requirements need bounded MIME, size, and file-count limits");
@@ -209,7 +218,7 @@ async function insertDefinitionRows(
 
 export const createCampaignDraft = mutation({
   args: campaignInput,
-  returns: campaignIdsValidator,
+  returns: campaignDraftResultValidator,
   handler: async (ctx, args) => {
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage"]);
     validateCampaign(args);
@@ -255,6 +264,7 @@ export const createCampaignDraft = mutation({
       intakeId,
       version: 1,
       schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40),
+      draftRevision: 1,
       status: "draft",
       createdAt: now,
       updatedAt: now,
@@ -304,7 +314,7 @@ export const createCampaignDraft = mutation({
       entityType: "admissionsIntake",
       entityId: intakeId,
     });
-    return { programmeId, intakeId, formVersionId, declarationVersionId, productId, priceId };
+    return { programmeId, intakeId, formVersionId, declarationVersionId, productId, priceId, draftRevision: draftRevision(formVersionId, 1) };
   },
 });
 
@@ -326,8 +336,8 @@ async function assertPublicationApproval(
 }
 
 export const editCampaignDraft = mutation({
-  args: { ...campaignIdsValidator.fields, ...campaignInput },
-  returns: campaignIdsValidator,
+  args: { ...campaignIdsValidator.fields, ...campaignInput, expectedDraftRevision: v.string() },
+  returns: campaignDraftResultValidator,
   handler: async (ctx, args) => {
     const [programme, intake, form, declaration, product, price] = await Promise.all([
       ctx.db.get(args.programmeId), ctx.db.get(args.intakeId), ctx.db.get(args.formVersionId),
@@ -340,6 +350,10 @@ export const editCampaignDraft = mutation({
     }
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage"]);
     validateCampaign(args);
+    const currentRevision = draftRevision(form._id, form.draftRevision);
+    if (args.expectedDraftRevision !== currentRevision) {
+      throw new ConvexError("CAMPAIGN_DRAFT_CONFLICT: This draft changed on the server. Reload all campaign values before saving again.");
+    }
     const now = Date.now();
     const oldFields = await ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101);
     const oldRequirements = await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(31);
@@ -349,12 +363,13 @@ export const editCampaignDraft = mutation({
     await insertDefinitionRows(ctx, args.schoolId, form._id, args.fields, args.requirements, now);
     await ctx.db.patch(programme._id, { name: normalizeRequiredText(args.programmeName, "Programme name", 160), description: args.programmeDescription?.trim() || undefined, updatedAt: now });
     await ctx.db.patch(intake._id, { name: normalizeRequiredText(args.intakeName, "Intake name", 160), cycleLabel: normalizeRequiredText(args.cycleLabel, "Cycle label", 120), opensAt: args.opensAt, closesAt: args.closesAt, startsAt: args.startsAt, targetClassId: args.targetClassId, updatedAt: now });
-    await ctx.db.patch(form._id, { schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), updatedAt: now });
+    const nextDraftRevision = (form.draftRevision ?? 1) + 1;
+    await ctx.db.patch(form._id, { schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), draftRevision: nextDraftRevision, updatedAt: now });
     await ctx.db.patch(declaration._id, { title: normalizeRequiredText(args.declarationTitle, "Declaration title", 200), body: normalizeRequiredText(args.declarationBody, "Declaration body", 20_000), bodyDigest: await sha256Hex(args.declarationBody.trim()), purpose: normalizeRequiredText(args.declarationPurpose, "Declaration purpose", 500), updatedAt: now });
     await ctx.db.patch(product._id, { name: normalizeRequiredText(args.productName, "Product name", 160), updatedAt: now });
     await ctx.db.patch(price._id, { amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), effectiveFrom: args.effectiveFrom, effectiveTo: args.effectiveTo, updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "campaign.edit_draft", entityType: "admissionsIntake", entityId: intake._id });
-    return { programmeId: programme._id, intakeId: intake._id, formVersionId: form._id, declarationVersionId: declaration._id, productId: product._id, priceId: price._id };
+    return { programmeId: programme._id, intakeId: intake._id, formVersionId: form._id, declarationVersionId: declaration._id, productId: product._id, priceId: price._id, draftRevision: draftRevision(form._id, nextDraftRevision) };
   },
 });
 
@@ -365,7 +380,7 @@ export const createReplacementDraft = mutation({
     declarationTitle: v.string(), declarationBody: v.string(), declarationPurpose: v.string(),
     amountMinor: v.number(), currency: v.string(), refundPolicyKey: v.string(), feeDisclosure: v.string(), effectiveFrom: v.number(), effectiveTo: v.optional(v.number()),
   },
-  returns: campaignIdsValidator,
+  returns: campaignDraftResultValidator,
   handler: async (ctx, args) => {
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage"]);
     const [programme, intake, product] = await Promise.all([ctx.db.get(args.programmeId), ctx.db.get(args.intakeId), ctx.db.get(args.productId)]);
@@ -379,17 +394,17 @@ export const createReplacementDraft = mutation({
       ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id)).take(100),
     ]);
     const now = Date.now();
-    const formVersionId = await ctx.db.insert("admissionsFormVersions", { schoolId: args.schoolId, programmeId: programme._id, intakeId: intake._id, version: Math.max(0, ...forms.map((row) => row.version)) + 1, schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), status: "draft", createdAt: now, updatedAt: now });
+    const formVersionId = await ctx.db.insert("admissionsFormVersions", { schoolId: args.schoolId, programmeId: programme._id, intakeId: intake._id, version: Math.max(0, ...forms.map((row) => row.version)) + 1, schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), draftRevision: 1, status: "draft", createdAt: now, updatedAt: now });
     await insertDefinitionRows(ctx, args.schoolId, formVersionId, args.fields, args.requirements, now);
     const declarationVersionId = await ctx.db.insert("admissionsDeclarationVersions", { schoolId: args.schoolId, programmeId: programme._id, version: Math.max(0, ...declarations.map((row) => row.version)) + 1, title: normalizeRequiredText(args.declarationTitle, "Declaration title", 200), body: normalizeRequiredText(args.declarationBody, "Declaration body", 20_000), bodyDigest: await sha256Hex(args.declarationBody.trim()), purpose: normalizeRequiredText(args.declarationPurpose, "Declaration purpose", 500), status: "draft", createdAt: now, updatedAt: now });
     const priceId = await ctx.db.insert("admissionsProductPrices", { schoolId: args.schoolId, productId: product._id, version: Math.max(0, ...prices.map((row) => row.version)) + 1, amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), effectiveFrom: args.effectiveFrom, ...(args.effectiveTo ? { effectiveTo: args.effectiveTo } : {}), status: "draft", createdAt: now, updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "campaign.create_replacement", entityType: "admissionsIntake", entityId: intake._id });
-    return { programmeId: programme._id, intakeId: intake._id, formVersionId, declarationVersionId, productId: product._id, priceId };
+    return { programmeId: programme._id, intakeId: intake._id, formVersionId, declarationVersionId, productId: product._id, priceId, draftRevision: draftRevision(formVersionId, 1) };
   },
 });
 
 export const publishCampaign = mutation({
-  args: campaignIdsValidator.fields,
+  args: { ...campaignIdsValidator.fields, draftRevision: v.optional(v.string()) },
   returns: v.null(),
   handler: async (ctx, args) => {
     const [programme, intake, form, declaration, product, price] = await Promise.all([
@@ -466,6 +481,89 @@ const offeringValidator = v.union(v.object({ available: v.literal(false), link: 
   declaration: v.object({ title: v.string(), body: v.string(), purpose: v.string(), version: v.number() }),
 }));
 
+const campaignBundleValidator = v.object({
+  programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), formVersionId: v.id("admissionsFormVersions"), declarationVersionId: v.id("admissionsDeclarationVersions"), productId: v.id("admissionsProducts"), priceId: v.id("admissionsProductPrices"),
+  lifecycle: v.union(v.literal("draft"), v.literal("published")), draftRevision: v.string(), applicationLink: applicationLinkV1Validator, programmeSlug: v.string(), programmeName: v.string(), programmeDescription: v.union(v.string(), v.null()), intakeSlug: v.string(), intakeName: v.string(), cycleLabel: v.string(), opensAt: v.number(), closesAt: v.number(), startsAt: v.union(v.number(), v.null()), schemaVersion: v.string(), formVersion: v.number(), declarationTitle: v.string(), declarationBody: v.string(), declarationPurpose: v.string(), productSlug: v.string(), productName: v.string(), amountMinor: v.number(), currency: v.string(), refundPolicyKey: v.string(), feeDisclosure: v.string(), effectiveFrom: v.number(), effectiveTo: v.union(v.number(), v.null()), fields: v.array(fieldInputValidator), requirements: v.array(requirementInputValidator),
+});
+
+/** Staff campaign read model. It deliberately returns only immutable version bundles that can be edited or replaced. */
+export const listCampaigns = query({
+  args: { schoolId: v.id("schools"), now: v.number() },
+  returns: v.array(campaignBundleValidator),
+  handler: async (ctx, args) => {
+    await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage"]);
+    if (!Number.isSafeInteger(args.now) || args.now < 0) throw new ConvexError("Current time must be a millisecond timestamp");
+    const [school, programmes] = await Promise.all([
+      ctx.db.get(args.schoolId),
+      ctx.db.query("admissionsProgrammes").withIndex("by_school_and_status", (q) => q.eq("schoolId", args.schoolId)).take(51),
+    ]);
+    if (!school) throw new ConvexError("Campaign school is unavailable");
+    if (programmes.length > 50) throw new ConvexError("Campaign catalogue exceeds the supported bound");
+    const result = [];
+    for (const programme of programmes) {
+      const intakes = (await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(51)).filter((row) => row.programmeId === programme._id);
+      if (intakes.length > 10) throw new ConvexError("Campaign intake set exceeds the supported bound");
+      for (const intake of intakes) {
+        const products = await ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(2);
+        if (products.length !== 1) continue;
+        const product = products[0];
+        const [forms, declarations, prices] = await Promise.all([
+          ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId).eq("programmeId", programme._id)).take(21),
+          ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id)).take(21),
+          ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id)).take(21),
+        ]);
+        if (forms.length > 20 || declarations.length > 20 || prices.length > 20) throw new ConvexError("Campaign version set exceeds the supported bound");
+        for (const lifecycle of ["published", "draft"] as const) {
+          const form = forms.filter((row) => row.intakeId === intake._id && row.status === lifecycle).sort((a, b) => b.version - a.version)[0];
+          const declaration = declarations.filter((row) => row.status === lifecycle).sort((a, b) => b.version - a.version)[0];
+          const price = prices.filter((row) => row.status === lifecycle).sort((a, b) => b.version - a.version)[0];
+          if (!form || !declaration || !price) continue;
+          const [fields, requirements] = await Promise.all([
+            ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101),
+            ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(31),
+          ]);
+          if (fields.length > 100 || requirements.length > 30) throw new ConvexError("Campaign definition exceeds the supported bound");
+          const availability = lifecycle !== "published" ? "unavailable" as const : intake.status === "paused" ? "paused" as const : intake.status === "closed" || intake.status === "archived" || args.now > intake.closesAt ? "closed" as const : intake.status === "open" && args.now < intake.opensAt ? "upcoming" as const : intake.status === "open" ? "open" as const : "unavailable" as const;
+          result.push({ programmeId: programme._id, intakeId: intake._id, formVersionId: form._id, declarationVersionId: declaration._id, productId: product._id, priceId: price._id, lifecycle, draftRevision: draftRevision(form._id, form.draftRevision), applicationLink: buildApplicationLinkV1({ applicationOrigin: configuredApplicationOrigin(), schoolSlug: school.slug, intakeSlug: intake.slug, availability, opensAt: intake.opensAt, closesAt: intake.closesAt }), programmeSlug: programme.slug, programmeName: programme.name, programmeDescription: programme.description ?? null, intakeSlug: intake.slug, intakeName: intake.name, cycleLabel: intake.cycleLabel, opensAt: intake.opensAt, closesAt: intake.closesAt, startsAt: intake.startsAt ?? null, schemaVersion: form.schemaVersion, formVersion: form.version, declarationTitle: declaration.title, declarationBody: declaration.body, declarationPurpose: declaration.purpose, productSlug: product.slug, productName: product.name, amountMinor: price.amountMinor, currency: price.currency, refundPolicyKey: price.refundPolicyKey, feeDisclosure: price.feeDisclosure, effectiveFrom: price.effectiveFrom, effectiveTo: price.effectiveTo ?? null, fields: fields.map((field) => ({ fieldKey: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, ...(field.helpText ? { helpText: field.helpText } : {}), requiredMode: field.requiredMode, dataClass: field.dataClass, ...(field.purpose ? { purpose: field.purpose } : {}), validationJson: field.validationJson, ...(field.conditionalRuleJson ? { conditionalRuleJson: field.conditionalRuleJson } : {}), ...(field.approvalEvidenceId ? { approvalEvidenceId: field.approvalEvidenceId } : {}), order: field.order })), requirements: requirements.map((item) => ({ requirementKey: item.requirementKey, category: item.category, label: item.label, requiredMode: item.requiredMode, acceptedMimeTypes: item.acceptedMimeTypes, maxBytes: item.maxBytes, maxFiles: item.maxFiles, sensitivity: item.sensitivity, purpose: item.purpose, ...(item.conditionJson ? { conditionJson: item.conditionJson } : {}), ...(item.approvalEvidenceId ? { approvalEvidenceId: item.approvalEvidenceId } : {}), order: item.order })) });
+        }
+      }
+    }
+    return result;
+  },
+});
+
+const offeringSummaryValidator = v.object({ intakeSlug: v.string(), intakeName: v.string(), cycleLabel: v.string(), availability: v.union(v.literal("open"), v.literal("upcoming"), v.literal("paused"), v.literal("closed"), v.literal("unavailable")), opensAt: v.number(), closesAt: v.number(), programmeName: v.union(v.string(), v.null()), productSlug: v.union(v.string(), v.null()), productName: v.union(v.string(), v.null()), amountMinor: v.union(v.number(), v.null()), currency: v.union(v.string(), v.null()), feeDisclosure: v.union(v.string(), v.null()), refundPolicyKey: v.union(v.string(), v.null()) });
+
+/** Anonymous school landing read model. Price data comes exclusively from currently published effective versions. */
+export const listPublishedOfferings = query({
+  args: { schoolSlug: v.string(), now: v.number() },
+  returns: v.union(v.object({ available: v.literal(false) }), v.object({ available: v.literal(true), school: v.object({ schoolId: v.id("schools"), slug: v.string(), name: v.string(), primaryColor: v.string(), accentColor: v.string() }), offerings: v.array(offeringSummaryValidator) })),
+  handler: async (ctx, args) => {
+    const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", normalizeSlug(args.schoolSlug, "School slug"))).unique();
+    if (!school || school.status !== "active" || school.features?.admissions === false) return { available: false as const };
+    const theme = await resolveEffectiveTheme(ctx, school);
+    const intakes = await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", school._id)).take(51);
+    if (intakes.length > 50) throw new ConvexError("Admissions offering set exceeds the supported bound");
+    const offerings = [];
+    for (const intake of intakes) {
+      const availability = intake.status === "paused" ? "paused" as const : intake.status === "closed" || intake.status === "archived" || args.now > intake.closesAt ? "closed" as const : intake.status === "open" && args.now < intake.opensAt ? "upcoming" as const : intake.status === "open" ? "open" as const : "unavailable" as const;
+      let programmeName: string | null = null, productSlug: string | null = null, productName: string | null = null, amountMinor: number | null = null, currency: string | null = null, feeDisclosure: string | null = null, refundPolicyKey: string | null = null;
+      const programme = await ctx.db.get(intake.programmeId);
+      if (!programme || programme.status !== "published" || intake.status === "draft") continue;
+      const products = await ctx.db.query("admissionsProducts").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "active")).take(2);
+      programmeName = programme.name;
+      if (products.length === 1) {
+        const product = products[0]; productSlug = product.slug; productName = product.name;
+        const prices = await ctx.db.query("admissionsProductPrices").withIndex("by_product_and_status_and_effective_from", (q) => q.eq("productId", product._id).eq("status", "published")).order("desc").take(10);
+        const price = prices.find((row) => row.effectiveFrom <= args.now && (row.effectiveTo === undefined || row.effectiveTo >= args.now));
+        if (price) { amountMinor = price.amountMinor; currency = price.currency; feeDisclosure = price.feeDisclosure; refundPolicyKey = price.refundPolicyKey; }
+      }
+      offerings.push({ intakeSlug: intake.slug, intakeName: intake.name, cycleLabel: intake.cycleLabel, availability, opensAt: intake.opensAt, closesAt: intake.closesAt, programmeName, productSlug, productName, amountMinor, currency, feeDisclosure, refundPolicyKey });
+    }
+    return { available: true as const, school: { schoolId: school._id, slug: school.slug, name: school.name, primaryColor: theme.theme.primaryColor, accentColor: theme.theme.accentColor }, offerings };
+  },
+});
+
 export const getPublishedOffering = query({
   args: { schoolSlug: v.string(), intakeSlug: v.string(), now: v.number() },
   returns: offeringValidator,
@@ -486,7 +584,7 @@ export const getPublishedOffering = query({
             : intake.status === "open"
               ? "open" as const
               : "unavailable" as const;
-    const link = buildApplicationLinkV1({ applicationOrigin: process.env.APPLICATION_ORIGIN?.trim() || process.env.APPLY_APP_ORIGIN?.trim() || "http://localhost:3004", schoolSlug: school?.slug ?? requestedSchoolSlug, intakeSlug: intake?.slug ?? requestedIntakeSlug, availability, opensAt: intake?.opensAt ?? null, closesAt: intake?.closesAt ?? null });
+    const link = buildApplicationLinkV1({ applicationOrigin: configuredApplicationOrigin(), schoolSlug: school?.slug ?? requestedSchoolSlug, intakeSlug: intake?.slug ?? requestedIntakeSlug, availability, opensAt: intake?.opensAt ?? null, closesAt: intake?.closesAt ?? null });
     if (!school || !intake || availability !== "open") return { available: false as const, link };
     const now = args.now;
     const programme = await ctx.db.get(intake.programmeId);

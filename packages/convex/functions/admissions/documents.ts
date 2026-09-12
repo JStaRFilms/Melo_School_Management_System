@@ -10,6 +10,7 @@ import { documentAccessResultValidator } from "../foundation/contracts";
 import { cleanupUploadIntentRef } from "./refs";
 import {
   ADMISSIONS_UPLOAD_OPERATION,
+  MAX_ADMISSIONS_DOCUMENT_BYTES,
   UPLOAD_INTENT_TTL_MS,
   admissionsError,
   hasFreshAuthentication,
@@ -52,7 +53,7 @@ function assertUploadMetadata(args: { fileName: string; contentType: string; siz
   const fileName = normalizeRequiredText(args.fileName, "File name", 200);
   const contentType = normalizeMimeType(args.contentType);
   if (!ALLOWED_UPLOAD_MIME_TYPES.has(contentType)) throw new ConvexError("Unsupported admissions document type");
-  if (!Number.isSafeInteger(args.size) || args.size < 1) throw new ConvexError("Document size must be a positive integer");
+  if (!Number.isSafeInteger(args.size) || args.size < 1 || args.size > MAX_ADMISSIONS_DOCUMENT_BYTES) throw new ConvexError("Document size must be between 1 byte and 20 MiB");
   const sha256 = args.sha256.trim().toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(sha256)) throw new ConvexError("A valid SHA-256 document fingerprint is required");
   return { fileName, contentType, sha256 };

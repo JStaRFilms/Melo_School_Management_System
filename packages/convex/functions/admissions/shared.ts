@@ -11,6 +11,7 @@ export type AdmissionsContext = QueryCtx | MutationCtx;
 
 export const DAY_MS = 86_400_000;
 export const UPLOAD_INTENT_TTL_MS = 15 * 60 * 1000;
+export const MAX_ADMISSIONS_DOCUMENT_BYTES = 20 * 1024 * 1024;
 export const ADMISSIONS_UPLOAD_OPERATION = "admissions_document_secure_http_upload";
 
 export function admissionsError(code: string, message: string): never {

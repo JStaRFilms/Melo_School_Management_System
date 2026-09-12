@@ -338,6 +338,7 @@ export default defineSchema({
     intakeId: v.optional(v.id("admissionsIntakes")),
     version: v.number(),
     schemaVersion: v.string(),
+    draftRevision: v.optional(v.number()),
     status: v.union(v.literal("draft"), v.literal("published"), v.literal("retired")),
     publishedAt: v.optional(v.number()),
     publishedBy: v.optional(v.id("users")),

@@ -110,6 +110,20 @@ async function deleteDocument(ctx: MutationCtx, document: Doc<"admissionsDocumen
 
 const cleanupResultValidator = v.object({ changed: v.boolean(), state: v.string(), blocker: v.union(v.string(), v.null()) });
 
+export const getManualDocumentEligibility = query({
+  args: { schoolId: v.id("schools"), documentKey: v.string() },
+  returns: v.union(v.null(), v.object({ state: v.string(), canArchive: v.boolean(), canDelete: v.boolean(), archiveBlocker: v.union(v.string(), v.null()), deleteBlocker: v.union(v.string(), v.null()) })),
+  handler: async (ctx, args) => {
+    await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage", "enrollment.decisions.record"]);
+    const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", args.documentKey.trim())).unique();
+    if (!document || document.schoolId !== args.schoolId) return null;
+    const now = Date.now();
+    const archiveBlocker = document.state === "archived" || document.state === "deleted" ? "DOCUMENT_ALREADY_ARCHIVED" : await retentionBlocker(ctx, document, now, "archive");
+    const deleteBlocker = document.state !== "archived" ? "DOCUMENT_NOT_ARCHIVED" : await retentionBlocker(ctx, document, now, "delete");
+    return { state: document.state, canArchive: archiveBlocker === null, canDelete: deleteBlocker === null, archiveBlocker, deleteBlocker };
+  },
+});
+
 export const archiveDocumentManually = mutation({
   args: { schoolId: v.id("schools"), documentKey: v.string() },
   returns: cleanupResultValidator,

@@ -9,6 +9,7 @@ import {
   requireGuardian,
   requireOwnedApplication,
   sha256Hex,
+  normalizeSlug,
 } from "./shared";
 import { getCurrentRetentionPolicy } from "./retention";
 import { conditionMatches, parseSerializedValue, validateAnswerForField } from "./validation";
@@ -326,12 +327,39 @@ export const withdraw = mutation({
   },
 });
 
+export const getOwnedApplicationByPublicId = query({
+  args: { schoolSlug: v.string(), publicId: v.string() },
+  returns: v.union(v.null(), v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), draftVersion: v.number(), currentRevision: v.number(), financialHold: v.boolean(), safeMessages: v.array(v.string()), conversion: v.union(v.null(), v.object({ state: v.union(v.literal("processing"), v.literal("completed"), v.literal("needs_attention")), message: v.string(), admissionNumber: v.union(v.string(), v.null()) })) })),
+  handler: async (ctx, args) => {
+    const guardian = await requireGuardian(ctx);
+    const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", normalizeSlug(args.schoolSlug, "School slug"))).unique();
+    if (!school) return null;
+    const application = await ctx.db.query("admissionsApplications").withIndex("by_school_and_public_id", (q) => q.eq("schoolId", school._id).eq("publicId", args.publicId.trim())).unique();
+    if (!application || application.guardianId !== guardian._id) return null;
+    const [conversion, events, decision] = await Promise.all([
+      application.conversionId ? ctx.db.get(application.conversionId) : Promise.resolve(null),
+      ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(20),
+      application.currentDecisionId ? ctx.db.get(application.currentDecisionId) : Promise.resolve(null),
+    ]);
+    const reviewMessages = events.flatMap((event) => event.visibility === "guardian" && event.message?.trim() ? [event.message.trim()] : []);
+    const safeMessages = [...new Set([...(decision?.guardianMessage ? [decision.guardianMessage] : []), ...reviewMessages])];
+    const safeConversion = conversion ? conversion.state === "succeeded"
+      ? { state: "completed" as const, message: "Enrollment setup completed.", admissionNumber: conversion.admissionNumber ?? null }
+      : conversion.state === "failed_retryable" || conversion.state === "failed_terminal"
+        ? { state: "needs_attention" as const, message: "Enrollment setup needs staff attention. The school will contact you if action is required.", admissionNumber: null }
+        : { state: "processing" as const, message: "Enrollment setup is in progress.", admissionNumber: null }
+      : null;
+    return { applicationId: application._id, publicId: application.publicId, state: application.state, draftVersion: application.draftVersion, currentRevision: application.currentRevision, financialHold: application.financialHoldAt !== undefined, safeMessages, conversion: safeConversion };
+  },
+});
+
 export const getDraft = query({
   args: { applicationId: v.id("admissionsApplications") },
   returns: v.object({
     state: v.string(),
     draftVersion: v.number(),
     currentRevision: v.number(),
+    safeMessages: v.array(v.string()),
     requestedEntryLabel: v.union(v.string(), v.null()),
     profile: v.union(v.null(), profileInputValidator),
     primaryContact: v.union(v.null(), contactInputValidator),
@@ -343,7 +371,7 @@ export const getDraft = query({
   }),
   handler: async (ctx, args) => {
     const { application } = await requireOwnedApplication(ctx, args.applicationId);
-    const [profile, primaryContact, form, fields, requirements, declaration, answers, documents, latestCorrection] = await Promise.all([
+    const [profile, primaryContact, form, fields, requirements, declaration, answers, documents, guardianEvents, decision] = await Promise.all([
       ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique(),
       ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_is_primary", (q) => q.eq("applicationId", application._id).eq("isPrimary", true)).unique(),
       ctx.db.get(application.formVersionId),
@@ -352,8 +380,10 @@ export const getDraft = query({
       ctx.db.get(application.declarationVersionId),
       ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id)).take(101),
       ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id)).take(101),
-      ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).filter((q) => q.and(q.eq(q.field("eventType"), "changes_requested"), q.eq(q.field("visibility"), "guardian"))).order("desc").first(),
+      ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(20),
+      application.currentDecisionId ? ctx.db.get(application.currentDecisionId) : Promise.resolve(null),
     ]);
+    const latestCorrection = guardianEvents.find((event) => event.visibility === "guardian" && event.eventType === "changes_requested") ?? null;
     if (!form || form.schoolId !== application.schoolId || !declaration || declaration.schoolId !== application.schoolId || declaration.programmeId !== application.programmeId || fields.length > 100 || requirements.length > 30 || answers.length > 100 || documents.length > 100) {
       throw new ConvexError("Application-bound form definitions are unavailable");
     }
@@ -369,6 +399,7 @@ export const getDraft = query({
       state: application.state,
       draftVersion: application.draftVersion,
       currentRevision: application.currentRevision,
+      safeMessages: [...new Set([...(decision?.guardianMessage ? [decision.guardianMessage] : []), ...guardianEvents.flatMap((event) => event.visibility === "guardian" && event.message?.trim() ? [event.message.trim()] : [])])],
       requestedEntryLabel: application.requestedEntryLabel ?? null,
       profile: profile ? { firstName: profile.firstName, lastName: profile.lastName, ...(profile.middleName ? { middleName: profile.middleName } : {}), dateOfBirth: profile.dateOfBirth, ...(profile.gender ? { gender: profile.gender } : {}), ...(profile.preferredName ? { preferredName: profile.preferredName } : {}), ...(profile.nationality ? { nationality: profile.nationality } : {}), ...(profile.countryOfBirth ? { countryOfBirth: profile.countryOfBirth } : {}), ...(profile.address ? { address: profile.address } : {}) } : null,
       primaryContact: primaryContact ? { fullName: primaryContact.fullName, relationship: primaryContact.relationship, ...(primaryContact.email ? { email: primaryContact.email } : {}), ...(primaryContact.phone ? { phone: primaryContact.phone } : {}), ...(primaryContact.address ? { address: primaryContact.address } : {}) } : null,

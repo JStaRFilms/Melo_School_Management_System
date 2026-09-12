@@ -144,15 +144,17 @@ it("requires fresh current auth claims for sensitive download and audits denied 
   const storageId = await f.t.run((ctx) => ctx.storage.store(new Blob([pdfBytes], { type: "application/pdf" })));
   await f.owner.mutation(recordHttpUploadStorageRef, { uploadIntentId: intent.uploadIntentId, uploadToken: intent.uploadToken, uploadAttemptId: "attempt-sensitive-01", storageId });
   const document = await f.owner.mutation(finalizeUploadRef, { uploadIntentId: intent.uploadIntentId });
+  expect(await f.owner.mutation(ownAccessRef, { documentKey: document.documentKey, action: "view" })).toMatchObject({ status: "unavailable" });
   expect(await f.owner.mutation(ownAccessRef, { documentKey: document.documentKey, action: "download" })).toMatchObject({ status: "unavailable" });
   const fresh = f.t.withIdentity({ tokenIdentifier: "test|document-owner", subject: "document-owner", issuer: "test", email: "owner@example.test", emailVerified: true, auth_time: Math.floor(Date.now() / 1000) });
+  expect(await fresh.mutation(ownAccessRef, { documentKey: document.documentKey, action: "view" })).toMatchObject({ status: "available", documentKey: document.documentKey });
   expect(await fresh.mutation(ownAccessRef, { documentKey: document.documentKey, action: "download" })).toMatchObject({ status: "available", documentKey: document.documentKey });
   const audits = await f.t.run(async (ctx) => {
     const row = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", document.documentKey)).unique();
     if (!row) throw new Error("document missing");
     return await ctx.db.query("admissionsDocumentAccessAudits").withIndex("by_document_and_created_at", (q) => q.eq("documentId", row._id)).collect();
   });
-  expect(audits.map((audit) => audit.outcome)).toEqual(["denied", "granted"]);
+  expect(audits.map((audit) => audit.outcome)).toEqual(["denied", "denied", "granted", "granted"]);
 });
 
 it("rejects stored MIME, size, and hash mismatches and releases failed reservations", async () => {

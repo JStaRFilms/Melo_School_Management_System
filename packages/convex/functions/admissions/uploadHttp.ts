@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import { httpAction } from "../../_generated/server";
-import { sha256Hex } from "./shared";
+import { MAX_ADMISSIONS_DOCUMENT_BYTES, sha256Hex } from "./shared";
 import { beginHttpUploadRef, failHttpUploadRef, recordHttpUploadStorageRef } from "./refs";
 
 const corsHeaders = {
@@ -56,6 +56,10 @@ async function readMeasuredBody(request: Request, expectedSize: number) {
 export const admissionsDocumentUploadOptions = httpAction(async () => new Response(null, { status: 204, headers: corsHeaders }));
 
 export const uploadAdmissionsDocument = httpAction(async (ctx, request) => {
+  const contentLengthValue = request.headers.get("Content-Length");
+  if (!contentLengthValue || !/^\d+$/.test(contentLengthValue)) return response(411, { error: "A valid Content-Length header is required" });
+  const contentLength = Number(contentLengthValue);
+  if (!Number.isSafeInteger(contentLength) || contentLength < 1 || contentLength > MAX_ADMISSIONS_DOCUMENT_BYTES) return response(413, { error: "Upload size is outside the supported bound" });
   const intentValue = request.headers.get("X-Admissions-Upload-Intent")?.trim();
   const uploadToken = request.headers.get("X-Admissions-Upload-Token")?.trim();
   if (!intentValue || !uploadToken) return response(400, { error: "Secure upload credentials are required" });
@@ -68,8 +72,7 @@ export const uploadAdmissionsDocument = httpAction(async (ctx, request) => {
     const intent = await ctx.runMutation(beginHttpUploadRef, { uploadIntentId, uploadToken, uploadAttemptId });
     began = true;
     if (normalizedContentType(request.headers.get("Content-Type")) !== intent.contentType) throw new ConvexError("Uploaded document type does not match its reservation");
-    const contentLength = request.headers.get("Content-Length");
-    if (contentLength !== null && Number(contentLength) !== intent.expectedSize) throw new ConvexError("Uploaded document size does not match its reservation");
+    if (contentLength !== intent.expectedSize) throw new ConvexError("Uploaded document size does not match its reservation");
     const bytes = await readMeasuredBody(request, intent.expectedSize);
     if (!matchesMagic(bytes, intent.contentType)) throw new ConvexError("Uploaded document content does not match its declared type");
     if (await sha256Hex(bytes) !== intent.expectedSha256) throw new ConvexError("Uploaded document fingerprint does not match its reservation");

@@ -4,6 +4,7 @@ import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { createBillingGatewayAdapter } from "../billingGateway";
 import { admissionsProviderValidator, paymentProviderModeValidator } from "../foundation/contracts";
+import { configuredApplicationOrigin } from "../foundation/applicationLinks";
 import {
   admissionsError,
   normalizeRequiredText,
@@ -105,14 +106,15 @@ export const markCheckoutInitialized = internalMutation({
 });
 
 export const initializeAttempt = action({
-  args: { reference: v.string(), callbackUrl: v.string() },
+  args: { reference: v.string() },
   returns: v.object({ reference: v.string(), state: v.string(), authorizationUrl: v.string(), replayed: v.boolean() }),
   handler: async (ctx, args) => {
     const attempt = await ctx.runQuery(ownedProviderAttemptRef, { reference: args.reference });
     if (attempt.authorizationUrl) return { reference: attempt.reference, state: attempt.state, authorizationUrl: attempt.authorizationUrl, replayed: true };
     if (attempt.amountMinor <= 0) throw new ConvexError("A positive application price is required");
-    const callback = new URL(args.callbackUrl);
-    if (callback.protocol !== "https:" && callback.hostname !== "localhost") throw new ConvexError("Payment callback URL must be HTTPS");
+    const applicationOrigin = configuredApplicationOrigin();
+    const callback = new URL(`/s/${encodeURIComponent(attempt.schoolSlug)}/payments/paystack/return`, applicationOrigin);
+    callback.searchParams.set("reference", attempt.reference);
     const gatewayContext = await ctx.runQuery(internal.functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_initialization" });
     if (!gatewayContext?.activeSecretKey) throw new ConvexError("Paystack merchant credentials are not ready for this school");
     const gateway = createBillingGatewayAdapter({ provider: "paystack", secretKey: gatewayContext.activeSecretKey, mode: attempt.providerMode });
