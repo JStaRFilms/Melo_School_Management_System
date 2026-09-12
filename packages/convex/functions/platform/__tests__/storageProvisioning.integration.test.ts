@@ -28,7 +28,6 @@ it("lets a Platform Super Admin inspect and provision one reviewed active school
     return await ctx.db.insert("schools", {
       name: "Reviewed School",
       slug: "reviewed-school",
-      status: "active",
       createdAt: 1,
       updatedAt: 1,
     });
@@ -245,4 +244,65 @@ it("requires review instead of creating a zeroed meter for existing storage", as
         .collect(),
     ),
   ).toHaveLength(0);
+});
+
+it("requires review when a migration workspace retains source files", async () => {
+  const t = convexTest(schema, modules);
+  const schoolId = await t.run(async (ctx) => {
+    const now = Date.now();
+    const operatorId = await ctx.db.insert("platformAdmins", {
+      authId: "migration-storage-review-operator",
+      email: "migration-storage-review@example.test",
+      name: "Migration Storage Review Operator",
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const id = await ctx.db.insert("schools", {
+      name: "Migration Storage Academy",
+      slug: "migration-storage-academy",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const storageId = await ctx.storage.store(new Blob(["retained migration source"]));
+    await ctx.db.insert("importWorkspaces", {
+      schoolId: id,
+      name: "Retained migration",
+      mode: "super_admin",
+      status: "draft",
+      totalRecords: 0,
+      validRecords: 0,
+      warningRecords: 0,
+      errorRecords: 0,
+      sourceFiles: [
+        {
+          storageId,
+          fileName: "migration.csv",
+          fileSize: 25,
+          uploadedAt: now,
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+      createdBy: operatorId,
+    });
+    return id;
+  });
+  const platform = t.withIdentity({
+    subject: "migration-storage-review-operator",
+    tokenIdentifier: "test|migration-storage-review-operator",
+  });
+
+  await expect(
+    platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, {
+      schoolId,
+    }),
+  ).resolves.toMatchObject({ recordState: "requires_review" });
+  await expect(
+    platform.mutation(api.functions.platform.index.provisionSchoolFreeTrialStorage, {
+      schoolId,
+      confirmation: "PROVISION FREE TRIAL STORAGE",
+    }),
+  ).resolves.toEqual({ status: "requires_review" });
 });

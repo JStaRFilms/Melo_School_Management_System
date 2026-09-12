@@ -229,6 +229,11 @@ export async function schoolHasExistingStorageClaims(
         ),
       )
       .first(),
+    ctx.db
+      .query("importWorkspaces")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("sourceFiles"), []))
+      .first(),
   ]);
   return storageOwners.some((owner) => owner !== null);
 }
@@ -255,7 +260,7 @@ async function provisionSchoolStorage(
       )
       .take(2),
   ]);
-  if (!school || school.status !== "active") {
+  if (!school || (school.status ?? "active") !== "active") {
     throw new ConvexError("An active school is required for storage provisioning");
   }
   if (storageMeters.length > 1) {
