@@ -41,7 +41,7 @@ type CampaignIds = {
   declarationVersionId: Id<"admissionsDeclarationVersions">;
   productId: Id<"admissionsProducts">;
   priceId: Id<"admissionsProductPrices">;
-  draftRevision?: string;
+  draftRevision: string;
 };
 
 async function fixture() {
@@ -84,7 +84,13 @@ async function fixture() {
     feeDisclosure: "Application processing fee",
     effectiveFrom: Date.now() - 10_000,
   }) as CampaignIds;
-  await staff.mutation(publishCampaignRef, { programmeId: campaign.programmeId, intakeId: campaign.intakeId, formVersionId: campaign.formVersionId, declarationVersionId: campaign.declarationVersionId, productId: campaign.productId, priceId: campaign.priceId });
+  const initialDraft = (await staff.query(listCampaignsRef, { schoolId: ids.schoolId, now: Date.now() })).find((item) => item.priceId === campaign.priceId);
+  if (!initialDraft) throw new Error("Initial campaign draft missing");
+  await t.run(async (ctx) => {
+    const priceApprovalEvidenceId = await ctx.db.insert("schoolApprovalEvidence", { schoolId: ids.schoolId, approvalClass: "finance", subjectType: "admissions_product_price", subjectKey: initialDraft.priceApprovalSubjectKey, evidenceReference: "finance-approved-initial-price", approvedByUserId: ids.staffUserId, approvedAt: Date.now(), createdAt: Date.now() });
+    await ctx.db.patch(campaign.priceId, { approvalEvidenceId: priceApprovalEvidenceId });
+  });
+  await staff.mutation(publishCampaignRef, { ...campaign, draftRevision: campaign.draftRevision });
   await guardian.mutation(guardianIdentityRef, {});
   await otherGuardian.mutation(guardianIdentityRef, {});
   return { t, staff, limited, guardian, otherGuardian, campaign, ...ids };
@@ -147,6 +153,9 @@ it("returns canonical apply links and rejects stale campaign draft overwrites", 
   const edited = await f.staff.mutation(editCampaignRef, editArgs);
   expect(edited.draftRevision).not.toBe(draft.draftRevision);
   await expect(f.staff.mutation(editCampaignRef, { ...editArgs, programmeName: "Stale overwrite" })).rejects.toThrow("CAMPAIGN_DRAFT_CONFLICT");
+  await expect(f.staff.mutation(publishCampaignRef, { programmeId: draft.programmeId, intakeId: draft.intakeId, formVersionId: draft.formVersionId, declarationVersionId: draft.declarationVersionId, productId: draft.productId, priceId: draft.priceId, draftRevision: draft.draftRevision })).rejects.toThrow("CAMPAIGN_DRAFT_CONFLICT");
+  const otherDraft = await f.staff.mutation(createCampaignRef, { schoolId: f.schoolId, programmeSlug: "secondary", programmeName: "Secondary", intakeSlug: "2027", intakeName: "2027 Intake", cycleLabel: draft.cycleLabel, opensAt: draft.opensAt, closesAt: draft.closesAt, schemaVersion: draft.schemaVersion, fields: draft.fields, requirements: draft.requirements, declarationTitle: draft.declarationTitle, declarationBody: draft.declarationBody, declarationPurpose: draft.declarationPurpose, productSlug: "secondary-slot", productName: "Secondary slot", amountMinor: draft.amountMinor, currency: draft.currency, refundPolicyKey: draft.refundPolicyKey, feeDisclosure: draft.feeDisclosure, effectiveFrom: draft.effectiveFrom });
+  await expect(f.staff.mutation(editCampaignRef, { ...editArgs, priceId: otherDraft.priceId, expectedDraftRevision: edited.draftRevision })).rejects.toThrow("not found");
   expect((await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.formVersionId === draft.formVersionId)?.programmeName).toBe("Primary updated");
 });
 
@@ -189,6 +198,13 @@ it("publishes replacement form, declaration, and positive price versions without
   await f.guardian.mutation(saveDraftRef, { applicationId: oldDraft.application.applicationId, expectedVersion: 0, mutationKey: "old-bound-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Amaka", lastName: "Eze", dateOfBirth: Date.UTC(2019, 2, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Original form" }] });
   await expect(f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "2", fields: [{ fieldKey: "bad", sectionKey: "child", kind: "script", label: "Bad", requiredMode: "optional", dataClass: "public", validationJson: "{}", order: 1 }], requirements: [], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 0, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() })).rejects.toThrow();
   const replacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "2", fields: [{ fieldKey: "reason", sectionKey: "child", kind: "textarea", label: "Reason", requiredMode: "required", dataClass: "personal", purpose: "Understand the application", validationJson: JSON.stringify({ maxLength: 500 }), order: 1 }], requirements: [], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 600_000, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() - 1 });
+  await expect(f.staff.mutation(publishCampaignRef, replacement)).rejects.toThrow("approval evidence");
+  const replacementDraft = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.priceId === replacement.priceId);
+  if (!replacementDraft) throw new Error("Replacement campaign draft missing");
+  await f.t.run(async (ctx) => {
+    const evidenceId = await ctx.db.insert("schoolApprovalEvidence", { schoolId: f.schoolId, approvalClass: "finance", subjectType: "admissions_product_price", subjectKey: replacementDraft.priceApprovalSubjectKey, evidenceReference: "finance-approved-replacement-price", approvedByUserId: f.staffUserId, approvedAt: Date.now(), createdAt: Date.now() });
+    await ctx.db.patch(replacement.priceId, { approvalEvidenceId: evidenceId });
+  });
   await f.staff.mutation(publishCampaignRef, replacement);
   const offering = await f.t.query(offeringRef, { schoolSlug: "admissions-school", intakeSlug: "2026", now: Date.now() });
   expect(offering).toMatchObject({ available: true, link: { version: "1", availability: "open" }, form: { schemaVersion: "2" }, price: { amountMinor: 600_000 }, declaration: { title: "Updated", version: 2 } });
@@ -238,6 +254,12 @@ it("requires current approval evidence bound to each optional sensitive field an
     ]);
   });
   const replacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "sensitive", fields: [{ fieldKey: "medical-note", sectionKey: "health", kind: "text", label: "Medical note", requiredMode: "optional", dataClass: "highly_sensitive", purpose: "Applicant support", validationJson: "{}", approvalEvidenceId: fieldEvidenceId, order: 1 }], requirements: [{ requirementKey: "financial-evidence", category: "financial", label: "Financial evidence", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 100_000, maxFiles: 1, sensitivity: "financial_security", purpose: "Financial assessment", approvalEvidenceId: requirementEvidenceId, order: 1 }], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 600_000, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() - 1 });
+  const sensitiveDraft = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.priceId === replacement.priceId);
+  if (!sensitiveDraft) throw new Error("Sensitive campaign draft missing");
+  await f.t.run(async (ctx) => {
+    const priceEvidenceId = await ctx.db.insert("schoolApprovalEvidence", { schoolId: f.schoolId, approvalClass: "finance", subjectType: "admissions_product_price", subjectKey: sensitiveDraft.priceApprovalSubjectKey, evidenceReference: "finance-approved-sensitive-price", approvedByUserId: f.staffUserId, approvedAt: Date.now(), createdAt: Date.now() });
+    await ctx.db.patch(replacement.priceId, { approvalEvidenceId: priceEvidenceId });
+  });
   await expect(f.staff.mutation(publishCampaignRef, replacement)).rejects.toThrow("subject-bound");
   await f.t.run((ctx) => ctx.db.patch(fieldEvidenceId, { subjectType: "admissions_form_field", subjectKey: `${String(replacement.formVersionId)}:medical-note` }));
   await expect(f.staff.mutation(publishCampaignRef, replacement)).rejects.toThrow("subject-bound");

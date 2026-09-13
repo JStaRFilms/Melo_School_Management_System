@@ -513,7 +513,12 @@ export async function createCanonicalStudentEnrollmentHelper(
     .take(2);
   if (duplicates.length) throw new ConvexError(duplicates.some((student) => !student.isArchived) ? "A student with this admission number already exists" : archivedRecordNotice("student"));
   const authId = toStudentAuthId(String(args.schoolId), admissionNumber);
-  const userDuplicates = await ctx.db.query("users").withIndex("by_auth", (query) => query.eq("authId", authId)).take(2);
+  const studentEmail = `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`;
+  const [authDuplicates, emailDuplicates] = await Promise.all([
+    ctx.db.query("users").withIndex("by_auth", (query) => query.eq("authId", authId)).take(2),
+    ctx.db.query("users").withIndex("by_school_and_email", (query) => query.eq("schoolId", args.schoolId).eq("email", studentEmail)).take(2),
+  ]);
+  const userDuplicates = [...authDuplicates, ...emailDuplicates];
   if (userDuplicates.length) throw new ConvexError(userDuplicates.some((user) => !user.isArchived) ? "A student with this admission number already exists" : archivedRecordNotice("student"));
   const now = Date.now();
   const studentUserId = await ctx.db.insert("users", {
@@ -522,7 +527,7 @@ export async function createCanonicalStudentEnrollmentHelper(
     name: args.name,
     ...(args.firstName ? { firstName: args.firstName } : {}),
     ...(args.lastName ? { lastName: args.lastName } : {}),
-    email: `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`,
+    email: studentEmail,
     role: "student",
     createdAt: now,
     updatedAt: now,

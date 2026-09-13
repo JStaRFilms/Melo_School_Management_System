@@ -99,8 +99,7 @@ export const executeAcceptedConversion = mutation({
     const existing = await ctx.db.query("admissionsConversions").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique();
     if (existing) {
       if (existing.idempotencyKey !== idempotencyKey) throw new ConvexError("Application conversion is already bound to another idempotency key");
-      if (existing.state === "failed_retryable") await ctx.scheduler.runAfter(0, processConversionRef, { conversionId: existing._id });
-      return pendingResult(existing, true);
+      if (existing.state !== "failed_retryable") return pendingResult(existing, true);
     }
     const [decision, snapshot, selectedClass, numberingPolicy] = await Promise.all([
       application.currentDecisionId ? ctx.db.get(application.currentDecisionId) : null,
@@ -113,6 +112,37 @@ export const executeAcceptedConversion = mutation({
     const requestedAdmissionNumber = args.admissionNumber.trim();
     if (numberingPolicy && requestedAdmissionNumber && !new Set(actor.capabilities.map(normalizeCapability)).has(normalizeCapability("enrollment.admissions.override_number"))) admissionsError("FORBIDDEN", "Manual admission numbering requires enrollment.admissions.override_number");
     const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        state: "requested",
+        acceptedDecisionId: decision._id,
+        snapshotId: snapshot._id,
+        requestedByUserId: actor.userId,
+        classId: selectedClass._id,
+        requestedAdmissionNumber,
+        familyResolutionKind: args.familyResolution.kind,
+        requestedFamilyId: args.familyResolution.kind === "existing" ? args.familyResolution.familyId : undefined,
+        requestedFamilyName: args.familyResolution.kind === "create" ? args.familyResolution.familyName?.trim() || undefined : undefined,
+        photoDocumentKey: args.photoDocumentKey,
+        overrideReason: args.overrideReason,
+        overrideConfirmed: args.overrideConfirmed,
+        overrideCounterDecision: args.overrideCounterDecision,
+        advanceCounterTo: args.advanceCounterTo,
+        numberingVersion: args.numberingVersion,
+        numberingFormatVersion: args.numberingFormatVersion,
+        numberingCounterKey: args.numberingCounterKey,
+        numberingCounterVersion: args.numberingCounterVersion,
+        numberingSessionId: args.numberingSessionId,
+        numberingResetPeriod: args.numberingResetPeriod,
+        leaseExpiresAt: undefined,
+        errorCode: undefined,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAfter(0, processConversionRef, { conversionId: existing._id });
+      const refreshed = await ctx.db.get(existing._id);
+      if (!refreshed) throw new ConvexError("Conversion retry was not persisted");
+      return pendingResult(refreshed, true);
+    }
     const conversionId = await ctx.db.insert("admissionsConversions", {
       schoolId: args.schoolId, applicationId: application._id, acceptedDecisionId: decision._id, snapshotId: snapshot._id, idempotencyKey, state: "requested", requestedByUserId: actor.userId, attemptCount: 0, classId: selectedClass._id, requestedAdmissionNumber,
       familyResolutionKind: args.familyResolution.kind, ...(args.familyResolution.kind === "existing" ? { requestedFamilyId: args.familyResolution.familyId } : args.familyResolution.familyName ? { requestedFamilyName: args.familyResolution.familyName } : {}),

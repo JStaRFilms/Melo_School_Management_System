@@ -22,8 +22,9 @@ const secondaryButtonClass = "inline-flex items-center justify-center rounded-lg
 const dangerButtonClass = "inline-flex items-center justify-center rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50 hover:border-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 function localDate(value: number) { const offset = new Date(value).getTimezoneOffset() * 60_000; return new Date(value - offset).toISOString().slice(0, 16); }
-function editorFrom(bundle: CampaignBundle): CampaignEditorValues { return { programmeSlug: bundle.programmeSlug, programmeName: bundle.programmeName, programmeDescription: bundle.programmeDescription ?? "", intakeSlug: bundle.intakeSlug, intakeName: bundle.intakeName, cycleLabel: bundle.cycleLabel, opensAt: localDate(bundle.opensAt), closesAt: localDate(bundle.closesAt), schemaVersion: bundle.schemaVersion, declarationTitle: bundle.declarationTitle, declarationBody: bundle.declarationBody, declarationPurpose: bundle.declarationPurpose, productSlug: bundle.productSlug, productName: bundle.productName, amount: String(bundle.amountMinor / 100), currency: bundle.currency, refundPolicyKey: bundle.refundPolicyKey, feeDisclosure: bundle.feeDisclosure, fieldsJson: JSON.stringify(bundle.fields, null, 2), requirementsJson: JSON.stringify(bundle.requirements, null, 2) }; }
+function editorFrom(bundle: CampaignBundle): CampaignEditorValues { return { programmeSlug: bundle.programmeSlug, programmeName: bundle.programmeName, programmeDescription: bundle.programmeDescription ?? "", intakeSlug: bundle.intakeSlug, intakeName: bundle.intakeName, cycleLabel: bundle.cycleLabel, opensAt: localDate(bundle.opensAt), closesAt: localDate(bundle.closesAt), schemaVersion: bundle.schemaVersion, declarationTitle: bundle.declarationTitle, declarationBody: bundle.declarationBody, declarationPurpose: bundle.declarationPurpose, productSlug: bundle.productSlug, productName: bundle.productName, amount: String(bundle.amountMinor / 100), currency: bundle.currency, refundPolicyKey: bundle.refundPolicyKey, feeDisclosure: bundle.feeDisclosure, priceApprovalEvidenceId: bundle.priceApprovalEvidenceId ? String(bundle.priceApprovalEvidenceId) : "", priceApprovalSubjectKey: bundle.priceApprovalSubjectKey, fieldsJson: JSON.stringify(bundle.fields, null, 2), requirementsJson: JSON.stringify(bundle.requirements, null, 2) }; }
 function errorText(error: unknown) { return error instanceof Error ? error.message : "The operation could not be completed."; }
+function approvalEvidenceId(value: string) { const normalized = value.trim(); return normalized ? normalized as Id<"schoolApprovalEvidence"> : undefined; }
 function statusLabel(value: string) { return value.replaceAll("_", " "); }
 function useOfferingNow() { const [now, setNow] = useState(() => Date.now()); useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer); }, []); return now; }
 
@@ -83,7 +84,8 @@ export function AdmissionsDashboard() {
   function buildInput(): CampaignInput {
     if (!schoolId) throw new Error("School context is unavailable.");
     const definitions = parseDefinitions(values);
-    return { schoolId, programmeSlug: values.programmeSlug, programmeName: values.programmeName, ...(values.programmeDescription ? { programmeDescription: values.programmeDescription } : {}), intakeSlug: values.intakeSlug, intakeName: values.intakeName, cycleLabel: values.cycleLabel, opensAt: Date.parse(values.opensAt), closesAt: Date.parse(values.closesAt), schemaVersion: values.schemaVersion, ...definitions, declarationTitle: values.declarationTitle, declarationBody: values.declarationBody, declarationPurpose: values.declarationPurpose, productSlug: values.productSlug, productName: values.productName, amountMinor: Math.round(Number(values.amount) * 100), currency: values.currency, refundPolicyKey: values.refundPolicyKey, feeDisclosure: values.feeDisclosure, effectiveFrom: Date.now() };
+    const priceApprovalEvidenceId = approvalEvidenceId(values.priceApprovalEvidenceId);
+    return { schoolId, programmeSlug: values.programmeSlug, programmeName: values.programmeName, ...(values.programmeDescription ? { programmeDescription: values.programmeDescription } : {}), intakeSlug: values.intakeSlug, intakeName: values.intakeName, cycleLabel: values.cycleLabel, opensAt: Date.parse(values.opensAt), closesAt: Date.parse(values.closesAt), schemaVersion: values.schemaVersion, ...definitions, declarationTitle: values.declarationTitle, declarationBody: values.declarationBody, declarationPurpose: values.declarationPurpose, productSlug: values.productSlug, productName: values.productName, amountMinor: Math.round(Number(values.amount) * 100), currency: values.currency, refundPolicyKey: values.refundPolicyKey, feeDisclosure: values.feeDisclosure, ...(priceApprovalEvidenceId ? { priceApprovalEvidenceId } : {}), effectiveFrom: Date.now() };
   }
   async function save() {
     if (!schoolId || errors.length || (openDraftId !== "new" && !selected)) return;
@@ -91,7 +93,7 @@ export function AdmissionsDashboard() {
     try {
       const input = buildInput();
       if (replacement && selected) {
-        const result = await replaceCampaign({ schoolId, programmeId: selected.programmeId, intakeId: selected.intakeId, productId: selected.productId, schemaVersion: input.schemaVersion, fields: input.fields, requirements: input.requirements, declarationTitle: input.declarationTitle, declarationBody: input.declarationBody, declarationPurpose: input.declarationPurpose, amountMinor: input.amountMinor, currency: input.currency, refundPolicyKey: input.refundPolicyKey, feeDisclosure: input.feeDisclosure, effectiveFrom: input.effectiveFrom });
+        const result = await replaceCampaign({ schoolId, programmeId: selected.programmeId, intakeId: selected.intakeId, productId: selected.productId, schemaVersion: input.schemaVersion, fields: input.fields, requirements: input.requirements, declarationTitle: input.declarationTitle, declarationBody: input.declarationBody, declarationPurpose: input.declarationPurpose, amountMinor: input.amountMinor, currency: input.currency, refundPolicyKey: input.refundPolicyKey, feeDisclosure: input.feeDisclosure, ...(input.priceApprovalEvidenceId ? { priceApprovalEvidenceId: input.priceApprovalEvidenceId } : {}), effectiveFrom: input.effectiveFrom });
         setOpenDraftId(String(result.formVersionId)); setExpectedDraftRevision(result.draftRevision); setReplacement(false);
       } else if (selected?.lifecycle === "draft") {
         if (!expectedDraftRevision) throw new Error("Reload the campaign draft before saving.");
@@ -108,7 +110,7 @@ export function AdmissionsDashboard() {
     if (!confirm || !schoolId) return;
     const item = confirm.campaign; setBusy(true);
     try {
-      if (confirm.action === "publish") { await publishCampaign({ programmeId: item.programmeId, intakeId: item.intakeId, formVersionId: item.formVersionId, declarationVersionId: item.declarationVersionId, productId: item.productId, priceId: item.priceId }); setFeedback("Campaign version published. Public pages now use this version."); appToast.success("Campaign published"); }
+      if (confirm.action === "publish") { await publishCampaign({ programmeId: item.programmeId, intakeId: item.intakeId, formVersionId: item.formVersionId, declarationVersionId: item.declarationVersionId, productId: item.productId, priceId: item.priceId, draftRevision: item.draftRevision }); setFeedback("Campaign version published. Public pages now use this version."); appToast.success("Campaign published"); }
       else { await closeCampaign({ schoolId, intakeId: item.intakeId }); setFeedback("Campaign closed. New purchases are unavailable."); appToast.success("Campaign closed"); }
     } catch (error) { const message = errorText(error); setFeedback(message); appToast.error("Campaign action failed", { description: message }); } finally { setBusy(false); setConfirm(null); }
   }
@@ -302,6 +304,17 @@ function CampaignForm({ values, update, errors, busy, replacement, conflict, onR
             </label>
           ))}
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-semibold text-slate-700">
+            Finance approval evidence ID
+            <input className={`${fieldClass} mt-1`} value={values.priceApprovalEvidenceId} onChange={(event) => update("priceApprovalEvidenceId", event.target.value)} />
+          </label>
+          <label className="text-xs font-semibold text-slate-700">
+            Required finance approval subject
+            <input readOnly className={`${fieldClass} mt-1 font-mono text-xs`} value={values.priceApprovalSubjectKey} placeholder="Save the draft to generate this subject" />
+          </label>
+        </div>
+        <p className="text-xs text-slate-500">Publishing requires current finance approval evidence bound to these exact fee and refund terms.</p>
       </fieldset>
 
       <fieldset className="space-y-3">

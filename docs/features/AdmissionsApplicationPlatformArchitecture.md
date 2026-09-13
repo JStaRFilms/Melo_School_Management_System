@@ -121,7 +121,7 @@ All timestamps are epoch milliseconds. All mutable rows include `createdAt`, `up
 | `admissionsProducts` | Intake 1:N purchasable application products. `schoolId`, `intakeId`, `slug`, `name`, `slotCount` fixed to `1` for v1, `status: draft\|active\|paused\|retired`. | `by_school_id_and_intake_id`; `by_school_id_and_slug`; `by_intake_id_and_status` |
 | `admissionsProductPrices` | Product 1:N immutable effective prices. `schoolId`, `productId`, `version`, `amountMinor`, `currency`, `refundPolicyKey`, `feeDisclosure`, `effectiveFrom`, optional `effectiveTo`, `status`. Never use floating amounts. | `by_product_id_and_version`; `by_product_id_and_status_and_effective_from`; `by_school_id_and_status` |
 
-Publishing resolves tenant defaults/overrides into a complete immutable form version. An application points directly to the resolved form, declaration, requirement, and price versions, so later settings cannot rewrite history.
+Publishing resolves tenant defaults/overrides into a complete immutable form version. It rejects stale draft revisions and requires current finance approval evidence bound to the exact price, currency, refund policy, disclosure, and effective dates. An application points directly to the resolved form, declaration, requirement, and price versions, so later settings cannot rewrite history.
 
 ### 6.2 Guardian, commerce, and entitlement
 
@@ -248,7 +248,7 @@ Reviewers may recommend but only `decision.record` grantees decide. Acceptance r
 | `running` | `failed_retryable` | Action catches transient/ambiguous failure or stale lease recovery | Transaction made no partial canonical writes; safe code recorded; retry uses same conversion | No |
 | `running` | `failed_terminal` | Deterministic conflict | Admission number conflict, ambiguous identity/family, missing required approved data; human resolution needed before a new approved request | Yes until privileged resolution |
 
-A client/network interruption after commit is recovered by reading `by_application_id`; `succeeded` returns the same IDs. A stale `running` lease is never assumed successful or failed without checking the ledger.
+A client/network interruption after commit is recovered by reading `by_application_id`; `succeeded` returns the same IDs. A staff retry of `failed_retryable` keeps the conversion key but replaces the persisted class, family resolution, photo, override, and numbering context with the newly reviewed inputs before scheduling work. A stale `running` lease is never assumed successful or failed without checking the ledger.
 
 ## 8. Payment sequence and race handling
 

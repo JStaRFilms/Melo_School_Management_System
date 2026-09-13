@@ -124,6 +124,17 @@ it("requires manual-number override authority under governed numbering", async (
   expect(await f.t.run((ctx) => ctx.db.query("admissionsConversions").withIndex("by_application", (q) => q.eq("applicationId", f.applicationId)).unique())).toBeNull();
 });
 
+it("refreshes reviewed conversion inputs before retrying a retryable failure", async () => {
+  const f = await fixture();
+  const requested = await f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "retry-with-current-inputs", classId: f.classId, admissionNumber: "OLD/001", familyResolution: { kind: "create", familyName: "Old Family" }, numberingVersion: 1, numberingFormatVersion: "old-format", numberingCounterKey: "old-counter", numberingCounterVersion: 1, numberingResetPeriod: "continuous" });
+  const newClassId = await f.t.run(async (ctx) => {
+    await ctx.db.patch(requested.conversionId, { state: "failed_retryable", errorCode: "CONVERSION_RETRY_REQUIRED", leaseExpiresAt: Date.now() - 1 });
+    return ctx.db.insert("classes", { schoolId: f.schoolId, name: "Primary 2", gradeName: "Primary 2", level: "primary", createdAt: Date.now(), updatedAt: Date.now() });
+  });
+  await expect(f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "retry-with-current-inputs", classId: newClassId, admissionNumber: "NEW/002", familyResolution: { kind: "create", familyName: "Current Family" }, numberingVersion: 2, numberingFormatVersion: "current-format", numberingCounterKey: "current-counter", numberingCounterVersion: 3, numberingResetPeriod: "academic_session" })).resolves.toMatchObject({ conversionId: requested.conversionId, state: "requested", replayed: true, errorCode: null });
+  expect(await f.t.run((ctx) => ctx.db.get(requested.conversionId))).toMatchObject({ state: "requested", classId: newClassId, requestedAdmissionNumber: "NEW/002", requestedFamilyName: "Current Family", numberingVersion: 2, numberingFormatVersion: "current-format", numberingCounterKey: "current-counter", numberingCounterVersion: 3, numberingResetPeriod: "academic_session" });
+});
+
 it("rejects duplicate admission numbers and cross-tenant family resolution without partial canonical writes", async () => {
   const duplicate = await fixture();
   await duplicate.t.run(async (ctx) => {

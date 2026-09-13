@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx } from "../../_generated/server";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { buildApplicationLinkV1 } from "@school/shared";
 import { resolveEffectiveTheme } from "../academic/groupSettings";
 import { admissionsDataClassValidator, applicationLinkV1Validator } from "../foundation/contracts";
@@ -75,6 +75,7 @@ const campaignInput = {
   currency: v.string(),
   refundPolicyKey: v.string(),
   feeDisclosure: v.string(),
+  priceApprovalEvidenceId: v.optional(v.id("schoolApprovalEvidence")),
   effectiveFrom: v.number(),
   effectiveTo: v.optional(v.number()),
 };
@@ -305,6 +306,7 @@ export const createCampaignDraft = mutation({
       currency: args.currency,
       refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100),
       feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000),
+      ...(args.priceApprovalEvidenceId ? { approvalEvidenceId: args.priceApprovalEvidenceId } : {}),
       effectiveFrom: args.effectiveFrom,
       ...(args.effectiveTo ? { effectiveTo: args.effectiveTo } : {}),
       status: "draft",
@@ -323,19 +325,35 @@ export const createCampaignDraft = mutation({
   },
 });
 
+async function priceApprovalSubjectKey(price: Doc<"admissionsProductPrices">) {
+  const termsDigest = await sha256Hex(JSON.stringify({
+    amountMinor: price.amountMinor,
+    currency: price.currency,
+    refundPolicyKey: price.refundPolicyKey,
+    feeDisclosure: price.feeDisclosure,
+    effectiveFrom: price.effectiveFrom,
+    effectiveTo: price.effectiveTo ?? null,
+  }));
+  return `${String(price._id)}:${termsDigest}`;
+}
+
 async function assertPublicationApproval(
   ctx: MutationCtx,
   schoolId: Id<"schools">,
   evidenceId: Id<"schoolApprovalEvidence"> | undefined,
-  subjectType: "admissions_form_field" | "admissions_document_requirement",
+  subjectType: "admissions_form_field" | "admissions_document_requirement" | "admissions_product_price",
   subjectKey: string,
   now: number,
+  requiredApprovalClass?: "finance",
 ) {
   if (!evidenceId) throw new ConvexError("Required or sensitive publication needs explicit approval evidence");
   const evidence = await ctx.db.get(evidenceId);
+  const approvalClassAccepted = requiredApprovalClass
+    ? evidence?.approvalClass === requiredApprovalClass
+    : Boolean(evidence && ["sensitive_public", "identity", "privacy", "finance"].includes(evidence.approvalClass));
   if (!evidence || evidence.schoolId !== schoolId || evidence.revokedAt !== undefined || evidence.approvedAt > now ||
       (evidence.expiresAt !== undefined && evidence.expiresAt <= now) || evidence.subjectType !== subjectType || evidence.subjectKey !== subjectKey ||
-      !["sensitive_public", "identity", "privacy", "finance"].includes(evidence.approvalClass)) {
+      !approvalClassAccepted) {
     throw new ConvexError("Publication approval evidence is not current and subject-bound");
   }
 }
@@ -350,6 +368,8 @@ export const editCampaignDraft = mutation({
     ]);
     if (!programme || !intake || !form || !declaration || !product || !price ||
         [programme, intake, form, declaration, product, price].some((row) => row.schoolId !== args.schoolId) ||
+        intake.programmeId !== programme._id || form.programmeId !== programme._id || form.intakeId !== intake._id ||
+        declaration.programmeId !== programme._id || product.intakeId !== intake._id || price.productId !== product._id ||
         form.status !== "draft" || declaration.status !== "draft" || price.status !== "draft") {
       throw new ConvexError("Editable campaign draft was not found");
     }
@@ -372,7 +392,7 @@ export const editCampaignDraft = mutation({
     await ctx.db.patch(form._id, { schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), draftRevision: nextDraftRevision, updatedAt: now });
     await ctx.db.patch(declaration._id, { title: normalizeRequiredText(args.declarationTitle, "Declaration title", 200), body: normalizeRequiredText(args.declarationBody, "Declaration body", 20_000), bodyDigest: await sha256Hex(args.declarationBody.trim()), purpose: normalizeRequiredText(args.declarationPurpose, "Declaration purpose", 500), updatedAt: now });
     await ctx.db.patch(product._id, { name: normalizeRequiredText(args.productName, "Product name", 160), updatedAt: now });
-    await ctx.db.patch(price._id, { amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), effectiveFrom: args.effectiveFrom, effectiveTo: args.effectiveTo, updatedAt: now });
+    await ctx.db.patch(price._id, { amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), approvalEvidenceId: args.priceApprovalEvidenceId, effectiveFrom: args.effectiveFrom, effectiveTo: args.effectiveTo, updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "campaign.edit_draft", entityType: "admissionsIntake", entityId: intake._id });
     return { programmeId: programme._id, intakeId: intake._id, formVersionId: form._id, declarationVersionId: declaration._id, productId: product._id, priceId: price._id, draftRevision: draftRevision(form._id, nextDraftRevision) };
   },
@@ -383,7 +403,7 @@ export const createReplacementDraft = mutation({
     schoolId: v.id("schools"), programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), productId: v.id("admissionsProducts"),
     schemaVersion: v.string(), fields: v.array(fieldInputValidator), requirements: v.array(requirementInputValidator),
     declarationTitle: v.string(), declarationBody: v.string(), declarationPurpose: v.string(),
-    amountMinor: v.number(), currency: v.string(), refundPolicyKey: v.string(), feeDisclosure: v.string(), effectiveFrom: v.number(), effectiveTo: v.optional(v.number()),
+    amountMinor: v.number(), currency: v.string(), refundPolicyKey: v.string(), feeDisclosure: v.string(), priceApprovalEvidenceId: v.optional(v.id("schoolApprovalEvidence")), effectiveFrom: v.number(), effectiveTo: v.optional(v.number()),
   },
   returns: campaignDraftResultValidator,
   handler: async (ctx, args) => {
@@ -402,14 +422,14 @@ export const createReplacementDraft = mutation({
     const formVersionId = await ctx.db.insert("admissionsFormVersions", { schoolId: args.schoolId, programmeId: programme._id, intakeId: intake._id, version: Math.max(0, ...forms.map((row) => row.version)) + 1, schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), draftRevision: 1, status: "draft", createdAt: now, updatedAt: now });
     await insertDefinitionRows(ctx, args.schoolId, formVersionId, args.fields, args.requirements, now);
     const declarationVersionId = await ctx.db.insert("admissionsDeclarationVersions", { schoolId: args.schoolId, programmeId: programme._id, version: Math.max(0, ...declarations.map((row) => row.version)) + 1, title: normalizeRequiredText(args.declarationTitle, "Declaration title", 200), body: normalizeRequiredText(args.declarationBody, "Declaration body", 20_000), bodyDigest: await sha256Hex(args.declarationBody.trim()), purpose: normalizeRequiredText(args.declarationPurpose, "Declaration purpose", 500), status: "draft", createdAt: now, updatedAt: now });
-    const priceId = await ctx.db.insert("admissionsProductPrices", { schoolId: args.schoolId, productId: product._id, version: Math.max(0, ...prices.map((row) => row.version)) + 1, amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), effectiveFrom: args.effectiveFrom, ...(args.effectiveTo ? { effectiveTo: args.effectiveTo } : {}), status: "draft", createdAt: now, updatedAt: now });
+    const priceId = await ctx.db.insert("admissionsProductPrices", { schoolId: args.schoolId, productId: product._id, version: Math.max(0, ...prices.map((row) => row.version)) + 1, amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), ...(args.priceApprovalEvidenceId ? { approvalEvidenceId: args.priceApprovalEvidenceId } : {}), effectiveFrom: args.effectiveFrom, ...(args.effectiveTo ? { effectiveTo: args.effectiveTo } : {}), status: "draft", createdAt: now, updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "campaign.create_replacement", entityType: "admissionsIntake", entityId: intake._id });
     return { programmeId: programme._id, intakeId: intake._id, formVersionId, declarationVersionId, productId: product._id, priceId, draftRevision: draftRevision(formVersionId, 1) };
   },
 });
 
 export const publishCampaign = mutation({
-  args: { ...campaignIdsValidator.fields, draftRevision: v.optional(v.string()) },
+  args: { ...campaignIdsValidator.fields, draftRevision: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
     const [programme, intake, form, declaration, product, price] = await Promise.all([
@@ -420,6 +440,7 @@ export const publishCampaign = mutation({
     const actor = await requireAdmissionsStaff(ctx, schoolId, ["enrollment.intakes.manage"]);
     if ([intake.schoolId, form.schoolId, declaration.schoolId, product.schoolId, price.schoolId].some((id) => id !== schoolId) || intake.programmeId !== programme._id || form.programmeId !== programme._id || form.intakeId !== intake._id || declaration.programmeId !== programme._id || product.intakeId !== intake._id || price.productId !== product._id) throw new ConvexError("Campaign records do not share one school and lifecycle");
     if (form.status !== "draft" || declaration.status !== "draft" || price.status !== "draft" || !["draft", "published"].includes(programme.status) || !["draft", "open", "paused", "closed"].includes(intake.status) || !["draft", "active", "paused"].includes(product.status)) throw new ConvexError("Only complete draft versions can be published");
+    if (args.draftRevision !== draftRevision(form._id, form.draftRevision)) throw new ConvexError("CAMPAIGN_DRAFT_CONFLICT: This draft changed on the server. Reload all campaign values before publishing.");
     const [fields, requirements] = await Promise.all([
       ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101),
       ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(31),
@@ -438,6 +459,7 @@ export const publishCampaign = mutation({
       if (!requirement.purpose.trim()) throw new ConvexError("Document requirements require a purpose");
       if (requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity)) await assertPublicationApproval(ctx, schoolId, requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, now);
     }
+    await assertPublicationApproval(ctx, schoolId, price.approvalEvidenceId, "admissions_product_price", await priceApprovalSubjectKey(price), now, "finance");
     const [publishedForms, publishedDeclarations, publishedPrices] = await Promise.all([
       ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "published")).take(10),
       ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id).eq("status", "published")).take(10),
@@ -488,7 +510,7 @@ const offeringValidator = v.union(v.object({ available: v.literal(false), link: 
 
 const campaignBundleValidator = v.object({
   programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), formVersionId: v.id("admissionsFormVersions"), declarationVersionId: v.id("admissionsDeclarationVersions"), productId: v.id("admissionsProducts"), priceId: v.id("admissionsProductPrices"),
-  lifecycle: v.union(v.literal("draft"), v.literal("published")), draftRevision: v.string(), applicationLink: applicationLinkV1Validator, programmeSlug: v.string(), programmeName: v.string(), programmeDescription: v.union(v.string(), v.null()), intakeSlug: v.string(), intakeName: v.string(), cycleLabel: v.string(), opensAt: v.number(), closesAt: v.number(), startsAt: v.union(v.number(), v.null()), schemaVersion: v.string(), formVersion: v.number(), declarationTitle: v.string(), declarationBody: v.string(), declarationPurpose: v.string(), productSlug: v.string(), productName: v.string(), amountMinor: v.number(), currency: v.string(), refundPolicyKey: v.string(), feeDisclosure: v.string(), effectiveFrom: v.number(), effectiveTo: v.union(v.number(), v.null()), fields: v.array(fieldInputValidator), requirements: v.array(requirementInputValidator),
+  lifecycle: v.union(v.literal("draft"), v.literal("published")), draftRevision: v.string(), applicationLink: applicationLinkV1Validator, programmeSlug: v.string(), programmeName: v.string(), programmeDescription: v.union(v.string(), v.null()), intakeSlug: v.string(), intakeName: v.string(), cycleLabel: v.string(), opensAt: v.number(), closesAt: v.number(), startsAt: v.union(v.number(), v.null()), schemaVersion: v.string(), formVersion: v.number(), declarationTitle: v.string(), declarationBody: v.string(), declarationPurpose: v.string(), productSlug: v.string(), productName: v.string(), amountMinor: v.number(), currency: v.string(), refundPolicyKey: v.string(), feeDisclosure: v.string(), priceApprovalEvidenceId: v.union(v.id("schoolApprovalEvidence"), v.null()), priceApprovalSubjectKey: v.string(), effectiveFrom: v.number(), effectiveTo: v.union(v.number(), v.null()), fields: v.array(fieldInputValidator), requirements: v.array(requirementInputValidator),
 });
 
 /** Staff campaign read model. It deliberately returns only immutable version bundles that can be edited or replaced. */
@@ -529,7 +551,7 @@ export const listCampaigns = query({
           ]);
           if (fields.length > 100 || requirements.length > 30) throw new ConvexError("Campaign definition exceeds the supported bound");
           const availability = lifecycle !== "published" ? "unavailable" as const : intake.status === "paused" ? "paused" as const : intake.status === "closed" || intake.status === "archived" || args.now > intake.closesAt ? "closed" as const : intake.status === "open" && args.now < intake.opensAt ? "upcoming" as const : intake.status === "open" ? "open" as const : "unavailable" as const;
-          result.push({ programmeId: programme._id, intakeId: intake._id, formVersionId: form._id, declarationVersionId: declaration._id, productId: product._id, priceId: price._id, lifecycle, draftRevision: draftRevision(form._id, form.draftRevision), applicationLink: buildApplicationLinkV1({ applicationOrigin: configuredApplicationOrigin(), schoolSlug: school.slug, intakeSlug: intake.slug, availability, opensAt: intake.opensAt, closesAt: intake.closesAt }), programmeSlug: programme.slug, programmeName: programme.name, programmeDescription: programme.description ?? null, intakeSlug: intake.slug, intakeName: intake.name, cycleLabel: intake.cycleLabel, opensAt: intake.opensAt, closesAt: intake.closesAt, startsAt: intake.startsAt ?? null, schemaVersion: form.schemaVersion, formVersion: form.version, declarationTitle: declaration.title, declarationBody: declaration.body, declarationPurpose: declaration.purpose, productSlug: product.slug, productName: product.name, amountMinor: price.amountMinor, currency: price.currency, refundPolicyKey: price.refundPolicyKey, feeDisclosure: price.feeDisclosure, effectiveFrom: price.effectiveFrom, effectiveTo: price.effectiveTo ?? null, fields: fields.map((field) => ({ fieldKey: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, ...(field.helpText ? { helpText: field.helpText } : {}), requiredMode: field.requiredMode, dataClass: field.dataClass, ...(field.purpose ? { purpose: field.purpose } : {}), validationJson: field.validationJson, ...(field.conditionalRuleJson ? { conditionalRuleJson: field.conditionalRuleJson } : {}), ...(field.approvalEvidenceId ? { approvalEvidenceId: field.approvalEvidenceId } : {}), order: field.order })), requirements: requirements.map((item) => ({ requirementKey: item.requirementKey, category: item.category, label: item.label, requiredMode: item.requiredMode, acceptedMimeTypes: item.acceptedMimeTypes, maxBytes: item.maxBytes, maxFiles: item.maxFiles, sensitivity: item.sensitivity, purpose: item.purpose, ...(item.conditionJson ? { conditionJson: item.conditionJson } : {}), ...(item.approvalEvidenceId ? { approvalEvidenceId: item.approvalEvidenceId } : {}), order: item.order })) });
+          result.push({ programmeId: programme._id, intakeId: intake._id, formVersionId: form._id, declarationVersionId: declaration._id, productId: product._id, priceId: price._id, lifecycle, draftRevision: draftRevision(form._id, form.draftRevision), applicationLink: buildApplicationLinkV1({ applicationOrigin: configuredApplicationOrigin(), schoolSlug: school.slug, intakeSlug: intake.slug, availability, opensAt: intake.opensAt, closesAt: intake.closesAt }), programmeSlug: programme.slug, programmeName: programme.name, programmeDescription: programme.description ?? null, intakeSlug: intake.slug, intakeName: intake.name, cycleLabel: intake.cycleLabel, opensAt: intake.opensAt, closesAt: intake.closesAt, startsAt: intake.startsAt ?? null, schemaVersion: form.schemaVersion, formVersion: form.version, declarationTitle: declaration.title, declarationBody: declaration.body, declarationPurpose: declaration.purpose, productSlug: product.slug, productName: product.name, amountMinor: price.amountMinor, currency: price.currency, refundPolicyKey: price.refundPolicyKey, feeDisclosure: price.feeDisclosure, priceApprovalEvidenceId: price.approvalEvidenceId ?? null, priceApprovalSubjectKey: await priceApprovalSubjectKey(price), effectiveFrom: price.effectiveFrom, effectiveTo: price.effectiveTo ?? null, fields: fields.map((field) => ({ fieldKey: field.fieldKey, sectionKey: field.sectionKey, kind: field.kind, label: field.label, ...(field.helpText ? { helpText: field.helpText } : {}), requiredMode: field.requiredMode, dataClass: field.dataClass, ...(field.purpose ? { purpose: field.purpose } : {}), validationJson: field.validationJson, ...(field.conditionalRuleJson ? { conditionalRuleJson: field.conditionalRuleJson } : {}), ...(field.approvalEvidenceId ? { approvalEvidenceId: field.approvalEvidenceId } : {}), order: field.order })), requirements: requirements.map((item) => ({ requirementKey: item.requirementKey, category: item.category, label: item.label, requiredMode: item.requiredMode, acceptedMimeTypes: item.acceptedMimeTypes, maxBytes: item.maxBytes, maxFiles: item.maxFiles, sensitivity: item.sensitivity, purpose: item.purpose, ...(item.conditionJson ? { conditionJson: item.conditionJson } : {}), ...(item.approvalEvidenceId ? { approvalEvidenceId: item.approvalEvidenceId } : {}), order: item.order })) });
         }
       }
     }

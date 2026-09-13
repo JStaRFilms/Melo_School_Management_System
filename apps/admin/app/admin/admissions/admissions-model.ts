@@ -4,11 +4,11 @@ export type CampaignEditorValues = {
   programmeSlug: string; programmeName: string; programmeDescription: string; intakeSlug: string; intakeName: string; cycleLabel: string;
   opensAt: string; closesAt: string; schemaVersion: string; declarationTitle: string; declarationBody: string; declarationPurpose: string;
   productSlug: string; productName: string; amount: string; currency: string; refundPolicyKey: string; feeDisclosure: string;
-  fieldsJson: string; requirementsJson: string;
+  priceApprovalEvidenceId: string; priceApprovalSubjectKey: string; fieldsJson: string; requirementsJson: string;
 };
 
 export const EMPTY_CAMPAIGN: CampaignEditorValues = {
-  programmeSlug: "", programmeName: "", programmeDescription: "", intakeSlug: "", intakeName: "", cycleLabel: "", opensAt: "", closesAt: "", schemaVersion: "1", declarationTitle: "", declarationBody: "", declarationPurpose: "", productSlug: "", productName: "", amount: "", currency: "NGN", refundPolicyKey: "", feeDisclosure: "", fieldsJson: "[]", requirementsJson: "[]",
+  programmeSlug: "", programmeName: "", programmeDescription: "", intakeSlug: "", intakeName: "", cycleLabel: "", opensAt: "", closesAt: "", schemaVersion: "1", declarationTitle: "", declarationBody: "", declarationPurpose: "", productSlug: "", productName: "", amount: "", currency: "NGN", refundPolicyKey: "", feeDisclosure: "", priceApprovalEvidenceId: "", priceApprovalSubjectKey: "", fieldsJson: "[]", requirementsJson: "[]",
 };
 
 function isObject(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
