@@ -397,7 +397,7 @@ export const recordDecision = mutation({
       if (field) parsedAnswers.set(answer.fieldKey, validateAnswerForField(field, answer.valueType, answer.serializedValue));
     }
     const requiredDocuments = requirements.filter((requirement) => requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatches(requirement.conditionJson, parsedAnswers)));
-    if (requiredDocuments.some((requirement) => !documents.some((document) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("Required documents must be accepted before a decision");
+    if (args.state === "accepted" && requiredDocuments.some((requirement) => !documents.some((document) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("Required documents must be accepted before an acceptance decision");
     const previous = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
     if (previous?.state === args.state && previous.reasonCode === reasonCode && previous.guardianMessage === guardianMessage && previous.rationale === args.rationale) return { decisionId: previous._id, version: previous.version, replayed: true };
     const rows = await ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application._id)).order("desc").take(2);

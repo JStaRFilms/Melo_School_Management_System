@@ -506,8 +506,8 @@ export const listCampaigns = query({
     if (programmes.length > 50) throw new ConvexError("Campaign catalogue exceeds the supported bound");
     const result = [];
     for (const programme of programmes) {
-      const intakes = (await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(51)).filter((row) => row.programmeId === programme._id);
-      if (intakes.length > 10) throw new ConvexError("Campaign intake set exceeds the supported bound");
+      const intakes = await ctx.db.query("admissionsIntakes").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id)).take(11);
+      if (intakes.length > 10 || intakes.some((row) => row.schoolId !== args.schoolId)) throw new ConvexError("Campaign intake set exceeds the supported bound");
       for (const intake of intakes) {
         const products = await ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(2);
         if (products.length !== 1) continue;

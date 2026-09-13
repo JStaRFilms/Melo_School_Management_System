@@ -70,6 +70,8 @@ it("binds upload intents to guardian, school, application, requirement, token, t
 
   await f.t.run((ctx) => ctx.db.patch(intent.uploadIntentId, { expiresAt: Date.now() - 1 }));
   await expect(f.owner.mutation(beginHttpUploadRef, { uploadIntentId: intent.uploadIntentId, uploadToken: intent.uploadToken, uploadAttemptId: "attempt-expired-001" })).rejects.toThrow("no longer available");
+  await f.t.run((ctx) => ctx.db.patch(f.applicationId, { financialHoldAt: Date.now(), financialHoldReason: "VERIFIED_REFUNDED" }));
+  await expect(f.owner.mutation(requestUploadRef, { applicationId: f.applicationId, requirementId: f.requirementId, fileName: "held.pdf", contentType: "application/pdf", size: pdfBytes.byteLength, sha256: hash })).rejects.toThrow("locked");
 });
 
 it("commits measured quota once on finalize and releases abandoned bytes only after storage deletion", async () => {

@@ -78,6 +78,25 @@ function assertDraftMutationKey(value: string) {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(value)) throw new ConvexError("A bounded draft mutation key is required");
 }
 
+function submittedDocumentVersions(items: Doc<"admissionsSubmissionSnapshotItems">[]) {
+  const versions = new Map<string, number>();
+  for (const item of items) {
+    if (item.kind !== "document_manifest") continue;
+    try {
+      const parsed: unknown = JSON.parse(item.serializedValue);
+      if (!parsed || typeof parsed !== "object") throw new Error("invalid manifest");
+      const requirementId = Reflect.get(parsed, "requirementId");
+      const version = Reflect.get(parsed, "version");
+      if (requirementId !== null && typeof requirementId !== "string") throw new Error("invalid requirement");
+      if (!Number.isSafeInteger(version) || Number(version) < 1) throw new Error("invalid version");
+      if (typeof requirementId === "string") versions.set(requirementId, Math.max(versions.get(requirementId) ?? 0, Number(version)));
+    } catch {
+      throw new ConvexError("Submitted document correction evidence is unavailable");
+    }
+  }
+  return versions;
+}
+
 export const createOrResume = mutation({
   args: { entitlementId: v.id("admissionsEntitlements") },
   returns: v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), replayed: v.boolean() }),
@@ -277,7 +296,20 @@ export const submit = mutation({
     const missingFields = fields.filter((field) => field.status === "active" && (field.requiredMode === "required" || (field.requiredMode === "conditional" && conditionMatches(field.conditionalRuleJson, parsedAnswers))) && !hasValue(field.fieldKey)).map((field) => field.fieldKey);
     const activeDocuments = documents.filter((document) => !["deleted", "superseded", "archived"].includes(document.state));
     const missingRequirements = requirements.filter((requirement) => (requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatches(requirement.conditionJson, parsedAnswers))) && !activeDocuments.some((document) => document.requirementId === requirement._id && (document.state === "uploaded" || document.state === "accepted"))).map((requirement) => requirement.requirementKey);
-    if (missingFields.length || missingRequirements.length) admissionsError("APPLICATION_INCOMPLETE", `Missing required items: ${[...missingFields, ...missingRequirements].join(", ")}`);
+    const correctionSnapshotId = application.latestSnapshotId;
+    if (application.state === "changes_requested" && correctionSnapshotId) {
+      const [events, snapshotItems] = await Promise.all([
+        ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(501),
+        ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", correctionSnapshotId)).take(204),
+      ]);
+      if (events.length > 500 || snapshotItems.length > 203) throw new ConvexError("Application correction evidence exceeds the supported bound");
+      const scope = mergeCorrectionScopes(events, correctionSnapshotId);
+      if (!scope) admissionsError("APPLICATION_LOCKED", "Application correction scope is unavailable");
+      const priorVersions = submittedDocumentVersions(snapshotItems);
+      const missingReplacements = scope.requirementIds.filter((requirementId) => !activeDocuments.some((document) => String(document.requirementId) === requirementId && (document.state === "uploaded" || document.state === "accepted") && document.version > (priorVersions.get(requirementId) ?? 0)));
+      if (missingReplacements.length) missingRequirements.push(...requirements.filter((requirement) => missingReplacements.includes(String(requirement._id))).map((requirement) => requirement.requirementKey));
+    }
+    if (missingFields.length || missingRequirements.length) admissionsError("APPLICATION_INCOMPLETE", `Missing required items: ${[...missingFields, ...new Set(missingRequirements)].join(", ")}`);
     if (!entitlement || entitlement.guardianId !== guardian._id || (application.currentRevision === 0 && entitlement.state !== "reserved") || (application.currentRevision > 0 && entitlement.state !== "consumed")) throw new ConvexError("Application entitlement cannot be consumed");
     const revision = application.currentRevision + 1;
     const documentManifest = activeDocuments.map((document) => ({ documentKey: document.documentKey, requirementId: document.requirementId ? String(document.requirementId) : null, category: document.category, mimeType: document.mimeType, byteSize: document.byteSize, sha256: document.sha256, version: document.version, state: document.state })).sort((a, b) => a.documentKey.localeCompare(b.documentKey));

@@ -64,7 +64,7 @@ export const requestUploadIntent = mutation({
   returns: v.object({ uploadIntentId: v.id("admissionsDocumentUploadIntents"), uploadToken: v.string(), uploadPath: v.literal("/admissions/document-upload"), expiresAt: v.number() }),
   handler: async (ctx, args) => {
     const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
-    if (!isApplicationEditable(application.state)) admissionsError("APPLICATION_LOCKED", "Application documents are locked");
+    if (!isApplicationEditable(application.state) || application.financialHoldAt !== undefined) admissionsError("APPLICATION_LOCKED", "Application documents are locked");
     const requirement = await ctx.db.get(args.requirementId);
     if (!requirement || requirement.schoolId !== application.schoolId || requirement.formVersionId !== application.formVersionId) admissionsError("NOT_FOUND_OR_DENIED", "Document requirement not found");
     const metadata = assertUploadMetadata(args);
@@ -121,7 +121,7 @@ export const beginHttpUpload = internalMutation({
     if (!intent || intent.guardianId !== guardian._id || intent.tokenHash !== tokenHash || intent.purpose !== "admissions_document") admissionsError("NOT_FOUND_OR_DENIED", "Upload intent not found");
     const application = await ctx.db.get(intent.applicationId);
     const requirement = await ctx.db.get(intent.requirementId);
-    if (!application || !requirement || application.schoolId !== intent.schoolId || requirement.schoolId !== intent.schoolId || !isApplicationEditable(application.state)) admissionsError("NOT_FOUND_OR_DENIED", "Upload intent not found");
+    if (!application || !requirement || application.schoolId !== intent.schoolId || requirement.schoolId !== intent.schoolId || !isApplicationEditable(application.state) || application.financialHoldAt !== undefined) admissionsError("NOT_FOUND_OR_DENIED", "Upload intent not found");
     if (intent.status !== "pending" || intent.expiresAt <= Date.now() || !/^[A-Za-z0-9_-]{16,128}$/.test(args.uploadAttemptId)) throw new ConvexError("Upload intent is no longer available");
     await ctx.db.patch(intent._id, { status: "uploading", activeAttemptId: args.uploadAttemptId, updatedAt: Date.now() });
     return { contentType: intent.contentType, expectedSize: intent.expectedSize, expectedSha256: intent.expectedSha256 };
@@ -157,7 +157,7 @@ export const finalizeUpload = mutation({
     }
     if (intent.status !== "stored" || !intent.storageId || intent.expiresAt <= Date.now()) throw new ConvexError("Upload is not ready to finalize");
     const [application, requirement, metadata] = await Promise.all([ctx.db.get(intent.applicationId), ctx.db.get(intent.requirementId), ctx.db.system.get("_storage", intent.storageId)]);
-    if (!application || application.guardianId !== guardian._id || application.schoolId !== intent.schoolId || !isApplicationEditable(application.state) || !requirement || requirement.schoolId !== intent.schoolId || requirement.formVersionId !== application.formVersionId) admissionsError("NOT_FOUND_OR_DENIED", "Upload context changed");
+    if (!application || application.guardianId !== guardian._id || application.schoolId !== intent.schoolId || !isApplicationEditable(application.state) || application.financialHoldAt !== undefined || !requirement || requirement.schoolId !== intent.schoolId || requirement.formVersionId !== application.formVersionId) admissionsError("NOT_FOUND_OR_DENIED", "Upload context changed");
     if (!metadata || metadata.size !== intent.expectedSize || storageSha256ToHex(metadata.sha256) !== intent.expectedSha256) throw new ConvexError("Stored document metadata does not match the reserved upload");
     if (!(await storageClaimedOnlyBy(ctx, intent.storageId, { purpose: "admissionsDocumentUploadIntent", ownerId: String(intent._id) }))) throw new ConvexError("Stored document has conflicting ownership");
     const previous = await ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id).eq("requirementId", requirement._id)).order("desc").take(requirement.maxFiles + 1);

@@ -208,7 +208,7 @@ A guardian does not delete and replace an application. Before first submission t
 | `draft` / `submitted` / `under_review` / `changes_requested` | `withdrawn` | Owning guardian or authorized staff with evidence | No conversion; preserve payment, snapshot and audit records | Yes |
 | Any terminal state | `archived` | Retention workflow | Redaction/deletion policy completed; minimal tombstone remains | Yes |
 
-There is no direct edit API in `submitted`, `under_review`, or `decisioned`. Requesting changes unlocks only an explicit set of fields/document requirements. Staff corrections are not silent edits; they are review events and require guardian resubmission or a separately visible administrative correction snapshot.
+There is no direct edit API in `submitted`, `under_review`, or `decisioned`. Requesting changes unlocks only an explicit set of fields/document requirements. A requested document correction requires a newer active document version than the current submitted snapshot before resubmission. Staff corrections are not silent edits; they are review events and require guardian resubmission or a separately visible administrative correction snapshot.
 
 ### 7.4 Document review
 
@@ -236,7 +236,7 @@ Document acceptance is not admission acceptance. Birth certificates and medical 
 | Any nonterminal decision | `withdrawn` | Guardian withdrawal | Preserve history | Yes |
 | `accepted` / `rejected` | `in_evaluation` | Admissions manager reopen | New decision version, explicit reason, audit, and no completed conversion for rejection/reopen | No |
 
-Reviewers may recommend but only `decision.record` grantees decide. A platform admin has no school application access by default.
+Reviewers may recommend but only `decision.record` grantees decide. Acceptance requires every applicable required document to be accepted; rejection remains available when document review fails. A platform admin has no school application access by default.
 
 ### 7.6 Conversion
 
@@ -523,7 +523,7 @@ B0 should add or freeze: `students.by_school_id_and_admission_number`; an applic
 | Security/business audit | 7 years, with sensitive values excluded | Retain append-only event/tombstone |
 | Unbound storage upload | 15-minute one-time intent | Delete any known object after ownership check, then release its reservation |
 
-The Phase 2 backend makes document retention prospective and versioned. A school's current setting is either `never` or `archive` after at least 30 days. Each terminal application records the policy version that governed it; legacy applications without that linkage fail closed. Eligible documents first become `archived`, and physical deletion is not due until 30 additional days have elapsed. Both manual and six-hour cron cleanup are bounded and idempotent. They block on legal/retention holds, waitlists or nonterminal applications, incomplete conversion, pending assignments/conversions/outbox/jobs, selected canonical student-photo provenance, conflicting storage ownership, and missing trusted quota/storage provenance. Physical deletion precedes quota release and leaves a tombstone.
+The Phase 2 backend makes document retention prospective and versioned. A school's current setting is either `never` or `archive` after at least 30 days. Each terminal application records the policy version that governed it; legacy applications without that linkage fail closed. Eligible documents first become `archived`, and physical deletion is not due until 30 additional days have elapsed. Both manual and six-hour cron cleanup are bounded and idempotent. Cron batches schedule immediate bounded continuation while eligible cursor work remains, then return to the six-hour interval. They block on legal/retention holds, waitlists or nonterminal applications, incomplete conversion, pending assignments/conversions/outbox/jobs, selected canonical student-photo provenance, conflicting storage ownership, and missing trusted quota/storage provenance. Physical deletion precedes quota release and leaves a tombstone.
 
 ## 16. Error and recovery contract
 

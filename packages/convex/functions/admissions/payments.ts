@@ -208,9 +208,8 @@ export const recordVerifiedPayment = internalMutation({
     if (financialState) {
       if (entitlement) {
         const application = entitlement.applicationId ? await ctx.db.get(entitlement.applicationId) : null;
-        const consumed = entitlement.state === "consumed" || Boolean(application && application.currentRevision > 0);
         await ctx.db.patch(entitlement._id, { state: financialState === "refunded" ? "refunded" : "revoked", voidReason: `VERIFIED_${financialState.toUpperCase()}`, updatedAt: now });
-        if (consumed && application) await ctx.db.patch(application._id, { financialHoldAt: now, financialHoldReason: `VERIFIED_${financialState.toUpperCase()}`, updatedAt: now });
+        if (application) await ctx.db.patch(application._id, { financialHoldAt: now, financialHoldReason: `VERIFIED_${financialState.toUpperCase()}`, updatedAt: now });
       }
       await ctx.db.patch(attempt._id, { state: financialState, failureCode: undefined, updatedAt: now });
       await finalizeEvent("processed", `Verified ${financialState} applied monotonically`);

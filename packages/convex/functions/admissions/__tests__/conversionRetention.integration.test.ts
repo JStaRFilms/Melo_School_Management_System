@@ -236,6 +236,21 @@ it("advances a persisted retention cursor fairly across equally-timestamped bloc
   expect(job?.cursor).toContain("creationTime");
 });
 
+it("continues retention work immediately until all due documents in the batch are inspected", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-13T03:00:00.000Z"));
+  const f = await fixture();
+  const policy = await f.staff.mutation(setPolicyRef, { schoolId: f.schoolId, mode: "archive", archiveAfterDays: 30, expectedVersion: 0 });
+  const terminalAt = Date.now() - 31 * DAY_MS;
+  await f.t.run((ctx) => ctx.db.patch(f.applicationId, { state: "rejected", terminalOutcomeAt: terminalAt, retentionPolicyId: policy.policyId, currentDecisionId: undefined }));
+  const first = await addRetentionDocument(f, { key: "continued-one" });
+  const second = await addRetentionDocument(f, { key: "continued-two" });
+  expect(await f.t.mutation(processRetentionCleanupRef, { limit: 25 })).toMatchObject({ inspected: 1, archived: 1 });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.t.run(async (ctx) => Promise.all([ctx.db.get(first.documentId), ctx.db.get(second.documentId)]))).toMatchObject([{ state: "archived" }, { state: "archived" }]);
+  vi.useRealTimers();
+});
+
 it("blocks accepted-document retention before conversion and while selected student-photo provenance remains", async () => {
   vi.useFakeTimers();
   const restoreEmail = mockOnboardingEmailDelivery();

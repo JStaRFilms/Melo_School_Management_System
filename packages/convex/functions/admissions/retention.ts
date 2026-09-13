@@ -9,6 +9,7 @@ import {
   recordAdmissionsAudit,
   requireAdmissionsStaff,
 } from "./shared";
+import { processRetentionCleanupRef } from "./refs";
 
 type Context = QueryCtx | MutationCtx;
 
@@ -174,6 +175,7 @@ export const processRetentionCleanup = internalMutation({
     const limit = Math.min(Math.max(Math.trunc(args.limit ?? 25), 1), 50);
     const jobs = await ctx.db.query("admissionsRetentionJobs").withIndex("by_state_and_scheduled_at", (q) => q.eq("state", "running").lte("scheduledAt", now)).take(limit);
     let inspected = 0, archived = 0, deleted = 0, blocked = 0;
+    let continuationRequired = false;
     for (const job of jobs) {
       if (inspected >= limit) break;
       const policyVersion = Number(job.policyVersion);
@@ -210,7 +212,9 @@ export const processRetentionCleanup = internalMutation({
       else if (result.changed && result.state === "deleted") deleted += 1;
       else if (result.blocker) blocked += 1;
       await ctx.db.patch(job._id, { cursor: JSON.stringify({ stateIndex: selectedStateIndex, updatedAt: originalUpdatedAt, creationTime: selected._creationTime }), scheduledAt: now + 1, updatedAt: now });
+      continuationRequired = true;
     }
+    if (continuationRequired) await ctx.scheduler.runAfter(1, processRetentionCleanupRef, { limit });
     return { inspected, archived, deleted, blocked };
   },
 });

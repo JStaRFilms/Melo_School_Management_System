@@ -98,6 +98,19 @@ async function paidApplication(f: Awaited<ReturnType<typeof fixture>>, key = "pu
   return { attempt, payment, application };
 }
 
+async function addRequiredDocument(f: Awaited<ReturnType<typeof fixture>>, applicationId: Id<"admissionsApplications">, key: string) {
+  return await f.t.run(async (ctx) => {
+    const now = Date.now();
+    const application = await ctx.db.get(applicationId);
+    if (!application) throw new Error("Application missing");
+    const requirementId = await ctx.db.insert("admissionsDocumentRequirements", { schoolId: f.schoolId, formVersionId: application.formVersionId, requirementKey: key, category: "identity", label: "Identity evidence", requiredMode: "required", acceptedMimeTypes: ["application/pdf"], maxBytes: 100_000, maxFiles: 2, sensitivity: "personal", purpose: "Identity review", order: 2, createdAt: now, updatedAt: now });
+    const storageId = await ctx.storage.store(new Blob(["identity evidence"], { type: "application/pdf" }));
+    const documentKey = `${key}-v1`;
+    await ctx.db.insert("admissionsDocuments", { schoolId: f.schoolId, applicationId, requirementId, category: "identity", documentKey, storageId, fileName: `${key}.pdf`, mimeType: "application/pdf", byteSize: 17, sha256: `${key}-digest`, version: 1, state: "uploaded", sensitivity: "personal", uploadedByGuardianId: application.guardianId, retentionHold: false, createdAt: now, updatedAt: now });
+    return { requirementId, documentKey };
+  });
+}
+
 it("serves the restored UI read models without caller-supplied guardian identity", async () => {
   const f = await fixture();
   const campaigns = await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() });
@@ -192,6 +205,20 @@ it("rejects school-wide intake and product slug collisions before they can break
   await expect(f.staff.mutation(createCampaignRef, { ...base, intakeSlug: "2027", productSlug: "application-slot" })).rejects.toThrow("Product slug");
 });
 
+it("lists later programme intakes without rereading a school-wide prefix", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    const now = Date.now();
+    for (let programmeIndex = 0; programmeIndex < 6; programmeIndex += 1) {
+      const programmeId = await ctx.db.insert("admissionsProgrammes", { schoolId: f.schoolId, slug: `aux-${programmeIndex}`, name: `Auxiliary ${programmeIndex}`, status: "draft", createdAt: now + programmeIndex, updatedAt: now + programmeIndex });
+      for (let intakeIndex = 0; intakeIndex < 10; intakeIndex += 1) await ctx.db.insert("admissionsIntakes", { schoolId: f.schoolId, programmeId, slug: `aux-${programmeIndex}-${intakeIndex}`, name: `Auxiliary ${programmeIndex}-${intakeIndex}`, cycleLabel: "2026", opensAt: now, closesAt: now + 100_000, status: "draft", createdAt: now + intakeIndex, updatedAt: now + intakeIndex });
+    }
+  });
+  await f.staff.mutation(createCampaignRef, { schoolId: f.schoolId, programmeSlug: "later-programme", programmeName: "Later programme", intakeSlug: "later-intake", intakeName: "Later intake", cycleLabel: "2027", opensAt: Date.now(), closesAt: Date.now() + 100_000, schemaVersion: "1", fields: [], requirements: [], declarationTitle: "Declaration", declarationBody: "I confirm", declarationPurpose: "Attestation", productSlug: "later-product", productName: "Later product", amountMinor: 500_000, currency: "NGN", refundPolicyKey: "none", feeDisclosure: "Application fee", effectiveFrom: Date.now() });
+  const campaigns = await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() });
+  expect(campaigns.some((campaign) => campaign.programmeSlug === "later-programme" && campaign.intakeSlug === "later-intake")).toBe(true);
+});
+
 it("allows an owned paid draft to submit after campaign closure while blocking new purchases", async () => {
   const f = await fixture();
   const { application } = await paidApplication(f, "close-after-purchase");
@@ -253,6 +280,15 @@ it("initializes guardian-owned checkout and fulfils only server-verified Paystac
   }
 }, 15_000);
 
+it("locks a reserved draft when its verified payment is refunded", async () => {
+  const f = await fixture();
+  const { attempt, application } = await paidApplication(f, "reserved-refund");
+  const refunded = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "reserved-refund-event", eventType: "refund.processed", bodyDigest: "reserved-refund-digest", amountMinor: attempt.amountMinor, currency: attempt.currency, financialOutcome: "refunded", receivedAt: Date.now() });
+  expect(refunded.state).toBe("refunded");
+  expect(await f.t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ state: "draft", financialHoldReason: "VERIFIED_REFUNDED" });
+  await expect(f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "held-draft-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Ife", lastName: "Ade", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [] })).rejects.toThrow("financially held");
+});
+
 it("recovers legacy verified events and applies refund/reversal outcomes monotonically", async () => {
   const f = await fixture();
   const attempt = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "legacy-verified" });
@@ -307,6 +343,34 @@ it("handles draft replay/conflict, immutable resubmission snapshots, and correct
   expect(resubmitted.revision).toBe(2);
   expect(await f.t.run((ctx) => ctx.db.get(submitted.snapshotId))).toEqual(snapshotBefore);
   expect(await f.t.run((ctx) => ctx.db.query("admissionsSubmissionSnapshots").withIndex("by_application_and_revision", (q) => q.eq("applicationId", application.applicationId)).collect())).toHaveLength(2);
+});
+
+it("requires a newer requested document version before resubmission", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "replacement-required");
+  const document = await addRequiredDocument(f, application.applicationId, "replacement-required");
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "replacement-draft", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
+  await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "replacement-submit-one", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
+  await f.staff.mutation(requestChangesRef, { schoolId: f.schoolId, applicationId: application.applicationId, fieldKeys: [], requirementIds: [document.requirementId], reasonCode: "REPLACE_DOCUMENT", guardianMessage: "Upload a newer identity document." });
+  await expect(f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "replacement-submit-two", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true })).rejects.toThrow("Missing required items");
+  await f.t.run(async (ctx) => {
+    const applicationRow = await ctx.db.get(application.applicationId);
+    if (!applicationRow) throw new Error("Application missing");
+    const storageId = await ctx.storage.store(new Blob(["new identity evidence"], { type: "application/pdf" }));
+    await ctx.db.insert("admissionsDocuments", { schoolId: f.schoolId, applicationId: application.applicationId, requirementId: document.requirementId, category: "identity", documentKey: "replacement-required-v2", storageId, fileName: "replacement-v2.pdf", mimeType: "application/pdf", byteSize: 21, sha256: "replacement-v2-digest", version: 2, state: "uploaded", sensitivity: "personal", uploadedByGuardianId: applicationRow.guardianId, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() });
+  });
+  await expect(f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "replacement-submit-three", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true })).resolves.toMatchObject({ revision: 2 });
+});
+
+it("allows rejection when a required document fails review but still blocks acceptance", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "rejected-document-decision");
+  const document = await addRequiredDocument(f, application.applicationId, "rejected-document");
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "reject-doc-draft", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
+  await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "reject-doc-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
+  await f.staff.mutation(documentReviewRef, { schoolId: f.schoolId, documentKey: document.documentKey, result: "rejected", reasonCode: "INVALID_DOCUMENT", guardianMessage: "The identity document could not be accepted." });
+  await expect(f.staff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "ACCEPT", guardianMessage: "Accepted." })).rejects.toThrow("before an acceptance decision");
+  await expect(f.staff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "rejected", reasonCode: "DOCUMENT_FAILED", guardianMessage: "The application could not be approved." })).resolves.toMatchObject({ version: 1 });
 });
 
 it("atomically turns a needs-replacement document review into a guardian correction", async () => {
