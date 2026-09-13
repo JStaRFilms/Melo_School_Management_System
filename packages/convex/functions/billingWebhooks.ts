@@ -31,33 +31,50 @@ function objectValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function extractPayloadMetadata(payload: unknown) {
+export function extractPayloadMetadata(payload: unknown) {
   const root = objectValue(payload);
   const data = objectValue(root.data);
-  const metadata = objectValue(data.metadata ?? root.metadata);
-  const customer = objectValue(data.customer);
-  const authorization = objectValue(data.authorization);
+  const transaction = objectValue(data.transaction);
+  const metadata = objectValue(data.metadata ?? transaction.metadata ?? root.metadata);
+  const customer = objectValue(data.customer ?? transaction.customer);
+  const authorization = objectValue(data.authorization ?? transaction.authorization);
+  const eventType = normalizeWebhookText(root.event)?.toLowerCase();
+  const merchantAcceptedDispute = eventType === "charge.dispute.resolve" && normalizeWebhookText(data.resolution)?.toLowerCase() === "merchant-accepted";
+  const amount = merchantAcceptedDispute && typeof data.refund_amount === "number" ? data.refund_amount : typeof data.amount === "number" ? data.amount : typeof transaction.amount === "number" ? transaction.amount : undefined;
   return {
     schoolId: normalizeWebhookText(metadata.schoolId ?? root.schoolId),
     invoiceId: normalizeWebhookText(metadata.invoiceId),
     invoiceNumber: normalizeWebhookText(metadata.invoiceNumber),
-    gatewayReference: normalizeWebhookText(data.reference ?? data.gateway_reference ?? root.reference),
-    providerMode: normalizeWebhookText(metadata.paymentProviderMode ?? root.paymentProviderMode),
-    amountReceived: typeof data.amount === "number" ? data.amount / 100 : typeof root.amount === "number" ? root.amount : undefined,
-    amountMinor: typeof data.amount === "number" && Number.isSafeInteger(data.amount) ? data.amount : undefined,
-    currency: normalizeWebhookText(data.currency)?.toUpperCase(),
+    gatewayReference: normalizeWebhookText(data.reference ?? data.gateway_reference ?? data.transaction_reference ?? transaction.reference ?? root.reference),
+    providerMode: normalizeWebhookText(metadata.paymentProviderMode ?? data.domain ?? transaction.domain ?? root.paymentProviderMode),
+    amountReceived: amount === undefined ? typeof root.amount === "number" ? root.amount : undefined : amount / 100,
+    amountMinor: amount !== undefined && Number.isSafeInteger(amount) ? amount : undefined,
+    currency: normalizeWebhookText(data.currency ?? transaction.currency)?.toUpperCase(),
     payerEmail: normalizeWebhookText(customer.email ?? authorization.customer_email ?? metadata.email),
     payerName: normalizeWebhookText(customer.name ?? metadata.payerName ?? customer.first_name),
   };
 }
 
-function buildPaystackEventId(payload: unknown) {
+export function paystackAdmissionsFinancialOutcome(payload: unknown, eventType: string): "refunded" | "reversed" | undefined {
+  const normalizedEvent = eventType.trim().toLowerCase();
+  if (normalizedEvent.includes("refund") && (normalizedEvent.includes("processed") || normalizedEvent.includes("success"))) return "refunded";
+  if (normalizedEvent.endsWith(".reversed") || ((normalizedEvent.includes("reversal") || normalizedEvent.includes("chargeback")) && (normalizedEvent.includes("processed") || normalizedEvent.includes("success") || normalizedEvent.includes("completed")))) return "reversed";
+  if (normalizedEvent === "charge.dispute.resolve") {
+    const resolution = normalizeWebhookText(objectValue(objectValue(payload).data).resolution)?.toLowerCase();
+    if (resolution === "merchant-accepted") return "reversed";
+  }
+  return undefined;
+}
+
+export function buildPaystackEventId(payload: unknown) {
   const root = objectValue(payload);
   const data = objectValue(root.data);
-  const reference = normalizeWebhookText(data.reference ?? root.reference) ?? "unknown";
-  const marker = data.id ?? root.event_id;
+  const transaction = objectValue(data.transaction);
+  const reference = normalizeWebhookText(data.reference ?? transaction.reference ?? root.reference) ?? "unknown";
+  const eventType = normalizeWebhookText(root.event)?.toLowerCase() ?? "payment.webhook";
+  const marker = data.refund_reference ?? data.id ?? root.event_id;
   const eventMarker = typeof marker === "number" ? String(marker) : normalizeWebhookText(marker) ?? reference;
-  return `paystack:${eventMarker}`;
+  return `paystack:${eventType}:${eventMarker}`;
 }
 
 async function sha256Hex(value: string) {
@@ -187,6 +204,7 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
 
   const eventId = buildPaystackEventId(payload);
   const eventType = normalizeWebhookText(objectValue(payload).event) ?? "payment.webhook";
+  const admissionsFinancialOutcome = paystackAdmissionsFinancialOutcome(payload, eventType);
 
   const receivedAt = Date.now();
   if (referenceContext.domain === "billing") {
@@ -231,6 +249,7 @@ export const handlePaymentWebhook = httpAction(async (ctx, request) => {
         bodyDigest: await sha256Hex(rawBody),
         amountMinor: metadata.amountMinor,
         currency: metadata.currency,
+        ...(admissionsFinancialOutcome ? { financialOutcome: admissionsFinancialOutcome } : {}),
         receivedAt,
       }
     );

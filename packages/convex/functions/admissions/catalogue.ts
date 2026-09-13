@@ -540,7 +540,7 @@ export const listPublishedOfferings = query({
   returns: v.union(v.object({ available: v.literal(false) }), v.object({ available: v.literal(true), school: v.object({ schoolId: v.id("schools"), slug: v.string(), name: v.string(), primaryColor: v.string(), accentColor: v.string() }), offerings: v.array(offeringSummaryValidator) })),
   handler: async (ctx, args) => {
     const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", normalizeSlug(args.schoolSlug, "School slug"))).unique();
-    if (!school || school.status !== "active" || school.features?.admissions === false) return { available: false as const };
+    if (!school || school.status !== "active" || school.features?.admissions !== true) return { available: false as const };
     const theme = await resolveEffectiveTheme(ctx, school);
     const intakes = await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", school._id)).take(51);
     if (intakes.length > 50) throw new ConvexError("Admissions offering set exceeds the supported bound");
@@ -573,7 +573,7 @@ export const getPublishedOffering = query({
     const requestedIntakeSlug = normalizeSlug(args.intakeSlug, "Intake slug");
     const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", requestedSchoolSlug)).unique();
     const intake = school ? await ctx.db.query("admissionsIntakes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", school._id).eq("slug", requestedIntakeSlug)).unique() : null;
-    const availability = !school || school.status !== "active" || school.features?.admissions === false || !intake
+    const availability = !school || school.status !== "active" || school.features?.admissions !== true || !intake
       ? "unavailable" as const
       : intake.status === "paused"
         ? "paused" as const

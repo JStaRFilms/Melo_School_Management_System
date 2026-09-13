@@ -102,10 +102,11 @@ export const recordVerifiedAdmissionsPaymentEventInternal = internalMutation({
 
     const existing = await ctx.db
       .query("admissionsPaymentEvents")
-      .withIndex("by_school_and_provider_and_provider_event_id", (q) =>
+      .withIndex("by_school_and_provider_mode_and_provider_event_id", (q) =>
         q
           .eq("schoolId", args.schoolId)
           .eq("provider", args.provider)
+          .eq("providerMode", args.providerMode)
           .eq("providerEventId", args.providerEventId)
       )
       .unique();

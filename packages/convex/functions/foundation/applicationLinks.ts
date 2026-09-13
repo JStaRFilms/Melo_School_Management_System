@@ -98,7 +98,7 @@ export const getApplicationLink = query({
         .take(1)
       : [];
     const availability = resolveAvailability({
-      schoolActive: school?.status === "active",
+      schoolActive: school?.status === "active" && school.features?.admissions === true,
       intake,
       hasActiveProduct: activeProducts.length > 0,
       now: Date.now(),

@@ -155,7 +155,7 @@ export function getWorkspaceModuleDenial(
         )));
   const admissionsDisabled =
     workspace === "admin" &&
-    features?.admissions === false &&
+    features?.admissions !== true &&
     [
       "/admin/admissions",
       "/academic/students/onboarding",

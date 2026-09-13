@@ -146,6 +146,7 @@ export const recordVerifiedPaymentRef = makeFunctionReference<
     bodyDigest: string;
     amountMinor: number;
     currency: string;
+    financialOutcome?: "refunded" | "reversed";
     receivedAt: number;
   },
   { eventId: Id<"admissionsPaymentEvents">; entitlementId: Id<"admissionsEntitlements"> | null; replayed: boolean; processed: boolean; state: string }

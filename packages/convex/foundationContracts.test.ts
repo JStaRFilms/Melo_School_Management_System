@@ -15,7 +15,7 @@ describe("B0 foundation contracts", () => {
     const now = Date.now();
     await t.run(async (ctx) => {
       const schoolId = await ctx.db.insert("schools", {
-        name: "North Star", slug: "north-star", status: "active", createdAt: now, updatedAt: now,
+        name: "North Star", slug: "north-star", status: "active", features: { billing: true, curriculum: true, knowledgeLibrary: true, admissions: true }, createdAt: now, updatedAt: now,
       });
       const programmeId = await ctx.db.insert("admissionsProgrammes", {
         schoolId, slug: "primary", name: "Primary", status: "published", createdAt: now, updatedAt: now,

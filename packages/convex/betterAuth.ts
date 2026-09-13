@@ -23,7 +23,7 @@ async function sendVerificationEmail(email: string, verificationUrl: string) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [email], subject: "Verify your guardian email", text: `Verify your email to continue your school application: ${verificationUrl}\n\nIf you did not create this account, ignore this message.` }),
+    body: JSON.stringify({ from, to: [email], subject: "Verify your Melo email", text: `Verify your email for your Melo account: ${verificationUrl}\n\nIf you did not create this account, ignore this message.` }),
   });
   if (!response.ok) throw new Error(`Email verification delivery failed (${response.status}).`);
   const result: unknown = await response.json();
@@ -62,11 +62,10 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
     database: authComponent.adapter(ctx),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      requireEmailVerification: false,
     },
     emailVerification: {
       sendOnSignUp: true,
-      sendOnSignIn: true,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => sendVerificationEmail(user.email, url),
     },

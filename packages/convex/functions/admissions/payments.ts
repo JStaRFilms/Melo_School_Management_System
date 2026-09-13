@@ -35,7 +35,7 @@ export const createAttempt = mutation({
     const guardian = await requireGuardian(ctx);
     const idempotencyKey = normalizeRequiredText(args.idempotencyKey, "Idempotency key", 128);
     const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", normalizeSlug(args.schoolSlug, "School slug"))).unique();
-    if (!school || school.status !== "active") admissionsError("OFFERING_UNAVAILABLE", "Application offering is unavailable");
+    if (!school || school.status !== "active" || school.features?.admissions !== true) admissionsError("OFFERING_UNAVAILABLE", "Application offering is unavailable");
     const product = await ctx.db.query("admissionsProducts").withIndex("by_school_and_slug", (q) => q.eq("schoolId", school._id).eq("slug", normalizeSlug(args.productSlug, "Product slug"))).unique();
     if (!product || product.status !== "active" || product.slotCount !== 1) admissionsError("OFFERING_UNAVAILABLE", "Application offering is unavailable");
     const intake = await ctx.db.get(product.intakeId);
@@ -153,22 +153,23 @@ export const verifyReturn = action({
   },
 });
 
-function financeOutcome(eventType: string): "refunded" | "reversed" | null {
+function financeOutcome(eventType: string, verifiedOutcome?: "refunded" | "reversed"): "refunded" | "reversed" | null {
+  if (verifiedOutcome) return verifiedOutcome;
   const normalized = eventType.toLowerCase();
   if (normalized.includes("refund") && (normalized.includes("processed") || normalized.includes("success"))) return "refunded";
-  if (normalized.includes("reversal") || normalized.includes("chargeback") || normalized.includes("dispute")) return "reversed";
+  if (normalized.endsWith(".reversed") || ((normalized.includes("reversal") || normalized.includes("chargeback")) && (normalized.includes("processed") || normalized.includes("success") || normalized.includes("completed")))) return "reversed";
   return null;
 }
 
 /** Signature or provider verification happens before this transaction. */
 export const recordVerifiedPayment = internalMutation({
-  args: { schoolId: v.id("schools"), purchaseAttemptId: v.id("admissionsPurchaseAttempts"), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator, providerEventId: v.string(), eventType: v.string(), bodyDigest: v.string(), amountMinor: v.number(), currency: v.string(), receivedAt: v.number() },
+  args: { schoolId: v.id("schools"), purchaseAttemptId: v.id("admissionsPurchaseAttempts"), provider: admissionsProviderValidator, providerMode: paymentProviderModeValidator, providerEventId: v.string(), eventType: v.string(), bodyDigest: v.string(), amountMinor: v.number(), currency: v.string(), financialOutcome: v.optional(v.union(v.literal("refunded"), v.literal("reversed"))), receivedAt: v.number() },
   returns: v.object({ eventId: v.id("admissionsPaymentEvents"), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()), replayed: v.boolean(), processed: v.boolean(), state: v.string() }),
   handler: async (ctx, args) => {
     if (!Number.isSafeInteger(args.amountMinor) || args.amountMinor <= 0 || !/^[A-Z]{3}$/.test(args.currency)) throw new ConvexError("Verified payment amount and currency are invalid");
     const attempt = await ctx.db.get(args.purchaseAttemptId);
     if (!attempt || attempt.schoolId !== args.schoolId || attempt.provider !== args.provider || attempt.providerMode !== args.providerMode) throw new ConvexError("Payment dispatch context mismatch");
-    const existingEvent = await ctx.db.query("admissionsPaymentEvents").withIndex("by_school_and_provider_and_provider_event_id", (q) => q.eq("schoolId", args.schoolId).eq("provider", args.provider).eq("providerEventId", args.providerEventId)).unique();
+    const existingEvent = await ctx.db.query("admissionsPaymentEvents").withIndex("by_school_and_provider_mode_and_provider_event_id", (q) => q.eq("schoolId", args.schoolId).eq("provider", args.provider).eq("providerMode", args.providerMode).eq("providerEventId", args.providerEventId)).unique();
     if (existingEvent && (existingEvent.purchaseAttemptId !== attempt._id || existingEvent.providerMode !== args.providerMode || existingEvent.eventType !== args.eventType || !existingEvent.signatureValid || existingEvent.bodyDigest !== args.bodyDigest || (existingEvent.verifiedAmountMinor !== undefined && existingEvent.verifiedAmountMinor !== args.amountMinor) || (existingEvent.verifiedCurrency !== undefined && existingEvent.verifiedCurrency !== args.currency))) throw new ConvexError("Conflicting verified payment event replay");
     const terminalEvent = existingEvent && ["processed", "ignored", "rejected"].includes(existingEvent.processingStatus);
     if (terminalEvent) {
@@ -177,16 +178,33 @@ export const recordVerifiedPayment = internalMutation({
     }
     const exact = attempt.amountMinor === args.amountMinor && attempt.currency === args.currency;
     const paidEvent = args.eventType === "charge.success";
-    const financialState = financeOutcome(args.eventType);
+    const financialState = financeOutcome(args.eventType, args.financialOutcome);
     const now = Date.now();
     const eventId: Id<"admissionsPaymentEvents"> = existingEvent?._id ?? await ctx.db.insert("admissionsPaymentEvents", { schoolId: args.schoolId, purchaseAttemptId: attempt._id, provider: args.provider, providerMode: args.providerMode, providerEventId: normalizeRequiredText(args.providerEventId, "Provider event ID", 160), eventType: normalizeRequiredText(args.eventType, "Payment event type", 120), bodyDigest: args.bodyDigest, signatureValid: true, processingStatus: "verified", receivedAt: args.receivedAt, createdAt: now, updatedAt: now });
     const finalizeEvent = async (status: "processed" | "ignored" | "rejected", message: string) => ctx.db.patch(eventId, { verifiedAmountMinor: args.amountMinor, verifiedCurrency: args.currency, processingStatus: status, processingMessage: message, processedAt: now, updatedAt: now });
+    let entitlement = await ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", attempt._id)).unique();
+    const terminalFinancialState = attempt.state === "refunded" || attempt.state === "reversed" ? attempt.state : null;
+    if (financialState && terminalFinancialState) {
+      await finalizeEvent("processed", `Verified ${financialState} recorded without changing terminal ${terminalFinancialState} outcome`);
+      return { eventId, entitlementId: entitlement?._id ?? null, replayed: Boolean(existingEvent), processed: true, state: terminalFinancialState };
+    }
+    if (paidEvent && terminalFinancialState && !exact) {
+      await finalizeEvent("rejected", `Mismatched delayed success recorded without changing terminal ${terminalFinancialState} outcome`);
+      return { eventId, entitlementId: entitlement?._id ?? null, replayed: Boolean(existingEvent), processed: false, state: terminalFinancialState };
+    }
     if (!exact) {
+      if (financialState) {
+        const application = entitlement?.applicationId ? await ctx.db.get(entitlement.applicationId) : null;
+        if (entitlement) await ctx.db.patch(entitlement._id, { state: "revoked", voidReason: "VERIFIED_PARTIAL_FINANCIAL_REVERSAL", updatedAt: now });
+        if (application) await ctx.db.patch(application._id, { financialHoldAt: now, financialHoldReason: "VERIFIED_PARTIAL_FINANCIAL_REVERSAL", updatedAt: now });
+        await ctx.db.patch(attempt._id, { state: "manual_attention", failureCode: "PARTIAL_FINANCIAL_REVERSAL_REVIEW_REQUIRED", updatedAt: now });
+        await finalizeEvent("processed", "Verified partial financial reversal applied a fail-closed hold for review");
+        return { eventId, entitlementId: entitlement?._id ?? null, replayed: Boolean(existingEvent), processed: true, state: "manual_attention" };
+      }
       await finalizeEvent("rejected", "Verified event did not match the immutable purchase snapshot");
       if (paidEvent) await ctx.db.patch(attempt._id, { state: "manual_attention", failureCode: "PAYMENT_REVIEW_REQUIRED", updatedAt: now });
       return { eventId, entitlementId: null, replayed: Boolean(existingEvent), processed: false, state: paidEvent ? "manual_attention" : attempt.state };
     }
-    let entitlement = await ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", attempt._id)).unique();
     if (financialState) {
       if (entitlement) {
         const application = entitlement.applicationId ? await ctx.db.get(entitlement.applicationId) : null;
@@ -201,6 +219,10 @@ export const recordVerifiedPayment = internalMutation({
     if (!paidEvent) {
       await finalizeEvent("ignored", "Verified event is not a fulfilment or financial reversal event");
       return { eventId, entitlementId: entitlement?._id ?? null, replayed: Boolean(existingEvent), processed: false, state: attempt.state };
+    }
+    if (attempt.state === "manual_attention" && attempt.failureCode === "PARTIAL_FINANCIAL_REVERSAL_REVIEW_REQUIRED") {
+      await finalizeEvent("processed", "Delayed success recorded without clearing the partial financial reversal hold");
+      return { eventId, entitlementId: entitlement?._id ?? null, replayed: Boolean(existingEvent), processed: true, state: attempt.state };
     }
     if (attempt.state === "refunded" || attempt.state === "reversed") {
       await finalizeEvent("processed", "Delayed success recorded without undoing the later financial outcome");

@@ -111,6 +111,15 @@ it("serves the restored UI read models without caller-supplied guardian identity
   expect(otherWorkspace.applications).toEqual([]);
 });
 
+it("keeps admissions unavailable unless the school feature is explicitly enabled", async () => {
+  const f = await fixture();
+  await f.t.run((ctx) => ctx.db.patch(f.schoolId, { features: undefined }));
+
+  await expect(f.t.query(listPublishedOfferingsRef, { schoolSlug: "admissions-school", now: Date.now() })).resolves.toEqual({ available: false });
+  await expect(f.t.query(offeringRef, { schoolSlug: "admissions-school", intakeSlug: "2026", now: Date.now() })).resolves.toMatchObject({ available: false, link: { availability: "unavailable" } });
+  await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "disabled-feature" })).rejects.toThrow("unavailable");
+});
+
 it("returns canonical apply links and rejects stale campaign draft overwrites", async () => {
   const f = await fixture();
   const published = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() }))[0];
@@ -152,12 +161,18 @@ it("publishes only the immutable campaign projection and deduplicates verified p
   const mismatch = await f.t.mutation(recordVerifiedPaymentRef, { ...paymentArgs, purchaseAttemptId: mismatchAttempt.attemptId, providerEventId: "provider-event-2", bodyDigest: "other-digest", amountMinor: 1 });
   expect(mismatch).toMatchObject({ entitlementId: null, processed: false });
   expect(await f.t.run((ctx) => ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", mismatchAttempt.attemptId)).unique())).toBeNull();
+
+  const liveAttempt = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "live-event-identity" });
+  await f.t.run((ctx) => ctx.db.patch(liveAttempt.attemptId, { providerMode: "live" }));
+  const livePaid = await f.t.mutation(recordVerifiedPaymentRef, { ...paymentArgs, purchaseAttemptId: liveAttempt.attemptId, providerMode: "live", bodyDigest: "live-payment-digest" });
+  expect(livePaid).toMatchObject({ replayed: false, processed: true, state: "paid" });
+  expect(livePaid.eventId).not.toBe(paid.eventId);
 });
 
 it("publishes replacement form, declaration, and positive price versions without stranding a bound draft", async () => {
   const f = await fixture();
   const oldDraft = await paidApplication(f, "old-bound-draft");
-  await f.guardian.mutation(saveDraftRef, { applicationId: oldDraft.application.applicationId, expectedVersion: 0, mutationKey: "old-bound-save", profile: { firstName: "Amaka", lastName: "Eze", dateOfBirth: Date.UTC(2019, 2, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Original form" }] });
+  await f.guardian.mutation(saveDraftRef, { applicationId: oldDraft.application.applicationId, expectedVersion: 0, mutationKey: "old-bound-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Amaka", lastName: "Eze", dateOfBirth: Date.UTC(2019, 2, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Original form" }] });
   await expect(f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "2", fields: [{ fieldKey: "bad", sectionKey: "child", kind: "script", label: "Bad", requiredMode: "optional", dataClass: "public", validationJson: "{}", order: 1 }], requirements: [], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 0, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() })).rejects.toThrow();
   const replacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "2", fields: [{ fieldKey: "reason", sectionKey: "child", kind: "textarea", label: "Reason", requiredMode: "required", dataClass: "personal", purpose: "Understand the application", validationJson: JSON.stringify({ maxLength: 500 }), order: 1 }], requirements: [], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 600_000, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() - 1 });
   await f.staff.mutation(publishCampaignRef, replacement);
@@ -229,22 +244,39 @@ it("recovers legacy verified events and applies refund/reversal outcomes monoton
   expect(recovered).toMatchObject({ eventId: legacy.eventId, processed: true, state: "paid" });
   if (!recovered.entitlementId) throw new Error("recovery did not create entitlement");
   const application = await f.guardian.mutation(createApplicationRef, { entitlementId: recovered.entitlementId });
-  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "refund-draft", profile: { firstName: "Ife", lastName: "Ade", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Fit" }] });
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "refund-draft", requestedEntryLabel: "Primary 1", profile: { firstName: "Ife", lastName: "Ade", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Fit" }] });
   await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "refund-submit", signerName: "Pat Ade", signerRelationship: "Guardian", declarationAccepted: true });
-  const refunded = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "refund-event", eventType: "refund.processed", bodyDigest: "refund-digest", amountMinor: attempt.amountMinor, currency: attempt.currency, receivedAt: Date.now() });
+  const partial = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "partial-refund-event", eventType: "refund.processed", bodyDigest: "partial-refund-digest", amountMinor: attempt.amountMinor - 1, currency: attempt.currency, financialOutcome: "refunded", receivedAt: Date.now() });
+  expect(partial).toMatchObject({ state: "manual_attention", processed: true });
+  expect(await f.t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ financialHoldReason: "VERIFIED_PARTIAL_FINANCIAL_REVERSAL" });
+  const successAfterPartial = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "success-after-partial", eventType: "charge.success", bodyDigest: "success-after-partial-digest", amountMinor: attempt.amountMinor, currency: attempt.currency, receivedAt: Date.now() });
+  expect(successAfterPartial.state).toBe("manual_attention");
+  const refunded = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "refund-event", eventType: "refund.processed", bodyDigest: "refund-digest", amountMinor: attempt.amountMinor, currency: attempt.currency, financialOutcome: "refunded", receivedAt: Date.now() });
   expect(refunded.state).toBe("refunded");
+  expect(await f.t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ financialHoldReason: "VERIFIED_REFUNDED" });
+  const partialAfterRefund = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "partial-after-refund", eventType: "refund.processed", bodyDigest: "partial-after-refund-digest", amountMinor: attempt.amountMinor - 2, currency: attempt.currency, financialOutcome: "refunded", receivedAt: Date.now() });
+  expect(partialAfterRefund.state).toBe("refunded");
+  const reversalAfterRefund = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "reversal-after-refund", eventType: "charge.dispute.resolve", bodyDigest: "reversal-after-refund-digest", amountMinor: attempt.amountMinor, currency: attempt.currency, financialOutcome: "reversed", receivedAt: Date.now() });
+  expect(reversalAfterRefund.state).toBe("refunded");
   expect(await f.t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ financialHoldReason: "VERIFIED_REFUNDED" });
   const delayed = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "delayed-success", eventType: "charge.success", bodyDigest: "delayed-digest", amountMinor: attempt.amountMinor, currency: attempt.currency, receivedAt: Date.now() });
   expect(delayed.state).toBe("refunded");
+});
+
+it("fails closed when requested entry is missing from an otherwise complete draft", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "missing-requested-entry");
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "missing-entry-save", profile: { firstName: "Ada", lastName: "Okafor", dateOfBirth: Date.UTC(2019, 1, 2) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Learning" }] });
+  await expect(f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "missing-entry-submit", signerName: "Grace Okafor", signerRelationship: "Mother", declarationAccepted: true })).rejects.toThrow("requested entry");
 });
 
 it("handles draft replay/conflict, immutable resubmission snapshots, and correction scopes", async () => {
   const f = await fixture();
   const { application } = await paidApplication(f);
   const profile = { firstName: "Ada", lastName: "Okafor", dateOfBirth: Date.UTC(2019, 1, 2), gender: "Female" };
-  const save = await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "draft-save-001", profile, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Learning" }] });
+  const save = await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "draft-save-001", requestedEntryLabel: "Primary 1", profile, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Learning" }] });
   expect(save).toEqual({ draftVersion: 1, replayed: false });
-  expect(await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "draft-save-001", profile, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Learning" }] })).toEqual({ draftVersion: 1, replayed: true });
+  expect(await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "draft-save-001", requestedEntryLabel: "Primary 1", profile, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Learning" }] })).toEqual({ draftVersion: 1, replayed: true });
   await expect(f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "draft-save-002", answers: [] })).rejects.toThrow("current version is 1");
   const submitted = await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "submission-001", signerName: "Grace Okafor", signerRelationship: "Mother", declarationAccepted: true });
   const snapshotBefore = await f.t.run((ctx) => ctx.db.get(submitted.snapshotId));
@@ -263,7 +295,7 @@ it("handles draft replay/conflict, immutable resubmission snapshots, and correct
 it("atomically turns a needs-replacement document review into a guardian correction", async () => {
   const f = await fixture();
   const { application } = await paidApplication(f, "document-review-correction");
-  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "document-review-save", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Fit" }] });
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "document-review-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Fit" }] });
   await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "document-review-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
   const documentKey = "replacement-document";
   const requirementId = await f.t.run(async (ctx) => { const now = Date.now(); const requirementId = await ctx.db.insert("admissionsDocumentRequirements", { schoolId: f.schoolId, formVersionId: f.campaign.formVersionId, requirementKey: "replacement", category: "identity", label: "Identity document", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 1000, maxFiles: 1, sensitivity: "personal", purpose: "Identity review", order: 2, createdAt: now, updatedAt: now }); const applicationRow = await ctx.db.get(application.applicationId); if (!applicationRow) throw new Error("application missing"); const storageId = await ctx.storage.store(new Blob(["document"])); await ctx.db.insert("admissionsDocuments", { schoolId: f.schoolId, applicationId: application.applicationId, requirementId, category: "identity", documentKey, storageId, fileName: "identity.pdf", mimeType: "application/pdf", byteSize: 8, sha256: "digest", version: 1, state: "uploaded", sensitivity: "personal", uploadedByGuardianId: applicationRow.guardianId, retentionHold: false, createdAt: now, updatedAt: now }); return requirementId; });
@@ -344,7 +376,7 @@ it("keeps conversion-only identities and internal status out of basic and guardi
 it("authorizes review and decisions from current enrollment capabilities, not historical capability grants", async () => {
   const f = await fixture();
   const { application } = await paidApplication(f);
-  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "draft-auth-001", profile: { firstName: "Tomi", lastName: "Ade", dateOfBirth: Date.UTC(2018, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "draft-auth-001", requestedEntryLabel: "Primary 1", profile: { firstName: "Tomi", lastName: "Ade", dateOfBirth: Date.UTC(2018, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
   await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "submission-auth", signerName: "Pat Ade", signerRelationship: "Guardian", declarationAccepted: true });
   await f.t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: f.schoolId, userId: f.limitedUserId, capability: "decisions.record", scope: "school", grantedByUserId: f.staffUserId, reason: "Historical B0 grant must not authorize", isBreakGlass: false, createdAt: Date.now() }));
   await f.limited.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
