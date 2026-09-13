@@ -345,8 +345,9 @@ async function assertPublicationApproval(
   subjectKey: string,
   now: number,
   requiredApprovalClass?: "finance",
+  approvalLabel = "This item",
 ) {
-  if (!evidenceId) throw new ConvexError("Required or sensitive publication needs explicit approval evidence");
+  if (!evidenceId) throw new ConvexError(`${approvalLabel} needs explicit approval evidence`);
   const evidence = await ctx.db.get(evidenceId);
   const approvalClassAccepted = requiredApprovalClass
     ? evidence?.approvalClass === requiredApprovalClass
@@ -354,7 +355,7 @@ async function assertPublicationApproval(
   if (!evidence || evidence.schoolId !== schoolId || evidence.revokedAt !== undefined || evidence.approvedAt > now ||
       (evidence.expiresAt !== undefined && evidence.expiresAt <= now) || evidence.subjectType !== subjectType || evidence.subjectKey !== subjectKey ||
       !approvalClassAccepted) {
-    throw new ConvexError("Publication approval evidence is not current and subject-bound");
+    throw new ConvexError(`${approvalLabel} approval evidence is not current and subject-bound`);
   }
 }
 
@@ -516,14 +517,14 @@ export const publishCampaign = mutation({
       parseFieldValidation(field.validationJson, field.kind as AdmissionsFieldKind);
       parseCondition(field.conditionalRuleJson);
       if (field.dataClass !== "public" && !field.purpose?.trim()) throw new ConvexError("Non-public fields require a purpose");
-      if (isSensitiveDataClass(field.dataClass)) await assertPublicationApproval(ctx, schoolId, field.approvalEvidenceId, "admissions_form_field", `${String(form._id)}:${field.fieldKey}`, now);
+      if (isSensitiveDataClass(field.dataClass)) await assertPublicationApproval(ctx, schoolId, field.approvalEvidenceId, "admissions_form_field", `${String(form._id)}:${field.fieldKey}`, now, undefined, `Question "${field.label}"`);
     }
     for (const requirement of requirements) {
       parseCondition(requirement.conditionJson);
       if (!requirement.purpose.trim()) throw new ConvexError("Document requirements require a purpose");
-      if (requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity)) await assertPublicationApproval(ctx, schoolId, requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, now);
+      if (requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity)) await assertPublicationApproval(ctx, schoolId, requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, now, undefined, `Document requirement "${requirement.label}"`);
     }
-    await assertPublicationApproval(ctx, schoolId, price.approvalEvidenceId, "admissions_product_price", await priceApprovalSubjectKey(price), now, "finance");
+    await assertPublicationApproval(ctx, schoolId, price.approvalEvidenceId, "admissions_product_price", await priceApprovalSubjectKey(price), now, "finance", "Fee terms");
     const [publishedForms, publishedDeclarations, publishedPrices] = await Promise.all([
       ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", "published")).take(10),
       ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id).eq("status", "published")).take(10),

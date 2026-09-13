@@ -158,7 +158,15 @@ export function AdmissionsDashboard() {
     if (!confirm || !schoolId) return;
     const item = confirm.campaign; setBusy(true);
     try {
-      if (confirm.action === "publish") { await publishCampaign({ programmeId: item.programmeId, intakeId: item.intakeId, formVersionId: item.formVersionId, declarationVersionId: item.declarationVersionId, productId: item.productId, priceId: item.priceId, draftRevision: item.draftRevision }); setFeedback("Campaign version published. Public pages now use this version."); appToast.success("Campaign published"); }
+      if (confirm.action === "publish") {
+        if (!item.priceApprovalEvidenceId) {
+          if (!canApproveFinance) throw new Error("A staff member with fee-plan authority must approve the fee terms before publishing.");
+          await approvePriceTerms({ schoolId, priceId: item.priceId, expectedSubjectKey: item.priceApprovalSubjectKey });
+        }
+        await publishCampaign({ programmeId: item.programmeId, intakeId: item.intakeId, formVersionId: item.formVersionId, declarationVersionId: item.declarationVersionId, productId: item.productId, priceId: item.priceId, draftRevision: item.draftRevision });
+        setFeedback("Campaign version published. Public pages now use this version.");
+        appToast.success("Campaign published");
+      }
       else { await closeCampaign({ schoolId, intakeId: item.intakeId }); setFeedback("Campaign closed. New purchases are unavailable."); appToast.success("Campaign closed"); }
     } catch (error) { const message = errorText(error); setFeedback(message); appToast.error("Campaign action failed", { description: message }); } finally { setBusy(false); setConfirm(null); }
   }
@@ -194,7 +202,7 @@ export function AdmissionsDashboard() {
               {item.lifecycle === "draft" ? (
                 <>
                   <button className={buttonClass} onClick={() => begin(item)}>Edit</button>
-                  <button className={secondaryButtonClass} onClick={() => setConfirm({ action: "publish", campaign: item })}>Publish</button>
+                  <button className={secondaryButtonClass} disabled={!item.priceApprovalEvidenceId && !canApproveFinance} title={!item.priceApprovalEvidenceId && !canApproveFinance ? "Finance approval is required" : undefined} onClick={() => setConfirm({ action: "publish", campaign: item })}>{item.priceApprovalEvidenceId ? "Publish" : canApproveFinance ? "Approve & publish" : "Finance approval required"}</button>
                 </>
               ) : (
                 <>
@@ -270,7 +278,7 @@ export function AdmissionsDashboard() {
       </div>
       {queue && !queue.isDone ? <button className={secondaryButtonClass} onClick={() => setCursor(queue.continueCursor)}>Next page</button> : null}
     </AdminSurface> : null}
-    <ConfirmDialog open={Boolean(confirm)} title={confirm?.action === "publish" ? "Publish campaign version?" : "Close campaign?"} description={confirm?.action === "publish" ? "The public application route will begin using this immutable version when it is currently effective." : "New purchases will stop. Existing owned applications remain available."} confirmLabel={confirm?.action === "publish" ? "Publish" : "Close"} onConfirm={() => void confirmedAction()} onCancel={() => setConfirm(null)} />
+    <ConfirmDialog open={Boolean(confirm)} title={confirm?.action === "publish" ? confirm.campaign.priceApprovalEvidenceId ? "Publish campaign version?" : "Approve fee terms and publish?" : "Close campaign?"} description={confirm?.action === "publish" ? confirm.campaign.priceApprovalEvidenceId ? "The public application route will begin using this immutable version when it is currently effective." : "This records your finance approval for the saved fee and refund terms, then publishes the campaign." : "New purchases will stop. Existing owned applications remain available."} confirmLabel={confirm?.action === "publish" ? confirm.campaign.priceApprovalEvidenceId ? "Publish" : "Approve & publish" : "Close"} onConfirm={() => void confirmedAction()} onCancel={() => setConfirm(null)} />
   </main>;
 }
 
