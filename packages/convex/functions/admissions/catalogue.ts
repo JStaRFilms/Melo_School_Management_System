@@ -398,6 +398,70 @@ export const editCampaignDraft = mutation({
   },
 });
 
+export const approveCampaignPriceTerms = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    priceId: v.id("admissionsProductPrices"),
+    expectedSubjectKey: v.string(),
+  },
+  returns: v.object({
+    approvalEvidenceId: v.id("schoolApprovalEvidence"),
+    subjectKey: v.string(),
+    replayed: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["finance.fee_plans.manage"]);
+    const price = await ctx.db.get(args.priceId);
+    if (!price || price.schoolId !== args.schoolId || price.status !== "draft") {
+      throw new ConvexError("Draft campaign price was not found");
+    }
+    const subjectKey = await priceApprovalSubjectKey(price);
+    if (subjectKey !== args.expectedSubjectKey) {
+      throw new ConvexError("CAMPAIGN_PRICE_CHANGED: Save and review the current fee terms before approving them.");
+    }
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("schoolApprovalEvidence")
+      .withIndex("by_school_and_subject_type_and_subject_key", (q) =>
+        q.eq("schoolId", args.schoolId)
+          .eq("subjectType", "admissions_product_price")
+          .eq("subjectKey", subjectKey),
+      )
+      .take(11);
+    if (existing.length > 10) throw new ConvexError("Finance approval history exceeds the supported bound");
+    const current = existing.find((row) =>
+      row.approvalClass === "finance" &&
+      row.revokedAt === undefined &&
+      row.approvedAt <= now &&
+      (row.expiresAt === undefined || row.expiresAt > now),
+    );
+    if (current) {
+      await ctx.db.patch(price._id, { approvalEvidenceId: current._id, updatedAt: now });
+      return { approvalEvidenceId: current._id, subjectKey, replayed: true };
+    }
+    const approvalEvidenceId = await ctx.db.insert("schoolApprovalEvidence", {
+      schoolId: args.schoolId,
+      approvalClass: "finance",
+      subjectType: "admissions_product_price",
+      subjectKey,
+      evidenceReference: `Admissions fee terms approved in Admin by ${String(actor.userId)}`,
+      approvedByUserId: actor.userId,
+      approvedAt: now,
+      createdAt: now,
+    });
+    await ctx.db.patch(price._id, { approvalEvidenceId, updatedAt: now });
+    await recordAdmissionsAudit(ctx, {
+      schoolId: args.schoolId,
+      actorKind: "staff",
+      actorUserId: actor.userId,
+      action: "campaign.approve_price_terms",
+      entityType: "admissionsProductPrice",
+      entityId: price._id,
+    });
+    return { approvalEvidenceId, subjectKey, replayed: false };
+  },
+});
+
 export const createReplacementDraft = mutation({
   args: {
     schoolId: v.id("schools"), programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), productId: v.id("admissionsProducts"),

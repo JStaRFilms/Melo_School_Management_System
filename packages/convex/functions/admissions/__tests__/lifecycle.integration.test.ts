@@ -12,6 +12,7 @@ const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**
 
 const guardianIdentityRef = makeFunctionReference<"mutation", Record<string, never>, { guardianId: Id<"admissionsGuardians">; normalizedEmail: string; emailVerifiedAt: number }>("functions/admissions/guardian:getOrCreateIdentity");
 const createCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:createCampaignDraft");
+const approveCampaignPriceTermsRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:approveCampaignPriceTerms");
 const publishCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:publishCampaign");
 const closeCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:closeCampaign");
 const replacementCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:createReplacementDraft");
@@ -51,7 +52,7 @@ async function fixture() {
     const schoolId = await ctx.db.insert("schools", { name: "Admissions School", slug: "admissions-school", status: "active", features: { billing: true, curriculum: true, knowledgeLibrary: true, admissions: true }, createdAt: now, updatedAt: now });
     const otherSchoolId = await ctx.db.insert("schools", { name: "Other School", slug: "other-school", status: "active", createdAt: now, updatedAt: now });
     const classId = await ctx.db.insert("classes", { schoolId, name: "Primary 1", gradeName: "Primary 1", level: "primary", createdAt: now, updatedAt: now });
-    const staff = await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|admissions-staff", ["enrollment.intakes.manage", "enrollment.applications.list", "enrollment.applications.view_basic", "enrollment.applications.view_sensitive", "enrollment.documents.review", "enrollment.decisions.record", "enrollment.admissions.override_number"]);
+    const staff = await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|admissions-staff", ["enrollment.intakes.manage", "enrollment.applications.list", "enrollment.applications.view_basic", "enrollment.applications.view_sensitive", "enrollment.documents.review", "enrollment.decisions.record", "enrollment.admissions.override_number", "finance.fee_plans.manage"]);
     const limited = await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|limited-staff", ["enrollment.applications.view_basic"]);
     await ctx.db.insert("schoolPaymentProviders", { schoolId, provider: "paystack", mode: "test", isEnabled: true, status: "ready", publicKey: "pk_test", publicKeyMasked: "pk_***", publicKeyFingerprint: "fingerprint", activeSecretMasked: "sk_***", pendingSecretMasked: null, activeSecretId: null, pendingSecretId: null, activeSecretFingerprint: null, pendingSecretFingerprint: null, lastValidatedAt: now, lastValidationMessage: "ready", createdAt: now, updatedAt: now, createdBy: staff.memberships[0].userId, updatedBy: staff.memberships[0].userId });
     return { schoolId, otherSchoolId, classId, staffUserId: staff.memberships[0].userId, limitedUserId: limited.memberships[0].userId };
@@ -86,10 +87,8 @@ async function fixture() {
   }) as CampaignIds;
   const initialDraft = (await staff.query(listCampaignsRef, { schoolId: ids.schoolId, now: Date.now() })).find((item) => item.priceId === campaign.priceId);
   if (!initialDraft) throw new Error("Initial campaign draft missing");
-  await t.run(async (ctx) => {
-    const priceApprovalEvidenceId = await ctx.db.insert("schoolApprovalEvidence", { schoolId: ids.schoolId, approvalClass: "finance", subjectType: "admissions_product_price", subjectKey: initialDraft.priceApprovalSubjectKey, evidenceReference: "finance-approved-initial-price", approvedByUserId: ids.staffUserId, approvedAt: Date.now(), createdAt: Date.now() });
-    await ctx.db.patch(campaign.priceId, { approvalEvidenceId: priceApprovalEvidenceId });
-  });
+  const priceApproval = await staff.mutation(approveCampaignPriceTermsRef, { schoolId: ids.schoolId, priceId: campaign.priceId, expectedSubjectKey: initialDraft.priceApprovalSubjectKey }) as { approvalEvidenceId: Id<"schoolApprovalEvidence">; subjectKey: string; replayed: boolean };
+  expect(priceApproval).toMatchObject({ subjectKey: initialDraft.priceApprovalSubjectKey, replayed: false });
   await staff.mutation(publishCampaignRef, { ...campaign, draftRevision: campaign.draftRevision });
   await guardian.mutation(guardianIdentityRef, {});
   await otherGuardian.mutation(guardianIdentityRef, {});
@@ -201,10 +200,11 @@ it("publishes replacement form, declaration, and positive price versions without
   await expect(f.staff.mutation(publishCampaignRef, replacement)).rejects.toThrow("approval evidence");
   const replacementDraft = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.priceId === replacement.priceId);
   if (!replacementDraft) throw new Error("Replacement campaign draft missing");
-  await f.t.run(async (ctx) => {
-    const evidenceId = await ctx.db.insert("schoolApprovalEvidence", { schoolId: f.schoolId, approvalClass: "finance", subjectType: "admissions_product_price", subjectKey: replacementDraft.priceApprovalSubjectKey, evidenceReference: "finance-approved-replacement-price", approvedByUserId: f.staffUserId, approvedAt: Date.now(), createdAt: Date.now() });
-    await ctx.db.patch(replacement.priceId, { approvalEvidenceId: evidenceId });
-  });
+  await expect(f.limited.mutation(approveCampaignPriceTermsRef, { schoolId: f.schoolId, priceId: replacement.priceId, expectedSubjectKey: replacementDraft.priceApprovalSubjectKey })).rejects.toThrow("FORBIDDEN");
+  await expect(f.staff.mutation(approveCampaignPriceTermsRef, { schoolId: f.schoolId, priceId: replacement.priceId, expectedSubjectKey: `${replacementDraft.priceApprovalSubjectKey}-stale` })).rejects.toThrow("CAMPAIGN_PRICE_CHANGED");
+  const approval = await f.staff.mutation(approveCampaignPriceTermsRef, { schoolId: f.schoolId, priceId: replacement.priceId, expectedSubjectKey: replacementDraft.priceApprovalSubjectKey });
+  expect(approval).toMatchObject({ replayed: false, subjectKey: replacementDraft.priceApprovalSubjectKey });
+  await expect(f.staff.mutation(approveCampaignPriceTermsRef, { schoolId: f.schoolId, priceId: replacement.priceId, expectedSubjectKey: replacementDraft.priceApprovalSubjectKey })).resolves.toMatchObject({ replayed: true });
   await f.staff.mutation(publishCampaignRef, replacement);
   const offering = await f.t.query(offeringRef, { schoolSlug: "admissions-school", intakeSlug: "2026", now: Date.now() });
   expect(offering).toMatchObject({ available: true, link: { version: "1", availability: "open" }, form: { schemaVersion: "2" }, price: { amountMinor: 600_000 }, declaration: { title: "Updated", version: 2 } });

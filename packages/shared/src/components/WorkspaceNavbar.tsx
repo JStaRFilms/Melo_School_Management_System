@@ -252,7 +252,7 @@ export function WorkspaceNavbar({
               label: "People & Operations",
               icon: <Users className="h-4 w-4" />,
               links: sections.filter((s) =>
-                ["/academic/students", "/academic/teachers", "/academic/events"].includes(s.href)
+                ["/academic/students", "/admin/admissions", "/academic/teachers", "/academic/events"].includes(s.href)
               ),
             },
             academics: {
@@ -1062,6 +1062,8 @@ function getSectionIcon(href: string) {
       return <UserCheck className="h-4 w-4 shrink-0" />;
     case "/academic/events":
       return <Calendar className="h-4 w-4 shrink-0" />;
+    case "/admin/admissions":
+      return <ClipboardCheck className="h-4 w-4 shrink-0" />;
     case "/assessments/results/entry":
     case "/assessments/exams/entry":
       return <ClipboardPenLine className="h-4 w-4 shrink-0" />;

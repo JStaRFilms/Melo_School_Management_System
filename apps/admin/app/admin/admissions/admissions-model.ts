@@ -7,9 +7,52 @@ export type CampaignEditorValues = {
   priceApprovalEvidenceId: string; priceApprovalSubjectKey: string; fieldsJson: string; requirementsJson: string;
 };
 
-export const EMPTY_CAMPAIGN: CampaignEditorValues = {
-  programmeSlug: "", programmeName: "", programmeDescription: "", intakeSlug: "", intakeName: "", cycleLabel: "", opensAt: "", closesAt: "", schemaVersion: "1", declarationTitle: "", declarationBody: "", declarationPurpose: "", productSlug: "", productName: "", amount: "", currency: "NGN", refundPolicyKey: "", feeDisclosure: "", priceApprovalEvidenceId: "", priceApprovalSubjectKey: "", fieldsJson: "[]", requirementsJson: "[]",
-};
+function localDateTime(value: Date, hour: number) {
+  const local = new Date(value);
+  local.setHours(hour, 0, 0, 0);
+  const offset = local.getTimezoneOffset() * 60_000;
+  return new Date(local.getTime() - offset).toISOString().slice(0, 16);
+}
+
+export function slugifyCampaignValue(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function createCampaignEditorValues(now = new Date()): CampaignEditorValues {
+  const closes = new Date(now);
+  closes.setDate(closes.getDate() + 30);
+  const academicYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  return {
+    programmeSlug: "",
+    programmeName: "",
+    programmeDescription: "",
+    intakeSlug: "",
+    intakeName: "",
+    cycleLabel: `${academicYear}/${academicYear + 1}`,
+    opensAt: localDateTime(now, 9),
+    closesAt: localDateTime(closes, 17),
+    schemaVersion: "1",
+    declarationTitle: "Parent or legal guardian declaration",
+    declarationBody: "I confirm that the information in this application is true and complete to the best of my knowledge. I understand that false or incomplete information may affect this application or any resulting admission.",
+    declarationPurpose: "Confirm the accuracy of the application and the guardian's authority to submit it.",
+    productSlug: "application-fee",
+    productName: "Application fee",
+    amount: "",
+    currency: "NGN",
+    refundPolicyKey: "non-refundable",
+    feeDisclosure: "This application fee covers the review and processing of one child's application and is non-refundable after payment.",
+    priceApprovalEvidenceId: "",
+    priceApprovalSubjectKey: "",
+    fieldsJson: "[]",
+    requirementsJson: "[]",
+  };
+}
+
+export const EMPTY_CAMPAIGN = createCampaignEditorValues();
 
 function isObject(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 
