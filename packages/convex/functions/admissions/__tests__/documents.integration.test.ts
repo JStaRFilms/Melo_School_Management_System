@@ -108,7 +108,9 @@ it("allows only requested document corrections and atomically supersedes one-for
     await ctx.db.patch(f.requirementId, { maxFiles: 1 });
     const application = await ctx.db.get(f.applicationId);
     if (!application) throw new Error("application missing");
-    await ctx.db.insert("admissionsDocumentRequirements", { schoolId: f.schoolId, formVersionId: application.formVersionId, requirementKey: "unrequested", category: "identity", label: "Unrequested", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 100_000, maxFiles: 1, sensitivity: "personal", purpose: "Supporting evidence", order: 2, createdAt: Date.now(), updatedAt: Date.now() });
+    const now = Date.now();
+    await ctx.db.insert("admissionsDocumentRequirements", { schoolId: f.schoolId, formVersionId: application.formVersionId, requirementKey: "second-requested", category: "identity", label: "Second requested", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 100_000, maxFiles: 1, sensitivity: "personal", purpose: "Supporting evidence", order: 2, createdAt: now, updatedAt: now });
+    await ctx.db.insert("admissionsDocumentRequirements", { schoolId: f.schoolId, formVersionId: application.formVersionId, requirementKey: "never-requested", category: "identity", label: "Never requested", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 100_000, maxFiles: 1, sensitivity: "personal", purpose: "Supporting evidence", order: 3, createdAt: now, updatedAt: now });
   });
   const hash = await sha256Hex(pdfBytes);
   const store = async (fileName: string) => {
@@ -120,16 +122,25 @@ it("allows only requested document corrections and atomically supersedes one-for
     return await f.owner.mutation(finalizeUploadRef, { uploadIntentId: intent.uploadIntentId });
   };
   const first = await store("first.pdf");
-  const unrequestedId = await f.t.run(async (ctx) => {
+  const secondRequested = await f.t.run(async (ctx) => {
     const application = await ctx.db.get(f.applicationId);
     if (!application) throw new Error("application missing");
-    return await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q) => q.eq("formVersionId", application.formVersionId).eq("requirementKey", "unrequested")).unique();
+    return await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q) => q.eq("formVersionId", application.formVersionId).eq("requirementKey", "second-requested")).unique();
   });
   await f.t.run(async (ctx) => {
+    const application = await ctx.db.get(f.applicationId);
+    if (!application) throw new Error("application missing");
     await ctx.db.patch(f.applicationId, { state: "changes_requested", updatedAt: Date.now() });
-    await ctx.db.insert("admissionsReviewEvents", { schoolId: f.schoolId, applicationId: f.applicationId, eventType: "changes_requested", visibility: "guardian", reasonCode: "REPLACE", message: "Replace the document", metadataJson: JSON.stringify({ fieldKeys: [], requirementIds: [String(f.requirementId)] }), createdAt: Date.now() });
+    const now = Date.now();
+    await ctx.db.insert("admissionsReviewEvents", { schoolId: f.schoolId, applicationId: f.applicationId, eventType: "changes_requested", visibility: "guardian", reasonCode: "REPLACE", message: "Replace the first document", ...(application.latestSnapshotId ? { snapshotId: application.latestSnapshotId } : {}), metadataJson: JSON.stringify({ fieldKeys: [], requirementIds: [String(f.requirementId)] }), createdAt: now });
+    if (secondRequested) await ctx.db.insert("admissionsReviewEvents", { schoolId: f.schoolId, applicationId: f.applicationId, eventType: "changes_requested", visibility: "guardian", reasonCode: "REPLACE_SECOND", message: "Replace the second document", ...(application.latestSnapshotId ? { snapshotId: application.latestSnapshotId } : {}), metadataJson: JSON.stringify({ fieldKeys: [], requirementIds: [String(secondRequested._id)] }), createdAt: now + 1 });
   });
-  if (unrequestedId) await expect(f.owner.mutation(requestUploadRef, { applicationId: f.applicationId, requirementId: unrequestedId._id, fileName: "wrong.pdf", contentType: "application/pdf", size: pdfBytes.byteLength, sha256: hash })).rejects.toThrow("requested document corrections");
+  const neverRequested = await f.t.run(async (ctx) => {
+    const application = await ctx.db.get(f.applicationId);
+    if (!application) throw new Error("application missing");
+    return await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q) => q.eq("formVersionId", application.formVersionId).eq("requirementKey", "never-requested")).unique();
+  });
+  if (neverRequested) await expect(f.owner.mutation(requestUploadRef, { applicationId: f.applicationId, requirementId: neverRequested._id, fileName: "wrong.pdf", contentType: "application/pdf", size: pdfBytes.byteLength, sha256: hash })).rejects.toThrow("requested document corrections");
   const replacement = await store("replacement.pdf");
   const rows = await f.t.run((ctx) => ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", f.applicationId).eq("requirementId", f.requirementId)).collect());
   expect(rows.find((row) => row.documentKey === first.documentKey)).toMatchObject({ state: "superseded" });

@@ -905,6 +905,9 @@ export default defineSchema({
     templateVersion: v.string(),
     state: v.union(v.literal("pending"), v.literal("sending"), v.literal("sent"), v.literal("failed")),
     nextAttemptAt: v.number(),
+    attemptCount: v.optional(v.number()),
+    lastErrorCode: v.optional(v.string()),
+    sentAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1411,7 +1414,6 @@ export default defineSchema({
     .index("by_auth_and_archived", ["authId", "isArchived"])
     .index("by_auth_token_identifier", ["authTokenIdentifier"])
     .index("by_auth_token_identifier_and_archived", ["authTokenIdentifier", "isArchived"])
-    .index("by_school_and_auth_token_identifier", ["schoolId", "authTokenIdentifier"])
     .index("by_email", ["email"])
     .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
     .index("by_person", ["personId"]),

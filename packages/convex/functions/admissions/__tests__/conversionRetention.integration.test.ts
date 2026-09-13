@@ -63,8 +63,25 @@ async function fixture() {
   return { t, staff: t.withIdentity({ tokenIdentifier: "test|conversion-staff", subject: "conversion-staff", issuer: "test" }), limited: t.withIdentity({ tokenIdentifier: "test|conversion-limited", subject: "conversion-limited", issuer: "test" }), ...ids };
 }
 
+function mockOnboardingEmailDelivery() {
+  const priorKey = process.env.RESEND_API_KEY;
+  const priorFrom = process.env.MELO_EMAIL_FROM;
+  const priorOrigin = process.env.APPLICATION_ORIGIN;
+  process.env.RESEND_API_KEY = "test-resend-key";
+  process.env.MELO_EMAIL_FROM = "Melo <noreply@example.test>";
+  process.env.APPLICATION_ORIGIN = "https://apply.example.test";
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ id: "email-1" }), { status: 200, headers: { "content-type": "application/json" } }));
+  return () => {
+    fetchMock.mockRestore();
+    if (priorKey === undefined) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = priorKey;
+    if (priorFrom === undefined) delete process.env.MELO_EMAIL_FROM; else process.env.MELO_EMAIL_FROM = priorFrom;
+    if (priorOrigin === undefined) delete process.env.APPLICATION_ORIGIN; else process.env.APPLICATION_ORIGIN = priorOrigin;
+  };
+}
+
 it("converts one accepted application transactionally, reuses canonical admission helpers, and queues onboarding after commit", async () => {
   vi.useFakeTimers();
+  const restoreEmail = mockOnboardingEmailDelivery();
   const f = await fixture();
   const args = { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "conversion-request-001", classId: f.classId, admissionNumber: "ADM/2026/001", familyResolution: { kind: "create" as const }, photoDocumentKey: f.photoDocumentKey };
   const requested = await f.staff.mutation(conversionRef, args);
@@ -79,7 +96,24 @@ it("converts one accepted application transactionally, reuses canonical admissio
   expect(await f.t.run((ctx) => ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", f.schoolId).eq("number", "ADM/2026/001")).unique())).not.toBeNull();
   expect(await f.t.run((ctx) => ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).collect())).toHaveLength(1);
   expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(1);
-  expect(await f.t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", converted._id).eq("eventKey", "portal_parent_linkage")).unique())).toMatchObject({ state: "sent", recipientGuardianId: f.guardianId });
+  expect(await f.t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", converted._id).eq("eventKey", "portal_parent_linkage")).unique())).toMatchObject({ state: "sent", recipientGuardianId: f.guardianId, attemptCount: 1, sentAt: expect.any(Number) });
+  expect(fetch).toHaveBeenCalledWith("https://api.resend.com/emails", expect.objectContaining({ method: "POST" }));
+  restoreEmail();
+  vi.useRealTimers();
+});
+
+it("keeps onboarding delivery failed when the email provider is not configured", async () => {
+  vi.useFakeTimers();
+  const priorKey = process.env.RESEND_API_KEY;
+  const priorFrom = process.env.MELO_EMAIL_FROM;
+  delete process.env.RESEND_API_KEY;
+  delete process.env.MELO_EMAIL_FROM;
+  const f = await fixture();
+  const requested = await f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "failed-email-delivery", classId: f.classId, admissionNumber: "EMAIL/001", familyResolution: { kind: "create" } });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", requested.conversionId).eq("eventKey", "portal_parent_linkage")).unique())).toMatchObject({ state: "failed", attemptCount: 5, lastErrorCode: "ONBOARDING_EMAIL_NOT_CONFIGURED" });
+  if (priorKey !== undefined) process.env.RESEND_API_KEY = priorKey;
+  if (priorFrom !== undefined) process.env.MELO_EMAIL_FROM = priorFrom;
   vi.useRealTimers();
 });
 
@@ -204,6 +238,7 @@ it("advances a persisted retention cursor fairly across equally-timestamped bloc
 
 it("blocks accepted-document retention before conversion and while selected student-photo provenance remains", async () => {
   vi.useFakeTimers();
+  const restoreEmail = mockOnboardingEmailDelivery();
   const f = await fixture();
   const policy = await f.staff.mutation(setPolicyRef, { schoolId: f.schoolId, mode: "archive", archiveAfterDays: 30, expectedVersion: 0 });
   const terminalAt = Date.now() - 31 * DAY_MS;
@@ -213,5 +248,6 @@ it("blocks accepted-document retention before conversion and while selected stud
   await f.t.finishAllScheduledFunctions(vi.runAllTimers);
   expect(await f.t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", converted.conversionId).eq("eventKey", "portal_parent_linkage")).unique())).toMatchObject({ state: "sent" });
   expect(await f.staff.mutation(archiveRef, { schoolId: f.schoolId, documentKey: f.photoDocumentKey })).toMatchObject({ blocker: "STUDENT_PHOTO_SOURCE" });
+  restoreEmail();
   vi.useRealTimers();
 });

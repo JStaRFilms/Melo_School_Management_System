@@ -15,6 +15,7 @@ import {
   admissionsError,
   hasFreshAuthentication,
   isApplicationEditable,
+  mergeCorrectionScopes,
   normalizeRequiredText,
   recordAdmissionsAudit,
   requireGuardian,
@@ -36,17 +37,9 @@ function normalizeMimeType(value: string) {
 
 async function correctionAllowsRequirement(ctx: MutationCtx, application: Doc<"admissionsApplications">, requirementId: Id<"admissionsDocumentRequirements">) {
   if (application.state !== "changes_requested") return false;
-  const events = await ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(20);
-  const event = events.find((candidate) => candidate.eventType === "changes_requested");
-  if (!event?.metadataJson) return false;
-  try {
-    const parsed: unknown = JSON.parse(event.metadataJson);
-    if (!parsed || typeof parsed !== "object") return false;
-    const values = Reflect.get(parsed, "requirementIds");
-    return Array.isArray(values) && values.some((value) => value === String(requirementId));
-  } catch {
-    return false;
-  }
+  const events = await ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(501);
+  if (events.length > 500) return false;
+  return mergeCorrectionScopes(events, application.latestSnapshotId)?.requirementIds.includes(String(requirementId)) ?? false;
 }
 
 function assertUploadMetadata(args: { fileName: string; contentType: string; size: number; sha256: string }) {

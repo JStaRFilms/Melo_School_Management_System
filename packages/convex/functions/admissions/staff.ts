@@ -201,7 +201,7 @@ export const getApplicationWorkflow = query({
 
 export const getConversionWorkflow = query({
   args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications") },
-  returns: v.object({ classes: v.array(v.object({ classId: v.id("classes"), name: v.string() })), families: v.array(v.object({ familyId: v.id("families"), name: v.string() })), conversion: v.union(v.null(), v.object({ state: v.string(), errorCode: v.union(v.string(), v.null()), admissionNumber: v.union(v.string(), v.null()), onboardingState: v.union(v.string(), v.null()), idempotencyKey: v.string() })) }),
+  returns: v.object({ classes: v.array(v.object({ classId: v.id("classes"), name: v.string(), level: v.string() })), families: v.array(v.object({ familyId: v.id("families"), name: v.string() })), conversion: v.union(v.null(), v.object({ state: v.string(), errorCode: v.union(v.string(), v.null()), admissionNumber: v.union(v.string(), v.null()), onboardingState: v.union(v.string(), v.null()), idempotencyKey: v.string() })) }),
   handler: async (ctx, args) => {
     await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage", "enrollment.decisions.record"]);
     const application = await ctx.db.get(args.applicationId);
@@ -212,7 +212,7 @@ export const getConversionWorkflow = query({
       application.conversionId ? ctx.db.get(application.conversionId) : Promise.resolve(null),
     ]);
     const outbox = conversion ? await ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", conversion._id).eq("eventKey", "portal_parent_linkage")).unique() : null;
-    return { classes: classes.filter((row) => !row.isArchived).map((row) => ({ classId: row._id, name: row.name })), families: families.map((row) => ({ familyId: row._id, name: row.name })), conversion: conversion ? { state: conversion.state, errorCode: conversion.errorCode ?? null, admissionNumber: conversion.admissionNumber ?? null, onboardingState: outbox?.state ?? null, idempotencyKey: conversion.idempotencyKey } : null };
+    return { classes: classes.filter((row) => !row.isArchived).map((row) => ({ classId: row._id, name: row.name, level: row.level })), families: families.map((row) => ({ familyId: row._id, name: row.name })), conversion: conversion ? { state: conversion.state, errorCode: conversion.errorCode ?? null, admissionNumber: conversion.admissionNumber ?? null, onboardingState: outbox?.state ?? null, idempotencyKey: conversion.idempotencyKey } : null };
   },
 });
 

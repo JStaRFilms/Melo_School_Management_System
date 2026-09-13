@@ -225,9 +225,14 @@ export const createCampaignDraft = mutation({
     const programmeSlug = normalizeSlug(args.programmeSlug, "Programme slug");
     const intakeSlug = normalizeSlug(args.intakeSlug, "Intake slug");
     const productSlug = normalizeSlug(args.productSlug, "Product slug");
-    const duplicateProgramme = await ctx.db.query("admissionsProgrammes")
-      .withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", programmeSlug)).unique();
+    const [duplicateProgramme, duplicateIntake, duplicateProduct] = await Promise.all([
+      ctx.db.query("admissionsProgrammes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", programmeSlug)).first(),
+      ctx.db.query("admissionsIntakes").withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", intakeSlug)).first(),
+      ctx.db.query("admissionsProducts").withIndex("by_school_and_slug", (q) => q.eq("schoolId", args.schoolId).eq("slug", productSlug)).first(),
+    ]);
     if (duplicateProgramme) throw new ConvexError("Programme slug is already in use");
+    if (duplicateIntake) throw new ConvexError("Intake slug is already in use");
+    if (duplicateProduct) throw new ConvexError("Product slug is already in use");
     const now = Date.now();
     const programmeId = await ctx.db.insert("admissionsProgrammes", {
       schoolId: args.schoolId,

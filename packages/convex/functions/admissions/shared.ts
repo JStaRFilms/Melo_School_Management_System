@@ -14,6 +14,27 @@ export const UPLOAD_INTENT_TTL_MS = 15 * 60 * 1000;
 export const MAX_ADMISSIONS_DOCUMENT_BYTES = 20 * 1024 * 1024;
 export const ADMISSIONS_UPLOAD_OPERATION = "admissions_document_secure_http_upload";
 
+export function mergeCorrectionScopes(events: Doc<"admissionsReviewEvents">[], snapshotId?: Id<"admissionsSubmissionSnapshots">) {
+  const fieldKeys = new Set<string>();
+  const requirementIds = new Set<string>();
+  let found = false;
+  for (const event of events) {
+    if (event.eventType !== "changes_requested" || !event.metadataJson || (snapshotId && event.snapshotId !== snapshotId)) continue;
+    try {
+      const parsed: unknown = JSON.parse(event.metadataJson);
+      if (!parsed || typeof parsed !== "object") continue;
+      const fields = Reflect.get(parsed, "fieldKeys");
+      const requirements = Reflect.get(parsed, "requirementIds");
+      if (Array.isArray(fields)) for (const value of fields) if (typeof value === "string") fieldKeys.add(value);
+      if (Array.isArray(requirements)) for (const value of requirements) if (typeof value === "string") requirementIds.add(value);
+      found = true;
+    } catch {
+      // Invalid historical metadata never expands the editable correction scope.
+    }
+  }
+  return found ? { fieldKeys: [...fieldKeys], requirementIds: [...requirementIds] } : null;
+}
+
 export function admissionsError(code: string, message: string): never {
   throw new ConvexError({ code, message });
 }

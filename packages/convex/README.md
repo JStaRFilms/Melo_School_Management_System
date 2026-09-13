@@ -198,7 +198,7 @@ Those package-level scripts route back to the repo root automatically.
 ### Convex deployment
 
 - `APPLICATION_ORIGIN` (required in production for trusted Apply links and payment returns)
-- `RESEND_API_KEY` and `MELO_EMAIL_FROM` (both required; guardian email verification fails closed if either is missing)
+- `RESEND_API_KEY` and `MELO_EMAIL_FROM` (both required; guardian verification and post-conversion onboarding email delivery fail closed if either is missing)
 
 ## Troubleshooting
 

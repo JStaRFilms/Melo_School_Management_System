@@ -4,6 +4,7 @@ import type { Doc } from "../../_generated/dataModel";
 import {
   admissionsError,
   isApplicationEditable,
+  mergeCorrectionScopes,
   normalizeRequiredText,
   recordAdmissionsAudit,
   requireGuardian,
@@ -75,22 +76,6 @@ function normalizedName(firstName: string, lastName: string, middleName?: string
 
 function assertDraftMutationKey(value: string) {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(value)) throw new ConvexError("A bounded draft mutation key is required");
-}
-
-function parseCorrectionScope(event: Doc<"admissionsReviewEvents"> | undefined) {
-  if (!event?.metadataJson) return null;
-  try {
-    const parsed: unknown = JSON.parse(event.metadataJson);
-    if (!parsed || typeof parsed !== "object") return null;
-    const fields = "fieldKeys" in parsed ? (parsed as { fieldKeys?: unknown }).fieldKeys : undefined;
-    const requirements = "requirementIds" in parsed ? (parsed as { requirementIds?: unknown }).requirementIds : undefined;
-    return {
-      fieldKeys: Array.isArray(fields) ? fields.filter((item): item is string => typeof item === "string") : [],
-      requirementIds: Array.isArray(requirements) ? requirements.filter((item): item is string => typeof item === "string") : [],
-    };
-  } catch {
-    return null;
-  }
 }
 
 export const createOrResume = mutation({
@@ -176,8 +161,9 @@ export const saveDraft = mutation({
     }
     if (args.expectedVersion !== application.draftVersion) admissionsError("DRAFT_VERSION_CONFLICT", `Draft changed; current version is ${application.draftVersion}`);
     if (application.state === "changes_requested") {
-      const events = await ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(20);
-      const scope = parseCorrectionScope(events.find((event) => event.eventType === "changes_requested"));
+      const events = await ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(501);
+      if (events.length > 500) throw new ConvexError("Application correction history exceeds the supported bound");
+      const scope = mergeCorrectionScopes(events, application.latestSnapshotId);
       if (!scope || (args.profile && !scope.fieldKeys.includes("profile")) || (args.primaryContact && !scope.fieldKeys.includes("primaryContact")) || (args.requestedEntryLabel !== undefined && !scope.fieldKeys.includes("requestedEntryLabel")) || args.answers.some((answer) => !scope.fieldKeys.includes(answer.fieldKey)) || clearAnswerKeys.some((key) => !scope.fieldKeys.includes(key))) {
         admissionsError("APPLICATION_LOCKED", "Only requested corrections may be changed");
       }
@@ -275,7 +261,7 @@ export const submit = mutation({
       declaration.schoolId === application.schoolId && declaration.programmeId === programme._id && ["published", "retired"].includes(declaration.status) && declaration.publishedAt !== undefined &&
       price.schoolId === application.schoolId && price.productId === product._id && ["published", "retired"].includes(price.status) &&
       programme.schoolId === application.schoolId && intake.schoolId === application.schoolId && intake.programmeId === programme._id && product.schoolId === application.schoolId && product.intakeId === intake._id;
-    if (!profile || !application.requestedEntryLabel?.trim() || !boundDefinitionsRemainValid || !intake || intake.status !== "open" || now < intake.opensAt || now > intake.closesAt) admissionsError("APPLICATION_INCOMPLETE", "Applicant profile, requested entry, valid bound definitions, and an open intake are required");
+    if (!profile || !application.requestedEntryLabel?.trim() || !boundDefinitionsRemainValid) admissionsError("APPLICATION_INCOMPLETE", "Applicant profile, requested entry, and valid bound definitions are required");
     if (fields.length > 100 || answers.length > 100 || requirements.length > 30 || documents.length > 100) throw new ConvexError("Application exceeds supported submission bounds");
     const answersByKey = new Map(answers.map((answer) => [answer.fieldKey, answer]));
     const parsedAnswers = new Map<string, unknown>();
@@ -380,14 +366,14 @@ export const getDraft = query({
       ctx.db.get(application.declarationVersionId),
       ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id)).take(101),
       ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id)).take(101),
-      ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(20),
+      ctx.db.query("admissionsReviewEvents").withIndex("by_application_and_created_at", (q) => q.eq("applicationId", application._id)).order("desc").take(501),
       application.currentDecisionId ? ctx.db.get(application.currentDecisionId) : Promise.resolve(null),
     ]);
-    const latestCorrection = guardianEvents.find((event) => event.visibility === "guardian" && event.eventType === "changes_requested") ?? null;
-    if (!form || form.schoolId !== application.schoolId || !declaration || declaration.schoolId !== application.schoolId || declaration.programmeId !== application.programmeId || fields.length > 100 || requirements.length > 30 || answers.length > 100 || documents.length > 100) {
+    const latestCorrection = guardianEvents.find((event) => event.visibility === "guardian" && event.eventType === "changes_requested" && (!application.latestSnapshotId || event.snapshotId === application.latestSnapshotId)) ?? null;
+    if (!form || form.schoolId !== application.schoolId || !declaration || declaration.schoolId !== application.schoolId || declaration.programmeId !== application.programmeId || fields.length > 100 || requirements.length > 30 || answers.length > 100 || documents.length > 100 || guardianEvents.length > 500) {
       throw new ConvexError("Application-bound form definitions are unavailable");
     }
-    const correctionScope = parseCorrectionScope(latestCorrection ?? undefined);
+    const correctionScope = mergeCorrectionScopes(guardianEvents.filter((event) => event.visibility === "guardian"), application.latestSnapshotId);
     const correction = latestCorrection && correctionScope ? {
       fieldKeys: correctionScope.fieldKeys,
       requirementIds: requirements.filter((requirement) => correctionScope.requirementIds.includes(String(requirement._id))).map((requirement) => requirement._id),

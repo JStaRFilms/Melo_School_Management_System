@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AuthPanel, PublishedField } from "../components/AdmissionsApply";
-import { answerPayload, availabilityMessage, conditionMatchesAnswers, correctionAllows, isDraftConflict, paymentMessage, validateSubmissionInput } from "../lib/journey";
+import { answerPayload, availabilityMessage, conditionMatchesAnswers, correctionAllows, dateInputToUtcTimestamp, isDraftConflict, paymentMessage, validateSubmissionInput } from "../lib/journey";
 
 const authMocks = vi.hoisted(() => ({ signUp: vi.fn(), signIn: vi.fn(), resend: vi.fn(), signOut: vi.fn() }));
 vi.mock("@/lib/auth-client", () => ({ authClient: { useSession: () => ({ data: null, isPending: false }), signUp: { email: authMocks.signUp }, signIn: { email: authMocks.signIn }, sendVerificationEmail: authMocks.resend, signOut: authMocks.signOut } }));
@@ -17,6 +17,7 @@ describe("public offering and payment truth", () => {
 });
 
 describe("application draft, correction, and submission", () => {
+  it("stores date-only values at UTC midnight without a local-time shift", () => { expect(dateInputToUtcTimestamp("2026-04-02")).toBe(Date.UTC(2026, 3, 2)); });
   it("classifies draft conflicts and serializes supported published field values", () => { expect(isDraftConflict(new Error("DRAFT_VERSION_CONFLICT"))).toBe(true); expect(answerPayload("number", "12")).toEqual({ valueType: "number", serializedValue: "12" }); expect(answerPayload("boolean", "true")).toEqual({ valueType: "boolean", serializedValue: "true" }); expect(answerPayload("multi_select", "A, B").serializedValue).toBe('["A","B"]'); expect(answerPayload("date", "2026-04-02")).toEqual({ valueType: "date", serializedValue: String(Date.parse("2026-04-02T00:00:00Z")) }); });
   it("limits changes-requested editing to the backend correction scope", () => { expect(correctionAllows("draft", undefined, "profile")).toBe(true); expect(correctionAllows("changes_requested", ["profile"], "profile")).toBe(true); expect(correctionAllows("changes_requested", ["profile"], "primaryContact")).toBe(false); expect(correctionAllows("submitted", ["profile"], "profile")).toBe(false); });
   it("requires signer, relationship, and declaration before submission", () => { expect(validateSubmissionInput({ signerName: "", signerRelationship: "Parent", declarationAccepted: true })).toMatch(/signer name/); expect(validateSubmissionInput({ signerName: "Guardian", signerRelationship: "", declarationAccepted: true })).toMatch(/relationship/); expect(validateSubmissionInput({ signerName: "Guardian", signerRelationship: "Parent", declarationAccepted: false })).toMatch(/declaration/); expect(validateSubmissionInput({ signerName: "Guardian", signerRelationship: "Parent", declarationAccepted: true })).toBeNull(); });

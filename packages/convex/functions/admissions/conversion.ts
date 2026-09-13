@@ -1,10 +1,11 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation, mutation } from "../../_generated/server";
+import { internalAction, internalMutation, mutation } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { normalizeCapability } from "../academic/rbac";
 import { createCanonicalStudentEnrollmentHelper } from "../academic/studentEnrollment";
-import { conversionTransactionRef, processConversionRef, processOnboardingRef, queueOnboardingRef } from "./refs";
+import { claimOnboardingDeliveryRef, conversionTransactionRef, finishOnboardingDeliveryRef, processConversionRef, processOnboardingRef, queueOnboardingRef } from "./refs";
+import { configuredApplicationOrigin } from "../foundation/applicationLinks";
 import { admissionsError, normalizeRequiredText, recordAdmissionsAudit, requireAdmissionsStaff } from "./shared";
 
 const familyResolutionValidator = v.union(
@@ -52,7 +53,9 @@ async function resolveGuardianUser(ctx: MutationCtx, guardian: Doc<"admissionsGu
   if (persons.length > 1) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Guardian identity is ambiguous");
   const existingPerson = persons[0];
   if (existingPerson && (existingPerson.status !== "active" || existingPerson.identityReconciliationState === "reconciliation_required")) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Guardian identity requires reconciliation");
-  const schoolUsers = (await ctx.db.query("users").withIndex("by_school_and_auth_token_identifier", (q) => q.eq("schoolId", schoolId).eq("authTokenIdentifier", guardian.authTokenIdentifier)).take(2)).filter((user) => !user.isArchived);
+  const tokenUsers = await ctx.db.query("users").withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", guardian.authTokenIdentifier)).take(101);
+  if (tokenUsers.length > 100) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Guardian identity spans too many school accounts for automatic conversion");
+  const schoolUsers = tokenUsers.filter((user) => user.schoolId === schoolId && !user.isArchived);
   if (schoolUsers.length > 1 || schoolUsers.some((user) => user.role !== "parent")) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Guardian school identity conflicts with an existing account");
   const emailUsers = await ctx.db.query("users").withIndex("by_school_and_email", (q) => q.eq("schoolId", schoolId).eq("email", guardian.normalizedEmail)).take(2);
   if (emailUsers.some((user) => user.authTokenIdentifier !== guardian.authTokenIdentifier)) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Guardian email belongs to another school identity");
@@ -239,26 +242,81 @@ export const queueOnboarding = internalMutation({
   },
 });
 
-export const processOnboarding = internalMutation({
-  args: { outboxId: v.id("admissionsCommunicationOutbox") }, returns: v.null(),
+export const claimOnboardingDelivery = internalMutation({
+  args: { outboxId: v.id("admissionsCommunicationOutbox"), now: v.number() },
+  returns: v.union(v.null(), v.object({ attemptNumber: v.number(), recipientEmail: v.string(), schoolName: v.string(), schoolSlug: v.string(), studentName: v.string(), applicationPublicId: v.string() })),
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.outboxId);
-    if (!row || row.state === "sent" || !row.conversionId) return null;
+    if (!row || row.state === "sent" || row.channel !== "email" || !row.conversionId || row.nextAttemptAt > args.now) return null;
+    const attemptNumber = (row.attemptCount ?? 0) + 1;
+    if (attemptNumber > 5) return null;
     const conversion = await ctx.db.get(row.conversionId);
-    if (!conversion || conversion.state !== "succeeded" || !conversion.guardianUserId || !conversion.studentId || !conversion.familyId) {
-      await ctx.db.patch(row._id, { state: "failed", nextAttemptAt: Date.now() + 60_000, updatedAt: Date.now() });
+    if (!conversion || conversion.state !== "succeeded" || !conversion.guardianUserId || !conversion.studentUserId || !conversion.studentId || !conversion.familyId || !row.applicationId) {
+      await ctx.db.patch(row._id, { state: "failed", attemptCount: attemptNumber, nextAttemptAt: args.now, lastErrorCode: "ONBOARDING_DELIVERY_CONTEXT_INVALID", updatedAt: args.now });
       return null;
     }
-    const [student, member] = await Promise.all([
-      ctx.db.get(conversion.studentId),
+    const student = await ctx.db.get(conversion.studentId);
+    const [application, guardian, school, studentUser, member] = await Promise.all([
+      ctx.db.get(row.applicationId),
+      ctx.db.get(row.recipientGuardianId),
+      ctx.db.get(row.schoolId),
+      student ? ctx.db.get(student.userId) : Promise.resolve(null),
       ctx.db.query("familyMembers").withIndex("by_family_and_parent", (q) => q.eq("familyId", conversion.familyId!).eq("parentUserId", conversion.guardianUserId!)).unique(),
     ]);
-    const now = Date.now();
-    if (!student || student.familyId !== conversion.familyId || !member) {
-      await ctx.db.patch(row._id, { state: "failed", nextAttemptAt: now + 60_000, updatedAt: now });
+    if (!application || application.schoolId !== row.schoolId || application.guardianId !== row.recipientGuardianId || application.conversionId !== conversion._id || !guardian?.emailVerifiedAt || !school || !student || student.familyId !== conversion.familyId || !studentUser || studentUser._id !== conversion.studentUserId || student.userId !== studentUser._id || studentUser.schoolId !== row.schoolId || !member) {
+      await ctx.db.patch(row._id, { state: "failed", attemptCount: attemptNumber, nextAttemptAt: args.now, lastErrorCode: "ONBOARDING_DELIVERY_CONTEXT_INVALID", updatedAt: args.now });
       return null;
     }
-    await ctx.db.patch(row._id, { state: "sent", nextAttemptAt: now, updatedAt: now });
+    await ctx.db.patch(row._id, { state: "sending", attemptCount: attemptNumber, nextAttemptAt: args.now + 5 * 60_000, lastErrorCode: undefined, updatedAt: args.now });
+    return { attemptNumber, recipientEmail: guardian.normalizedEmail, schoolName: school.name, schoolSlug: school.slug, studentName: studentUser.name, applicationPublicId: application.publicId };
+  },
+});
+
+export const finishOnboardingDelivery = internalMutation({
+  args: { outboxId: v.id("admissionsCommunicationOutbox"), attemptNumber: v.number(), succeeded: v.boolean(), errorCode: v.optional(v.string()), now: v.number() },
+  returns: v.object({ retryAt: v.union(v.number(), v.null()) }),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.outboxId);
+    if (!row || row.state !== "sending" || row.attemptCount !== args.attemptNumber) return { retryAt: null };
+    if (args.succeeded) {
+      await ctx.db.patch(row._id, { state: "sent", sentAt: args.now, nextAttemptAt: args.now, lastErrorCode: undefined, updatedAt: args.now });
+      return { retryAt: null };
+    }
+    const retryAt = args.attemptNumber < 5 ? args.now + Math.min(60 * 60_000, 60_000 * 2 ** (args.attemptNumber - 1)) : null;
+    await ctx.db.patch(row._id, { state: "failed", nextAttemptAt: retryAt ?? args.now, lastErrorCode: args.errorCode?.slice(0, 120) || "ONBOARDING_EMAIL_FAILED", updatedAt: args.now });
+    return { retryAt };
+  },
+});
+
+export const processOnboarding = internalAction({
+  args: { outboxId: v.id("admissionsCommunicationOutbox") }, returns: v.null(),
+  handler: async (ctx, args) => {
+    const startedAt = Date.now();
+    const delivery = await ctx.runMutation(claimOnboardingDeliveryRef, { outboxId: args.outboxId, now: startedAt });
+    if (!delivery) return null;
+    await ctx.scheduler.runAfter(5 * 60_000, processOnboardingRef, args);
+    let succeeded = false;
+    let errorCode = "ONBOARDING_EMAIL_FAILED";
+    try {
+      const apiKey = process.env.RESEND_API_KEY?.trim();
+      const from = process.env.MELO_EMAIL_FROM?.trim();
+      if (!apiKey || !from) throw new Error("ONBOARDING_EMAIL_NOT_CONFIGURED");
+      const applicationUrl = new URL(`/s/${encodeURIComponent(delivery.schoolSlug)}/applications/${encodeURIComponent(delivery.applicationPublicId)}`, configuredApplicationOrigin()).toString();
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": String(args.outboxId) },
+        body: JSON.stringify({ from, to: [delivery.recipientEmail], subject: `${delivery.schoolName} enrollment setup`, text: `${delivery.studentName}'s enrollment setup is complete. View the application status: ${applicationUrl}\n\nIf you did not expect this message, contact the school.` }),
+      });
+      if (!response.ok) throw new Error(`ONBOARDING_EMAIL_PROVIDER_${response.status}`);
+      const result: unknown = await response.json();
+      if (!result || typeof result !== "object" || typeof Reflect.get(result, "id") !== "string") throw new Error("ONBOARDING_EMAIL_UNCONFIRMED");
+      succeeded = true;
+    } catch (error) {
+      errorCode = error instanceof Error && /^ONBOARDING_EMAIL_[A-Z0-9_]+$/.test(error.message) ? error.message : "ONBOARDING_EMAIL_FAILED";
+    }
+    const finishedAt = Date.now();
+    const result = await ctx.runMutation(finishOnboardingDeliveryRef, { outboxId: args.outboxId, attemptNumber: delivery.attemptNumber, succeeded, ...(succeeded ? {} : { errorCode }), now: finishedAt });
+    if (result.retryAt !== null) await ctx.scheduler.runAfter(Math.max(0, result.retryAt - finishedAt), processOnboardingRef, args);
     return null;
   },
 });
