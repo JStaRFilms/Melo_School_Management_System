@@ -100,16 +100,19 @@ export const recordVerifiedAdmissionsPaymentEventInternal = internalMutation({
       throw new Error("Payment dispatch context mismatch");
     }
 
-    const existing = await ctx.db
+    // Keep reads on the existing index until the provider-mode index has backfilled in a later deployment.
+    const existingMatches = await ctx.db
       .query("admissionsPaymentEvents")
-      .withIndex("by_school_and_provider_mode_and_provider_event_id", (q) =>
+      .withIndex("by_school_and_provider_and_provider_event_id", (q) =>
         q
           .eq("schoolId", args.schoolId)
           .eq("provider", args.provider)
-          .eq("providerMode", args.providerMode)
           .eq("providerEventId", args.providerEventId)
       )
-      .unique();
+      .filter((q) => q.eq(q.field("providerMode"), args.providerMode))
+      .take(2);
+    if (existingMatches.length > 1) throw new Error("Conflicting verified payment event replay");
+    const existing = existingMatches[0];
     if (existing) return { eventId: existing._id, replayed: true };
 
     const eventId = await ctx.db.insert("admissionsPaymentEvents", {

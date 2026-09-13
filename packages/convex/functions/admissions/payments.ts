@@ -169,7 +169,9 @@ export const recordVerifiedPayment = internalMutation({
     if (!Number.isSafeInteger(args.amountMinor) || args.amountMinor <= 0 || !/^[A-Z]{3}$/.test(args.currency)) throw new ConvexError("Verified payment amount and currency are invalid");
     const attempt = await ctx.db.get(args.purchaseAttemptId);
     if (!attempt || attempt.schoolId !== args.schoolId || attempt.provider !== args.provider || attempt.providerMode !== args.providerMode) throw new ConvexError("Payment dispatch context mismatch");
-    const existingEvent = await ctx.db.query("admissionsPaymentEvents").withIndex("by_school_and_provider_mode_and_provider_event_id", (q) => q.eq("schoolId", args.schoolId).eq("provider", args.provider).eq("providerMode", args.providerMode).eq("providerEventId", args.providerEventId)).unique();
+    const existingEvents = await ctx.db.query("admissionsPaymentEvents").withIndex("by_school_and_provider_and_provider_event_id", (q) => q.eq("schoolId", args.schoolId).eq("provider", args.provider).eq("providerEventId", args.providerEventId)).filter((q) => q.eq(q.field("providerMode"), args.providerMode)).take(2);
+    if (existingEvents.length > 1) throw new ConvexError("Conflicting verified payment event replay");
+    const existingEvent = existingEvents[0];
     if (existingEvent && (existingEvent.purchaseAttemptId !== attempt._id || existingEvent.providerMode !== args.providerMode || existingEvent.eventType !== args.eventType || !existingEvent.signatureValid || existingEvent.bodyDigest !== args.bodyDigest || (existingEvent.verifiedAmountMinor !== undefined && existingEvent.verifiedAmountMinor !== args.amountMinor) || (existingEvent.verifiedCurrency !== undefined && existingEvent.verifiedCurrency !== args.currency))) throw new ConvexError("Conflicting verified payment event replay");
     const terminalEvent = existingEvent && ["processed", "ignored", "rejected"].includes(existingEvent.processingStatus);
     if (terminalEvent) {

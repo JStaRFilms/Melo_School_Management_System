@@ -496,6 +496,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_school_and_provider_and_provider_event_id", ["schoolId", "provider", "providerEventId"])
     .index("by_school_and_provider_mode_and_provider_event_id", ["schoolId", "provider", "providerMode", "providerEventId"])
     .index("by_purchase_attempt_and_received_at", ["purchaseAttemptId", "receivedAt"])
     .index("by_school_and_processing_status_and_received_at", ["schoolId", "processingStatus", "receivedAt"])
