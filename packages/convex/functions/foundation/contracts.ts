@@ -103,6 +103,7 @@ export const admissionsDocumentStateValidator = v.union(
   v.literal("accepted"),
   v.literal("rejected"),
   v.literal("superseded"),
+  v.literal("archived"),
   v.literal("deleted")
 );
 

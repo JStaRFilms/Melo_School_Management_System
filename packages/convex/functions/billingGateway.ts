@@ -122,9 +122,11 @@ function buildPaystackGateway(secretKey: string, mode: "test" | "live" = "test")
       }
 
       const data = payload?.data ?? {};
+      const verifiedReference = typeof data.reference === "string" ? data.reference.trim() : "";
+      if (!verifiedReference) throw new ConvexError("Payment verification response did not include a reference");
       return {
         provider: "paystack",
-        reference: normalizedReference,
+        reference: verifiedReference,
         status: String(data.status ?? payload?.status ?? "unknown"),
         amount: typeof data.amount === "number" ? data.amount / 100 : 0,
         currency: String(data.currency ?? "NGN"),

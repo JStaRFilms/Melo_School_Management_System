@@ -41,6 +41,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
 
       // 2. People & Operations
       { href: "/academic/students", label: "Students", matchers: ["/academic/students$"] },
+      { href: "/admin/admissions", label: "Admissions", matchers: ["/admin/admissions"] },
       { href: "/academic/teachers", label: "Teachers", matchers: ["/academic/teachers"] },
       { href: "/academic/events", label: "Events & Calendar", matchers: ["/academic/events"] },
 

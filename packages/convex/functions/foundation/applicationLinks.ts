@@ -3,8 +3,8 @@ import { v } from "convex/values";
 import { buildApplicationLinkV1 } from "@school/shared";
 import { applicationLinkV1Validator } from "./contracts";
 
-function configuredApplicationOrigin(): string {
-  const origin = process.env.APPLICATION_ORIGIN?.trim() ?? process.env.APPLY_APP_ORIGIN?.trim();
+export function configuredApplicationOrigin(): string {
+  const origin = process.env.APPLICATION_ORIGIN?.trim() || process.env.APPLY_APP_ORIGIN?.trim();
   if (origin) return origin;
   // Local-only compatibility. Production deployment configuration must set an
   // explicit origin; site content never supplies one.
@@ -98,7 +98,7 @@ export const getApplicationLink = query({
         .take(1)
       : [];
     const availability = resolveAvailability({
-      schoolActive: school?.status === "active",
+      schoolActive: school?.status === "active" && school.features?.admissions === true,
       intake,
       hasActiveProduct: activeProducts.length > 0,
       now: Date.now(),

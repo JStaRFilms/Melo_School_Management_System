@@ -34,6 +34,7 @@ export function assertSecureUploadTransportAvailable(): void {
 
 type StorageClaimPurpose =
   | "admissionsDocument"
+  | "admissionsDocumentUploadIntent"
   | "schoolSiteAsset"
   | "schoolLogo"
   | "studentPhoto"
@@ -58,8 +59,9 @@ type CollectedStorageClaim = ExpectedStorageClaim & {
 
 /** Every durable owner or historical reference must block destructive reuse. */
 async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
-  const [admissions, siteAssets, schools, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
+  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
     ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
+    ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_storage_id", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
     ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(101),
     ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(2),
@@ -75,6 +77,11 @@ async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Pr
   ]);
   return [
     ...admissions.map(row => ({ purpose: "admissionsDocument" as const, ownerId: String(row._id) })),
+    ...admissionsUploadIntents.map(row => ({
+      purpose: "admissionsDocumentUploadIntent" as const,
+      ownerId: String(row._id),
+      ...(row.status === "completed" && row.documentId ? { linkedOwnerId: String(row.documentId) } : {}),
+    })),
     ...siteAssets.map(row => ({ purpose: "schoolSiteAsset" as const, ownerId: String(row._id) })),
     ...schools.map(row => ({ purpose: "schoolLogo" as const, ownerId: String(row._id) })),
     ...students.map(row => ({ purpose: "studentPhoto" as const, ownerId: String(row._id) })),
@@ -116,6 +123,7 @@ export async function storageClaimedOnlyBy(
   );
   const allowedClaims = claims.filter(claim =>
     (claim.purpose === expected.purpose && claim.ownerId === expected.ownerId) ||
+    (expected.purpose === "admissionsDocument" && claim.purpose === "admissionsDocumentUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
     ((expected.purpose === "schoolAsset" || expected.purpose === "schoolAssetRollback") && claim.purpose === "assetUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
     (expected.purpose === "demoSeedCleanup" && claim.purpose === "demoSeedCleanup")
   );

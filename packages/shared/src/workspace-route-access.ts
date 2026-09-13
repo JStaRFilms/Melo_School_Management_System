@@ -55,6 +55,7 @@ export function isTeacherAssignmentRequiredRoute(path: string) {
 const BRANCH_SCOPED_ROUTES = {
   admin: [
     "/admin/audit",
+    "/admin/admissions",
     "/admin/permissions",
     "/admin/assets",
     "/admin/settings/admission-numbering",
@@ -154,8 +155,9 @@ export function getWorkspaceModuleDenial(
         )));
   const admissionsDisabled =
     workspace === "admin" &&
-    features?.admissions === false &&
+    features?.admissions !== true &&
     [
+      "/admin/admissions",
       "/academic/students/onboarding",
       "/academic/students/import",
       "/students/import",

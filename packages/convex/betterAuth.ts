@@ -16,6 +16,20 @@ function getStaticJwks() {
   return jwks && jwks.length > 0 ? jwks : undefined;
 }
 
+async function sendVerificationEmail(email: string, verificationUrl: string) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.MELO_EMAIL_FROM?.trim();
+  if (!apiKey || !from) throw new Error("Email verification delivery is not configured. Set RESEND_API_KEY and MELO_EMAIL_FROM.");
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to: [email], subject: "Verify your Melo email", text: `Verify your email for your Melo account: ${verificationUrl}\n\nIf you did not create this account, ignore this message.` }),
+  });
+  if (!response.ok) throw new Error(`Email verification delivery failed (${response.status}).`);
+  const result: unknown = await response.json();
+  if (!result || typeof result !== "object" || typeof Reflect.get(result, "id") !== "string") throw new Error("Email verification provider did not confirm delivery.");
+}
+
 function getTrustedOrigins() {
   const configuredOrigins =
     process.env.TRUSTED_ORIGINS?.split(",")
@@ -49,6 +63,11 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      autoSignInAfterVerification: true,
+      sendVerificationEmail: async ({ user, url }) => sendVerificationEmail(user.email, url),
     },
     trustedOrigins: getTrustedOrigins(),
     plugins: [

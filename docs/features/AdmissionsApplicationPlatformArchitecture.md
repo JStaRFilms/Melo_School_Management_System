@@ -41,8 +41,8 @@ Personal data about minors, identity documents, photographs, and medical data ar
 4. Every application, document, review, decision, payment, conversion, and audit row that belongs to a school carries `schoolId`, and every object lookup rechecks it.
 5. A submitted revision is immutable. Requested changes create a later snapshot revision; they never update a prior snapshot.
 6. `admissionsConversions.applicationId` is unique. A successful replay returns the recorded canonical IDs.
-7. Redirect success is not payment success. Only a provider-verified transaction can create an entitlement.
-8. Signed storage URLs are generated only after authorization and are never stored as durable application data.
+7. Redirect success is not payment success. Only a provider-verified transaction can create an entitlement. Payment callbacks are derived from the configured canonical Apply origin and persisted school/reference; the browser cannot supply them.
+8. Signed storage URLs are generated only after authorization and are never stored as durable application data. Highly-sensitive and financial-security documents require fresh authentication for both view and download actions.
 9. Caller-provided user IDs are never used for authorization. Identity is derived server-side.
 10. Cross-school duplicate detection is forbidden. Matching and warnings are scoped to one school.
 
@@ -114,14 +114,14 @@ All timestamps are epoch milliseconds. All mutable rows include `createdAt`, `up
 | --- | --- | --- |
 | `admissionsProgrammes` | School 1:N programmes. `schoolId`, `slug`, `name`, `description`, `status: draft\|published\|closed\|archived`. | `by_school_id`; `by_school_id_and_slug`; `by_school_id_and_status` |
 | `admissionsIntakes` | Programme 1:N intakes. `schoolId`, `programmeId`, `slug`, `name`, `cycleLabel`, optional `targetClassId`, `opensAt`, `closesAt`, optional `startsAt`, `status: draft\|open\|paused\|closed\|archived`. | `by_school_id`; `by_school_id_and_slug`; `by_school_id_and_status_and_opens_at`; `by_programme_id_and_status` |
-| `admissionsFormVersions` | School/programme 1:N immutable published versions. `schoolId`, `programmeId`, optional `intakeId`, `version`, `schemaVersion`, `status: draft\|published\|retired`, `publishedAt`, `publishedBy`. Draft may change; published rows never change except retirement metadata. | `by_school_id_and_programme_id`; `by_intake_id_and_status`; `by_school_id_and_programme_id_and_version` |
+| `admissionsFormVersions` | School/programme 1:N immutable published versions. `schoolId`, `programmeId`, optional `intakeId`, `version`, `schemaVersion`, optional monotonic `draftRevision`, `status: draft\|published\|retired`, `publishedAt`, `publishedBy`. Admin edits must present the expected draft revision; a mismatch rejects the whole write. Published rows never change except retirement metadata. | `by_school_id_and_programme_id`; `by_intake_id_and_status`; `by_school_id_and_programme_id_and_version` |
 | `admissionsFormFields` | Form version 1:N fields. `schoolId`, `formVersionId`, stable `fieldKey`, `sectionKey`, `kind`, `label`, `helpText`, `requiredMode`, `dataClass`, optional `purpose`, `order`, `validation`, `conditionalRule`, `status`. No executable expressions; conditions use a bounded declarative grammar. | `by_form_version_id_and_order`; `by_form_version_id_and_field_key`; `by_school_id_and_data_class` |
 | `admissionsDocumentRequirements` | Form/intake 1:N requirements. `schoolId`, `formVersionId`, `requirementKey`, `category`, `label`, `requiredMode`, optional condition, accepted MIME types, `maxBytes`, `maxFiles`, `sensitivity`, `purpose`, `order`. | `by_form_version_id_and_order`; `by_form_version_id_and_requirement_key`; `by_school_id_and_category` |
 | `admissionsDeclarationVersions` | School/programme 1:N immutable declarations/consents. `schoolId`, `programmeId`, `version`, `title`, `body`, `purpose`, `status`, `publishedAt`, `publishedBy`. Separate checkboxes are separate rows or declaration items, not bundled consent. | `by_school_id_and_programme_id_and_version`; `by_programme_id_and_status` |
 | `admissionsProducts` | Intake 1:N purchasable application products. `schoolId`, `intakeId`, `slug`, `name`, `slotCount` fixed to `1` for v1, `status: draft\|active\|paused\|retired`. | `by_school_id_and_intake_id`; `by_school_id_and_slug`; `by_intake_id_and_status` |
 | `admissionsProductPrices` | Product 1:N immutable effective prices. `schoolId`, `productId`, `version`, `amountMinor`, `currency`, `refundPolicyKey`, `feeDisclosure`, `effectiveFrom`, optional `effectiveTo`, `status`. Never use floating amounts. | `by_product_id_and_version`; `by_product_id_and_status_and_effective_from`; `by_school_id_and_status` |
 
-Publishing resolves tenant defaults/overrides into a complete immutable form version. An application points directly to the resolved form, declaration, requirement, and price versions, so later settings cannot rewrite history.
+Publishing resolves tenant defaults/overrides into a complete immutable form version. It rejects stale draft revisions and requires current finance approval evidence bound to the exact price, currency, refund policy, disclosure, and effective dates. An application points directly to the resolved form, declaration, requirement, and price versions, so later settings cannot rewrite history.
 
 ### 6.2 Guardian, commerce, and entitlement
 
@@ -129,10 +129,10 @@ Publishing resolves tenant defaults/overrides into a complete immutable form ver
 | --- | --- | --- |
 | `admissionsGuardians` | Global account-owned row, not school-owned. `authTokenIdentifier`, optional `betterAuthUserId`, normalized email, email verification evidence/time, optional normalized phone and verification evidence/time, `status`. | `by_auth_token_identifier`; `by_better_auth_user_id` |
 | `admissionsPurchaseAttempts` | Guardian/school 1:N attempts. `schoolId`, `guardianId`, `productId`, `priceId`, provider/mode, server-generated `reference`, client `idempotencyKey`, amount/currency/fee snapshots, state, provider authorization metadata, verification timestamps, failure code, optional entitlement ID. Store only redacted/minimized provider payload. | `by_reference`; `by_school_id_and_reference`; `by_guardian_id_and_created_at`; `by_school_id_and_state_and_created_at`; `by_school_id_and_guardian_id_and_idempotency_key` |
-| `admissionsPaymentEvents` | Attempt 1:N append-only provider events. `schoolId`, `purchaseAttemptId`, provider/mode, `providerEventId`, event type, body digest, selected redacted fields, signature status, processing result/time. Raw bodies, if legally/operationally required, are encrypted and short-lived; never list-returned. | `by_school_id_and_provider_and_provider_event_id`; `by_purchase_attempt_id_and_received_at`; `by_school_id_and_processing_result_and_received_at` |
+| `admissionsPaymentEvents` | Attempt 1:N append-only provider events. `schoolId`, `purchaseAttemptId`, provider/mode, `providerEventId`, event type, body digest, selected redacted fields, signature status, processing result/time. Raw bodies, if legally/operationally required, are encrypted and short-lived; never list-returned. | `by_school_and_provider_and_provider_event_id`; staged `by_school_and_provider_mode_and_provider_event_id`; `by_purchase_attempt_and_received_at`; `by_school_and_processing_status_and_received_at` |
 | `admissionsEntitlements` | Exactly 1 per verified v1 purchase. `schoolId`, `guardianId`, `productId`, `intakeId`, `sourcePurchaseAttemptId`, state, optional `applicationId`, reserved/consumed/void timestamps and reason. | `by_source_purchase_attempt_id`; `by_guardian_id_and_state_and_created_at`; `by_school_id_and_state_and_created_at`; `by_application_id` |
 
-The application layer enforces uniqueness by indexed `.unique()` reads inside mutations; Convex schema indexes do not themselves create SQL-style unique constraints.
+The application layer enforces uniqueness through indexed reads inside mutations; Convex schema indexes do not themselves create SQL-style unique constraints. Payment replay identity includes provider mode. The first deployment keeps reads on the existing provider-event index while the new provider-mode index backfills, and a later release may switch reads to the new index.
 
 ### 6.3 Application working data and immutable snapshots
 
@@ -161,7 +161,7 @@ Snapshot rows have no update API. A digest is calculated over a canonical, order
 | `admissionsDecisions` | Application 1:N immutable decision versions; one current pointer on application. `schoolId`, `applicationId`, `version`, state, reason code, rationale, decidedBy, decidedAt, optional supersedes ID. | `by_application_id_and_version`; `by_school_id_and_state_and_decided_at`; `by_school_id_and_decided_by_and_decided_at` |
 | `admissionsConversions` | Application 1:1 ledger. `schoolId`, `applicationId`, accepted decision/snapshot IDs, idempotency key, state, lease/attempt fields, selected class/admission number and approved family resolution, output guardian/family/member/student-user/student IDs, error code, completedAt. | `by_application_id`; `by_school_id_and_state_and_updated_at`; `by_idempotency_key`; `by_student_id` |
 | `admissionsConversionAttempts` | Conversion 1:N append-only attempts. `schoolId`, `conversionId`, attempt number, worker key, started/finished timestamps, outcome, safe error code. | `by_conversion_id_and_attempt_number`; `by_school_id_and_outcome_and_started_at` |
-| `admissionsCommunicationOutbox` | Post-commit notices. `schoolId`, application/conversion ID, event key, recipient guardian ID, channel, template/version, state, retry schedule. | `by_school_id_and_state_and_next_attempt_at`; `by_conversion_id_and_event_key`; `by_application_id_and_event_key` |
+| `admissionsCommunicationOutbox` | Post-commit notices. `schoolId`, application/conversion ID, event key, recipient guardian ID, channel, template/version, state, bounded attempt count, retry schedule, last delivery error code, and confirmed send time. | `by_school_id_and_state_and_next_attempt_at`; `by_conversion_id_and_event_key`; `by_application_id_and_event_key` |
 | `admissionsAuditEvents` | Append-only security/business audit. `schoolId`, actor kind and server-derived actor ID, action, entity type/ID, application ID where applicable, outcome, reason, request correlation ID, minimized metadata, createdAt. No secret or medical body. | `by_school_id_and_created_at`; `by_application_id_and_created_at`; `by_school_id_and_actor_user_id_and_created_at`; `by_school_id_and_action_and_created_at` |
 | `admissionsRetentionJobs` | School/application/document cleanup workflow, legal hold, policy/version, state, cursor, dry-run count, approval and execution timestamps. | `by_school_id_and_state_and_scheduled_at`; `by_application_id`; `by_school_id_and_policy_key` |
 
@@ -208,7 +208,7 @@ A guardian does not delete and replace an application. Before first submission t
 | `draft` / `submitted` / `under_review` / `changes_requested` | `withdrawn` | Owning guardian or authorized staff with evidence | No conversion; preserve payment, snapshot and audit records | Yes |
 | Any terminal state | `archived` | Retention workflow | Redaction/deletion policy completed; minimal tombstone remains | Yes |
 
-There is no direct edit API in `submitted`, `under_review`, or `decisioned`. Requesting changes unlocks only an explicit set of fields/document requirements. Staff corrections are not silent edits; they are review events and require guardian resubmission or a separately visible administrative correction snapshot.
+There is no direct edit API in `submitted`, `under_review`, or `decisioned`. Requesting changes unlocks only an explicit set of fields/document requirements. A requested document correction requires a newer active document version than the current submitted snapshot before resubmission. Staff corrections are not silent edits; they are review events and require guardian resubmission or a separately visible administrative correction snapshot.
 
 ### 7.4 Document review
 
@@ -236,7 +236,7 @@ Document acceptance is not admission acceptance. Birth certificates and medical 
 | Any nonterminal decision | `withdrawn` | Guardian withdrawal | Preserve history | Yes |
 | `accepted` / `rejected` | `in_evaluation` | Admissions manager reopen | New decision version, explicit reason, audit, and no completed conversion for rejection/reopen | No |
 
-Reviewers may recommend but only `decision.record` grantees decide. A platform admin has no school application access by default.
+Reviewers may recommend but only `decision.record` grantees decide. Acceptance requires every applicable required document to be accepted; rejection remains available when document review fails. A platform admin has no school application access by default.
 
 ### 7.6 Conversion
 
@@ -248,7 +248,7 @@ Reviewers may recommend but only `decision.record` grantees decide. A platform a
 | `running` | `failed_retryable` | Action catches transient/ambiguous failure or stale lease recovery | Transaction made no partial canonical writes; safe code recorded; retry uses same conversion | No |
 | `running` | `failed_terminal` | Deterministic conflict | Admission number conflict, ambiguous identity/family, missing required approved data; human resolution needed before a new approved request | Yes until privileged resolution |
 
-A client/network interruption after commit is recovered by reading `by_application_id`; `succeeded` returns the same IDs. A stale `running` lease is never assumed successful or failed without checking the ledger.
+A client/network interruption after commit is recovered by reading `by_application_id`; `succeeded` returns the same IDs. A staff retry of `failed_retryable` keeps the conversion key but replaces the persisted class, family resolution, photo, override, and numbering context with the newly reviewed inputs before scheduling work. A stale `running` lease is never assumed successful or failed without checking the ledger.
 
 ## 8. Payment sequence and race handling
 
@@ -302,11 +302,14 @@ sequenceDiagram
   C->>C: atomically reserve entitlement + create/get application
   G->>C: save typed section (expectedVersion)
   C-->>G: nextVersion
-  G->>C: requestDocumentUpload(application, requirement)
-  C-->>G: one-time upload URL
-  G->>S: upload
-  G->>C: bindDocument(storageId, metadata)
-  C->>C: validate storage metadata and ownership
+  G->>C: requestUploadIntent(application, requirement, MIME, size, SHA-256)
+  C->>C: reserve shared storage quota; persist hashed one-time token
+  C-->>G: opaque intent ID + one-time token + fixed upload path
+  G->>C: authenticated upload(intent ID, token, bytes)
+  C->>C: validate tenant, requirement, token, MIME/magic, measured size, hash, expiry
+  C->>S: store only after transport validation
+  C->>C: verify storage size/hash and bind intent; never return storage ID
+  G->>C: finalizeUpload(intent ID)
   G->>C: submit(application, expectedVersion, declarationVersion)
   C->>C: validate + create immutable snapshot/items + consume slot
   R->>C: requestChanges(fields/requirements, reason)
@@ -321,7 +324,7 @@ Optimistic `expectedVersion` prevents silent overwrite from two devices. Autosav
 
 ### Permission vocabulary
 
-`settings.view`, `settings.manage`, `applications.list`, `applications.view_basic`, `applications.view_sensitive`, `documents.review`, `documents.download`, `reviews.assign`, `reviews.record`, `decisions.record`, `conversions.execute`, `audit.view`, `retention.manage`, `grants.manage`.
+Phase 2 uses the current canonical membership/RBAC resolver and only the established `enrollment.*` capabilities: `enrollment.intakes.manage`, `enrollment.applications.list`, `enrollment.applications.view_basic`, `enrollment.applications.view_sensitive`, `enrollment.documents.review`, `enrollment.decisions.record`, and `enrollment.admissions.override_number`. Historical admissions-specific grant rows are not an authorization source. Sensitive document access remains separate from list/basic access.
 
 ### Matrix
 
@@ -383,8 +386,9 @@ Public resolver contract: `getApplicationLink({ schoolSlug, intakeSlug? })` retu
 | `applications.createOrResume` | mutation | Own available/reserved entitlement; atomic reserve |
 | `applications.getDraft` | query | Own application; current form/version and safe status |
 | `applications.saveCoreSection` / `saveAnswer` / `deleteAnswer` | mutations | Own editable application; expected version; server field validation |
-| `documents.createUploadUrl` | mutation | Own editable application/requirement; rate/size/category policy checked |
-| `documents.bindUpload` | mutation | Validate `_storage` metadata; bind once; reject orphan/mismatch |
+| `documents.requestUploadIntent` | mutation | Own editable application/requirement; MIME/size/category and contract-bound quota checked; return hashed-token transport credentials, never a storage ID |
+| `/admissions/document-upload` | HTTP action | Authenticated tenant-bound one-time transport; strict MIME/magic/size/hash/expiry checks and orphan cleanup |
+| `documents.finalizeUpload` | mutation | Own stored intent; revalidate `_storage` size/hash and ownership; commit measured shared quota once |
 | `documents.getOwnAccess` | mutation | Own document and allowed state; write the audit event and generate the immediate signed URL after the same authorization check |
 | `applications.submit` | mutation | Atomic validation, snapshot, state, entitlement consumption |
 | `applications.withdraw` | mutation | Own application and permitted state; reason/audit |
@@ -431,9 +435,9 @@ Every high-risk field has an explicit purpose or remains unavailable. The histor
 
 ## 13. Private storage and document access
 
-1. Authorize guardian ownership or explicit school grant before issuing an upload URL.
-2. Bind an upload to one application/requirement promptly. Validate metadata through `ctx.db.system.get("_storage", storageId)`, allowed MIME, size, expected category, and one-time binding.
-3. Use opaque application/document keys in client routes. Never return raw `storageId` in queue/list contracts.
+1. Authorize verified guardian ownership before reserving a one-time upload intent. The intent is tenant/application/requirement bound, short-lived, stores only a token hash, and reserves shared `storage_bytes` quota before transport starts.
+2. The dedicated `/admissions/document-upload` transport checks the authenticated guardian, one-time token, MIME header and file magic, exact measured body size, SHA-256, expiry, and active attempt before storing bytes. Convex `_storage` metadata then independently confirms size and hash before binding. Failed or expired attempts delete any known object before releasing quota.
+3. Use opaque application/document keys in client routes. Never return raw `storageId` in upload responses, queue/list contracts, or route-facing document payloads.
 4. Generate a signed URL only after a fresh authorization check. Do not persist it. Treat URL lifetime as storage-platform behavior and keep the app exchange immediate.
 5. Audit staff view/download, guardian download, quarantine, review, supersession, retention hold, and deletion. List views show document status/category, not previews.
 6. Keep medical/government documents behind explicit grants separate from ordinary review. Platform support has no default access.
@@ -480,7 +484,7 @@ Detailed contract:
 8. If an accepted application photo is selected, reference it as the student's fallback photo and record provenance `application_upload`, source application/document, and timestamp. A later school photo may become preferred without deleting the admissions original. Retention cannot delete the underlying storage object while canonical provenance holds it.
 9. Write/patch canonical rows and mark `admissionsConversions.succeeded` with every output ID in the same Convex mutation. Convex transaction rollback means a thrown mutation leaves no partial canonical rows.
 10. The outer action records safe retryable/terminal failure in a separate mutation. Stale running leases are recovered. Replays return prior IDs.
-11. Enqueue portal onboarding/notifications only after success, keyed by `(conversionId, eventKey, recipient)`. Communication failure does not roll back or duplicate conversion.
+11. Enqueue portal onboarding/notifications only after success, keyed by `(conversionId, eventKey, recipient)`. An action claims each due delivery, marks it sent only after the provider confirms an ID, and retries failures with bounded backoff. Communication failure does not roll back or duplicate conversion.
 
 ### Proposed canonical additive fields/contracts
 
@@ -517,9 +521,9 @@ B0 should add or freeze: `students.by_school_id_and_admission_number`; an applic
 | Payment accounting record | 7 years (finance/legal approval required) | Retain minimized financial ledger; delete gateway payload detail earlier |
 | Raw/encrypted webhook payload, if retained | 30 days | Delete raw body; retain digest and normalized event result |
 | Security/business audit | 7 years, with sensitive values excluded | Retain append-only event/tombstone |
-| Unbound storage upload | 24 hours | Batch delete after reference check |
+| Unbound storage upload | 15-minute one-time intent | Delete any known object after ownership check, then release its reservation |
 
-Retention jobs are dry-run first, require a policy version and authorized approval, process bounded batches, respect legal holds/appeals, and leave non-sensitive tombstones. No automatic destructive cleanup ships until windows and notices are approved.
+The Phase 2 backend makes document retention prospective and versioned. A school's current setting is either `never` or `archive` after at least 30 days. Each terminal application records the policy version that governed it; legacy applications without that linkage fail closed. Eligible documents first become `archived`, and physical deletion is not due until 30 additional days have elapsed. Both manual and six-hour cron cleanup are bounded and idempotent. Cron batches schedule immediate bounded continuation while eligible cursor work remains, then return to the six-hour interval. They block on legal/retention holds, waitlists or nonterminal applications, incomplete conversion, pending assignments/conversions/outbox/jobs, selected canonical student-photo provenance, conflicting storage ownership, and missing trusted quota/storage provenance. Physical deletion precedes quota release and leaves a tombstone.
 
 ## 16. Error and recovery contract
 

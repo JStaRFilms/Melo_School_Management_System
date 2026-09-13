@@ -2,6 +2,9 @@ import { makeFunctionReference } from "convex/server";
 import { convexTest } from "convex-test";
 import { expect, it } from "vitest";
 import schema from "../../../schema";
+import { TENANT_SCHOOL_TABLES } from "../tenantPurgeManifest";
+import { TENANT_STORAGE_TABLES } from "../tenantPurgeAction";
+import { SCHOOL_PURGE_TABLES } from "../branchSplitV2";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(
@@ -14,6 +17,12 @@ const modules = Object.fromEntries(
 const purgeBatch = makeFunctionReference<"mutation">(
   "functions/academic/tenantPurge:purgeTenantBatchInternal",
 );
+
+it("registers admissions upload intents and retention policies in tenant purge and branch-split boundaries", () => {
+  expect(TENANT_SCHOOL_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsRetentionPolicies"]));
+  expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsRetentionPolicies"]));
+  expect(TENANT_STORAGE_TABLES).toContain("admissionsDocumentUploadIntents");
+});
 
 it("purges only the exact development tenant in bounded dependency order", async () => {
   const t = convexTest(schema, modules);
