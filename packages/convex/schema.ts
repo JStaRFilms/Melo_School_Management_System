@@ -498,7 +498,10 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school_and_provider_and_provider_event_id", ["schoolId", "provider", "providerEventId"])
-    .index("by_school_and_provider_mode_and_provider_event_id", ["schoolId", "provider", "providerMode", "providerEventId"])
+    .index("by_school_and_provider_mode_and_provider_event_id", {
+      fields: ["schoolId", "provider", "providerMode", "providerEventId"],
+      staged: true,
+    })
     .index("by_purchase_attempt_and_received_at", ["purchaseAttemptId", "receivedAt"])
     .index("by_school_and_processing_status_and_received_at", ["schoolId", "processingStatus", "receivedAt"])
     .index("by_school", ["schoolId"]),
@@ -1437,6 +1440,20 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
     .index("by_person", ["personId"]),
+
+  schoolAdminEmailUpdateReservations: defineTable({
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    authId: v.string(),
+    expectedEmail: v.string(),
+    newEmail: v.string(),
+    actorEmail: v.string(),
+    status: v.union(v.literal("reserved"), v.literal("manual_review")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_school", ["schoolId"]),
 
   families: defineTable({
     schoolId: v.id("schools"),

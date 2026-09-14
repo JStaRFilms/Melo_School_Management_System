@@ -8,7 +8,10 @@ import {
 import { recordAuditEventHelper } from "./audit";
 import { validateEntitlement } from "../foundation/usageContract";
 import { validateRate } from "../foundation/commercialContract";
-import { collectStorageClaims } from "./assetStorageBoundary";
+import {
+  collectStorageClaimInventory,
+  STORAGE_CLAIM_INVENTORY_LIMIT,
+} from "./assetStorageBoundary";
 
 const DAY = 86_400_000;
 const FREE_TRIAL_RATE_CODE = "free_trial";
@@ -20,7 +23,7 @@ export const FREE_TRIAL_STORAGE_POOL_BYTES = 750 * 1024 * 1024;
 const REVIEWED_EXISTING_SCHOOL_LIMIT = 5;
 const FINGERPRINT_BACKFILL_COMPLETE = "backfill:complete:v1";
 const STORAGE_RECONCILIATION_ROW_LIMIT = 100;
-const STORAGE_RECONCILIATION_OBJECT_LIMIT = 50;
+const STORAGE_RECONCILIATION_OBJECT_LIMIT = STORAGE_CLAIM_INVENTORY_LIMIT;
 export const STORAGE_RECONCILIATION_CONFIRMATION = "RECONCILE EXISTING STORAGE";
 
 type ProvisioningStatus =
@@ -295,12 +298,12 @@ export async function inspectSchoolStorageForReconciliation(
     ctx.db.query("admissionsDocuments").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
     ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
     ctx.db.query("schoolSiteAssets").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
-    ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).filter((q) => q.neq(q.field("photoStorageId"), undefined)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
-    ctx.db.query("knowledgeMaterials").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).filter((q) => q.neq(q.field("storageId"), undefined)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
-    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).filter((q) => q.neq(q.field("storageId"), undefined)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("knowledgeMaterials").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
     ctx.db.query("knowledgeOcrJobs").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
     ctx.db.query("schoolAssets").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
-    ctx.db.query("assetUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).filter((q) => q.neq(q.field("storageId"), undefined)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("assetUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
     ctx.db.query("pdfCompressionCandidates").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
     ctx.db.query("demoSeedStorageCleanup").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
     ctx.db.query("issuedReportCards").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
@@ -367,11 +370,12 @@ export async function inspectSchoolStorageForReconciliation(
   }
 
   const candidates = [...candidatesById.values()].slice(0, STORAGE_RECONCILIATION_OBJECT_LIMIT);
-  const inspected = await Promise.all(candidates.map(async (candidate) => {
-    const [metadata, claims] = await Promise.all([
-      ctx.db.system.get("_storage", candidate.storageId),
-      collectStorageClaims(ctx, candidate.storageId),
-    ]);
+  const [claimInventory, metadata] = await Promise.all([
+    collectStorageClaimInventory(ctx, candidates.map((candidate) => candidate.storageId)),
+    Promise.all(candidates.map((candidate) => ctx.db.system.get("_storage", candidate.storageId))),
+  ]);
+  const inspected = candidates.map((candidate, index) => {
+    const claims = claimInventory.get(String(candidate.storageId)) ?? [];
     const crossSchool = claims.some((claim) => claim.schoolId !== schoolId);
     const primaryClaims = claims.filter((claim) => !["admissionsDocumentUploadIntent", "knowledgeMaterialUploadIntent", "knowledgeOcrJobReference", "assetUploadIntent", "demoSeedRunLogoReference", "demoSeedRunPortraitReference", "issuedReportLogoReference", "issuedReportPhotoReference"].includes(claim.purpose));
     const conflicting = crossSchool || new Set(primaryClaims.map((claim) => `${claim.purpose}:${claim.ownerId}`)).size > 1;
@@ -381,8 +385,8 @@ export async function inspectSchoolStorageForReconciliation(
     });
     const historicalReferenceWithoutOwner = primaryClaims.length === 0 && claims.some((claim) => ["knowledgeOcrJobReference", "demoSeedRunLogoReference", "demoSeedRunPortraitReference", "issuedReportLogoReference", "issuedReportPhotoReference"].includes(claim.purpose));
     const unresolvedTemporary = unresolvedUploadIntent || historicalReferenceWithoutOwner || candidate.sources.has("pdf_candidate") || candidate.sources.has("seed_cleanup") || candidate.sources.has("demo_seed_incomplete");
-    return { candidate, metadata, conflicting, unresolvedTemporary };
-  }));
+    return { candidate, metadata: metadata[index] ?? null, conflicting, unresolvedTemporary };
+  });
   const missingObjectCount = inspected.filter((item) => !item.metadata).length;
   const conflictingObjectCount = inspected.filter((item) => item.conflicting).length;
   const temporaryObjectCount = inspected.filter((item) => item.unresolvedTemporary).length;
@@ -399,7 +403,7 @@ export async function inspectSchoolStorageForReconciliation(
   }
 
   return {
-    status: candidatesById.size === 0 ? "not_needed" : blockers.length ? "blocked" : "ready",
+    status: blockers.length ? "blocked" : candidatesById.size === 0 ? "not_needed" : "ready",
     objectCount: candidatesById.size,
     referenceCount,
     activeBytes,

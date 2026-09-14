@@ -15,24 +15,84 @@ async function fixture(t: ReturnType<typeof convexTest>) {
   });
 }
 
-it("rejects unauthorised school listing and synchronises the canonical records with an audit event", async () => {
+it("rejects unauthorised school listing and synchronises a reserved update with an audit event", async () => {
   const t = convexTest(schema, modules);
   const ids = await fixture(t);
   await expect(t.query(api.functions.platform.index.listSchools, {})).rejects.toThrow("Unauthorized");
-  await t.mutation(internal.functions.platform.index.updateSchoolAdminEmailInternal, { schoolId: ids.schoolId, userId: ids.userId, expectedEmail: "old@example.test", newEmail: "new@example.test", actorEmail: "operator@example.test" });
-  const state = await t.run(async (ctx) => ({ user: await ctx.db.get(ids.userId), person: await ctx.db.get(ids.personId), audit: await ctx.db.query("auditEvents").withIndex("by_school", (q) => q.eq("schoolId", ids.schoolId)).first() }));
+  const reservationId = await t.mutation(
+    internal.functions.platform.index.reserveSchoolAdminEmailUpdateInternal,
+    { schoolId: ids.schoolId, userId: ids.userId, expectedEmail: "old@example.test", newEmail: "new@example.test", actorEmail: "operator@example.test" },
+  );
+  await t.mutation(
+    internal.functions.platform.index.finalizeSchoolAdminEmailUpdateInternal,
+    { reservationId },
+  );
+  const state = await t.run(async (ctx) => ({
+    user: await ctx.db.get(ids.userId),
+    person: await ctx.db.get(ids.personId),
+    audit: await ctx.db.query("auditEvents").withIndex("by_school", (q) => q.eq("schoolId", ids.schoolId)).first(),
+    reservation: await ctx.db.query("schoolAdminEmailUpdateReservations").withIndex("by_user", (q) => q.eq("userId", ids.userId)).first(),
+  }));
   expect(state.user?.email).toBe("new@example.test");
   expect(state.person?.email).toBe("new@example.test");
   expect(state.audit).toMatchObject({ action: "school_admin_email_changed", outcome: "success" });
   expect(state.audit?.beforeSummary).not.toContain("old@example.test");
+  expect(state.reservation).toBeNull();
 });
 
-it("rejects a conflicting canonical email without changing the administrator", async () => {
+it("rejects concurrent and stale operators before another external auth mutation can start", async () => {
+  const t = convexTest(schema, modules);
+  const ids = await fixture(t);
+  const attempts = [
+    { newEmail: "first@example.test", actorEmail: "first-operator@example.test" },
+    { newEmail: "second@example.test", actorEmail: "second-operator@example.test" },
+  ];
+  const outcomes = await Promise.allSettled(attempts.map((attempt) =>
+    t.mutation(
+      internal.functions.platform.index.reserveSchoolAdminEmailUpdateInternal,
+      { schoolId: ids.schoolId, userId: ids.userId, expectedEmail: "old@example.test", ...attempt },
+    ),
+  ));
+  const successfulAttempts = outcomes.flatMap((outcome, index) =>
+    outcome.status === "fulfilled"
+      ? [{ reservationId: outcome.value, newEmail: attempts[index]?.newEmail }]
+      : [],
+  );
+  const failedAttempts = outcomes.filter((outcome) => outcome.status === "rejected");
+  expect(successfulAttempts).toHaveLength(1);
+  expect(failedAttempts).toHaveLength(1);
+  expect(failedAttempts[0]).toMatchObject({ reason: expect.objectContaining({ message: expect.stringContaining("already in progress") }) });
+
+  const [successfulAttempt] = successfulAttempts;
+  if (!successfulAttempt?.newEmail) throw new Error("One reservation should have succeeded");
+  await t.mutation(
+    internal.functions.platform.index.finalizeSchoolAdminEmailUpdateInternal,
+    { reservationId: successfulAttempt.reservationId },
+  );
+  const staleAttempt = attempts.find((attempt) => attempt.newEmail !== successfulAttempt.newEmail);
+  if (!staleAttempt) throw new Error("One stale attempt should remain");
+  await expect(t.mutation(
+    internal.functions.platform.index.reserveSchoolAdminEmailUpdateInternal,
+    { schoolId: ids.schoolId, userId: ids.userId, expectedEmail: "old@example.test", ...staleAttempt },
+  )).rejects.toThrow("identity changed");
+
+  await expect(t.run(async (ctx) => (await ctx.db.get(ids.userId))?.email)).resolves.toBe(successfulAttempt.newEmail);
+});
+
+it("rejects a conflicting canonical email before reserving the administrator", async () => {
   const t = convexTest(schema, modules);
   const ids = await fixture(t);
   await t.run(async (ctx) => {
     await ctx.db.insert("persons", { email: "taken@example.test", name: "Taken", status: "active", createdAt: 1, updatedAt: 1 });
   });
-  await expect(t.mutation(internal.functions.platform.index.updateSchoolAdminEmailInternal, { schoolId: ids.schoolId, userId: ids.userId, expectedEmail: "old@example.test", newEmail: "taken@example.test", actorEmail: "operator@example.test" })).rejects.toThrow("already exists");
-  await expect(t.run(async (ctx) => (await ctx.db.get(ids.userId))?.email)).resolves.toBe("old@example.test");
+  await expect(t.mutation(
+    internal.functions.platform.index.reserveSchoolAdminEmailUpdateInternal,
+    { schoolId: ids.schoolId, userId: ids.userId, expectedEmail: "old@example.test", newEmail: "taken@example.test", actorEmail: "operator@example.test" },
+  )).rejects.toThrow("already exists");
+  const state = await t.run(async (ctx) => ({
+    email: (await ctx.db.get(ids.userId))?.email,
+    reservation: await ctx.db.query("schoolAdminEmailUpdateReservations").withIndex("by_user", (q) => q.eq("userId", ids.userId)).first(),
+  }));
+  expect(state.email).toBe("old@example.test");
+  expect(state.reservation).toBeNull();
 });

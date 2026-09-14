@@ -18,9 +18,9 @@ const purgeBatch = makeFunctionReference<"mutation">(
   "functions/academic/tenantPurge:purgeTenantBatchInternal",
 );
 
-it("registers admissions upload intents, access grants, and retention policies in tenant lifecycle boundaries", () => {
-  expect(TENANT_SCHOOL_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies"]));
-  expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies"]));
+it("registers admissions and administrator-email records in tenant lifecycle boundaries", () => {
+  expect(TENANT_SCHOOL_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies", "schoolAdminEmailUpdateReservations"]));
+  expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies", "schoolAdminEmailUpdateReservations"]));
   expect(ADMISSIONS_GUARDIAN_REFERENCE_TABLES).toContain("admissionsDocumentAccessGrants");
   expect(TENANT_STORAGE_TABLES).toContain("admissionsDocumentUploadIntents");
 });
@@ -69,6 +69,17 @@ it("purges only the exact development tenant in bounded dependency order", async
       createdAt: 1,
       updatedAt: 1,
     });
+    const reservationId = await ctx.db.insert("schoolAdminEmailUpdateReservations", {
+      schoolId: target,
+      userId,
+      authId: "disposable-admin",
+      expectedEmail: "disposable-admin@test.invalid",
+      newEmail: "updated-admin@test.invalid",
+      actorEmail: "platform-admin@test.invalid",
+      status: "reserved",
+      createdAt: 1,
+      updatedAt: 1,
+    });
     const membershipId = await ctx.db.insert("branchMemberships", {
       personId,
       schoolId: target,
@@ -108,6 +119,7 @@ it("purges only the exact development tenant in bounded dependency order", async
       target,
       retained,
       membershipId,
+      reservationId,
       grantId,
       targetFingerprintId,
       retainedFingerprintId,
@@ -133,6 +145,7 @@ it("purges only the exact development tenant in bounded dependency order", async
     retained: await ctx.db.get(fixture.retained),
     retainedClasses: await ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", fixture.retained)).take(10),
     membership: await ctx.db.get(fixture.membershipId),
+    reservation: await ctx.db.get(fixture.reservationId),
     grant: await ctx.db.get(fixture.grantId),
     targetFingerprint: await ctx.db.get(fixture.targetFingerprintId),
     retainedFingerprint: await ctx.db.get(fixture.retainedFingerprintId),
@@ -141,6 +154,7 @@ it("purges only the exact development tenant in bounded dependency order", async
   expect(state.retained).not.toBeNull();
   expect(state.retainedClasses).toHaveLength(1);
   expect(state.membership).toBeNull();
+  expect(state.reservation).toBeNull();
   expect(state.grant).toBeNull();
   expect(state.targetFingerprint).toBeNull();
   expect(state.retainedFingerprint).not.toBeNull();

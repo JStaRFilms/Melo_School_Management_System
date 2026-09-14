@@ -65,10 +65,13 @@ export type CollectedStorageClaim = ExpectedStorageClaim & {
 const PRIMARY_CLAIM_LIMIT = 2;
 const REFERENCE_CLAIM_LIMIT = 100;
 const UNINDEXED_CLAIM_SCAN_LIMIT = 1000;
+export const STORAGE_CLAIM_INVENTORY_LIMIT = 50;
 
-/** Every durable owner or historical reference must block destructive reuse. */
-export async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
-  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, ocrJobs, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos, demoRuns, importWorkspaces] = await Promise.all([
+async function collectIndexedStorageClaims(
+  ctx: Context,
+  storageId: Id<"_storage">,
+): Promise<CollectedStorageClaim[]> {
+  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, ocrJobs, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
     ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_storage_id", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
@@ -84,16 +87,12 @@ export async function collectStorageClaims(ctx: Context, storageId: Id<"_storage
     ctx.db.query("demoSeedStorageCleanup").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("issuedReportCards").withIndex("by_school_logo_storage", q => q.eq("schoolLogoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
     ctx.db.query("issuedReportCards").withIndex("by_student_photo_storage", q => q.eq("studentPhotoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
-    ctx.db.query("demoSeedRuns").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
-    ctx.db.query("importWorkspaces").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
   ]);
   const primaryClaimSets = [admissions, admissionsUploadIntents, siteAssets, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup];
   const referenceClaimSets = [schools, ocrJobs, reportLogos, reportPhotos];
-  if (primaryClaimSets.some((rows) => rows.length > PRIMARY_CLAIM_LIMIT) || referenceClaimSets.some((rows) => rows.length > REFERENCE_CLAIM_LIMIT) || demoRuns.length > UNINDEXED_CLAIM_SCAN_LIMIT || importWorkspaces.length > UNINDEXED_CLAIM_SCAN_LIMIT) {
+  if (primaryClaimSets.some((rows) => rows.length > PRIMARY_CLAIM_LIMIT) || referenceClaimSets.some((rows) => rows.length > REFERENCE_CLAIM_LIMIT)) {
     throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
   }
-  const matchingDemoRuns = demoRuns.filter((row) => row.logoStorageId === storageId || row.portraitStorageIds.includes(storageId));
-  const matchingImportSources = importWorkspaces.flatMap((workspace) => workspace.sourceFiles.map((source, index) => ({ workspace, source, index }))).filter(({ source }) => source.storageId === storageId);
   return [
     ...admissions.map(row => ({ purpose: "admissionsDocument" as const, ownerId: String(row._id), schoolId: row.schoolId })),
     ...admissionsUploadIntents.map(row => ({
@@ -123,14 +122,61 @@ export async function collectStorageClaims(ctx: Context, storageId: Id<"_storage
     ...rollbacks.map(row => ({ purpose: "schoolAssetRollback" as const, ownerId: String(row._id), schoolId: row.schoolId })),
     ...candidates.map(row => ({ purpose: "pdfCompressionCandidate" as const, ownerId: String(row._id), schoolId: row.schoolId })),
     ...cleanup.map(row => ({ purpose: "demoSeedCleanup" as const, ownerId: String(row._id), schoolId: row.schoolId })),
-    ...matchingDemoRuns.flatMap(row => [
-      ...(row.logoStorageId === storageId ? [{ purpose: "demoSeedRunLogoReference" as const, ownerId: String(row._id), schoolId: row.schoolId }] : []),
-      ...(row.portraitStorageIds.includes(storageId) ? [{ purpose: "demoSeedRunPortraitReference" as const, ownerId: String(row._id), schoolId: row.schoolId }] : []),
-    ]),
-    ...matchingImportSources.map(({ workspace, index }) => ({ purpose: "importWorkspaceSource" as const, ownerId: `${String(workspace._id)}:${index}`, schoolId: workspace.schoolId })),
     ...reportLogos.map(row => ({ purpose: "issuedReportLogoReference" as const, ownerId: String(row._id), schoolId: row.schoolId })),
     ...reportPhotos.map(row => ({ purpose: "issuedReportPhotoReference" as const, ownerId: String(row._id), schoolId: row.schoolId })),
   ];
+}
+
+/** Builds one bounded inventory and scans legacy, unindexed reference tables once. */
+export async function collectStorageClaimInventory(
+  ctx: Context,
+  storageIds: Id<"_storage">[],
+): Promise<ReadonlyMap<string, readonly CollectedStorageClaim[]>> {
+  const uniqueStorageIds = [...new Map(storageIds.map((storageId) => [String(storageId), storageId])).values()];
+  if (uniqueStorageIds.length > STORAGE_CLAIM_INVENTORY_LIMIT) {
+    throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
+  }
+  if (uniqueStorageIds.length === 0) return new Map();
+
+  const [indexedClaims, demoRuns, importWorkspaces] = await Promise.all([
+    Promise.all(uniqueStorageIds.map((storageId) => collectIndexedStorageClaims(ctx, storageId))),
+    ctx.db.query("demoSeedRuns").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
+    ctx.db.query("importWorkspaces").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
+  ]);
+  if (demoRuns.length > UNINDEXED_CLAIM_SCAN_LIMIT || importWorkspaces.length > UNINDEXED_CLAIM_SCAN_LIMIT) {
+    throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
+  }
+
+  const inventory = new Map<string, CollectedStorageClaim[]>();
+  uniqueStorageIds.forEach((storageId, index) => inventory.set(String(storageId), indexedClaims[index] ?? []));
+  for (const row of demoRuns) {
+    const logoClaims = inventory.get(String(row.logoStorageId));
+    if (logoClaims) {
+      logoClaims.push({ purpose: "demoSeedRunLogoReference", ownerId: String(row._id), schoolId: row.schoolId });
+    }
+    for (const storageId of new Set(row.portraitStorageIds)) {
+      const portraitClaims = inventory.get(String(storageId));
+      if (portraitClaims) {
+        portraitClaims.push({ purpose: "demoSeedRunPortraitReference", ownerId: String(row._id), schoolId: row.schoolId });
+      }
+    }
+  }
+  for (const workspace of importWorkspaces) {
+    workspace.sourceFiles.forEach((source, index) => {
+      inventory.get(String(source.storageId))?.push({
+        purpose: "importWorkspaceSource",
+        ownerId: `${String(workspace._id)}:${index}`,
+        schoolId: workspace.schoolId,
+      });
+    });
+  }
+  return inventory;
+}
+
+/** Every durable owner or historical reference must block destructive reuse. */
+export async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
+  const inventory = await collectStorageClaimInventory(ctx, [storageId]);
+  return [...(inventory.get(String(storageId)) ?? [])];
 }
 
 /** A new claim is allowed only when no owning record exists anywhere. */

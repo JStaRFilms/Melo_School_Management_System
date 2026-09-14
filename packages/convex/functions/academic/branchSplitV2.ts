@@ -163,6 +163,7 @@ export const SCHOOL_PURGE_TABLES = [
   "admissionsIntakes",
   "admissionsProgrammes",
   "admissionsRetentionPolicies",
+  "schoolAdminEmailUpdateReservations",
   "schoolCapabilityGrants",
   "schoolSiteAuditEvents",
   "schoolSiteRevisions",

@@ -29,6 +29,7 @@ import {
   resolveSchoolModuleFeatures,
 } from "@school/shared/product-modules";
 import { recordAuditEventHelper } from "../academic/audit";
+import { applySchoolAdminEmailUpdate } from "./schoolAdminEmailUpdate";
 
 function getBetterAuthIssuer(): string {
   const issuer = process.env.CONVEX_SITE_URL?.trim();
@@ -882,7 +883,51 @@ export const reconcileSchoolAdminIdentity = action({
   },
 });
 
-export const updateSchoolAdminEmailInternal = internalMutation({
+async function validateSchoolAdminEmailUpdate(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    userId: Id<"users">;
+    expectedEmail: string;
+    newEmail: string;
+  },
+): Promise<Doc<"users">> {
+  const user = await ctx.db.get(args.userId);
+  if (
+    !user ||
+    user.schoolId !== args.schoolId ||
+    user.isArchived ||
+    (user.role !== "admin" && user.isSchoolAdmin !== true) ||
+    normalizeEmail(user.email) !== normalizeEmail(args.expectedEmail)
+  ) {
+    throw new ConvexError("Administrator identity changed during the update");
+  }
+
+  const conflictingUsers = await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+    .take(2);
+  if (conflictingUsers.some((candidate) => candidate._id !== user._id)) {
+    throw new ConvexError("An account with this email already exists");
+  }
+  const conflictingPlatformAdmin = await ctx.db
+    .query("platformAdmins")
+    .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+    .first();
+  const conflictingPerson = await ctx.db
+    .query("persons")
+    .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+    .first();
+  if (
+    conflictingPlatformAdmin ||
+    (conflictingPerson && conflictingPerson._id !== user.personId)
+  ) {
+    throw new ConvexError("An account with this email already exists");
+  }
+  return user;
+}
+
+export const reserveSchoolAdminEmailUpdateInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
     userId: v.id("users"),
@@ -890,61 +935,96 @@ export const updateSchoolAdminEmailInternal = internalMutation({
     newEmail: v.string(),
     actorEmail: v.string(),
   },
-  returns: v.null(),
+  returns: v.id("schoolAdminEmailUpdateReservations"),
   handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.userId);
-    if (
-      !user ||
-      user.schoolId !== args.schoolId ||
-      user.isArchived ||
-      (user.role !== "admin" && user.isSchoolAdmin !== true) ||
-      normalizeEmail(user.email) !== normalizeEmail(args.expectedEmail)
-    ) {
-      throw new ConvexError("Administrator identity changed during the update");
+    const user = await validateSchoolAdminEmailUpdate(ctx, args);
+    const existing = await ctx.db
+      .query("schoolAdminEmailUpdateReservations")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+    if (existing?.status === "manual_review") {
+      throw new ConvexError("Administrator email update requires manual review");
     }
-
-    const conflictingUsers = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.newEmail))
-      .take(2);
-    if (conflictingUsers.some((candidate) => candidate._id !== user._id)) {
-      throw new ConvexError("An account with this email already exists");
-    }
-    const conflictingPlatformAdmin = await ctx.db
-      .query("platformAdmins")
-      .withIndex("by_email", (q) => q.eq("email", args.newEmail))
-      .first();
-    const conflictingPerson = await ctx.db
-      .query("persons")
-      .withIndex("by_email", (q) => q.eq("email", args.newEmail))
-      .first();
-    if (
-      conflictingPlatformAdmin ||
-      (conflictingPerson && conflictingPerson._id !== user.personId)
-    ) {
-      throw new ConvexError("An account with this email already exists");
+    if (existing) {
+      throw new ConvexError("Administrator email update is already in progress");
     }
 
     const now = Date.now();
-    await ctx.db.patch(user._id, { email: args.newEmail, updatedAt: now });
+    return await ctx.db.insert("schoolAdminEmailUpdateReservations", {
+      schoolId: args.schoolId,
+      userId: user._id,
+      authId: user.authId,
+      expectedEmail: normalizeEmail(args.expectedEmail),
+      newEmail: normalizeEmail(args.newEmail),
+      actorEmail: normalizeEmail(args.actorEmail),
+      status: "reserved",
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const finalizeSchoolAdminEmailUpdateInternal = internalMutation({
+  args: { reservationId: v.id("schoolAdminEmailUpdateReservations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.status !== "reserved") {
+      throw new ConvexError("Administrator email update reservation is no longer valid");
+    }
+    const user = await validateSchoolAdminEmailUpdate(ctx, reservation);
+    if (user.authId !== reservation.authId) {
+      throw new ConvexError("Administrator identity changed during the update");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, { email: reservation.newEmail, updatedAt: now });
     if (user.personId) {
       const person = await ctx.db.get(user.personId);
       if (!person) throw new ConvexError("Administrator identity requires manual review");
-      await ctx.db.patch(person._id, { email: args.newEmail, updatedAt: now });
+      await ctx.db.patch(person._id, { email: reservation.newEmail, updatedAt: now });
     }
     await recordAuditEventHelper(ctx, {
-      schoolId: args.schoolId,
+      schoolId: reservation.schoolId,
       actorKind: "platform_admin",
-      actorEmailSnapshot: args.actorEmail,
+      actorEmailSnapshot: reservation.actorEmail,
       module: "auth",
       action: "school_admin_email_changed",
       targetType: "user",
       targetId: String(user._id),
       outcome: "success",
       safeSummary: "A platform administrator changed a school administrator email address.",
-      beforeSummary: maskEmail(args.expectedEmail),
-      afterSummary: maskEmail(args.newEmail),
+      beforeSummary: maskEmail(reservation.expectedEmail),
+      afterSummary: maskEmail(reservation.newEmail),
       alertTier: "tier2_warn",
+    });
+    await ctx.db.delete(args.reservationId);
+    return null;
+  },
+});
+
+export const releaseSchoolAdminEmailUpdateInternal = internalMutation({
+  args: { reservationId: v.id("schoolAdminEmailUpdateReservations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.status !== "reserved") {
+      throw new ConvexError("Administrator email update reservation is no longer valid");
+    }
+    await ctx.db.delete(args.reservationId);
+    return null;
+  },
+});
+
+export const markSchoolAdminEmailUpdateForManualReviewInternal = internalMutation({
+  args: { reservationId: v.id("schoolAdminEmailUpdateReservations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation) return null;
+    await ctx.db.patch(args.reservationId, {
+      status: "manual_review",
+      updatedAt: Date.now(),
     });
     return null;
   },
@@ -990,40 +1070,57 @@ export const updateSchoolAdminEmail = action({
       throw new ConvexError("An account with this email already exists");
     }
 
-    try {
-      await authContext.internalAdapter.updateUser(admin.authId, {
-        email: newEmail,
-        emailVerified: false,
-      });
-
-      // Let Better Auth create the verification token through its configured sender.
-      await auth.api.sendVerificationEmail({
-        body: { email: newEmail, callbackURL: "/sign-in" },
-      });
-
-      await ctx.runMutation(
-        internal.functions.platform.index.updateSchoolAdminEmailInternal,
-        {
-          schoolId: args.schoolId,
-          userId: args.userId,
-          expectedEmail: currentEmail,
-          newEmail,
-          actorEmail: operator.email,
+    await applySchoolAdminEmailUpdate(
+      currentEmail,
+      currentAuth.user.emailVerified === true,
+      newEmail,
+      {
+        acquireReservation: async () =>
+          await ctx.runMutation(
+            internal.functions.platform.index.reserveSchoolAdminEmailUpdateInternal,
+            {
+              schoolId: args.schoolId,
+              userId: args.userId,
+              expectedEmail: currentEmail,
+              newEmail,
+              actorEmail: operator.email,
+            },
+          ),
+        updateAuthEmail: async (email, emailVerified) => {
+          await authContext.internalAdapter.updateUser(admin.authId, {
+            email,
+            emailVerified,
+          });
         },
-      );
-    } catch (error) {
-      try {
-        await authContext.internalAdapter.updateUser(admin.authId, {
-          email: currentEmail,
-          emailVerified: currentAuth.user.emailVerified === true,
-        });
-      } catch {
-        throw new ConvexError("The email change could not be completed and requires manual review");
-      }
-      if (error instanceof ConvexError) throw error;
-      throw new ConvexError("The email change could not be completed");
-    }
-    await authContext.internalAdapter.deleteSessions(admin.authId);
+        // Let Better Auth create the verification token through its configured sender.
+        sendVerificationEmail: async () => {
+          await auth.api.sendVerificationEmail({
+            body: { email: newEmail, callbackURL: "/sign-in" },
+          });
+        },
+        revokeSessions: async () => {
+          await authContext.internalAdapter.deleteSessions(admin.authId);
+        },
+        synchronizeCanonicalRecords: async (reservationId) => {
+          await ctx.runMutation(
+            internal.functions.platform.index.finalizeSchoolAdminEmailUpdateInternal,
+            { reservationId },
+          );
+        },
+        releaseReservation: async (reservationId) => {
+          await ctx.runMutation(
+            internal.functions.platform.index.releaseSchoolAdminEmailUpdateInternal,
+            { reservationId },
+          );
+        },
+        markReservationForManualReview: async (reservationId) => {
+          await ctx.runMutation(
+            internal.functions.platform.index.markSchoolAdminEmailUpdateForManualReviewInternal,
+            { reservationId },
+          );
+        },
+      },
+    );
     return { success: true, requiresEmailVerification: true };
   },
 });
