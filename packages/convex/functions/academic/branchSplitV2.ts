@@ -114,6 +114,7 @@ export const KNOWLEDGE_AI_TABLES = [
 
 export const LEGACY_BILLING_TABLES = [
   "studentInvoices",
+  "feePlanLifecycleRuns",
   "feePlans",
   "feePlanApplications",
   "billingPayments",

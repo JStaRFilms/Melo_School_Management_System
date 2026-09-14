@@ -251,7 +251,9 @@ export default function BillingPage() {
     [data?.feePlans, sortPreferences.plans]
   );
   const overviewInvoices = useMemo(
-    () => sortInvoiceRows(data?.invoices ?? [], { key: "date", direction: "desc" }).filter((invoiceRow) => invoiceRow.invoice.status !== "paid").slice(0, 5),
+    () => sortInvoiceRows(data?.invoices ?? [], { key: "date", direction: "desc" })
+      .filter((invoiceRow) => !["paid", "waived", "cancelled"].includes(invoiceRow.invoice.status))
+      .slice(0, 5),
     [data?.invoices]
   );
   const overviewPayments = useMemo(
