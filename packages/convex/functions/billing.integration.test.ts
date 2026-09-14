@@ -709,10 +709,24 @@ describe("billing registered functions", () => {
       expectedName: otherUnusedPlan.name,
       runId: firstDeletePage.continueRunId,
     })).rejects.toThrow(/Invalid fee-plan lifecycle continuation/);
+    await expect(actor.mutation(api.functions.billing.restoreFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+    })).resolves.toMatchObject({ status: "active" });
     await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
       feePlanId: paginatedUnusedPlan._id,
       expectedName: paginatedUnusedPlan.name,
       runId: firstDeletePage.continueRunId,
+    })).rejects.toThrow(/Invalid fee-plan lifecycle continuation/);
+    const restartedDelete = await actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      runId: null,
+    });
+    expect(restartedDelete).toMatchObject({ status: "archived", hasMore: true });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      runId: restartedDelete.continueRunId,
     })).resolves.toMatchObject({ status: "deleted", hasMore: false });
 
     const dashboard = await actor.query(api.functions.billing.getBillingDashboard, {}) as {
@@ -813,6 +827,9 @@ describe("billing registered functions", () => {
     expect(lifecycleState.audit.filter(
       (event) => event.action === "fee_plan.invoices_revoked",
     )).toHaveLength(1);
+    expect(lifecycleState.audit.filter(
+      (event) => event.action.startsWith("fee_plan."),
+    ).every((event) => event.actorEmailSnapshot === "admin@lifecycle-billing.test")).toBe(true);
   });
 
   it("keeps invoice-less gateway events only on unfiltered dashboards", async () => {

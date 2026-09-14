@@ -522,6 +522,7 @@ async function startOrResumeFeePlanLifecycleRun(
     feePlanId: Id<"feePlans">;
     actorUserId: Id<"users">;
     operation: "delete_unused" | "revoke_invoices";
+    lifecycleVersion: number;
     expectedName?: string;
     reason?: string;
   },
@@ -534,12 +535,13 @@ async function startOrResumeFeePlanLifecycleRun(
       run.feePlanId !== args.feePlanId ||
       run.actorUserId !== args.actorUserId ||
       run.operation !== args.operation ||
+      run.lifecycleVersion !== args.lifecycleVersion ||
       run.expectedName !== args.expectedName ||
       run.reason !== args.reason
     ) {
       throw new ConvexError("Invalid fee-plan lifecycle continuation");
     }
-    return { runId: run._id, cursor: run.cursor };
+    return { runId: run._id, cursor: run.cursor, lifecycleVersion: run.lifecycleVersion };
   }
 
   const now = Date.now();
@@ -549,12 +551,13 @@ async function startOrResumeFeePlanLifecycleRun(
     actorUserId: args.actorUserId,
     operation: args.operation,
     cursor: null,
+    lifecycleVersion: args.lifecycleVersion,
     ...(args.expectedName !== undefined ? { expectedName: args.expectedName } : {}),
     ...(args.reason !== undefined ? { reason: args.reason } : {}),
     createdAt: now,
     updatedAt: now,
   });
-  return { runId, cursor: null };
+  return { runId, cursor: null, lifecycleVersion: args.lifecycleVersion };
 }
 
 async function recordFeePlanLifecycleAudit(
@@ -567,12 +570,14 @@ async function recordFeePlanLifecycleAudit(
     summary: string;
   },
 ) {
+  const actorPerson = actor.personId ? await ctx.db.get(actor.personId) : null;
+  const actorUser = actor.userId ? await ctx.db.get(actor.userId) : null;
   await recordAuditEventHelper(ctx, {
     schoolId: args.schoolId,
     actorKind: "user",
     actorPersonId: actor.personId,
     actorMembershipId: actor.membershipId,
-    actorEmailSnapshot: actor.role,
+    actorEmailSnapshot: actorPerson?.email ?? actorUser?.email ?? actor.role,
     module: "finance",
     action: `fee_plan.${args.action}`,
     targetType: "feePlans",
@@ -1903,6 +1908,7 @@ export const archiveFeePlan = mutation({
 
     await ctx.db.patch(feePlan._id, {
       isActive: false,
+      lifecycleVersion: (feePlan.lifecycleVersion ?? 0) + 1,
       updatedAt: Date.now(),
       updatedBy: viewer.userId,
     });
@@ -1931,6 +1937,7 @@ export const restoreFeePlan = mutation({
 
     await ctx.db.patch(feePlan._id, {
       isActive: true,
+      lifecycleVersion: (feePlan.lifecycleVersion ?? 0) + 1,
       updatedAt: Date.now(),
       updatedBy: viewer.userId,
     });
@@ -1967,6 +1974,7 @@ export const deleteUnusedFeePlan = mutation({
       feePlanId: feePlan._id,
       actorUserId: viewer.userId,
       operation: "delete_unused",
+      lifecycleVersion: feePlan.lifecycleVersion ?? 0,
       expectedName: args.expectedName,
     });
     const application = await ctx.db
@@ -1991,6 +1999,7 @@ export const deleteUnusedFeePlan = mutation({
       if (feePlan.isActive) {
         await ctx.db.patch(feePlan._id, {
           isActive: false,
+          lifecycleVersion: run.lifecycleVersion + 1,
           updatedAt: now,
           updatedBy: viewer.userId,
         });
@@ -2010,15 +2019,20 @@ export const deleteUnusedFeePlan = mutation({
     }
 
     if (!invoicePage?.isDone) {
+      const lifecycleVersion = feePlan.isActive
+        ? run.lifecycleVersion + 1
+        : run.lifecycleVersion;
       if (feePlan.isActive) {
         await ctx.db.patch(feePlan._id, {
           isActive: false,
+          lifecycleVersion,
           updatedAt: now,
           updatedBy: viewer.userId,
         });
       }
       await ctx.db.patch(run.runId, {
         cursor: invoicePage?.continueCursor ?? null,
+        lifecycleVersion,
         updatedAt: now,
       });
       return {
@@ -2074,6 +2088,7 @@ export const revokeFeePlanInvoices = mutation({
       feePlanId: feePlan._id,
       actorUserId: viewer.userId,
       operation: "revoke_invoices",
+      lifecycleVersion: feePlan.lifecycleVersion ?? 0,
       reason,
     });
     const invoicePage = await ctx.db
@@ -2094,9 +2109,13 @@ export const revokeFeePlanInvoices = mutation({
     });
 
     const now = Date.now();
+    const lifecycleVersion = feePlan.isActive
+      ? run.lifecycleVersion + 1
+      : run.lifecycleVersion;
     if (feePlan.isActive) {
       await ctx.db.patch(feePlan._id, {
         isActive: false,
+        lifecycleVersion,
         updatedAt: now,
         updatedBy: viewer.userId,
       });
@@ -2131,6 +2150,7 @@ export const revokeFeePlanInvoices = mutation({
     } else {
       await ctx.db.patch(run.runId, {
         cursor: invoicePage.continueCursor,
+        lifecycleVersion,
         updatedAt: now,
       });
     }

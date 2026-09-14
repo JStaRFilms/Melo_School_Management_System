@@ -92,7 +92,7 @@ The current implementation now uses a **per-school Paystack merchant** model:
 
 ### `feePlanLifecycleRuns`
 - temporary server-owned continuation state for bounded deletion and revocation scans
-- binds progress to the school, plan, actor, operation, and stable confirmation inputs so clients cannot skip ledger history
+- binds progress to the school, plan lifecycle version, actor, operation, and stable confirmation inputs so clients cannot skip ledger history or resume after an intervening restore/archive transition
 - indexed by school and included in tenant, demo-school, and branch-split cleanup
 
 ### `studentInvoices`
@@ -139,7 +139,7 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - Manual payments cannot be recorded against a cancelled invoice. A verified gateway payment that arrives after revocation is preserved as a successful but unapplied, flagged payment without changing the cancelled invoice balance.
 - Bulk deletion and revocation read bounded invoice pages through server-owned continuation runs, so clients cannot transplant cursors to skip financial history.
 - Cancelled invoice balances remain preserved on the invoice record but are excluded from active school and household outstanding totals.
-- Lifecycle changes write permanent finance audit events with the actor, target plan, result, reason where applicable, and affected invoice count; empty scan pages do not create audit noise.
+- Lifecycle changes write permanent finance audit events with canonical actor links where available and a resolved email snapshot for legacy actors, plus the target plan, result, reason where applicable, and affected invoice count; empty scan pages do not create audit noise.
 
 ## UX Direction
 
