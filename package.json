@@ -31,6 +31,7 @@
     "typecheck": "turbo typecheck --concurrency=1",
     "test": "turbo test",
     "test:e2e": "playwright test",
+    "test:e2e:admissions-smoke": "playwright test --config=playwright.admissions.config.js",
     "test:e2e:build-gate": "turbo test:e2e",
     "test:e2e:install": "playwright install chromium",
     "convex:dev": "convex dev",
