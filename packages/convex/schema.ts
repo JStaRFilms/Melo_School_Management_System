@@ -451,6 +451,17 @@ export default defineSchema({
     .index("by_school_and_status", ["schoolId", "status"])
     .index("by_school", ["schoolId"]),
 
+  admissionsPurchaseGuards: defineTable({
+    schoolId: v.id("schools"),
+    guardianId: v.id("admissionsGuardians"),
+    productId: v.id("admissionsProducts"),
+    currentAttemptId: v.id("admissionsPurchaseAttempts"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school_and_guardian_and_product", ["schoolId", "guardianId", "productId"])
+    .index("by_school", ["schoolId"]),
+
   admissionsPurchaseAttempts: defineTable({
     schoolId: v.id("schools"),
     guardianId: v.id("admissionsGuardians"),
@@ -740,6 +751,7 @@ export default defineSchema({
   admissionsDecisions: defineTable({
     schoolId: v.id("schools"),
     applicationId: v.id("admissionsApplications"),
+    snapshotId: v.optional(v.id("admissionsSubmissionSnapshots")),
     version: v.number(),
     state: admissionsDecisionStateValidator,
     reasonCode: v.optional(v.string()),

@@ -33,6 +33,11 @@ const revealSensitiveApplicationDetailRef = makeFunctionReference<"mutation">("f
 const startReviewRef = makeFunctionReference<"mutation">("functions/admissions/staff:startReview");
 const requestChangesRef = makeFunctionReference<"mutation">("functions/admissions/staff:requestChanges");
 const decisionRef = makeFunctionReference<"mutation">("functions/admissions/staff:recordDecision");
+const markReadyRef = makeFunctionReference<"mutation">("functions/admissions/staff:markReadyForDecision");
+const evaluationRef = makeFunctionReference<"mutation">("functions/admissions/staff:recordEvaluation");
+const reviewStateRef = makeFunctionReference<"query">("functions/admissions/staff:getLatestReviewState");
+const resumeWaitlistedRef = makeFunctionReference<"mutation">("functions/admissions/staff:resumeWaitlisted");
+const reopenDecisionRef = makeFunctionReference<"mutation">("functions/admissions/staff:reopenDecision");
 const documentReviewRef = makeFunctionReference<"mutation">("functions/admissions/staff:recordDocumentReview");
 const documentAccessRef = makeFunctionReference<"mutation">("functions/admissions/staff:getDocumentAccess");
 const consumeStaffDocumentAccessGrantRef = makeFunctionReference<"mutation">("functions/admissions/staff:consumeDocumentAccessGrant");
@@ -159,7 +164,7 @@ it("enforces the module boundary on direct staff and guardian writes while prese
   await expect(f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).rejects.toThrow("Admissions is unavailable");
   await expect(f.guardian.mutation(saveDraftRef, { applicationId: paid.application.applicationId, expectedVersion: 0, mutationKey: "disabled-save", answers: [] })).rejects.toThrow("Admissions is unavailable");
   await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "disabled-new-attempt" })).rejects.toThrow("unavailable");
-  await expect(f.guardian.action(initializeAttemptRef, { reference: unsettled.reference })).rejects.toThrow("Admissions is unavailable");
+  await expect(f.guardian.action(initializeAttemptRef, { reference: unsettled.reference })).rejects.toThrow("Payment initialization is unavailable");
 
   await expect(f.guardian.query(getDraftRef, { applicationId: paid.application.applicationId })).resolves.toMatchObject({ state: "draft" });
   await expect(f.guardian.query(listGuardianWorkspaceBySlugRef, { schoolSlug: "admissions-school" })).resolves.toMatchObject({ applications: [expect.objectContaining({ applicationId: paid.application.applicationId })] });
@@ -172,23 +177,35 @@ it("enforces the module boundary on direct staff and guardian writes while prese
   await expect(f.guardian.mutation(createApplicationRef, { entitlementId: settled.entitlementId })).resolves.toMatchObject({ replayed: false });
 });
 
+it("fails closed instead of adopting one of two unresolved legacy purchase attempts", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    const guardian = await ctx.db.query("admissionsGuardians").withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", "test|guardian-one")).unique();
+    if (!guardian) throw new Error("Guardian missing");
+    const now = Date.now();
+    const baseAttempt = { schoolId: f.schoolId, guardianId: guardian._id, productId: f.campaign.productId, priceId: f.campaign.priceId, provider: "paystack" as const, providerMode: "test" as const, amountMinor: 500_000, currency: "NGN", feeDisclosureSnapshot: "Application processing fee", state: "verification_pending" as const, createdAt: now, updatedAt: now };
+    await ctx.db.insert("admissionsPurchaseAttempts", { ...baseAttempt, reference: "adm_legacy_one", idempotencyKey: "legacy-one" });
+    await ctx.db.insert("admissionsPurchaseAttempts", { ...baseAttempt, reference: "adm_legacy_two", idempotencyKey: "legacy-two", createdAt: now + 1, updatedAt: now + 1 });
+  });
+
+  await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "new-client-key" })).rejects.toThrow("PAYMENT_REVIEW_REQUIRED");
+  expect(await f.t.run((ctx) => ctx.db.query("admissionsPurchaseGuards").withIndex("by_school_and_guardian_and_product", (q) => q.eq("schoolId", f.schoolId)).take(10))).toEqual([]);
+});
+
 it("component-limits concurrent checkout creation without charging idempotent replays", async () => {
   const f = await fixture();
   const results = await Promise.allSettled(Array.from({ length: 6 }, (_, index) =>
     f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: `rate-attempt-${index}` }),
   ));
-  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
-  const denied = results.filter((result) => result.status === "rejected");
-  expect(denied).toHaveLength(1);
-  expect(String(denied[0]?.reason)).toContain("Please wait");
-
-  const first = results[0];
-  if (first.status !== "fulfilled") throw new Error("First checkout attempt was unexpectedly denied");
-  const firstAttempt = first.value as { attemptId: Id<"admissionsPurchaseAttempts"> };
-  await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "rate-attempt-0" })).resolves.toMatchObject({ attemptId: firstAttempt.attemptId, replayed: true });
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(6);
+  const fulfilled = results.flatMap((result) => result.status === "fulfilled" ? [result.value as { attemptId: Id<"admissionsPurchaseAttempts"> }] : []);
+  expect(new Set(fulfilled.map((attempt) => attempt.attemptId)).size).toBe(1);
+  const firstAttempt = fulfilled[0];
+  if (!firstAttempt) throw new Error("First checkout attempt was unexpectedly denied");
+  await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "rate-attempt-new-client-key" })).resolves.toMatchObject({ attemptId: firstAttempt.attemptId, replayed: true });
   await expect(f.otherGuardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "other-guardian-attempt" })).resolves.toMatchObject({ replayed: false });
   const attempts = await f.t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).take(10));
-  expect(attempts.filter((attempt) => attempt.idempotencyKey.startsWith("rate-attempt-"))).toHaveLength(5);
+  expect(attempts.filter((attempt) => attempt.guardianId !== undefined)).toHaveLength(2);
 });
 
 it("returns canonical apply links and rejects stale campaign draft overwrites", async () => {
@@ -235,6 +252,9 @@ it("publishes only the immutable campaign projection and deduplicates verified p
   const mismatch = await f.t.mutation(recordVerifiedPaymentRef, { ...paymentArgs, purchaseAttemptId: mismatchAttempt.attemptId, providerEventId: "provider-event-2", bodyDigest: "other-digest", amountMinor: 1 });
   expect(mismatch).toMatchObject({ entitlementId: null, processed: false });
   expect(await f.t.run((ctx) => ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", mismatchAttempt.attemptId)).unique())).toBeNull();
+  const successAfterConflict = await f.t.mutation(recordVerifiedPaymentRef, { ...paymentArgs, purchaseAttemptId: mismatchAttempt.attemptId, providerEventId: "provider-event-after-conflict", bodyDigest: "conflict-success-digest" });
+  expect(successAfterConflict).toMatchObject({ state: "manual_attention", entitlementId: null });
+  await f.t.run((ctx) => ctx.db.patch(mismatchAttempt.attemptId, { state: "failed", failureCode: "TEST_RESOLVED" }));
 
   const liveAttempt = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "live-event-identity" });
   await f.t.run((ctx) => ctx.db.patch(liveAttempt.attemptId, { providerMode: "live" }));
@@ -388,8 +408,55 @@ it("initializes guardian-owned checkout and fulfils only server-verified Paystac
     const mismatch = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "mismatched-return" });
     await f.guardian.action(initializeAttemptRef, { reference: mismatch.reference });
     providerReference = "another-merchant-reference";
-    await expect(f.guardian.action(verifyReturnRef, { reference: mismatch.reference })).rejects.toThrow("does not match");
+    await expect(f.guardian.action(verifyReturnRef, { reference: mismatch.reference })).rejects.toThrow("requires review");
+    expect(await f.t.run((ctx) => ctx.db.get(mismatch.attemptId))).toMatchObject({ state: "manual_attention", failureCode: "PAYMENT_REFERENCE_MISMATCH" });
     expect(await f.t.run((ctx) => ctx.db.query("admissionsEntitlements").withIndex("by_source_purchase_attempt", (q) => q.eq("sourcePurchaseAttemptId", mismatch.attemptId)).unique())).toBeNull();
+  } finally {
+    fetchMock.mockRestore();
+    if (priorKey === undefined) delete process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY;
+    else process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY = priorKey;
+  }
+}, 15_000);
+
+it("persists safe initialization and verification recovery states", async () => {
+  const priorKey = process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY;
+  process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY = "admissions-recovery-encryption-key";
+  const f = await fixture();
+  const unavailable = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "initialization-unavailable" });
+  await expect(f.guardian.action(initializeAttemptRef, { reference: unavailable.reference })).rejects.toThrow("requires review");
+  expect(await f.t.run((ctx) => ctx.db.get(unavailable.attemptId))).toMatchObject({ state: "manual_attention", failureCode: "PAYMENT_INITIALIZATION_REVIEW_REQUIRED" });
+  await f.t.run((ctx) => ctx.db.patch(unavailable.attemptId, { state: "failed", failureCode: "TEST_RESOLVED" }));
+
+  await f.t.run((ctx) => ctx.db.insert("schoolBillingSettings", { schoolId: f.schoolId, invoicePrefix: "INV", defaultCurrency: "NGN", defaultDueDays: 7, preferredProvider: "paystack", paymentProviderMode: "test", allowManualPayments: true, allowOnlinePayments: true, createdAt: Date.now(), updatedAt: Date.now(), updatedBy: f.staffUserId }));
+  await f.t.mutation(internal.functions.billingProviders.saveSchoolPaystackGatewayConfigInternal, { schoolId: f.schoolId, userId: f.staffUserId, mode: "test", publicKey: "pk_test", secretKey: "sk_test_secret" });
+  await f.t.mutation(internal.functions.billingProviders.markSchoolPaystackGatewayConfigReadyInternal, { schoolId: f.schoolId, mode: "test", userId: f.staffUserId, successMessage: "ready" });
+  const ambiguous = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "initialization-ambiguous" });
+  const initializationFailure = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("raw provider transport detail"));
+  await expect(f.guardian.action(initializeAttemptRef, { reference: ambiguous.reference })).rejects.toThrow("requires review");
+  initializationFailure.mockRestore();
+  expect(await f.t.run((ctx) => ctx.db.get(ambiguous.attemptId))).toMatchObject({ state: "manual_attention", failureCode: "PAYMENT_INITIALIZATION_REVIEW_REQUIRED" });
+  const recoveredVerification = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ status: true, data: { id: 98, status: "success", reference: ambiguous.reference, amount: ambiguous.amountMinor, currency: ambiguous.currency } }), { status: 200, headers: { "content-type": "application/json" } }));
+  await expect(f.guardian.action(verifyReturnRef, { reference: ambiguous.reference })).resolves.toMatchObject({ state: "paid", entitlementId: expect.any(String) });
+  recoveredVerification.mockRestore();
+
+  const rejected = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "initialization-rejected" });
+  const rejection = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ status: false, message: "provider detail must not escape" }), { status: 400, headers: { "content-type": "application/json" } }));
+  await expect(f.guardian.action(initializeAttemptRef, { reference: rejected.reference })).rejects.toThrow("initialization was declined");
+  rejection.mockRestore();
+  expect(await f.t.run((ctx) => ctx.db.get(rejected.attemptId))).toMatchObject({ state: "failed", failureCode: "PAYMENT_INITIALIZATION_REJECTED" });
+
+  const pending = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "verification-pending" });
+  let providerStatus = "pending";
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => init?.method === "POST"
+    ? new Response(JSON.stringify({ status: true, data: { authorization_url: "https://checkout.paystack.test/pending", access_code: "pending" } }), { status: 200, headers: { "content-type": "application/json" } })
+    : new Response(JSON.stringify({ status: true, data: { id: 99, status: providerStatus, reference: pending.reference, amount: pending.amountMinor, currency: pending.currency } }), { status: 200, headers: { "content-type": "application/json" } }));
+  try {
+    await f.guardian.action(initializeAttemptRef, { reference: pending.reference });
+    await expect(f.guardian.action(verifyReturnRef, { reference: pending.reference })).resolves.toMatchObject({ state: "verification_pending", entitlementId: null });
+    expect(await f.t.run((ctx) => ctx.db.get(pending.attemptId))).toMatchObject({ state: "verification_pending", failureCode: "PAYMENT_VERIFICATION_PENDING" });
+    providerStatus = "abandoned";
+    await expect(f.guardian.action(verifyReturnRef, { reference: pending.reference })).resolves.toMatchObject({ state: "failed", entitlementId: null });
+    expect(await f.t.run((ctx) => ctx.db.get(pending.attemptId))).toMatchObject({ state: "failed", failureCode: "PAYMENT_VERIFICATION_FAILED" });
   } finally {
     fetchMock.mockRestore();
     if (priorKey === undefined) delete process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY;
@@ -404,6 +471,34 @@ it("locks a reserved draft when its verified payment is refunded", async () => {
   expect(refunded.state).toBe("refunded");
   expect(await f.t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ state: "draft", financialHoldReason: "VERIFIED_REFUNDED" });
   await expect(f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "held-draft-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Ife", lastName: "Ade", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [] })).rejects.toThrow("financially held");
+});
+
+it("keeps a partial-reversal hold monotonic across polling and delayed success", async () => {
+  const priorKey = process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY;
+  process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY = "admissions-partial-reversal-encryption-key";
+  const f = await fixture();
+  await f.t.run((ctx) => ctx.db.insert("schoolBillingSettings", { schoolId: f.schoolId, invoicePrefix: "INV", defaultCurrency: "NGN", defaultDueDays: 7, preferredProvider: "paystack", paymentProviderMode: "test", allowManualPayments: true, allowOnlinePayments: true, createdAt: Date.now(), updatedAt: Date.now(), updatedBy: f.staffUserId }));
+  await f.t.mutation(internal.functions.billingProviders.saveSchoolPaystackGatewayConfigInternal, { schoolId: f.schoolId, userId: f.staffUserId, mode: "test", publicKey: "pk_test", secretKey: "sk_test_secret" });
+  await f.t.mutation(internal.functions.billingProviders.markSchoolPaystackGatewayConfigReadyInternal, { schoolId: f.schoolId, mode: "test", userId: f.staffUserId, successMessage: "ready" });
+  const { attempt, payment } = await paidApplication(f, "partial-poll-delayed-success");
+  const partial = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "partial-before-poll", eventType: "refund.processed", bodyDigest: "partial-before-poll-digest", amountMinor: attempt.amountMinor - 1, currency: attempt.currency, financialOutcome: "refunded", receivedAt: Date.now() });
+  expect(partial.state).toBe("manual_attention");
+
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ status: true, data: { id: 100, status: "pending", reference: attempt.reference, amount: attempt.amountMinor, currency: attempt.currency } }), { status: 200, headers: { "content-type": "application/json" } }));
+  try {
+    await expect(f.guardian.action(verifyReturnRef, { reference: attempt.reference })).resolves.toMatchObject({ state: "manual_attention" });
+    expect(await f.t.run((ctx) => ctx.db.get(attempt.attemptId))).toMatchObject({ state: "manual_attention", failureCode: "PARTIAL_FINANCIAL_REVERSAL_REVIEW_REQUIRED" });
+  } finally {
+    fetchMock.mockRestore();
+    if (priorKey === undefined) delete process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY;
+    else process.env.BILLING_PROVIDER_SECRET_ENCRYPTION_KEY = priorKey;
+  }
+
+  const delayed = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "success-after-partial-poll", eventType: "charge.success", bodyDigest: "success-after-partial-poll-digest", amountMinor: attempt.amountMinor, currency: attempt.currency, receivedAt: Date.now() });
+  expect(delayed.state).toBe("manual_attention");
+  const entitlementId = payment.entitlementId;
+  if (!entitlementId) throw new Error("Paid entitlement missing");
+  expect(await f.t.run((ctx) => ctx.db.get(entitlementId))).toMatchObject({ state: "revoked", voidReason: "VERIFIED_PARTIAL_FINANCIAL_REVERSAL" });
 });
 
 it("recovers legacy verified events and applies refund/reversal outcomes monotonically", async () => {
@@ -486,8 +581,10 @@ it("allows rejection when a required document fails review but still blocks acce
   await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "reject-doc-draft", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
   await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "reject-doc-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
   await f.staff.mutation(documentReviewRef, { schoolId: f.schoolId, documentKey: document.documentKey, result: "rejected", reasonCode: "INVALID_DOCUMENT", guardianMessage: "The identity document could not be accepted." });
+  await f.staff.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  await f.staff.mutation(markReadyRef, { schoolId: f.schoolId, applicationId: application.applicationId });
   await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "ACCEPT", guardianMessage: "Accepted." })).rejects.toThrow("before an acceptance decision");
-  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "rejected", reasonCode: "DOCUMENT_FAILED", guardianMessage: "The application could not be approved." })).resolves.toMatchObject({ version: 1 });
+  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "rejected", reasonCode: "DOCUMENT_FAILED", guardianMessage: "The application could not be approved." })).resolves.toMatchObject({ version: 3 });
 });
 
 it("atomically turns a needs-replacement document review into a guardian correction", async () => {
@@ -591,6 +688,48 @@ it("returns separate immutable basic and audited sensitive staff detail without 
   expect(await f.t.run((ctx) => ctx.db.query("admissionsAuditEvents").withIndex("by_school_and_action_and_created_at", (q) => q.eq("schoolId", f.schoolId).eq("action", "application.reveal_sensitive")).unique())).toMatchObject({ applicationId: application.applicationId, actorUserId: f.staffUserId });
 });
 
+it("versions evaluations and enforces ready, waitlist, resume, and manager reopen transitions", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "decision-workflow");
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "decision-workflow-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
+  const submitted = await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "decision-workflow-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
+  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "EARLY", guardianMessage: "Accepted." })).rejects.toThrow("transition");
+  await f.staff.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  expect((await f.staff.query(reviewStateRef, { schoolId: f.schoolId, applicationId: application.applicationId })).decision).toMatchObject({ state: "in_evaluation", version: 1, snapshotId: submitted.snapshotId });
+  await f.t.run((ctx) => ctx.db.patch(application.applicationId, { financialHoldAt: Date.now(), financialHoldReason: "TEST_HOLD" }));
+  await expect(f.staff.mutation(markReadyRef, { schoolId: f.schoolId, applicationId: application.applicationId })).rejects.toThrow("FINANCIAL_HOLD");
+  await f.t.run((ctx) => ctx.db.patch(application.applicationId, { financialHoldAt: undefined, financialHoldReason: undefined }));
+  await expect(f.staff.mutation(evaluationRef, { schoolId: f.schoolId, applicationId: application.applicationId, type: "interview", state: "completed", resultCode: "PASS" })).rejects.toThrow("scheduled");
+  await expect(f.staff.mutation(evaluationRef, { schoolId: f.schoolId, applicationId: application.applicationId, type: "interview", state: "scheduled", scheduledAt: Date.now() + 10_000 })).resolves.toMatchObject({ version: 1 });
+  await expect(f.staff.mutation(markReadyRef, { schoolId: f.schoolId, applicationId: application.applicationId })).rejects.toThrow("EVALUATION_PENDING");
+  await expect(f.staff.mutation(evaluationRef, { schoolId: f.schoolId, applicationId: application.applicationId, type: "interview", state: "completed", resultCode: "PASS", score: 84 })).resolves.toMatchObject({ version: 2 });
+  await expect(f.staff.mutation(markReadyRef, { schoolId: f.schoolId, applicationId: application.applicationId })).resolves.toMatchObject({ version: 2 });
+  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "waitlisted", reasonCode: "CAPACITY", guardianMessage: "The application is waitlisted." })).resolves.toMatchObject({ version: 3 });
+  expect(await f.t.run((ctx) => ctx.db.get(application.applicationId))).toMatchObject({ state: "waitlisted" });
+  await expect(f.staff.mutation(resumeWaitlistedRef, { schoolId: f.schoolId, applicationId: application.applicationId, reasonCode: "PLACE_AVAILABLE" })).rejects.toThrow("Fresh authentication");
+  await expect(f.freshStaff.mutation(resumeWaitlistedRef, { schoolId: f.schoolId, applicationId: application.applicationId, reasonCode: "PLACE_AVAILABLE" })).resolves.toMatchObject({ version: 4 });
+  await f.staff.mutation(markReadyRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  await f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "ACCEPT", guardianMessage: "Accepted." });
+  await expect(f.staff.mutation(reopenDecisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, reasonCode: "MANAGER_REVIEW" })).rejects.toThrow("Fresh authentication");
+  await expect(f.freshStaff.mutation(reopenDecisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, reasonCode: "MANAGER_REVIEW" })).resolves.toMatchObject({ version: 7 });
+  expect(await f.t.run((ctx) => ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application.applicationId)).collect())).toHaveLength(7);
+});
+
+it("refreshes in-evaluation snapshot binding after a resubmission", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "snapshot-refresh");
+  const profile = { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) };
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "snapshot-refresh-save", requestedEntryLabel: "Primary 1", profile, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Initial" }] });
+  const first = await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "snapshot-refresh-submit-1", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
+  await f.staff.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  await f.staff.mutation(requestChangesRef, { schoolId: f.schoolId, applicationId: application.applicationId, fieldKeys: ["reason"], requirementIds: [], reasonCode: "CLARIFY", guardianMessage: "Clarify." });
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 1, mutationKey: "snapshot-refresh-change", answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Updated" }] });
+  const second = await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 2, submissionKey: "snapshot-refresh-submit-2", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
+  await f.staff.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  const decisions = await f.t.run((ctx) => ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application.applicationId)).collect());
+  expect(decisions.map((decision) => decision.snapshotId)).toEqual([first.snapshotId, second.snapshotId]);
+});
+
 it("keeps conversion-only identities and internal status out of basic and guardian projections", async () => {
   const f = await fixture();
   const { application } = await paidApplication(f, "projection-security");
@@ -608,12 +747,13 @@ it("authorizes review and decisions from current enrollment capabilities, not hi
   await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "submission-auth", signerName: "Pat Ade", signerRelationship: "Guardian", declarationAccepted: true });
   await f.t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: f.schoolId, userId: f.limitedUserId, capability: "decisions.record", scope: "school", grantedByUserId: f.staffUserId, reason: "Historical B0 grant must not authorize", isBreakGlass: false, createdAt: Date.now() }));
   await f.limited.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  await f.staff.mutation(markReadyRef, { schoolId: f.schoolId, applicationId: application.applicationId });
   await expect(f.limited.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "The application has been accepted." })).rejects.toThrow("capability");
   const staleStaff = f.t.withIdentity({ tokenIdentifier: "test|admissions-staff", subject: "admissions-staff", issuer: "test", authenticatedAt: Date.now() - 6 * 60 * 1_000 });
   await expect(staleStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "The application has been accepted." })).rejects.toThrow("Fresh authentication");
-  expect(await f.t.run((ctx) => ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application.applicationId)).take(1))).toEqual([]);
+  expect(await f.t.run((ctx) => ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application.applicationId)).take(10))).toHaveLength(2);
   await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "" })).rejects.toThrow("Guardian-safe");
   const decision = await f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "The application has been accepted.", rationale: "Reviewed" });
-  expect(decision).toMatchObject({ version: 1, replayed: false });
+  expect(decision).toMatchObject({ version: 3, replayed: false });
   await expect(f.staff.mutation(startReviewRef, { schoolId: f.otherSchoolId, applicationId: application.applicationId })).rejects.toThrow();
 });

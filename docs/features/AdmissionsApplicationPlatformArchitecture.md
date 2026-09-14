@@ -19,6 +19,14 @@ This document started as the G1 decision draft. The build now exists. Use the de
 - **Publication approvals:** Sensitive fields, controlled document requirements, and prices use server-computed subject digests; editing approval-relevant content requires reapproval.
 - **Abuse controls:** Checkout creation, upload-intent quota reservation, and document-grant issuance use typed fixed windows in the mounted `@convex-dev/rate-limiter` component, keyed only by server-derived school, actor, and application IDs.
 
+### Task #109 backend recovery contract
+
+- `admissionsDecisions` is the append-only workflow stream: `in_evaluation -> ready_for_decision -> waitlisted|accepted|rejected`. New rows bind to the current submission snapshot; the binding remains optional only so legacy final decisions stay readable and convertible when otherwise current.
+- Starting or resuming review appends a fresh `in_evaluation` row when the snapshot changed. Evaluations are append-only and versioned by application/type. Readiness is recomputed from the current snapshot, financial hold, applicable required-document review outcomes, and each evaluation type's latest row. Acceptance additionally requires accepted required documents.
+- Waitlist resume and final-decision reopen append new workflow versions. Reopen is manager-scoped, fresh-authenticated, audited, and blocked after successful conversion. Application `waitlisted`, `accepted`, and `rejected` states remain the legacy queue/status projection.
+- Conversion requires fresh authentication and rechecks the current accepted decision/snapshot plus the paid purchase and consumed entitlement chain both when requested and in the conversion transaction.
+- `admissionsPurchaseGuards` serializes one unresolved attempt per school/guardian/product. A new client key reuses that attempt; no expiry policy is introduced. Initialization and return verification persist only safe recovery codes/states, while verified late settlement and refund/reversal monotonicity remain authoritative.
+
 ## 1. Executive decision
 
 Build admissions as a tenant-aware bounded context in the shared Convex deployment, with a dedicated public Next.js surface (`apps/apply`) and a stable school-slug link. A globally authenticated, verified guardian may buy multiple school-scoped application-slot entitlements. Each paid entitlement is bound atomically to exactly one durable application record and can be consumed by at most one first submission. Purchase, draft, or submission never creates a canonical student.

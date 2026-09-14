@@ -1,8 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
-import type { Id } from "../../_generated/dataModel";
-import { documentAccessResultValidator, documentAccessUpstreamValidator } from "../foundation/contracts";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { admissionsDecisionStateValidator, documentAccessResultValidator, documentAccessUpstreamValidator } from "../foundation/contracts";
 import {
   admissionsError,
   documentStateAllowsAccess,
@@ -16,6 +16,8 @@ import {
 } from "./shared";
 import { getCurrentRetentionPolicy } from "./retention";
 import { conditionMatches, isSensitiveDataClass, validateAnswerForField } from "./validation";
+
+type DecisionWorkflowState = "in_evaluation" | "ready_for_decision" | "waitlisted" | "accepted" | "rejected";
 
 const immutableProfileValidator = v.object({
   firstName: v.string(),
@@ -270,6 +272,114 @@ export const listQueue = query({
   },
 });
 
+async function latestDecision(ctx: QueryCtx | MutationCtx, applicationId: Id<"admissionsApplications">) {
+  return (await ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", applicationId)).order("desc").take(1))[0] ?? null;
+}
+
+async function appendDecision(ctx: MutationCtx, args: {
+  schoolId: Id<"schools">;
+  applicationId: Id<"admissionsApplications">;
+  snapshotId: Id<"admissionsSubmissionSnapshots">;
+  state: DecisionWorkflowState;
+  actorUserId: Id<"users">;
+  reasonCode?: string;
+  guardianMessage?: string;
+  rationale?: string;
+}) {
+  const previous = await latestDecision(ctx, args.applicationId);
+  const version = (previous?.version ?? 0) + 1;
+  const now = Date.now();
+  const decisionId = await ctx.db.insert("admissionsDecisions", {
+    schoolId: args.schoolId,
+    applicationId: args.applicationId,
+    snapshotId: args.snapshotId,
+    version,
+    state: args.state,
+    ...(args.reasonCode ? { reasonCode: args.reasonCode } : {}),
+    ...(args.guardianMessage ? { guardianMessage: args.guardianMessage } : {}),
+    ...(args.rationale ? { rationale: args.rationale.slice(0, 2000) } : {}),
+    decidedBy: args.actorUserId,
+    decidedAt: now,
+    ...(previous ? { supersedesDecisionId: previous._id } : {}),
+    createdAt: now,
+  });
+  return { decisionId, version, now, previous };
+}
+
+async function computeDecisionReadiness(ctx: QueryCtx | MutationCtx, application: Doc<"admissionsApplications">) {
+  if (!application.latestSnapshotId) return { ready: false, acceptanceReady: false, blockers: ["CURRENT_SNAPSHOT_UNAVAILABLE"] };
+  const snapshotId = application.latestSnapshotId;
+  const [snapshot, fields, requirements, documents, items, entrance, interview] = await Promise.all([
+    ctx.db.get(snapshotId),
+    ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(101),
+    ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(31),
+    ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id)).take(101),
+    ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", snapshotId)).take(204),
+    ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id).eq("type", "entrance_assessment")).order("desc").take(1),
+    ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id).eq("type", "interview")).order("desc").take(1),
+  ]);
+  if (!snapshot || snapshot.applicationId !== application._id || snapshot.schoolId !== application.schoolId || fields.length > 100 || requirements.length > 30 || documents.length > 100 || items.length > 203) {
+    return { ready: false, acceptanceReady: false, blockers: ["READINESS_EVIDENCE_UNAVAILABLE"] };
+  }
+  const blockers: string[] = [];
+  if (application.financialHoldAt !== undefined) blockers.push("FINANCIAL_HOLD");
+  const answers = new Map<string, unknown>();
+  for (const item of items) {
+    if (item.kind !== "answer" || !item.itemKey.startsWith("answer:")) continue;
+    const fieldKey = item.itemKey.slice("answer:".length);
+    const field = fields.find((candidate) => candidate.fieldKey === fieldKey && candidate.status === "active");
+    if (field) answers.set(fieldKey, validateAnswerForField(field, item.valueType, item.serializedValue));
+  }
+  const manifestKeys = new Set<string>();
+  for (const item of items) {
+    if (item.kind !== "document_manifest") continue;
+    try {
+      const parsed: unknown = JSON.parse(item.serializedValue);
+      const key = parsed && typeof parsed === "object" ? Reflect.get(parsed, "documentKey") : null;
+      if (typeof key !== "string") throw new Error("invalid manifest");
+      manifestKeys.add(key);
+    } catch {
+      return { ready: false, acceptanceReady: false, blockers: ["READINESS_EVIDENCE_UNAVAILABLE"] };
+    }
+  }
+  let acceptanceReady = true;
+  const applicableRequired = requirements.filter((requirement) => requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatches(requirement.conditionJson, answers)));
+  for (const requirement of applicableRequired) {
+    const submitted = documents.filter((document) => document.requirementId === requirement._id && manifestKeys.has(document.documentKey));
+    if (!submitted.length || submitted.some((document) => document.state !== "accepted" && document.state !== "rejected")) blockers.push(`DOCUMENT_REVIEW_PENDING:${requirement.requirementKey}`);
+    if (!submitted.length || submitted.some((document) => document.state !== "accepted")) acceptanceReady = false;
+  }
+  if ([entrance[0], interview[0]].some((evaluation) => evaluation?.state === "scheduled")) blockers.push("EVALUATION_PENDING");
+  return { ready: blockers.length === 0, acceptanceReady: blockers.length === 0 && acceptanceReady, blockers };
+}
+
+export const getLatestReviewState = query({
+  args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications"), evaluationLimit: v.optional(v.number()) },
+  returns: v.object({
+    decision: v.union(v.null(), v.object({ decisionId: v.id("admissionsDecisions"), snapshotId: v.union(v.id("admissionsSubmissionSnapshots"), v.null()), version: v.number(), state: admissionsDecisionStateValidator, reasonCode: v.union(v.string(), v.null()), guardianMessage: v.union(v.string(), v.null()), rationale: v.union(v.string(), v.null()), decidedAt: v.number() })),
+    evaluations: v.array(v.object({ evaluationId: v.id("admissionsEvaluations"), type: v.union(v.literal("entrance_assessment"), v.literal("interview")), state: v.union(v.literal("scheduled"), v.literal("completed"), v.literal("cancelled")), scheduledAt: v.union(v.number(), v.null()), completedAt: v.union(v.number(), v.null()), resultCode: v.union(v.string(), v.null()), score: v.union(v.number(), v.null()), version: v.number(), notes: v.union(v.string(), v.null()) })),
+    readiness: v.object({ ready: v.boolean(), acceptanceReady: v.boolean(), blockers: v.array(v.string()) }),
+  }),
+  handler: async (ctx, args) => {
+    await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.applications.view_basic"]);
+    const application = await ctx.db.get(args.applicationId);
+    if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
+    const limit = Math.min(Math.max(Math.trunc(args.evaluationLimit ?? 20), 1), 50);
+    const [decision, entranceEvaluations, interviewEvaluations, readiness] = await Promise.all([
+      latestDecision(ctx, application._id),
+      ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id).eq("type", "entrance_assessment")).order("desc").take(limit),
+      ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id).eq("type", "interview")).order("desc").take(limit),
+      computeDecisionReadiness(ctx, application),
+    ]);
+    const evaluations = [...entranceEvaluations, ...interviewEvaluations].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
+    return {
+      decision: decision ? { decisionId: decision._id, snapshotId: decision.snapshotId ?? null, version: decision.version, state: decision.state, reasonCode: decision.reasonCode ?? null, guardianMessage: decision.guardianMessage ?? null, rationale: decision.rationale ?? null, decidedAt: decision.decidedAt } : null,
+      evaluations: evaluations.map((evaluation) => ({ evaluationId: evaluation._id, type: evaluation.type, state: evaluation.state, scheduledAt: evaluation.scheduledAt ?? null, completedAt: evaluation.completedAt ?? null, resultCode: evaluation.resultCode ?? null, score: evaluation.score ?? null, version: evaluation.version, notes: evaluation.notes ?? null })),
+      readiness,
+    };
+  },
+});
+
 export const startReview = mutation({
   args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications") },
   returns: v.null(),
@@ -277,12 +387,111 @@ export const startReview = mutation({
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.applications.view_basic"]);
     const application = await ctx.db.get(args.applicationId);
     if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
-    if (application.state === "under_review") return null;
-    if (application.state !== "submitted") throw new ConvexError("Only a submitted application can enter review");
-    await ctx.db.patch(application._id, { state: "under_review", updatedAt: Date.now() });
-    await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "review.start", entityType: "admissionsApplication", entityId: application._id, applicationId: application._id });
+    if ((application.state !== "submitted" && application.state !== "under_review") || !application.latestSnapshotId) throw new ConvexError("Only a submitted application can enter review");
+    const current = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
+    if (application.state === "under_review" && current?.state === "in_evaluation" && current.snapshotId === application.latestSnapshotId) return null;
+    const appended = await appendDecision(ctx, { schoolId: args.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, state: "in_evaluation", actorUserId: actor.userId });
+    await ctx.db.patch(application._id, { state: "under_review", currentDecisionId: appended.decisionId, terminalOutcomeAt: undefined, updatedAt: appended.now });
+    await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "review.start", entityType: "admissionsApplication", entityId: application._id, applicationId: application._id, metadata: { decisionVersion: appended.version, snapshotId: application.latestSnapshotId } });
     return null;
   },
+});
+
+export const recordEvaluation = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    applicationId: v.id("admissionsApplications"),
+    type: v.union(v.literal("entrance_assessment"), v.literal("interview")),
+    state: v.union(v.literal("scheduled"), v.literal("completed"), v.literal("cancelled")),
+    scheduledAt: v.optional(v.number()),
+    resultCode: v.optional(v.string()),
+    score: v.optional(v.number()),
+    notes: v.optional(v.string()),
+  },
+  returns: v.object({ evaluationId: v.id("admissionsEvaluations"), version: v.number() }),
+  handler: async (ctx, args) => {
+    const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.documents.review"]);
+    const application = await ctx.db.get(args.applicationId);
+    if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
+    const current = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
+    if (application.state !== "under_review" || !application.latestSnapshotId || !current || current.state !== "in_evaluation" || (current.snapshotId !== undefined && current.snapshotId !== application.latestSnapshotId)) throw new ConvexError("Evaluations can be recorded only during current application evaluation");
+    const previous = (await ctx.db.query("admissionsEvaluations").withIndex("by_application_and_type_and_version", (q) => q.eq("applicationId", application._id).eq("type", args.type)).order("desc").take(1))[0];
+    if (!previous && args.state !== "scheduled") throw new ConvexError("An evaluation must be scheduled before it is completed or cancelled");
+    if (previous && previous.state !== "scheduled" && args.state !== "scheduled") throw new ConvexError("A completed or cancelled evaluation can only be followed by a new schedule");
+    if (args.state === "scheduled" && (args.scheduledAt === undefined || !Number.isFinite(args.scheduledAt))) throw new ConvexError("A scheduled evaluation requires a valid scheduled time");
+    if (args.state === "completed" && !args.resultCode?.trim()) throw new ConvexError("A completed evaluation requires a result code");
+    if (args.score !== undefined && (!Number.isFinite(args.score) || args.score < 0 || args.score > 100)) throw new ConvexError("Evaluation score must be between 0 and 100");
+    const now = Date.now();
+    const version = (previous?.version ?? 0) + 1;
+    const evaluationId = await ctx.db.insert("admissionsEvaluations", {
+      schoolId: args.schoolId,
+      applicationId: application._id,
+      type: args.type,
+      state: args.state,
+      ...(args.scheduledAt !== undefined ? { scheduledAt: args.scheduledAt } : previous?.scheduledAt !== undefined ? { scheduledAt: previous.scheduledAt } : {}),
+      ...(args.state === "completed" ? { completedAt: now } : {}),
+      ...(args.resultCode ? { resultCode: normalizeRequiredText(args.resultCode, "Evaluation result", 100) } : {}),
+      ...(args.score !== undefined ? { score: args.score } : {}),
+      evaluatorUserId: actor.userId,
+      version,
+      ...(args.notes ? { notes: args.notes.slice(0, 2000) } : {}),
+      createdAt: now,
+      updatedAt: now,
+    });
+    await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "evaluation.record", entityType: "admissionsEvaluation", entityId: evaluationId, applicationId: application._id, metadata: { type: args.type, state: args.state, version } });
+    return { evaluationId, version };
+  },
+});
+
+export const markReadyForDecision = mutation({
+  args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications") },
+  returns: v.object({ decisionId: v.id("admissionsDecisions"), version: v.number() }),
+  handler: async (ctx, args) => {
+    const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.documents.review"]);
+    const application = await ctx.db.get(args.applicationId);
+    if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
+    const current = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
+    if (application.state !== "under_review" || !application.latestSnapshotId || !current || current.state !== "in_evaluation" || (current.snapshotId !== undefined && current.snapshotId !== application.latestSnapshotId)) throw new ConvexError("Application is not in evaluation for its current snapshot");
+    const readiness = await computeDecisionReadiness(ctx, application);
+    if (!readiness.ready) throw new ConvexError(`Application is not ready for a decision: ${readiness.blockers.join(", ")}`);
+    const appended = await appendDecision(ctx, { schoolId: args.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, state: "ready_for_decision", actorUserId: actor.userId });
+    await ctx.db.patch(application._id, { currentDecisionId: appended.decisionId, updatedAt: appended.now });
+    await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "decision.mark_ready", entityType: "admissionsDecision", entityId: appended.decisionId, applicationId: application._id, metadata: { version: appended.version, snapshotId: application.latestSnapshotId } });
+    return { decisionId: appended.decisionId, version: appended.version };
+  },
+});
+
+async function resumeEvaluation(ctx: MutationCtx, args: { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; reasonCode: string; rationale?: string; managerOnly: boolean }) {
+  const capabilities = args.managerOnly ? ["enrollment.intakes.manage", "enrollment.decisions.record"] : ["enrollment.decisions.record"];
+  const actor = await requireAdmissionsStaff(ctx, args.schoolId, capabilities);
+  if (!await hasFreshAuthentication(ctx)) admissionsError("FRESH_AUTH_REQUIRED", "Fresh authentication is required to resume a decision");
+  const application = await ctx.db.get(args.applicationId);
+  if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
+  if (!application.latestSnapshotId) throw new ConvexError("Application does not have a current snapshot");
+  const current = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
+  const allowed = args.managerOnly ? current?.state === "accepted" || current?.state === "rejected" : current?.state === "waitlisted";
+  if (!allowed) throw new ConvexError(args.managerOnly ? "Only a final decision can be reopened" : "Only a waitlisted decision can resume evaluation");
+  if (args.managerOnly && application.conversionId) {
+    const conversion = await ctx.db.get(application.conversionId);
+    if (conversion?.state === "succeeded") throw new ConvexError("A completed conversion cannot be reopened");
+  }
+  const reasonCode = normalizeRequiredText(args.reasonCode, "Resume reason", 100);
+  const appended = await appendDecision(ctx, { schoolId: args.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, state: "in_evaluation", actorUserId: actor.userId, reasonCode, rationale: args.rationale });
+  await ctx.db.patch(application._id, { state: "under_review", currentDecisionId: appended.decisionId, terminalOutcomeAt: undefined, updatedAt: appended.now });
+  await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: args.managerOnly ? "decision.reopen" : "decision.waitlist_resume", entityType: "admissionsDecision", entityId: appended.decisionId, applicationId: application._id, reasonCode, metadata: { version: appended.version, ...(current ? { supersedesDecisionId: current._id } : {}) } });
+  return { decisionId: appended.decisionId, version: appended.version };
+}
+
+export const resumeWaitlisted = mutation({
+  args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications"), reasonCode: v.string(), rationale: v.optional(v.string()) },
+  returns: v.object({ decisionId: v.id("admissionsDecisions"), version: v.number() }),
+  handler: (ctx, args) => resumeEvaluation(ctx, { ...args, managerOnly: false }),
+});
+
+export const reopenDecision = mutation({
+  args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications"), reasonCode: v.string(), rationale: v.optional(v.string()) },
+  returns: v.object({ decisionId: v.id("admissionsDecisions"), version: v.number() }),
+  handler: (ctx, args) => resumeEvaluation(ctx, { ...args, managerOnly: true }),
 });
 
 export const assignReview = mutation({
@@ -422,42 +631,35 @@ export const consumeDocumentAccessGrant = internalMutation({
 });
 
 export const recordDecision = mutation({
-  args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications"), state: v.union(v.literal("accepted"), v.literal("rejected")), reasonCode: v.string(), guardianMessage: v.string(), rationale: v.optional(v.string()) },
+  args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications"), state: v.union(v.literal("waitlisted"), v.literal("accepted"), v.literal("rejected")), reasonCode: v.string(), guardianMessage: v.string(), rationale: v.optional(v.string()) },
   returns: v.object({ decisionId: v.id("admissionsDecisions"), version: v.number(), replayed: v.boolean() }),
   handler: async (ctx, args) => {
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.decisions.record"]);
-    if (!await hasFreshAuthentication(ctx)) {
-      admissionsError("FRESH_AUTH_REQUIRED", "Fresh authentication is required to record a decision");
-    }
+    if (!await hasFreshAuthentication(ctx)) admissionsError("FRESH_AUTH_REQUIRED", "Fresh authentication is required to record a decision");
     const application = await ctx.db.get(args.applicationId);
     if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
-    if (!["submitted", "under_review"].includes(application.state) || !application.latestSnapshotId || application.financialHoldAt !== undefined) throw new ConvexError("Application is not ready for a decision");
+    if (!application.latestSnapshotId || application.financialHoldAt !== undefined) throw new ConvexError("Application is not ready for a decision");
     const reasonCode = normalizeRequiredText(args.reasonCode, "Decision reason", 100);
     const guardianMessage = normalizeRequiredText(args.guardianMessage, "Guardian-safe decision message", 1000);
-    const [snapshot, fields, answers, requirements, documents] = await Promise.all([
-      ctx.db.get(application.latestSnapshotId),
-      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(101),
-      ctx.db.query("admissionsApplicationAnswers").withIndex("by_application_and_field_key", (q) => q.eq("applicationId", application._id)).take(101),
-      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", application.formVersionId)).take(31),
-      ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id)).take(101),
-    ]);
-    if (!snapshot || snapshot.applicationId !== application._id || fields.length > 100 || answers.length > 100 || requirements.length > 30 || documents.length > 100) throw new ConvexError("Application completeness evidence is unavailable");
-    const parsedAnswers = new Map<string, unknown>();
-    for (const answer of answers) {
-      const field = fields.find((candidate) => candidate._id === answer.formFieldId && candidate.status === "active");
-      if (field) parsedAnswers.set(answer.fieldKey, validateAnswerForField(field, answer.valueType, answer.serializedValue));
-    }
-    const requiredDocuments = requirements.filter((requirement) => requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatches(requirement.conditionJson, parsedAnswers)));
-    if (args.state === "accepted" && requiredDocuments.some((requirement) => !documents.some((document) => document.requirementId === requirement._id && document.state === "accepted"))) throw new ConvexError("Required documents must be accepted before an acceptance decision");
-    const previous = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
-    if (previous?.state === args.state && previous.reasonCode === reasonCode && previous.guardianMessage === guardianMessage && previous.rationale === args.rationale) return { decisionId: previous._id, version: previous.version, replayed: true };
-    const rows = await ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application._id)).order("desc").take(2);
-    const version = (rows[0]?.version ?? 0) + 1;
-    const now = Date.now();
-    const decisionId = await ctx.db.insert("admissionsDecisions", { schoolId: args.schoolId, applicationId: application._id, version, state: args.state, reasonCode, guardianMessage, ...(args.rationale ? { rationale: args.rationale.slice(0, 2000) } : {}), decidedBy: actor.userId, decidedAt: now, ...(previous ? { supersedesDecisionId: previous._id } : {}), createdAt: now });
-    const policy = await getCurrentRetentionPolicy(ctx, args.schoolId);
-    await ctx.db.patch(application._id, { currentDecisionId: decisionId, state: args.state, terminalOutcomeAt: now, ...(policy ? { retentionPolicyId: policy._id } : {}), updatedAt: now });
-    await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "decision.record", entityType: "admissionsDecision", entityId: decisionId, applicationId: application._id, metadata: { state: args.state, version } });
-    return { decisionId, version, replayed: false };
+    const current = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
+    if (current?.state === args.state && current.reasonCode === reasonCode && current.guardianMessage === guardianMessage && current.rationale === args.rationale) return { decisionId: current._id, version: current.version, replayed: true };
+    const legal = current?.state === "ready_for_decision"
+      ? args.state === "waitlisted" || args.state === "accepted" || args.state === "rejected"
+      : current?.state === "waitlisted" && (args.state === "accepted" || args.state === "rejected");
+    if (!current || !legal || (current.snapshotId !== undefined && current.snapshotId !== application.latestSnapshotId)) throw new ConvexError("Decision transition is not allowed for the current snapshot");
+    const readiness = await computeDecisionReadiness(ctx, application);
+    if (!readiness.ready) throw new ConvexError(`Application is not ready for a decision: ${readiness.blockers.join(", ")}`);
+    if (args.state === "accepted" && !readiness.acceptanceReady) throw new ConvexError("Required documents must be accepted before an acceptance decision");
+    const appended = await appendDecision(ctx, { schoolId: args.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, state: args.state, actorUserId: actor.userId, reasonCode, guardianMessage, rationale: args.rationale });
+    const policy = args.state === "waitlisted" ? null : await getCurrentRetentionPolicy(ctx, args.schoolId);
+    await ctx.db.patch(application._id, {
+      currentDecisionId: appended.decisionId,
+      state: args.state,
+      terminalOutcomeAt: args.state === "waitlisted" ? undefined : appended.now,
+      ...(policy ? { retentionPolicyId: policy._id } : {}),
+      updatedAt: appended.now,
+    });
+    await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "decision.record", entityType: "admissionsDecision", entityId: appended.decisionId, applicationId: application._id, metadata: { state: args.state, version: appended.version, snapshotId: application.latestSnapshotId } });
+    return { decisionId: appended.decisionId, version: appended.version, replayed: false };
   },
 });

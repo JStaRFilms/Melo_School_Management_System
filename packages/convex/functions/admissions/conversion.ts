@@ -6,7 +6,7 @@ import { normalizeCapability } from "../academic/rbac";
 import { createCanonicalStudentEnrollmentHelper } from "../academic/studentEnrollment";
 import { claimOnboardingDeliveryRef, conversionTransactionRef, finishOnboardingDeliveryRef, processConversionRef, processOnboardingRef, queueOnboardingRef } from "./refs";
 import { configuredApplicationOrigin } from "../foundation/applicationLinks";
-import { admissionsError, normalizeRequiredText, recordAdmissionsAudit, requireAdmissionsStaff } from "./shared";
+import { admissionsError, hasFreshAuthentication, normalizeRequiredText, recordAdmissionsAudit, requireAdmissionsStaff } from "./shared";
 
 const familyResolutionValidator = v.union(
   v.object({ kind: v.literal("create"), familyName: v.optional(v.string()) }),
@@ -93,21 +93,22 @@ export const executeAcceptedConversion = mutation({
   returns: conversionResultValidator,
   handler: async (ctx, args) => {
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage", "enrollment.decisions.record"]);
+    if (!await hasFreshAuthentication(ctx)) admissionsError("FRESH_AUTH_REQUIRED", "Fresh authentication is required to convert an accepted application");
     const idempotencyKey = normalizeRequiredText(args.idempotencyKey, "Conversion idempotency key", 128);
     const application = await ctx.db.get(args.applicationId);
     if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
     const existing = await ctx.db.query("admissionsConversions").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique();
-    if (existing) {
-      if (existing.idempotencyKey !== idempotencyKey) throw new ConvexError("Application conversion is already bound to another idempotency key");
-      if (existing.state !== "failed_retryable") return pendingResult(existing, true);
-    }
-    const [decision, snapshot, selectedClass, numberingPolicy] = await Promise.all([
+    if (existing && existing.idempotencyKey !== idempotencyKey) throw new ConvexError("Application conversion is already bound to another idempotency key");
+    const entitlement = await ctx.db.get(application.entitlementId);
+    const [decision, snapshot, selectedClass, numberingPolicy, purchase] = await Promise.all([
       application.currentDecisionId ? ctx.db.get(application.currentDecisionId) : null,
       application.latestSnapshotId ? ctx.db.get(application.latestSnapshotId) : null,
       ctx.db.get(args.classId),
       ctx.db.query("admissionNumberPolicies").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).unique(),
+      entitlement ? ctx.db.get(entitlement.sourcePurchaseAttemptId) : null,
     ]);
-    if (application.state !== "accepted" || application.financialHoldAt !== undefined || !decision || decision.state !== "accepted" || decision.applicationId !== application._id || !snapshot || snapshot.applicationId !== application._id) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Only the accepted immutable submission can be converted");
+    if (application.state !== "accepted" || application.financialHoldAt !== undefined || !decision || decision.state !== "accepted" || decision.applicationId !== application._id || decision.schoolId !== args.schoolId || !snapshot || snapshot.applicationId !== application._id || snapshot.schoolId !== args.schoolId || (decision.snapshotId !== undefined && decision.snapshotId !== snapshot._id) || !entitlement || entitlement.schoolId !== args.schoolId || entitlement.guardianId !== application.guardianId || entitlement.applicationId !== application._id || entitlement.state !== "consumed" || !purchase || purchase.schoolId !== args.schoolId || purchase.guardianId !== application.guardianId || purchase.state !== "paid" || (purchase.entitlementId !== undefined && purchase.entitlementId !== entitlement._id)) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Only the current accepted paid submission can be converted");
+    if (existing && existing.state !== "failed_retryable") return pendingResult(existing, true);
     if (!selectedClass || selectedClass.schoolId !== args.schoolId || selectedClass.isArchived) admissionsError("NOT_FOUND_OR_DENIED", "Class not found");
     const requestedAdmissionNumber = args.admissionNumber.trim();
     if (numberingPolicy && requestedAdmissionNumber && !new Set(actor.capabilities.map(normalizeCapability)).has(normalizeCapability("enrollment.admissions.override_number"))) admissionsError("FORBIDDEN", "Manual admission numbering requires enrollment.admissions.override_number");
@@ -191,11 +192,13 @@ export const processAcceptedConversionTransaction = internalMutation({
     await ctx.db.patch(conversion._id, { state: "running", attemptCount: attemptNumber, leaseExpiresAt: startedAt + 5 * 60_000, errorCode: undefined, updatedAt: startedAt });
     const application = await ctx.db.get(conversion.applicationId);
     if (!application) throw new ConvexError("CONVERSION_CONTEXT_CHANGED");
-    const [decision, snapshot, guardian, selectedClass, items] = await Promise.all([
+    const entitlement = await ctx.db.get(application.entitlementId);
+    const [decision, snapshot, guardian, selectedClass, items, purchase] = await Promise.all([
       ctx.db.get(conversion.acceptedDecisionId), ctx.db.get(conversion.snapshotId), ctx.db.get(application.guardianId), ctx.db.get(conversion.classId),
       ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", conversion.snapshotId)).take(202),
+      entitlement ? ctx.db.get(entitlement.sourcePurchaseAttemptId) : null,
     ]);
-    if (application.state !== "accepted" || application.financialHoldAt !== undefined || application.currentDecisionId !== conversion.acceptedDecisionId || application.latestSnapshotId !== conversion.snapshotId || !decision || decision.state !== "accepted" || !snapshot || snapshot.applicationId !== application._id || !guardian || !selectedClass || selectedClass.schoolId !== conversion.schoolId) throw new ConvexError("CONVERSION_CONTEXT_CHANGED");
+    if (application.state !== "accepted" || application.financialHoldAt !== undefined || application.currentDecisionId !== conversion.acceptedDecisionId || application.latestSnapshotId !== conversion.snapshotId || !decision || decision.state !== "accepted" || decision.applicationId !== application._id || decision.schoolId !== conversion.schoolId || (decision.snapshotId !== undefined && decision.snapshotId !== conversion.snapshotId) || !snapshot || snapshot.applicationId !== application._id || snapshot.schoolId !== conversion.schoolId || !guardian || !selectedClass || selectedClass.schoolId !== conversion.schoolId || !entitlement || entitlement.schoolId !== conversion.schoolId || entitlement.guardianId !== application.guardianId || entitlement.applicationId !== application._id || entitlement.state !== "consumed" || !purchase || purchase.schoolId !== conversion.schoolId || purchase.guardianId !== application.guardianId || purchase.state !== "paid" || (purchase.entitlementId !== undefined && purchase.entitlementId !== entitlement._id)) throw new ConvexError("CONVERSION_CONTEXT_CHANGED");
     if (items.length > 201) throw new ConvexError("CONVERSION_SNAPSHOT_TOO_LARGE");
     const profileItem = items.find((item) => item.itemKey === "profile" && item.kind === "profile");
     const contactItem = items.find((item) => item.itemKey === "primaryContact" && item.kind === "contact");

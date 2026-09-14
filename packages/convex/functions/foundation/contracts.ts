@@ -70,9 +70,11 @@ export const applicationStateValidator = v.union(
 );
 
 export const admissionsDecisionStateValidator = v.union(
+  v.literal("in_evaluation"),
+  v.literal("ready_for_decision"),
+  v.literal("waitlisted"),
   v.literal("accepted"),
-  v.literal("rejected"),
-  v.literal("waitlisted")
+  v.literal("rejected")
 );
 
 export const admissionsPurchaseStateValidator = v.union(

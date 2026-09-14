@@ -11,6 +11,7 @@ import { processConversionRef, processRetentionCleanupRef } from "../refs";
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"])).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(root.length)}`, module]));
 const conversionRef = makeFunctionReference<"mutation">("functions/admissions/conversion:executeAcceptedConversion");
+const reopenDecisionRef = makeFunctionReference<"mutation">("functions/admissions/staff:reopenDecision");
 const setPolicyRef = makeFunctionReference<"mutation">("functions/admissions/retention:setPolicy");
 const getPolicyRef = makeFunctionReference<"query">("functions/admissions/retention:getPolicy");
 const archiveRef = makeFunctionReference<"mutation">("functions/admissions/retention:archiveDocumentManually");
@@ -60,7 +61,7 @@ async function fixture() {
     if (mutableProfile) await ctx.db.patch(mutableProfile._id, { firstName: "Tampered", normalizedName: "tampered okafor" });
     return { schoolId, otherSchoolId, classId, guardianId, applicationId, photoDocumentId, photoDocumentKey };
   });
-  return { t, staff: t.withIdentity({ tokenIdentifier: "test|conversion-staff", subject: "conversion-staff", issuer: "test" }), limited: t.withIdentity({ tokenIdentifier: "test|conversion-limited", subject: "conversion-limited", issuer: "test" }), ...ids };
+  return { t, staff: t.withIdentity({ tokenIdentifier: "test|conversion-staff", subject: "conversion-staff", issuer: "test", authenticatedAt: Date.now() }), limited: t.withIdentity({ tokenIdentifier: "test|conversion-limited", subject: "conversion-limited", issuer: "test", authenticatedAt: Date.now() }), ...ids };
 }
 
 function mockOnboardingEmailDelivery() {
@@ -98,6 +99,7 @@ it("converts one accepted application transactionally, reuses canonical admissio
   expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(1);
   expect(await f.t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", converted._id).eq("eventKey", "portal_parent_linkage")).unique())).toMatchObject({ state: "sent", recipientGuardianId: f.guardianId, attemptCount: 1, sentAt: expect.any(Number) });
   expect(fetch).toHaveBeenCalledWith("https://api.resend.com/emails", expect.objectContaining({ method: "POST" }));
+  await expect(f.staff.mutation(reopenDecisionRef, { schoolId: f.schoolId, applicationId: f.applicationId, reasonCode: "POST_CONVERSION_REVIEW" })).rejects.toThrow("completed conversion");
   restoreEmail();
   vi.useRealTimers();
 });
@@ -115,6 +117,34 @@ it("keeps onboarding delivery failed when the email provider is not configured",
   if (priorKey !== undefined) process.env.RESEND_API_KEY = priorKey;
   if (priorFrom !== undefined) process.env.MELO_EMAIL_FROM = priorFrom;
   vi.useRealTimers();
+});
+
+it("requires fresh authentication and a current snapshot-bound accepted paid chain", async () => {
+  const f = await fixture();
+  const stale = f.t.withIdentity({ tokenIdentifier: "test|conversion-staff", subject: "conversion-staff", issuer: "test", authenticatedAt: Date.now() - 6 * 60_000 });
+  const args = { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "conversion-security", classId: f.classId, admissionNumber: "SEC/001", familyResolution: { kind: "create" as const } };
+  await expect(stale.mutation(conversionRef, args)).rejects.toThrow("Fresh authentication");
+  const current = await f.t.run(async (ctx) => {
+    const application = await ctx.db.get(f.applicationId);
+    if (!application?.currentDecisionId || !application.latestSnapshotId) throw new Error("accepted context missing");
+    return { decisionId: application.currentDecisionId, snapshotId: application.latestSnapshotId };
+  });
+  const staleSnapshotId = await f.t.run(async (ctx) => {
+    const snapshot = await ctx.db.get(current.snapshotId);
+    if (!snapshot) throw new Error("snapshot missing");
+    return ctx.db.insert("admissionsSubmissionSnapshots", { schoolId: snapshot.schoolId, applicationId: snapshot.applicationId, revision: 0, formVersionId: snapshot.formVersionId, declarationVersionId: snapshot.declarationVersionId, productPriceId: snapshot.productPriceId, requirementsDigest: "stale", canonicalDigest: "stale", signerGuardianId: snapshot.signerGuardianId, signerName: snapshot.signerName, signerRelationship: snapshot.signerRelationship, submittedAt: snapshot.submittedAt - 1, declarationAcceptedAt: snapshot.declarationAcceptedAt, createdAt: snapshot.createdAt - 1 });
+  });
+  await f.t.run((ctx) => ctx.db.patch(current.decisionId, { snapshotId: staleSnapshotId }));
+  await expect(f.staff.mutation(conversionRef, args)).rejects.toThrow("current accepted paid submission");
+  await f.t.run(async (ctx) => {
+    await ctx.db.patch(current.decisionId, { snapshotId: current.snapshotId });
+    const application = await ctx.db.get(f.applicationId);
+    if (!application) throw new Error("application missing");
+    const entitlement = await ctx.db.get(application.entitlementId);
+    if (!entitlement) throw new Error("entitlement missing");
+    await ctx.db.patch(entitlement.sourcePurchaseAttemptId, { state: "verification_pending" });
+  });
+  await expect(f.staff.mutation(conversionRef, args)).rejects.toThrow("current accepted paid submission");
 });
 
 it("requires manual-number override authority under governed numbering", async () => {

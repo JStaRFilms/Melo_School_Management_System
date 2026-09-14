@@ -90,6 +90,7 @@ export const ownedProviderAttemptRef = makeFunctionReference<
     amountMinor: number;
     currency: string;
     state: string;
+    failureCode: string | null;
     authorizationUrl: string | null;
     entitlementId: Id<"admissionsEntitlements"> | null;
     moduleEnabled: boolean;
@@ -101,6 +102,12 @@ export const markCheckoutInitializedRef = makeFunctionReference<
   { attemptId: Id<"admissionsPurchaseAttempts">; authorizationUrl: string; authorizationReference?: string },
   { state: string; authorizationUrl: string; replayed: boolean }
 >("functions/admissions/payments:markCheckoutInitialized");
+
+export const markAttemptRecoveryOutcomeRef = makeFunctionReference<
+  "mutation",
+  { attemptId: Id<"admissionsPurchaseAttempts">; outcome: "failed" | "manual_attention" | "verification_pending"; failureCode: string },
+  null
+>("functions/admissions/payments:markAttemptRecoveryOutcome");
 
 export const processRetentionCleanupRef = makeFunctionReference<
   "mutation",
@@ -126,11 +133,16 @@ export const getConversionWorkflowRef = makeFunctionReference<"query", { schoolI
 export const getAdmissionNumberPolicyRef = makeFunctionReference<"query", { schoolId: Id<"schools">; level?: string }, { policy: object | null; version: number; formatVersion: string | null; counter: { key: string; configVersion: number } | null; activeSessionId: Id<"academicSessions"> | null; resetPeriod: string | null; preview: string | null; unavailableReason: string | null }>("functions/academic/admissionNumbers:getAdmissionNumberPolicy");
 export const revealSensitiveApplicationDetailRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; reason: string }, { context: ImmutableDetail["context"]; answers: ImmutableDetail["answers"]; documents: DocumentMetadata[] }>("functions/admissions/staff:revealSensitiveApplicationDetail");
 export const startReviewRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications"> }, null>("functions/admissions/staff:startReview");
+export const getLatestReviewStateRef = makeFunctionReference<"query", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; evaluationLimit?: number }, { decision: null | { decisionId: Id<"admissionsDecisions">; snapshotId: Id<"admissionsSubmissionSnapshots"> | null; version: number; state: "in_evaluation" | "ready_for_decision" | "waitlisted" | "accepted" | "rejected"; reasonCode: string | null; guardianMessage: string | null; rationale: string | null; decidedAt: number }; evaluations: Array<{ evaluationId: Id<"admissionsEvaluations">; type: "entrance_assessment" | "interview"; state: "scheduled" | "completed" | "cancelled"; scheduledAt: number | null; completedAt: number | null; resultCode: string | null; score: number | null; version: number; notes: string | null }>; readiness: { ready: boolean; acceptanceReady: boolean; blockers: string[] } }>("functions/admissions/staff:getLatestReviewState");
+export const recordEvaluationRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; type: "entrance_assessment" | "interview"; state: "scheduled" | "completed" | "cancelled"; scheduledAt?: number; resultCode?: string; score?: number; notes?: string }, { evaluationId: Id<"admissionsEvaluations">; version: number }>("functions/admissions/staff:recordEvaluation");
+export const markReadyForDecisionRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications"> }, { decisionId: Id<"admissionsDecisions">; version: number }>("functions/admissions/staff:markReadyForDecision");
+export const resumeWaitlistedRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; reasonCode: string; rationale?: string }, { decisionId: Id<"admissionsDecisions">; version: number }>("functions/admissions/staff:resumeWaitlisted");
+export const reopenDecisionRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; reasonCode: string; rationale?: string }, { decisionId: Id<"admissionsDecisions">; version: number }>("functions/admissions/staff:reopenDecision");
 export const requestChangesRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; fieldKeys: string[]; requirementIds: Id<"admissionsDocumentRequirements">[]; reasonCode: string; guardianMessage: string }, null>("functions/admissions/staff:requestChanges");
 export const recordDocumentReviewRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; documentKey: string; result: "accepted" | "rejected" | "needs_replacement"; reasonCode?: string; guardianMessage?: string; internalNote?: string }, null>("functions/admissions/staff:recordDocumentReview");
 export const getDocumentAccessRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; documentKey: string; action: "view" | "download"; reason: string }, { status: "unavailable" } | { status: "available"; url: string; expiresAt: number }>("functions/admissions/staff:getDocumentAccess");
 export const consumeStaffDocumentAccessGrantRef = makeFunctionReference<"mutation", { token: string }, { status: "unavailable" } | { status: "available"; upstreamUrl: string; fileName: string; contentType: string; byteSize: number; action: "view" | "download" }>("functions/admissions/staff:consumeDocumentAccessGrant");
-export const recordDecisionRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; state: "accepted" | "rejected"; reasonCode: string; guardianMessage: string; rationale?: string }, { decisionId: Id<"admissionsDecisions">; version: number; replayed: boolean }>("functions/admissions/staff:recordDecision");
+export const recordDecisionRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; state: "waitlisted" | "accepted" | "rejected"; reasonCode: string; guardianMessage: string; rationale?: string }, { decisionId: Id<"admissionsDecisions">; version: number; replayed: boolean }>("functions/admissions/staff:recordDecision");
 export const executeAcceptedConversionRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; applicationId: Id<"admissionsApplications">; idempotencyKey: string; classId: Id<"classes">; admissionNumber: string; familyResolution: { kind: "create"; familyName?: string } | { kind: "existing"; familyId: Id<"families"> }; photoDocumentKey?: string; overrideReason?: string; overrideConfirmed?: boolean; overrideCounterDecision?: "keep" | "advance"; advanceCounterTo?: number; numberingVersion?: number; numberingFormatVersion?: string; numberingCounterKey?: string; numberingCounterVersion?: number; numberingSessionId?: Id<"academicSessions">; numberingResetPeriod?: string }, { conversionId: Id<"admissionsConversions">; state: string; replayed: boolean; errorCode?: string | null; admissionNumber?: string }>("functions/admissions/conversion:executeAcceptedConversion");
 export const getRetentionPolicyRef = makeFunctionReference<"query", { schoolId: Id<"schools"> }, { mode: "never" | "archive"; archiveAfterDays: number | null; version: number; effectiveFrom: number | null }>("functions/admissions/retention:getPolicy");
 export const setRetentionPolicyRef = makeFunctionReference<"mutation", { schoolId: Id<"schools">; mode: "never" | "archive"; archiveAfterDays?: number; expectedVersion: number }, { policyId: Id<"admissionsRetentionPolicies">; version: number }>("functions/admissions/retention:setPolicy");
