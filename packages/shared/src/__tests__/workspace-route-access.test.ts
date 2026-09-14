@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkspaceAccessSummary } from "../workspace-access";
 import {
   getBranchScopedWorkspaceAccess,
+  getDefaultSchoolWorkspaceAccess,
   getLegacyWorkspaceAccess,
   getWorkspaceModuleDenial,
   getWorkspaceCapabilityDenial,
@@ -51,6 +52,27 @@ describe("legacy workspace authority", () => {
 });
 
 describe("managed capability navigation and deep links", () => {
+  it("admits delegated finance users to the reviewed default-school billing route", () => {
+    const delegatedBillingManager = {
+      ...ready,
+      compatibility: {
+        ...ready.compatibility,
+        permissionManaged: true,
+        legacyRole: "teacher",
+      },
+      effectiveCapabilities: ["finance.reports.view", "finance.fee_plans.manage"],
+    };
+
+    expect(getLegacyWorkspaceAccess("admin", delegatedBillingManager).state).toBe("forbidden");
+    expect(getDefaultSchoolWorkspaceAccess("admin", "/billing", delegatedBillingManager).state).toBe("allowed");
+    expect(getDefaultSchoolWorkspaceAccess("admin", "/billing/plans", delegatedBillingManager).state).toBe("allowed");
+    expect(getDefaultSchoolWorkspaceAccess("admin", "/admin", delegatedBillingManager).state).toBe("forbidden");
+    expect(getDefaultSchoolWorkspaceAccess("admin", "/billing", {
+      ...delegatedBillingManager,
+      effectiveCapabilities: ["finance.fee_plans.manage"],
+    }).state).toBe("forbidden");
+  });
+
   it("admits the managed-account landing shell without granting unreviewed routes", () => {
     const access = { ...ready, compatibility: { ...ready.compatibility, permissionManaged: true } };
     expect(getWorkspaceCapabilityDenial("admin", "/admin/dashboard", access)).toBeNull();

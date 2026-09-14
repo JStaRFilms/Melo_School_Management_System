@@ -8,7 +8,7 @@ import { api } from "@school/convex/_generated/api";
 import { LeadershipAlerts } from "../app/admin/audit/LeadershipAlerts";
 import {
   AuthoritativeForbiddenView, BranchSwitcher, MeloLoader, WorkspaceNavbar,
-  getBranchScopedWorkspaceAccess, getLegacyWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial,
+  getBranchScopedWorkspaceAccess, getDefaultSchoolWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial,
   isWorkspaceBranchScopedRoute, LEGACY_BRANCH_SWITCH_REASON,
 } from "@school/shared";
 import { useDepartureGuard } from "@school/shared/drafts";
@@ -31,7 +31,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
   const branchScopedRoute = isWorkspaceBranchScopedRoute("admin", pathname);
   const shellDecision = selectedSchoolId
     ? getBranchScopedWorkspaceAccess("admin", pathname, access)
-    : getLegacyWorkspaceAccess("admin", access);
+    : getDefaultSchoolWorkspaceAccess("admin", pathname, access);
   const decision = shellDecision.state === "allowed" && !selectedSchoolId
     ? getWorkspaceCapabilityDenial("admin", pathname, access) ?? shellDecision
     : shellDecision;
