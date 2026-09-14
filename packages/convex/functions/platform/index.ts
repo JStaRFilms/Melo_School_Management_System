@@ -21,6 +21,10 @@ import {
   FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
   schoolHasExistingStorageClaims,
 } from "../academic/storageEntitlementProvisioning";
+import {
+  NEW_SCHOOL_MODULE_DEFAULTS,
+  resolveSchoolModuleFeatures,
+} from "@school/shared/product-modules";
 import { recordAuditEventHelper } from "../academic/audit";
 
 function getBetterAuthIssuer(): string {
@@ -201,12 +205,7 @@ export const listSchools = query({
         adminUserId: adminUser?._id ?? null,
         adminName: adminUser?.name ?? null,
         adminEmail: adminUser?.email ?? null,
-        features: {
-          billing: school.features?.billing ?? true,
-          curriculum: school.features?.curriculum ?? true,
-          knowledgeLibrary: school.features?.knowledgeLibrary ?? true,
-          admissions: school.features?.admissions ?? false,
-        },
+        features: resolveSchoolModuleFeatures(school.features),
       });
     }
 
@@ -435,6 +434,7 @@ export const createSchool = mutation({
       name,
       slug,
       status: "pending",
+      features: NEW_SCHOOL_MODULE_DEFAULTS,
       createdAt: now,
       updatedAt: now,
     });
@@ -710,6 +710,7 @@ export const updateSchoolFeatures = mutation({
   args: {
     schoolId: v.id("schools"),
     features: v.object({
+      familyPortal: v.boolean(),
       billing: v.boolean(),
       curriculum: v.boolean(),
       knowledgeLibrary: v.boolean(),

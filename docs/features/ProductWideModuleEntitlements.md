@@ -9,7 +9,8 @@ Melo should not maintain school-specific forks or one-off feature implementation
 
 This document separates two decisions that must not be conflated:
 
-- **Module entitlement:** Is this product module enabled for this school?
+- **Core product area:** Is this capability included for every school and therefore not switchable?
+- **Module entitlement:** Is this optional product module enabled for this school?
 - **User permission:** May this authenticated user perform this operation within an enabled module?
 
 A user must pass both checks. Enabling a module does not grant user permissions, and granting a capability does not override a disabled school module.
@@ -107,10 +108,20 @@ Public admissions and site entry points should use their existing public availab
 A planned or incomplete module must not be presented as operational merely because its entitlement boolean exists. The registry should distinguish states such as:
 
 - `available`: implemented and eligible for enablement.
-- `preview`: intentionally exposed only through an explicit preview policy.
+- `preview`: implemented but still under active product review.
 - `unavailable`: not selectable and not advertised as controlling live routes.
 
-Admissions should remain unavailable in the switchboard until its real Admin/Public routes and backend boundaries are integrated.
+Online Admissions is a preview module while its Admin and Apply work continues. It controls the real `/admin/admissions` and applicant-facing Apply workflows. Student creation, onboarding, imports, and transfers remain core school operations and do not depend on the Online Admissions entitlement.
+
+### 6. Approved initial packaging
+
+The initial switchboard uses these product boundaries:
+
+- Core school operations, assessments and reporting, administration, and school groups are always available. Group membership changes behavior through group configuration, not a module toggle.
+- Family Portal, Finance and Collections, Curriculum and Teaching Tools, Knowledge and Learning Resources, and Online Admissions are optional school modules.
+- New schools start with optional modules disabled. Existing schools keep the legacy effective defaults until a platform operator saves an explicit selection.
+- Portal Billing requires both Family Portal and Finance. Portal Learning Topics requires both Family Portal and Knowledge and Learning Resources.
+- Manual platform selection is the only entitlement source in this phase. The registry and stored school state remain compatible with later plan and add-on resolution, but this phase does not create a plan catalog.
 
 ## Initial Alignment Work
 
@@ -119,7 +130,7 @@ The first narrow implementation should:
 1. Correct Billing's portal route to `/billing`.
 2. Replace the Knowledge Library placeholder route with actual teacher routes, or omit teacher routes until ownership is decided.
 3. Define the intended Curriculum ownership of admin templates and teacher planning, then gate those routes consistently.
-4. Mark Admissions unavailable until its actual routes are delivered and protected.
+4. Present Online Admissions as preview while the real Admin and Apply routes remain under active delivery.
 5. Use one shared registry decision for navigation and direct routes across Admin, Teacher, and Portal.
 6. Add authoritative backend entitlement checks at each optional module's meaningful entry points.
 7. Add tests proving that disabled modules are absent from navigation, blocked by direct URL, and rejected by backend operations even when the user otherwise has permission.

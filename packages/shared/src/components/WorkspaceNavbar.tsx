@@ -56,6 +56,7 @@ interface LinkRenderProps {
 }
 
 export interface WorkspaceSchoolFeatures {
+  familyPortal?: boolean;
   billing?: boolean;
   curriculum?: boolean;
   knowledgeLibrary?: boolean;
@@ -258,44 +259,27 @@ export function WorkspaceNavbar({
             academics: {
               label: "Academic & Grading",
               icon: <GraduationCap className="h-4 w-4" />,
-              links: sections.filter((s) => {
-                if (
-                  [
-                    "/assessments/results/entry",
-                    "/assessments/report-cards",
-                    "/assessments/report-card-extras",
-                    "/assessments/setup/exam-recording",
-                    "/assessments/setup/grading-bands",
-                    "/assessments/setup/report-card-bundles",
-                    "/assessments/report-cards/manual-adjustments",
-                  ].includes(s.href)
-                ) {
-                  return true;
-                }
-                if (
-                  s.href === "/academic/knowledge/curriculum-import" ||
-                  s.href === "/academic/knowledge/curriculum-readiness"
-                ) {
-                  return schoolBranding?.features?.curriculum !== false;
-                }
-                if (s.href === "/academic/knowledge/library") {
-                  return schoolBranding?.features?.knowledgeLibrary !== false;
-                }
-                if (
-                  s.href === "/academic/knowledge/templates" ||
-                  s.href === "/academic/knowledge/assessment-profiles"
-                ) {
-                  return true;
-                }
-                return false;
-              }),
+              links: sections.filter((s) =>
+                [
+                  "/assessments/results/entry",
+                  "/assessments/report-cards",
+                  "/assessments/report-card-extras",
+                  "/assessments/setup/exam-recording",
+                  "/assessments/setup/grading-bands",
+                  "/assessments/setup/report-card-bundles",
+                  "/assessments/report-cards/manual-adjustments",
+                  "/academic/knowledge/curriculum-import",
+                  "/academic/knowledge/curriculum-readiness",
+                  "/academic/knowledge/library",
+                  "/academic/knowledge/templates",
+                  "/academic/knowledge/assessment-profiles",
+                ].includes(s.href)
+              ),
             },
             finance: {
               label: "Finance & Invoicing",
               icon: <Landmark className="h-4 w-4" />,
-              links: schoolBranding?.features?.billing !== false
-                ? sections.filter((s) => s.href === "/billing")
-                : [],
+              links: sections.filter((s) => s.href === "/billing"),
             },
             governance: {
               label: "Governance",

@@ -274,6 +274,7 @@ export default defineSchema({
         curriculum: v.boolean(),
         knowledgeLibrary: v.boolean(),
         admissions: v.boolean(),
+        familyPortal: v.optional(v.boolean()),
       })
     ),
     createdAt: v.number(),

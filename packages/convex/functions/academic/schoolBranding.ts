@@ -20,11 +20,13 @@ import {
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
+import { resolveSchoolModuleFeatures } from "@school/shared/product-modules";
 import { schoolThemeValidator as schoolBrandingThemeValidator } from "../foundation/brandingContract";
 import { hasActiveGroupBranding, resolveEffectiveTheme } from "./groupSettings";
 import { requireCapability } from "./rbac";
 
 export const schoolFeaturesValidator = v.object({
+  familyPortal: v.boolean(),
   billing: v.boolean(),
   curriculum: v.boolean(),
   knowledgeLibrary: v.boolean(),
@@ -50,20 +52,6 @@ function fallbackTheme(theme?: { primaryColor: string; accentColor: string }) {
   return {
     primaryColor: theme?.primaryColor || "#0f172a",
     accentColor: theme?.accentColor || "#2563eb",
-  };
-}
-
-function fallbackFeatures(features?: {
-  billing: boolean;
-  curriculum: boolean;
-  knowledgeLibrary: boolean;
-  admissions: boolean;
-}) {
-  return {
-    billing: features?.billing ?? true,
-    curriculum: features?.curriculum ?? true,
-    knowledgeLibrary: features?.knowledgeLibrary ?? true,
-    admissions: features?.admissions ?? false,
   };
 }
 
@@ -107,7 +95,7 @@ export const getCurrentSchoolBranding = query({
         contactEmail: school.contactEmail,
         contactPhone: school.contactPhone,
         address: school.address,
-        features: fallbackFeatures(school.features),
+        features: resolveSchoolModuleFeatures(school.features),
       };
     } catch {
       return null;

@@ -126,23 +126,28 @@ function SchoolsTable({
                 </td>
                 <td className="px-4 py-4">
                   <div className="flex items-center gap-1 flex-wrap">
-                    {school.features?.billing !== false && (
-                      <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 whitespace-nowrap">
-                        Billing
+                    {school.features.familyPortal && (
+                      <span className="inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 whitespace-nowrap">
+                        Family Portal
                       </span>
                     )}
-                    {school.features?.curriculum !== false && (
-                      <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200 whitespace-nowrap">
-                        Curriculum
+                    {school.features.billing && (
+                      <span className="inline-block rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 whitespace-nowrap">
+                        Finance
                       </span>
                     )}
-                    {school.features?.knowledgeLibrary !== false && (
-                      <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200 whitespace-nowrap">
-                        AI Library
+                    {school.features.curriculum && (
+                      <span className="inline-block rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 whitespace-nowrap">
+                        Teaching Tools
                       </span>
                     )}
-                    {school.features?.admissions === true && (
-                      <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200 whitespace-nowrap">
+                    {school.features.knowledgeLibrary && (
+                      <span className="inline-block rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 whitespace-nowrap">
+                        Knowledge
+                      </span>
+                    )}
+                    {school.features.admissions && (
+                      <span className="inline-block rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 whitespace-nowrap">
                         Admissions
                       </span>
                     )}
@@ -330,23 +335,28 @@ function SchoolsCards({
               <div className="flex items-center justify-between pt-2 border-t border-slate-200/50 gap-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Modules</span>
                 <div className="flex items-center gap-1 flex-wrap justify-end">
-                  {school.features?.billing !== false && (
-                    <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                      Billing
+                  {school.features.familyPortal && (
+                    <span className="inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">
+                      Family Portal
                     </span>
                   )}
-                  {school.features?.curriculum !== false && (
-                    <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
-                      Curriculum
+                  {school.features.billing && (
+                    <span className="inline-block rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                      Finance
                     </span>
                   )}
-                  {school.features?.knowledgeLibrary !== false && (
-                    <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
-                      AI Library
+                  {school.features.curriculum && (
+                    <span className="inline-block rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                      Teaching Tools
                     </span>
                   )}
-                  {school.features?.admissions === true && (
-                    <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                  {school.features.knowledgeLibrary && (
+                    <span className="inline-block rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                      Knowledge
+                    </span>
+                  )}
+                  {school.features.admissions && (
+                    <span className="inline-block rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
                       Admissions
                     </span>
                   )}

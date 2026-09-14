@@ -2,13 +2,12 @@ import type { WorkspaceAccessSummary } from "./workspace-access";
 import type { WorkspaceKey } from "./workspace-navigation";
 import { normalizeCapability } from "./capability-contract";
 import { WORKSPACE_CAPABILITY_MATRIX } from "./workspace-capability-matrix";
+import {
+  getDisabledProductModule,
+  type SchoolModuleFeatures,
+} from "./product-modules";
 
-export interface WorkspaceFeatures {
-  billing?: boolean;
-  curriculum?: boolean;
-  knowledgeLibrary?: boolean;
-  admissions?: boolean;
-}
+export type WorkspaceFeatures = SchoolModuleFeatures;
 
 export type WorkspaceRouteDecision =
   | { state: "allowed" }
@@ -131,46 +130,11 @@ export function getWorkspaceModuleDenial(
   path: string,
   features?: WorkspaceFeatures | null,
 ): WorkspaceRouteDecision | null {
-  const billingDisabled =
-    (workspace === "admin" || workspace === "portal") &&
-    within(path, "/billing") &&
-    features?.billing === false;
-  const curriculumDisabled =
-    features?.curriculum === false &&
-    ((workspace === "admin" &&
-      [
-        "/academic/knowledge/curriculum-import",
-        "/academic/knowledge/curriculum-readiness",
-        "/academic/knowledge/templates",
-        "/academic/knowledge/assessment-profiles",
-      ].some((prefix) => within(path, prefix))) ||
-      (workspace === "teacher" &&
-        (path === "/planning" || within(path, "/planning/lesson-plans"))));
-  const knowledgeLibraryDisabled =
-    features?.knowledgeLibrary === false &&
-    ((workspace === "admin" && within(path, "/academic/knowledge/library")) ||
-      (workspace === "teacher" &&
-        ["/planning/library", "/planning/question-bank", "/planning/videos"].some(
-          (prefix) => within(path, prefix),
-        )));
-  const admissionsDisabled =
-    workspace === "admin" &&
-    features?.admissions !== true &&
-    [
-      "/admin/admissions",
-      "/academic/students/onboarding",
-      "/academic/students/import",
-      "/students/import",
-    ].some((prefix) => within(path, prefix));
-
-  return billingDisabled ||
-    curriculumDisabled ||
-    knowledgeLibraryDisabled ||
-    admissionsDisabled
+  const disabledModule = getDisabledProductModule(workspace, path, features);
+  return disabledModule
     ? {
         state: "module_disabled",
-        message:
-          "This module is disabled in your school's workspace configuration. Contact your platform manager to request activation.",
+        message: `${disabledModule.title} is not enabled for this school. Contact your platform manager to request access.`,
       }
     : null;
 }
