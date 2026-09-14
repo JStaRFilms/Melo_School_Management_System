@@ -246,7 +246,7 @@ it("enforces prospective never/minimum/archive/delete timing, holds, workflow/ph
   const staffUser = await f.t.run((ctx) => ctx.db.query("users").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).first());
   if (!staffUser) throw new Error("staff missing");
   await f.t.run((ctx) => ctx.db.insert("admissionsReviewAssignments", { schoolId: f.schoolId, applicationId: f.applicationId, assigneeUserId: staffUser._id, role: "reviewer", state: "assigned", assignedByUserId: staffUser._id, createdAt: Date.now(), updatedAt: Date.now() }));
-  expect(await f.staff.mutation(archiveRef, { schoolId: f.schoolId, documentKey: "workflow-document" })).toMatchObject({ blocker: "PENDING_WORKFLOW" });
+  expect(await f.staff.mutation(archiveRef, { schoolId: f.schoolId, documentKey: "workflow-document" })).toMatchObject({ changed: true, blocker: null });
 
   const [noPolicyApplication, neverPolicyApplication] = await f.t.run(async (ctx) => {
     const original = await ctx.db.get(f.applicationId);

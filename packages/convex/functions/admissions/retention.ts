@@ -65,14 +65,13 @@ async function retentionBlocker(ctx: Context, document: Doc<"admissionsDocuments
     const conversion = application.conversionId ? await ctx.db.get(application.conversionId) : null;
     if (!conversion || conversion.state !== "succeeded") return "CONVERSION_NOT_SUCCEEDED";
   }
-  const [assignments, conversions, outbox, jobs, students] = await Promise.all([
-    ctx.db.query("admissionsReviewAssignments").withIndex("by_application_and_state", (q) => q.eq("applicationId", application._id).eq("state", "assigned")).take(1),
+  const [conversions, outbox, jobs, students] = await Promise.all([
     ctx.db.query("admissionsConversions").withIndex("by_application", (q) => q.eq("applicationId", application._id)).take(2),
     ctx.db.query("admissionsCommunicationOutbox").withIndex("by_application_and_event_key", (q) => q.eq("applicationId", application._id)).take(21),
     ctx.db.query("admissionsRetentionJobs").withIndex("by_application", (q) => q.eq("applicationId", application._id)).take(11),
     ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", application._id)).take(2),
   ]);
-  if (assignments.length || conversions.some((item) => item.state === "requested" || item.state === "running" || item.state === "failed_retryable") || outbox.some((item) => item.state === "pending" || item.state === "sending") || jobs.some((item) => item.state === "approved" || item.state === "running")) return "PENDING_WORKFLOW";
+  if (conversions.some((item) => item.state === "requested" || item.state === "running" || item.state === "failed_retryable") || outbox.some((item) => item.state === "pending" || item.state === "sending") || jobs.some((item) => item.state === "approved" || item.state === "running")) return "PENDING_WORKFLOW";
   if (students.some((student) => student.photoSourceDocumentId === document._id || (student.photoStorageId === document.storageId && student.photoProvenance === "application_upload"))) return "STUDENT_PHOTO_SOURCE";
   if (operation === "archive") {
     if (now < application.terminalOutcomeAt + policy.archiveAfterDays * DAY_MS) return "ARCHIVE_NOT_DUE";

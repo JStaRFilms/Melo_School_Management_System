@@ -245,6 +245,7 @@ export const revealSensitiveApplicationDetail = mutation({
   returns: v.object({ context: detailContextValidator, answers: v.array(immutableAnswerValidator), documents: v.array(documentMetadataValidator) }),
   handler: async (ctx, args) => {
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.applications.view_basic", "enrollment.applications.view_sensitive"]);
+    if (!await hasFreshAuthentication(ctx)) admissionsError("FRESH_AUTH_REQUIRED", "Fresh authentication is required to reveal sensitive application details");
     const reason = normalizeRequiredText(args.reason, "Sensitive reveal reason", 120);
     const detail = await loadImmutableDetail(ctx, args.schoolId, args.applicationId);
     await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "application.reveal_sensitive", entityType: "admissionsApplication", entityId: args.applicationId, applicationId: args.applicationId, reasonCode: reason, metadata: { revision: detail.context.currentRevision, answerCount: detail.sensitiveAnswers.length, documentCount: detail.sensitiveDocuments.length } });

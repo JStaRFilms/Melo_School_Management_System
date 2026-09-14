@@ -577,7 +577,10 @@ it("handles draft replay/conflict, immutable resubmission snapshots, and correct
   await f.staff.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
   await f.staff.mutation(requestChangesRef, { schoolId: f.schoolId, applicationId: application.applicationId, fieldKeys: ["reason"], requirementIds: [], reasonCode: "CLARIFY", guardianMessage: "Please clarify the reason." });
   await expect(f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 1, mutationKey: "draft-save-004", profile, answers: [] })).rejects.toThrow("requested corrections");
-  const correction = await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 1, mutationKey: "draft-save-005", answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Updated reason" }] });
+  await expect(f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "unchanged-correction-submit", signerName: "Grace Okafor", signerRelationship: "Mother", declarationAccepted: true })).rejects.toThrow("Update requested items");
+  const unchangedSave = await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 1, mutationKey: "unchanged-correction-save", answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Learning" }] });
+  await expect(f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: unchangedSave.draftVersion, submissionKey: "unchanged-correction-resubmit", signerName: "Grace Okafor", signerRelationship: "Mother", declarationAccepted: true })).rejects.toThrow("Update requested items");
+  const correction = await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: unchangedSave.draftVersion, mutationKey: "draft-save-005", answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Updated reason" }] });
   const resubmitted = await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: correction.draftVersion, submissionKey: "submission-002", signerName: "Grace Okafor", signerRelationship: "Mother", declarationAccepted: true });
   expect(resubmitted.revision).toBe(2);
   expect(await f.t.run((ctx) => ctx.db.get(submitted.snapshotId))).toEqual(snapshotBefore);
@@ -695,7 +698,8 @@ it("returns separate immutable basic and audited sensitive staff detail without 
   expect(JSON.stringify(basic)).not.toContain("basic-digest");
   expect(JSON.stringify(basic)).not.toContain("Sensitive note");
   await expect(f.limited.mutation(revealSensitiveApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId, reason: "Review health support" })).rejects.toThrow("capability");
-  const sensitive = await f.staff.mutation(revealSensitiveApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId, reason: "Review health support" });
+  await expect(f.staff.mutation(revealSensitiveApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId, reason: "Review health support" })).rejects.toThrow("Fresh authentication");
+  const sensitive = await f.freshStaff.mutation(revealSensitiveApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId, reason: "Review health support" });
   expect(sensitive).toMatchObject({ answers: [{ fieldKey: "medical-note", serializedValue: "Sensitive note" }], documents: [{ documentKey: "opaque-sensitive-document", fileName: "medical.pdf" }] });
   expect(JSON.stringify(sensitive)).not.toContain("storageId");
   expect(JSON.stringify(sensitive)).not.toContain("sensitive-digest");
