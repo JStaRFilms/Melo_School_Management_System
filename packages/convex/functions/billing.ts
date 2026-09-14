@@ -108,6 +108,11 @@ const billingPaymentAttemptUpsertValidator = v.object({
   resolutionMessage: v.optional(v.union(v.string(), v.null())),
 });
 
+const feePlanClassOptionValidator = v.object({
+  _id: v.id("classes"),
+  name: v.string(),
+});
+
 const billingFeePlanApplicationRowValidator = v.object({
   application: billingFeePlanApplicationValidator,
   feePlanName: v.string(),
@@ -1727,6 +1732,21 @@ export const upsertBillingSettings = mutation({
   },
 });
 
+export const listFeePlanClassOptions = query({
+  args: {},
+  returns: v.array(feePlanClassOptionValidator),
+  handler: async (ctx) => {
+    const viewer = await getAuthorizedBillingViewer(ctx, "finance.fee_plans.manage");
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
+      .collect();
+    return classes
+      .filter((classDoc) => !classDoc.isArchived)
+      .map((classDoc) => ({ _id: classDoc._id, name: classDoc.name }));
+  },
+});
+
 export const listFeePlans = query({
   args: {},
   returns: v.array(billingFeePlanValidator),
@@ -2444,9 +2464,11 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         args.gatewayReference ?? args.reference ?? args.eventId
       );
       const invoiceWasRevoked = invoiceCandidate.status === "cancelled";
-      const gatewayPaymentMessage = processingMessage ?? (invoiceWasRevoked
-        ? "Payment received after invoice revocation; recorded as unapplied for manual reconciliation"
-        : "Webhook payment applied successfully");
+      const gatewayPaymentMessage = invoiceWasRevoked
+        ? `Payment received after invoice revocation; recorded as unapplied for manual reconciliation${
+            processingMessage ? ` (${processingMessage})` : ""
+          }`
+        : processingMessage ?? "Webhook payment applied successfully";
       const result = await createPaymentAndAllocation({
         ctx,
         schoolId,

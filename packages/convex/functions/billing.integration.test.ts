@@ -444,6 +444,10 @@ describe("billing registered functions", () => {
     });
     const accountant = t.withIdentity(accountantIdentity);
 
+    await expect(accountant.query(
+      api.functions.billing.listFeePlanClassOptions,
+      {},
+    )).resolves.toEqual([]);
     await expect(accountant.mutation(api.functions.billing.createFeePlan, {
       name: "Delegated new plan",
       lineItems,
@@ -740,6 +744,7 @@ describe("billing registered functions", () => {
       rawBody: "{}",
       payload: {},
       signatureValid: true,
+      verificationMessage: "Provider payment verified",
       attemptReconciliationSource: "webhook",
     });
     expect(latePayment.event).toMatchObject({ verificationStatus: "verified" });
@@ -768,7 +773,7 @@ describe("billing registered functions", () => {
     expect(lifecycleState.attempt).toMatchObject({
       status: "webhook_reconciled",
       paymentId: latePayment.payment?._id,
-      resolutionMessage: "Payment received after invoice revocation; recorded as unapplied for manual reconciliation",
+      resolutionMessage: "Payment received after invoice revocation; recorded as unapplied for manual reconciliation (Provider payment verified)",
     });
     expect(lifecycleState.audit.map((event) => event.action)).toEqual(expect.arrayContaining([
       "fee_plan.archived",

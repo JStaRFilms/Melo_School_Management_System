@@ -17,6 +17,7 @@ it("skips admin-only academic selectors for a delegated billing manager", () => 
     { classId: "", sessionId: "" },
     { sessionId: "" },
     false,
+    true,
   ));
 
   expect(mocks.query.mock.calls.find(
@@ -28,4 +29,7 @@ it("skips admin-only academic selectors for a delegated billing manager", () => 
   expect(mocks.query.mock.calls.find(
     ([name]) => name === "functions/academic/academicSetup:listSessions",
   )?.[1]).toBe("skip");
+  expect(mocks.query.mock.calls.find(
+    ([name]) => name === "functions/billing:listFeePlanClassOptions",
+  )?.[1]).not.toBe("skip");
 });

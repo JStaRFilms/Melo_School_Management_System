@@ -209,6 +209,7 @@ export default function BillingPage() {
     invoiceDraft,
     feePlanApplicationDraft,
     canUseLegacyBillingOperations,
+    canManageFeePlans,
   );
   const selectedFinanceInvoice = useMemo(
     () => canUseLegacyBillingOperations
