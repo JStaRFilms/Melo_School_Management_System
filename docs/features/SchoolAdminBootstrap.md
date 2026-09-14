@@ -1,5 +1,7 @@
 # School Admin Bootstrap
 
+**Status:** Implemented
+
 ## Goal
 
 Provide a safe, one-time bootstrap path for creating the first real school admin and school record before the full platform super-admin provisioning flow exists.

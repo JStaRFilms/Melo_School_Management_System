@@ -1,6 +1,6 @@
 # Shared-Core, Bespoke School Website Architecture
 
-**Status:** Genesis architecture for G2
+**Status:** Genesis architecture for G2 — proposal, not implemented. `apps/sites` still resolves templates via `lib/site.ts`; the renderer core (B4) and `obhis-v1` (B5) are pending.
 **Decision record:** `docs/decisions/ADR-009-shared-core-bespoke-school-sites.md`
 **Related brief:** `docs/features/OBHISPublicWebsiteBrief.md`
 

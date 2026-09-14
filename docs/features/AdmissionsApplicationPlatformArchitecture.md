@@ -1,9 +1,20 @@
 # Admissions Application Platform Architecture
 
-**Status:** Genesis decision draft for review
+**Status:** Implemented through `recovery/admissions-workflow` at `3b391e3`
 **Session:** `orch-20260722-114501` / G1
 **Date:** 2026-07-22
+**Last verified:** 2026-09-14 against `3b391e3`
 **Decision record:** [`ADR-008-admissions-application-surface-and-lifecycle.md`](../decisions/ADR-008-admissions-application-surface-and-lifecycle.md)
+
+## Implementation status
+
+This document started as the G1 decision draft. The build now exists. Use the decision sections below for intent and invariants. Use the paths below for the current code.
+
+- **Service:** `packages/convex/functions/admissions/`
+- **Shared contract:** `packages/convex/functions/foundation/applicationLinks.ts`, `packages/convex/functions/foundation/contracts.ts`, `packages/convex/functions/foundation/paymentDispatch.ts`
+- **Public surface:** `apps/apply` (`app/s/[schoolSlug]`, `app/s/[schoolSlug]/i/[intakeSlug]`, `app/s/[schoolSlug]/applications/[publicId]`, `app/s/[schoolSlug]/account`, `app/s/[schoolSlug]/payments/paystack/return`)
+- **Staff surface:** `apps/admin/app/admin/admissions/` (`AdmissionsDashboard.tsx`, `admissions-model.ts`, `[publicId]/ApplicationDetail.tsx`, `retention/`)
+- **Dependencies:** Better Auth guardian session, Paystack merchant routing, Convex storage, `billingWebhooks.ts` dispatch
 
 ## 1. Executive decision
 
@@ -642,3 +653,9 @@ Use `convex-test` + Vitest edge runtime for Convex contracts and Playwright for 
 - Interrupted conversion: one application conversion ledger, atomic canonical transaction, lease recovery, exact output replay.
 - High-risk fields: disabled or optional by default with stated purposes and explicit approval gates.
 - Shared-file changes: listed only as B0 proposals; no runtime/schema/UI edits are made by G1.
+
+## Changelog
+
+### 2026-09-14: Mark implemented at 3b391e3
+- **Problem:** The header still said draft for review after the recovery branch built the full workflow.
+- **Solution:** Promoted the status to implemented, added the implementation status block with real paths, and left the decision text unchanged.

@@ -1,5 +1,7 @@
 # School Branding and Parent Multi-School Context
 
+**Status:** Implemented
+
 ## Goal
 
 Make authenticated workspaces visibly school-specific and allow parent portal context to move safely across children in different schools.

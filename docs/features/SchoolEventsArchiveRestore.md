@@ -1,5 +1,7 @@
 # School Events Archive Restore
 
+**Status:** Implemented
+
 ## Goal
 
 Add a first event lifecycle slice so school events can be created, archived, and restored without hard deletion.

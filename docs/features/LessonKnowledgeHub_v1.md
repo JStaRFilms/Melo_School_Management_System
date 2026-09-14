@@ -1,5 +1,7 @@
 # Lesson Knowledge Hub v1
 
+**Status:** Implemented
+
 ## Goal
 
 Create the first school-scoped teaching-content system for the product. The feature must let admins, teachers, and later students contribute structured learning resources that can be searched, approved, reused for AI-assisted lesson preparation, and exposed back to students through controlled topic pages.

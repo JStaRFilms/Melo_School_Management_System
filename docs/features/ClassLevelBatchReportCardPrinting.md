@@ -1,5 +1,7 @@
 # Class-Level Batch Report Card Printing
 
+**Status:** Implemented
+
 ## Goal
 
 Add a class-level batch print workflow for report cards so admins and teachers can move through every student in a selected class without reopening one student at a time. In the same pass, expose a clean admin-side place to upload the school logo so every exported report card can render branded output consistently.

@@ -1,5 +1,7 @@
 # Parent and Family Linking Foundation
 
+**Status:** Implemented
+
 ## Goal
 Give school admins a lightweight way to create real household records, link parents or guardians to students, and keep that relationship available for later billing and portal work.
 

@@ -1,5 +1,7 @@
 # Report Card Archived Student Roster Audit
 
+**Status:** Implemented
+
 ## Goal
 Keep archived students out of active report-card batch workflows while preserving direct historical report-card access for archived records when an admin intentionally opens them.
 

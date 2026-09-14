@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for implementation. OCR fallback architecture updated on 2026-05-02 by `ReliableScannedPdfOcrFallback.md`.
+Implemented. `pageNumbers` on knowledge materials (`packages/convex/schema.ts`), with OCR fallback per `ReliableScannedPdfOcrFallback.md`.
 
 ## Problem
 

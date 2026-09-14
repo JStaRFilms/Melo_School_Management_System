@@ -1,5 +1,7 @@
 # Portal Academic Portal Foundation
 
+**Status:** Implemented
+
 ## Goal
 Give parents and students a real mobile-first portal where they can sign in, choose the correct child context, and review report cards, result history, and academic notifications without touching the admin or teacher workspaces.
 

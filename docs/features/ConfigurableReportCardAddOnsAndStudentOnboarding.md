@@ -1,5 +1,7 @@
 # Configurable Report Card Add-Ons And Student-First Onboarding
 
+**Status:** Implemented
+
 ## Goal
 Give each school a global way to define reusable report-card add-on bundles, attach those bundles to any number of classes, and let the right staff enter the resulting fields without crowding the existing exam or enrollment screens.
 

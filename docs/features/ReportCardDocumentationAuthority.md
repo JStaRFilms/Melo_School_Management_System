@@ -1,5 +1,7 @@
 # Report Card Documentation Authority
 
+**Status:** Living index. Re-verify targets before following.
+
 ## Overview
 
 This document defines which report-card docs are authoritative for which parts of the system so future agents do not follow stale or conflicting guidance.

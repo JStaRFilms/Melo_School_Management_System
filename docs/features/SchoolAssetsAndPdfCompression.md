@@ -1,5 +1,7 @@
 # School Assets & PDF Compression Foundation
 
+**Status:** Implemented
+
 ## Goal
 
 Give every school a private, quota-governed document store for non-lesson-knowledge PDFs (school-wide policy PDFs, branding logos, report-card templates, brochures, past papers, circulars, and the like) and an automatic, in-action PDF compression pass that reduces storage cost without changing the on-screen experience for the people who download them.

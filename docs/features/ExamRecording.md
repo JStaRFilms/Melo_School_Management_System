@@ -1,5 +1,7 @@
 # Exam Recording v1
 
+**Status:** Implemented
+
 ## Goal
 
 Ship the first usable exam-recording workflow for primary-school operations so teachers and admins can enter continuous assessment and exam scores in one place, while the system calculates totals, grades, and remarks automatically using school-defined rules.

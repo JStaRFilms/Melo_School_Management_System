@@ -1,5 +1,7 @@
 # Lesson Knowledge Hub v2 - Context-First Planning
 
+**Status:** Implemented
+
 ## Goal
 
 Shift teacher planning from a source-first workflow to a context-first workflow. Teachers should begin from teaching context, then pull in the right materials, rather than starting from the library and building drafts around whichever files were selected first.

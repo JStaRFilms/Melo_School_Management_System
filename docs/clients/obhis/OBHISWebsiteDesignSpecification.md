@@ -3,7 +3,7 @@
 **Status:** D2 design source of truth for B5; factual content and brand assets remain approval-gated.
 **Depends on:** `OBHISPublicWebsiteBrief.md`, `SharedCoreBespokeSchoolWebsiteArchitecture.md`, `ADR-009-shared-core-bespoke-school-sites.md`, and `ADR-008-admissions-application-surface-and-lifecycle.md`.
 **Companion mockup:** `docs/mockups/sites/obhis-public-site.html`
-**Companion approvals:** `docs/features/OBHISContentApprovalSheet.md`
+**Companion approvals:** `docs/clients/obhis/OBHISContentApprovalSheet.md`
 
 > This specification approves the *information architecture, visual language, and component behavior*, not the historical booklet facts. B5 must render only approved fields/assets from the B4 published `SiteRenderContext`; it must omit a missing field rather than substitute copy, a fact, stock-child imagery, or a generic-template section. The existing `obhisSchool` demo record is explicitly prohibited as a content source.
 

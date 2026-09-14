@@ -1,5 +1,7 @@
 # Enrollment Matrix Declutter
 
+**Status:** Implemented (FloatingNotice since superseded)
+
 ## Goal
 Simplify the admin and teacher enrollment matrix screens so every visible control has a clear purpose, dead buttons are removed or wired properly, and auto-save behavior is communicated with lightweight notifications instead of large permanent status blocks.
 

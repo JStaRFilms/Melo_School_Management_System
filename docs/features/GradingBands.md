@@ -1,5 +1,7 @@
 # Grading Bands
 
+**Status:** Implemented
+
 ## Goal
 Allow school admins to define the score thresholds that map totals to result labels. Each grading band should be editable so the admin can choose the grade letter, set the score range, and provide the remark used during result derivation.
 

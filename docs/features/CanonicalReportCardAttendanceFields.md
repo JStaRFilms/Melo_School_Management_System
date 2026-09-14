@@ -1,5 +1,7 @@
 # Canonical Report Card Attendance Fields
 
+**Status:** Implemented
+
 ## Goal
 Keep report-card bundles configurable per school while introducing canonical field ownership for attendance-related extras so schools can decide what appears on the report card without letting teachers manually override admin-owned values.
 
