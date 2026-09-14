@@ -222,6 +222,14 @@ export type BillingDashboardData = {
       firstDueDays: number;
     };
     isActive: boolean;
+    usage: {
+      applicationCount: number;
+      invoiceCount: number;
+      revocableInvoiceCount: number;
+      blockedPaidInvoiceCount: number;
+      cancelledInvoiceCount: number;
+      canDelete: boolean;
+    };
     description: string | null;
     createdAt: number;
     updatedAt: number;
@@ -285,6 +293,9 @@ export type BillingDashboardData = {
       notes: string | null;
       lastPaymentId: string | null;
       lastPaymentAt: number | null;
+      revokedAt: number | null;
+      revokedBy: string | null;
+      revocationReason: string | null;
       createdAt: number;
       updatedAt: number;
     };

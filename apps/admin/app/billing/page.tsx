@@ -7,7 +7,6 @@ Filter,
 Link2,
 Plus,
 Search,
-X,
 } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
@@ -65,6 +64,11 @@ sortPaymentRows,
 toggleSortDirection
 } from "./utils";
 
+type FeePlanRevocationResult = {
+  revokedCount: number;
+  hasMore: boolean;
+};
+
 type PaymentLinkActionResult = {
   provider?: string;
   reference?: string;
@@ -98,6 +102,9 @@ export default function BillingPage() {
   const { session, workspaceAccess } = useAuth();
   const canManageFeePlans = workspaceAccess?.state === "ready" &&
     workspaceAccess.effectiveCapabilities.includes("finance.fee_plans.manage");
+  const canIssueInvoices = workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("finance.invoices.issue");
+  const canRevokeFeePlanInvoices = canManageFeePlans && canIssueInvoices;
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const draftConnection = useDraftConnection();
   const feePlanDraftData = useMemo<DraftPayload<"fee_plan_builder">>(() => ({
@@ -359,6 +366,39 @@ export default function BillingPage() {
       setFeePlanSubmitting(false);
     }
   };
+
+  const handleArchiveFeePlan = (feePlanId: string) =>
+    actions.runAction(
+      () => actions.archiveFeePlan({ feePlanId } as never),
+      "Fee plan archived",
+      "Unable to archive this fee plan.",
+    );
+
+  const handleRestoreFeePlan = (feePlanId: string) =>
+    actions.runAction(
+      () => actions.restoreFeePlan({ feePlanId } as never),
+      "Fee plan restored",
+      "Unable to restore this fee plan.",
+    );
+
+  const handleDeleteFeePlan = (feePlanId: string, expectedName: string) =>
+    actions.runAction(
+      () => actions.deleteUnusedFeePlan({ feePlanId, expectedName } as never),
+      "Unused fee plan deleted",
+      "Unable to delete this fee plan.",
+    );
+
+  const handleRevokeFeePlanInvoices = (feePlanId: string, reason: string) =>
+    actions.runAction(async () => {
+      let hasMore = true;
+      while (hasMore) {
+        const result = await actions.revokeFeePlanInvoices({ feePlanId, reason } as never) as FeePlanRevocationResult;
+        if (result.hasMore && result.revokedCount === 0) {
+          throw new Error("Invoice revocation stopped before all eligible invoices were processed.");
+        }
+        hasMore = result.hasMore;
+      }
+    }, "Eligible invoices revoked and fee plan archived", "Invoice revocation did not finish. Refresh the plan details before retrying because earlier batches may have succeeded.");
 
   const handleApplyFeePlan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -628,13 +668,17 @@ export default function BillingPage() {
                      sortDirection={sortPreferences.plans.direction}
                      onSortChange={handleFeePlanSortChange}
                      onNewPlan={canManageFeePlans ? () => openSidebar("plan") : undefined}
-                     onApplyPlan={(planId) => {
+                     onApplyPlan={canIssueInvoices ? (planId) => {
                        setFeePlanApplicationDraft((current) => ({
                          ...current,
-                         feePlanId: planId as any,
+                         feePlanId: planId as Id<"feePlans">,
                        }));
                        openSidebar("application");
-                     }}
+                     } : undefined}
+                     onArchivePlan={canManageFeePlans ? handleArchiveFeePlan : undefined}
+                     onRestorePlan={canManageFeePlans ? handleRestoreFeePlan : undefined}
+                     onDeletePlan={canManageFeePlans ? handleDeleteFeePlan : undefined}
+                     onRevokePlan={canRevokeFeePlanInvoices ? handleRevokeFeePlanInvoices : undefined}
                    />
                 )}
 

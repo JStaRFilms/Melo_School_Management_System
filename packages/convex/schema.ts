@@ -2338,6 +2338,9 @@ export default defineSchema({
     notes: v.optional(v.string()),
     lastPaymentId: v.optional(v.id("billingPayments")),
     lastPaymentAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    revokedBy: v.optional(v.id("users")),
+    revocationReason: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     paymentInstructionsSnapshot: v.optional(paymentInstructionsValidator),
@@ -2348,7 +2351,8 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_status", ["status"])
     .index("by_school_and_number", ["schoolId", "invoiceNumber"])
-    .index("by_school_and_issued_at", ["schoolId", "issuedAt"]),
+    .index("by_school_and_issued_at", ["schoolId", "issuedAt"])
+    .index("by_fee_plan", ["feePlanId"]),
 
   schoolBankAccounts: defineTable({
     schoolId: v.id("schools"),

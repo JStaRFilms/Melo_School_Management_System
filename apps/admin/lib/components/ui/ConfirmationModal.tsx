@@ -13,6 +13,8 @@ export interface ConfirmationModalProps {
   confirmLabel?: string;
   confirmVariant?: "primary" | "danger" | "emerald" | "warning";
   isLoading?: boolean;
+  confirmDisabled?: boolean;
+  children?: React.ReactNode;
 }
 
 export function ConfirmationModal({
@@ -24,6 +26,8 @@ export function ConfirmationModal({
   confirmLabel = "Confirm",
   confirmVariant = "primary",
   isLoading = false,
+  confirmDisabled = false,
+  children,
 }: ConfirmationModalProps) {
   const [mounted, setMounted] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -175,6 +179,8 @@ export function ConfirmationModal({
           </div>
         </div>
 
+        {children}
+
         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5 pt-2 border-t border-slate-100">
           <button
             ref={cancelButtonRef}
@@ -188,8 +194,8 @@ export function ConfirmationModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={isLoading}
-            className={`w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 sm:py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 cursor-pointer disabled:opacity-50 text-center ${getButtonStyles()}`}
+            disabled={isLoading || confirmDisabled}
+            className={`w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 sm:py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 text-center ${getButtonStyles()}`}
           >
             {isLoading ? (
               <>
