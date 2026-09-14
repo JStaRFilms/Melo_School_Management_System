@@ -2251,6 +2251,7 @@ export default defineSchema({
       firstDueDays: v.number(),
     }),
     isActive: v.boolean(),
+    lifecycleVersion: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     createdBy: v.id("users"),
@@ -2278,6 +2279,19 @@ export default defineSchema({
     .index("by_fee_plan", ["feePlanId"])
     .index("by_class_session_term", ["classId", "sessionId", "termId"])
     .index("by_school_and_created_at", ["schoolId", "createdAt"]),
+
+  feePlanLifecycleRuns: defineTable({
+    schoolId: v.id("schools"),
+    feePlanId: v.id("feePlans"),
+    actorUserId: v.id("users"),
+    operation: v.union(v.literal("delete_unused"), v.literal("revoke_invoices")),
+    cursor: v.union(v.string(), v.null()),
+    lifecycleVersion: v.number(),
+    expectedName: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
 
   studentInvoices: defineTable({
     schoolId: v.id("schools"),
@@ -2338,6 +2352,9 @@ export default defineSchema({
     notes: v.optional(v.string()),
     lastPaymentId: v.optional(v.id("billingPayments")),
     lastPaymentAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    revokedBy: v.optional(v.id("users")),
+    revocationReason: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     paymentInstructionsSnapshot: v.optional(paymentInstructionsValidator),

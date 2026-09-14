@@ -52,6 +52,14 @@ export const billingFeePlanValidator = v.object({
   lineItems: v.array(billingLineItemValidator),
   installmentPolicy: billingInstallmentPolicyValidator,
   isActive: v.boolean(),
+  usage: v.optional(v.object({
+    applicationCount: v.number(),
+    invoiceCount: v.number(),
+    revocableInvoiceCount: v.number(),
+    blockedPaidInvoiceCount: v.number(),
+    cancelledInvoiceCount: v.number(),
+    canDelete: v.boolean(),
+  })),
   createdAt: v.number(),
   updatedAt: v.number(),
   createdBy: v.id("users"),
@@ -112,6 +120,9 @@ export const billingInvoiceValidator = v.object({
   notes: v.union(v.string(), v.null()),
   lastPaymentId: v.union(v.id("billingPayments"), v.null()),
   lastPaymentAt: v.union(v.number(), v.null()),
+  revokedAt: v.union(v.number(), v.null()),
+  revokedBy: v.union(v.id("users"), v.null()),
+  revocationReason: v.union(v.string(), v.null()),
   createdAt: v.number(),
   updatedAt: v.number(),
 });
@@ -504,7 +515,9 @@ export function summarizeBillingCollections(args: {
   const amountCollected = args.payments
     .filter((payment) => payment.status === "successful" || payment.status === "reconciled")
     .reduce((sum, payment) => sum + payment.amountApplied, 0);
-  const outstandingBalance = args.invoices.reduce((sum, invoice) => sum + invoice.balanceDue, 0);
+  const outstandingBalance = args.invoices
+    .filter((invoice) => invoice.status !== "cancelled")
+    .reduce((sum, invoice) => sum + invoice.balanceDue, 0);
   const overdueInvoices = args.invoices.filter((invoice) => invoice.status === "overdue").length;
   const paidInvoices = args.invoices.filter((invoice) => invoice.status === "paid").length;
   const unreconciledPayments = args.payments.filter(

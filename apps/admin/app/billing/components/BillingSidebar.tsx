@@ -6,7 +6,6 @@ import {
   Hash,
   Link2,
   Plus,
-  ReceiptText,
   Users,
 } from "lucide-react";
 import React, { useMemo, useState } from "react";
@@ -93,7 +92,9 @@ export function BillingSidebar({
   const [copied, setCopied] = useState(false);
 
   const payableInvoices = useMemo(() => {
-    return invoices.filter((row) => row.invoice.balanceDue > 0);
+    return invoices.filter(
+      (row) => row.invoice.balanceDue > 0 && row.invoice.status !== "cancelled",
+    );
   }, [invoices]);
 
   const getInvoiceOptionLabel = (row: BillingDashboardData["invoices"][number]) => {

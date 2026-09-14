@@ -1,12 +1,14 @@
-import { query, mutation, internalMutation, internalQuery, action } from "../_generated/server";
+import { query, mutation, internalMutation, internalQuery, action, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { invoicePaymentInstructions } from "./foundation/bankInstructions";
 import { api, internal } from "../_generated/api";
 import { ConvexError, v } from "convex/values";
 import { formatClassDisplayName } from "@school/shared/name-format";
 import { getReadableUserName } from "./academic/studentNameCompat";
-import { getAuthenticatedSchoolMembership } from "./academic/auth";
+import { getAuthenticatedSchoolMembership, type ActiveMembershipContext } from "./academic/auth";
+import { recordAuditEventHelper } from "./academic/audit";
 import { snapshotInvoicePaymentInstructionsHelper } from "./academic/bankAccounts";
+import { requireCapability } from "./academic/rbac";
 import { finishFormDraft } from "./academic/drafts";
 import {
   billingFeePlanApplicationValidator,
@@ -106,6 +108,11 @@ const billingPaymentAttemptUpsertValidator = v.object({
   resolutionMessage: v.optional(v.union(v.string(), v.null())),
 });
 
+const feePlanClassOptionValidator = v.object({
+  _id: v.id("classes"),
+  name: v.string(),
+});
+
 const billingFeePlanApplicationRowValidator = v.object({
   application: billingFeePlanApplicationValidator,
   feePlanName: v.string(),
@@ -121,7 +128,7 @@ const billingDashboardValidator = v.object({
     slug: v.string(),
   }),
   settings: billingSettingsValidator,
-  paymentGateway: billingPaystackProviderOverviewValidator,
+  paymentGateway: v.union(billingPaystackProviderOverviewValidator, v.null()),
   summary: billingSummaryValidator,
   feePlans: v.array(billingFeePlanValidator),
   applications: v.array(billingFeePlanApplicationRowValidator),
@@ -191,6 +198,25 @@ const applyFeePlanResultValidator = v.object({
   skippedCount: v.number(),
 });
 
+const feePlanLifecycleResultValidator = v.object({
+  feePlanId: v.id("feePlans"),
+  status: v.union(v.literal("active"), v.literal("archived"), v.literal("deleted")),
+});
+
+const deleteUnusedFeePlanResultValidator = v.object({
+  feePlanId: v.id("feePlans"),
+  status: v.union(v.literal("archived"), v.literal("deleted")),
+  hasMore: v.boolean(),
+  continueRunId: v.union(v.id("feePlanLifecycleRuns"), v.null()),
+});
+
+const revokeFeePlanInvoicesResultValidator = v.object({
+  feePlanId: v.id("feePlans"),
+  revokedCount: v.number(),
+  hasMore: v.boolean(),
+  continueRunId: v.union(v.id("feePlanLifecycleRuns"), v.null()),
+});
+
 const createInvoiceValidator = v.object({
   bankAccountId: v.optional(v.id("schoolBankAccounts")),
   feePlanId: v.id("feePlans"),
@@ -256,6 +282,15 @@ function assertAdmin(user: { isSchoolAdmin: boolean }) {
   }
 }
 
+async function getAuthorizedBillingViewer(
+  ctx: QueryCtx | MutationCtx,
+  capability: string,
+) {
+  const viewer = await getAuthenticatedSchoolMembership(ctx);
+  const authorization = await requireCapability(ctx, viewer.schoolId, capability);
+  return { ...viewer, effectiveCapabilities: authorization.effectiveCapabilities };
+}
+
 function getInvoiceDisplayName(invoiceNumber: string) {
   return invoiceNumber.trim() || "Unnumbered invoice";
 }
@@ -298,6 +333,9 @@ function invoiceDocToReturn(invoice: Doc<"studentInvoices">) {
     notes: invoice.notes ?? null,
     lastPaymentId: invoice.lastPaymentId ?? null,
     lastPaymentAt: invoice.lastPaymentAt ?? null,
+    revokedAt: invoice.revokedAt ?? null,
+    revokedBy: invoice.revokedBy ?? null,
+    revocationReason: invoice.revocationReason ?? null,
     createdAt: invoice.createdAt,
     updatedAt: invoice.updatedAt,
   };
@@ -358,7 +396,62 @@ function billingPaymentAttemptDocToReturn(attempt: any) {
   };
 }
 
-function feePlanDocToReturn(feePlan: any) {
+type FeePlanUsageSummary = {
+  applicationCount: number;
+  invoiceCount: number;
+  revocableInvoiceCount: number;
+  blockedPaidInvoiceCount: number;
+  cancelledInvoiceCount: number;
+  canDelete: boolean;
+};
+
+function buildFeePlanUsageById(
+  invoices: Doc<"studentInvoices">[],
+  applications: Doc<"feePlanApplications">[],
+) {
+  const summaries = new Map<string, FeePlanUsageSummary>();
+  const getSummary = (feePlanId: Id<"feePlans">) => {
+    const key = String(feePlanId);
+    const existing = summaries.get(key);
+    if (existing) return existing;
+    const created: FeePlanUsageSummary = {
+      applicationCount: 0,
+      invoiceCount: 0,
+      revocableInvoiceCount: 0,
+      blockedPaidInvoiceCount: 0,
+      cancelledInvoiceCount: 0,
+      canDelete: true,
+    };
+    summaries.set(key, created);
+    return created;
+  };
+
+  for (const invoice of invoices) {
+    const summary = getSummary(invoice.feePlanId);
+    summary.invoiceCount += 1;
+    summary.canDelete = false;
+    if (
+      invoice.amountPaid > 0 ||
+      invoice.status === "paid" ||
+      invoice.status === "partially_paid"
+    ) {
+      summary.blockedPaidInvoiceCount += 1;
+    } else if (invoice.status === "cancelled") {
+      summary.cancelledInvoiceCount += 1;
+    } else if (invoice.status !== "waived") {
+      summary.revocableInvoiceCount += 1;
+    }
+  }
+  for (const application of applications) {
+    const summary = getSummary(application.feePlanId);
+    summary.applicationCount += 1;
+    summary.canDelete = false;
+  }
+
+  return summaries;
+}
+
+function feePlanDocToReturn(feePlan: any, usage?: FeePlanUsageSummary) {
   return {
     bankAccountId: feePlan.bankAccountId,
     _id: feePlan._id,
@@ -371,6 +464,7 @@ function feePlanDocToReturn(feePlan: any) {
     lineItems: feePlan.lineItems,
     installmentPolicy: feePlan.installmentPolicy,
     isActive: feePlan.isActive,
+    ...(usage ? { usage } : {}),
     createdAt: feePlan.createdAt,
     updatedAt: feePlan.updatedAt,
     createdBy: feePlan.createdBy,
@@ -408,6 +502,92 @@ function feePlanTargetClassIds(feePlan: any) {
   return normalizeClassIdList(feePlan.targetClassIds ?? []);
 }
 
+async function authorizeFeePlanLifecycle(
+  ctx: MutationCtx,
+  requireInvoiceIssue = false,
+) {
+  const viewer = await getAuthenticatedSchoolMembership(ctx);
+  const actor = await requireCapability(ctx, viewer.schoolId, "finance.fee_plans.manage");
+  if (requireInvoiceIssue) {
+    await requireCapability(ctx, viewer.schoolId, "finance.invoices.issue");
+  }
+  return { viewer, actor };
+}
+
+async function startOrResumeFeePlanLifecycleRun(
+  ctx: MutationCtx,
+  args: {
+    runId?: Id<"feePlanLifecycleRuns"> | null;
+    schoolId: Id<"schools">;
+    feePlanId: Id<"feePlans">;
+    actorUserId: Id<"users">;
+    operation: "delete_unused" | "revoke_invoices";
+    lifecycleVersion: number;
+    expectedName?: string;
+    reason?: string;
+  },
+) {
+  if (args.runId) {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.schoolId !== args.schoolId ||
+      run.feePlanId !== args.feePlanId ||
+      run.actorUserId !== args.actorUserId ||
+      run.operation !== args.operation ||
+      run.lifecycleVersion !== args.lifecycleVersion ||
+      run.expectedName !== args.expectedName ||
+      run.reason !== args.reason
+    ) {
+      throw new ConvexError("Invalid fee-plan lifecycle continuation");
+    }
+    return { runId: run._id, cursor: run.cursor, lifecycleVersion: run.lifecycleVersion };
+  }
+
+  const now = Date.now();
+  const runId = await ctx.db.insert("feePlanLifecycleRuns", {
+    schoolId: args.schoolId,
+    feePlanId: args.feePlanId,
+    actorUserId: args.actorUserId,
+    operation: args.operation,
+    cursor: null,
+    lifecycleVersion: args.lifecycleVersion,
+    ...(args.expectedName !== undefined ? { expectedName: args.expectedName } : {}),
+    ...(args.reason !== undefined ? { reason: args.reason } : {}),
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { runId, cursor: null, lifecycleVersion: args.lifecycleVersion };
+}
+
+async function recordFeePlanLifecycleAudit(
+  ctx: MutationCtx,
+  actor: ActiveMembershipContext,
+  args: {
+    schoolId: Id<"schools">;
+    feePlanId: Id<"feePlans">;
+    action: string;
+    summary: string;
+  },
+) {
+  const actorPerson = actor.personId ? await ctx.db.get(actor.personId) : null;
+  const actorUser = actor.userId ? await ctx.db.get(actor.userId) : null;
+  await recordAuditEventHelper(ctx, {
+    schoolId: args.schoolId,
+    actorKind: "user",
+    actorPersonId: actor.personId,
+    actorMembershipId: actor.membershipId,
+    actorEmailSnapshot: actorPerson?.email ?? actorUser?.email ?? actor.role,
+    module: "finance",
+    action: `fee_plan.${args.action}`,
+    targetType: "feePlans",
+    targetId: String(args.feePlanId),
+    outcome: "success",
+    safeSummary: args.summary,
+    retentionClass: "permanent_statutory",
+  });
+}
+
 async function createInvoiceFromFeePlanRecord(args: {
   ctx: any;
   school: { _id: Id<"schools">; name: string; slug: string };
@@ -426,6 +606,10 @@ async function createInvoiceFromFeePlanRecord(args: {
   issuedBy: Id<"users">;
   bankAccountId?: Id<"schoolBankAccounts">;
 }) {
+  if (!args.feePlan.isActive) {
+    throw new ConvexError("Archived fee plans cannot generate invoices");
+  }
+
   const issuedAt = args.issuedAt ?? Date.now();
   const total = computeBillingInvoiceTotal({
     lineItems: args.feePlan.lineItems,
@@ -903,6 +1087,7 @@ async function createPaymentAndAllocation(args: {
   notes?: string | null;
   recordedBy?: Id<"users"> | null;
   reconciliationStatus?: "unreconciled" | "reconciled" | "flagged";
+  recordAsUnapplied?: boolean;
 }) {
   const existingPayment = await loadPaymentByReference(args.ctx, args.schoolId, args.reference);
   if (existingPayment) {
@@ -917,14 +1102,20 @@ async function createPaymentAndAllocation(args: {
     };
   }
 
+  if (args.invoice.status === "cancelled" && !args.recordAsUnapplied) {
+    throw new ConvexError("Cancelled invoices cannot receive payments");
+  }
+
   const amountReceived = normalizeBillingAmount(args.amountReceived);
   if (amountReceived <= 0) {
     throw new ConvexError("Payment amount must be greater than zero");
   }
 
-  const amountApplied = normalizeBillingAmount(
-    Math.min(amountReceived, Math.max(0, args.invoice.balanceDue))
-  );
+  const amountApplied = args.recordAsUnapplied
+    ? 0
+    : normalizeBillingAmount(
+        Math.min(amountReceived, Math.max(0, args.invoice.balanceDue))
+      );
   const unappliedAmount = normalizeBillingAmount(amountReceived - amountApplied);
   const applicationStatus =
     amountApplied <= 0
@@ -1154,8 +1345,7 @@ export const getBillingDashboard = query({
   },
   returns: billingDashboardValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.reports.view" });
-    assertAdmin(viewer);
+    const viewer = await getAuthorizedBillingViewer(ctx, "finance.reports.view");
 
     const school = await ctx.db.get(viewer.schoolId);
     if (!school) {
@@ -1166,10 +1356,15 @@ export const getBillingDashboard = query({
       .query("schoolBillingSettings")
       .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
       .unique();
-    const paymentGateway: any = await ctx.runQuery(
-      (internal as any).functions.billingProviders.getSchoolPaystackGatewayOverviewInternal,
-      { schoolId: viewer.schoolId }
+    const canManageBankDetails = viewer.effectiveCapabilities.includes(
+      "finance.bank_details.manage",
     );
+    const paymentGateway: any = canManageBankDetails
+      ? await ctx.runQuery(
+          (internal as any).functions.billingProviders.getSchoolPaystackGatewayOverviewInternal,
+          { schoolId: viewer.schoolId },
+        )
+      : null;
 
     const lookups = await loadBillingLookups(ctx, viewer.schoolId);
     const allInvoices = await ctx.db
@@ -1314,6 +1509,7 @@ export const getBillingDashboard = query({
     const manualAttentionPaymentAttempts = visibleAttempts.filter(
       (attempt: any) => attempt.status === "manual_attention_needed"
     ).length;
+    const feePlanUsageById = buildFeePlanUsageById(allInvoices, allApplications);
 
     return {
       school: {
@@ -1332,7 +1528,19 @@ export const getBillingDashboard = query({
         manualAttentionPaymentAttempts,
         gatewayEventCount: visibleEvents.length,
       },
-      feePlans: lookups.feePlans.map(feePlanDocToReturn),
+      feePlans: lookups.feePlans.map((feePlan: Doc<"feePlans">) =>
+        feePlanDocToReturn(
+          feePlan,
+          feePlanUsageById.get(String(feePlan._id)) ?? {
+            applicationCount: 0,
+            invoiceCount: 0,
+            revocableInvoiceCount: 0,
+            blockedPaidInvoiceCount: 0,
+            cancelledInvoiceCount: 0,
+            canDelete: true,
+          },
+        )
+      ),
       applications: applicationRows,
       invoices: invoiceRows,
       payments: paymentRows,
@@ -1349,8 +1557,7 @@ export const listBillingPaymentAttempts = query({
   },
   returns: v.array(billingPaymentAttemptRowValidator),
   handler: async (ctx, args) => {
-    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.reports.view" });
-    assertAdmin(viewer);
+    const viewer = await getAuthorizedBillingViewer(ctx, "finance.reports.view");
 
     const lookups = await loadBillingLookups(ctx, viewer.schoolId);
     const allInvoices = await ctx.db
@@ -1573,6 +1780,21 @@ export const upsertBillingSettings = mutation({
   },
 });
 
+export const listFeePlanClassOptions = query({
+  args: {},
+  returns: v.array(feePlanClassOptionValidator),
+  handler: async (ctx) => {
+    const viewer = await getAuthorizedBillingViewer(ctx, "finance.fee_plans.manage");
+    const classes = await ctx.db
+      .query("classes")
+      .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
+      .collect();
+    return classes
+      .filter((classDoc) => !classDoc.isArchived)
+      .map((classDoc) => ({ _id: classDoc._id, name: classDoc.name }));
+  },
+});
+
 export const listFeePlans = query({
   args: {},
   returns: v.array(billingFeePlanValidator),
@@ -1585,7 +1807,7 @@ export const listFeePlans = query({
       .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
       .collect();
 
-    return feePlans.map(feePlanDocToReturn);
+    return feePlans.map((feePlan) => feePlanDocToReturn(feePlan));
   },
 });
 
@@ -1593,8 +1815,7 @@ export const createFeePlan = mutation({
   args: createFeePlanValidator,
   returns: billingFeePlanValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.fee_plans.manage" });
-    assertAdmin(viewer);
+    const { viewer } = await authorizeFeePlanLifecycle(ctx);
 
     const name = normalizeBillingText(args.name);
     if (!name) {
@@ -1669,6 +1890,276 @@ export const createFeePlan = mutation({
     }
 
     return feePlanDocToReturn(feePlan);
+  },
+});
+
+export const archiveFeePlan = mutation({
+  args: { feePlanId: v.id("feePlans") },
+  returns: feePlanLifecycleResultValidator,
+  handler: async (ctx, args) => {
+    const { viewer, actor } = await authorizeFeePlanLifecycle(ctx);
+    const feePlan = await ctx.db.get(args.feePlanId);
+    if (!feePlan || feePlan.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Fee plan not found");
+    }
+    if (!feePlan.isActive) {
+      return { feePlanId: feePlan._id, status: "archived" as const };
+    }
+
+    await ctx.db.patch(feePlan._id, {
+      isActive: false,
+      lifecycleVersion: (feePlan.lifecycleVersion ?? 0) + 1,
+      updatedAt: Date.now(),
+      updatedBy: viewer.userId,
+    });
+    await recordFeePlanLifecycleAudit(ctx, actor, {
+      schoolId: viewer.schoolId,
+      feePlanId: feePlan._id,
+      action: "archived",
+      summary: `Archived fee plan ${feePlan.name}; historical invoices and payments retained.`,
+    });
+    return { feePlanId: feePlan._id, status: "archived" as const };
+  },
+});
+
+export const restoreFeePlan = mutation({
+  args: { feePlanId: v.id("feePlans") },
+  returns: feePlanLifecycleResultValidator,
+  handler: async (ctx, args) => {
+    const { viewer, actor } = await authorizeFeePlanLifecycle(ctx);
+    const feePlan = await ctx.db.get(args.feePlanId);
+    if (!feePlan || feePlan.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Fee plan not found");
+    }
+    if (feePlan.isActive) {
+      return { feePlanId: feePlan._id, status: "active" as const };
+    }
+
+    await ctx.db.patch(feePlan._id, {
+      isActive: true,
+      lifecycleVersion: (feePlan.lifecycleVersion ?? 0) + 1,
+      updatedAt: Date.now(),
+      updatedBy: viewer.userId,
+    });
+    await recordFeePlanLifecycleAudit(ctx, actor, {
+      schoolId: viewer.schoolId,
+      feePlanId: feePlan._id,
+      action: "restored",
+      summary: `Restored fee plan ${feePlan.name} for future invoice generation.`,
+    });
+    return { feePlanId: feePlan._id, status: "active" as const };
+  },
+});
+
+export const deleteUnusedFeePlan = mutation({
+  args: {
+    feePlanId: v.id("feePlans"),
+    expectedName: v.string(),
+    runId: v.optional(v.union(v.id("feePlanLifecycleRuns"), v.null())),
+  },
+  returns: deleteUnusedFeePlanResultValidator,
+  handler: async (ctx, args) => {
+    const { viewer, actor } = await authorizeFeePlanLifecycle(ctx);
+    const feePlan = await ctx.db.get(args.feePlanId);
+    if (!feePlan || feePlan.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Fee plan not found");
+    }
+    if (args.expectedName !== feePlan.name) {
+      throw new ConvexError("Fee plan changed; reload before deleting it");
+    }
+
+    const run = await startOrResumeFeePlanLifecycleRun(ctx, {
+      runId: args.runId,
+      schoolId: viewer.schoolId,
+      feePlanId: feePlan._id,
+      actorUserId: viewer.userId,
+      operation: "delete_unused",
+      lifecycleVersion: feePlan.lifecycleVersion ?? 0,
+      expectedName: args.expectedName,
+    });
+    const application = await ctx.db
+      .query("feePlanApplications")
+      .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))
+      .first();
+    const invoicePage = application
+      ? null
+      : await ctx.db
+          .query("studentInvoices")
+          .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
+          .paginate({
+            cursor: run.cursor,
+            numItems: 25,
+            maximumRowsRead: 25,
+          });
+    const invoice = invoicePage?.page.find((row) => row.feePlanId === feePlan._id);
+    const now = Date.now();
+
+    if (application || invoice) {
+      await ctx.db.delete(run.runId);
+      if (feePlan.isActive) {
+        await ctx.db.patch(feePlan._id, {
+          isActive: false,
+          lifecycleVersion: run.lifecycleVersion + 1,
+          updatedAt: now,
+          updatedBy: viewer.userId,
+        });
+        await recordFeePlanLifecycleAudit(ctx, actor, {
+          schoolId: viewer.schoolId,
+          feePlanId: feePlan._id,
+          action: "archived",
+          summary: `Archived used fee plan ${feePlan.name} instead of deleting its financial history.`,
+        });
+      }
+      return {
+        feePlanId: feePlan._id,
+        status: "archived" as const,
+        hasMore: false,
+        continueRunId: null,
+      };
+    }
+
+    if (!invoicePage?.isDone) {
+      const lifecycleVersion = feePlan.isActive
+        ? run.lifecycleVersion + 1
+        : run.lifecycleVersion;
+      if (feePlan.isActive) {
+        await ctx.db.patch(feePlan._id, {
+          isActive: false,
+          lifecycleVersion,
+          updatedAt: now,
+          updatedBy: viewer.userId,
+        });
+      }
+      await ctx.db.patch(run.runId, {
+        cursor: invoicePage?.continueCursor ?? null,
+        lifecycleVersion,
+        updatedAt: now,
+      });
+      return {
+        feePlanId: feePlan._id,
+        status: "archived" as const,
+        hasMore: true,
+        continueRunId: run.runId,
+      };
+    }
+
+    await ctx.db.delete(feePlan._id);
+    await ctx.db.delete(run.runId);
+    await recordFeePlanLifecycleAudit(ctx, actor, {
+      schoolId: viewer.schoolId,
+      feePlanId: feePlan._id,
+      action: "deleted_unused",
+      summary: `Permanently deleted unused fee plan ${feePlan.name}; no application or invoice history existed.`,
+    });
+    return {
+      feePlanId: feePlan._id,
+      status: "deleted" as const,
+      hasMore: false,
+      continueRunId: null,
+    };
+  },
+});
+
+export const revokeFeePlanInvoices = mutation({
+  args: {
+    feePlanId: v.id("feePlans"),
+    reason: v.string(),
+    runId: v.optional(v.union(v.id("feePlanLifecycleRuns"), v.null())),
+  },
+  returns: revokeFeePlanInvoicesResultValidator,
+  handler: async (ctx, args) => {
+    const { viewer, actor } = await authorizeFeePlanLifecycle(ctx, true);
+    const feePlan = await ctx.db.get(args.feePlanId);
+    if (!feePlan || feePlan.schoolId !== viewer.schoolId) {
+      throw new ConvexError("Fee plan not found");
+    }
+
+    const reason = normalizeBillingText(args.reason);
+    if (!reason || reason.length < 5) {
+      throw new ConvexError("Give a reason of at least 5 characters for invoice revocation");
+    }
+    if (reason.length > 500) {
+      throw new ConvexError("Invoice revocation reason must be 500 characters or fewer");
+    }
+
+    const run = await startOrResumeFeePlanLifecycleRun(ctx, {
+      runId: args.runId,
+      schoolId: viewer.schoolId,
+      feePlanId: feePlan._id,
+      actorUserId: viewer.userId,
+      operation: "revoke_invoices",
+      lifecycleVersion: feePlan.lifecycleVersion ?? 0,
+      reason,
+    });
+    const invoicePage = await ctx.db
+      .query("studentInvoices")
+      .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
+      .paginate({
+        cursor: run.cursor,
+        numItems: 25,
+        maximumRowsRead: 25,
+      });
+    const batch = invoicePage.page.filter((invoice) => {
+      if (invoice.feePlanId !== feePlan._id) return false;
+      const paymentBlocked =
+        invoice.amountPaid > 0 ||
+        invoice.status === "paid" ||
+        invoice.status === "partially_paid";
+      return !paymentBlocked && invoice.status !== "cancelled" && invoice.status !== "waived";
+    });
+
+    const now = Date.now();
+    const lifecycleVersion = feePlan.isActive
+      ? run.lifecycleVersion + 1
+      : run.lifecycleVersion;
+    if (feePlan.isActive) {
+      await ctx.db.patch(feePlan._id, {
+        isActive: false,
+        lifecycleVersion,
+        updatedAt: now,
+        updatedBy: viewer.userId,
+      });
+      await recordFeePlanLifecycleAudit(ctx, actor, {
+        schoolId: viewer.schoolId,
+        feePlanId: feePlan._id,
+        action: "archived_for_revocation",
+        summary: `Archived fee plan ${feePlan.name} before revoking unpaid invoices; reason: ${reason}`,
+      });
+    }
+
+    for (const invoice of batch) {
+      await ctx.db.patch(invoice._id, {
+        status: "cancelled",
+        revokedAt: now,
+        revokedBy: viewer.userId,
+        revocationReason: reason,
+        updatedAt: now,
+      });
+    }
+
+    if (batch.length > 0) {
+      await recordFeePlanLifecycleAudit(ctx, actor, {
+        schoolId: viewer.schoolId,
+        feePlanId: feePlan._id,
+        action: "invoices_revoked",
+        summary: `Revoked ${batch.length} unpaid invoice${batch.length === 1 ? "" : "s"} from fee plan ${feePlan.name}; reason: ${reason}`,
+      });
+    }
+    if (invoicePage.isDone) {
+      await ctx.db.delete(run.runId);
+    } else {
+      await ctx.db.patch(run.runId, {
+        cursor: invoicePage.continueCursor,
+        lifecycleVersion,
+        updatedAt: now,
+      });
+    }
+    return {
+      feePlanId: feePlan._id,
+      revokedCount: batch.length,
+      hasMore: !invoicePage.isDone,
+      continueRunId: invoicePage.isDone ? null : run.runId,
+    };
   },
 });
 
@@ -2073,6 +2564,12 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
       const paymentReference = normalizeBillingReference(
         args.gatewayReference ?? args.reference ?? args.eventId
       );
+      const invoiceWasRevoked = invoiceCandidate.status === "cancelled";
+      const gatewayPaymentMessage = invoiceWasRevoked
+        ? `Payment received after invoice revocation; recorded as unapplied for manual reconciliation${
+            processingMessage ? ` (${processingMessage})` : ""
+          }`
+        : processingMessage ?? "Webhook payment applied successfully";
       const result = await createPaymentAndAllocation({
         ctx,
         schoolId,
@@ -2085,15 +2582,16 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         receivedAt: now,
         payerName: args.payerName,
         payerEmail: args.payerEmail,
-        notes: processingMessage,
+        notes: gatewayPaymentMessage,
         recordedBy: null,
-        reconciliationStatus: "reconciled",
+        reconciliationStatus: invoiceWasRevoked ? "flagged" : "reconciled",
+        recordAsUnapplied: invoiceWasRevoked,
       });
       payment = result.payment;
       invoice = result.invoice;
       paymentId = result.payment._id;
       verificationStatus = "verified";
-      processingMessage = processingMessage ?? "Webhook payment applied successfully";
+      processingMessage = gatewayPaymentMessage;
     }
 
     const eventRecord = {
@@ -2159,11 +2657,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         gatewayEventId: eventId,
         lastCheckedAt: now,
         resolvedAt: now,
-        resolutionMessage:
-          args.verificationMessage ??
-          (args.attemptReconciliationSource === "webhook"
-            ? "Webhook reconciliation completed"
-            : "Payment verified successfully"),
+        resolutionMessage: processingMessage,
       });
     } else if (existingAttempt) {
       const nextAttemptStatus =

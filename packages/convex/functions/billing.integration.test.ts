@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api, internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import schema from "../schema";
 
 declare global {
@@ -373,6 +374,463 @@ describe("billing registered functions", () => {
       });
     }
   }, 15_000);
+
+  it("allows delegated billing managers without granting revocation to fee-plan-only staff", async () => {
+    const t = convexTest(schema, modules);
+    const accountantIdentity = {
+      subject: "delegated-accountant",
+      tokenIdentifier: "https://auth.school.test|delegated-accountant",
+    };
+    const ids = await t.run(async (ctx) => {
+      const now = Date.now();
+      const schoolId = await ctx.db.insert("schools", {
+        name: "Delegated Billing School",
+        slug: "delegated-billing-school",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const personId = await ctx.db.insert("persons", {
+        name: "Delegated Accountant",
+        email: "accountant@billing.test",
+        authTokenIdentifier: accountantIdentity.tokenIdentifier,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const userId = await ctx.db.insert("users", {
+        schoolId,
+        personId,
+        authId: accountantIdentity.subject,
+        authTokenIdentifier: accountantIdentity.tokenIdentifier,
+        name: "Delegated Accountant",
+        email: "accountant@billing.test",
+        role: "teacher",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const membershipId = await ctx.db.insert("branchMemberships", {
+        schoolId,
+        personId,
+        legacyUserId: userId,
+        status: "active",
+        isDefaultBranch: true,
+        permissionsManagedAt: now,
+        joinedAt: now,
+        updatedAt: now,
+      });
+      for (const capability of ["finance.fee_plans.manage", "finance.reports.view"]) {
+        await ctx.db.insert("membershipDirectGrants", {
+          membershipId,
+          capability,
+          grantedAt: now,
+        });
+      }
+      const feePlanId = await ctx.db.insert("feePlans", {
+        schoolId,
+        name: "Delegated plan",
+        currency: "NGN",
+        billingMode: "class_default",
+        targetClassIds: [],
+        lineItems: storedLineItems,
+        installmentPolicy: { enabled: false, installmentCount: 1, intervalDays: 0, firstDueDays: 14 },
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: userId,
+        updatedBy: userId,
+      });
+      return { schoolId, membershipId, feePlanId };
+    });
+    const accountant = t.withIdentity(accountantIdentity);
+
+    await expect(accountant.query(
+      api.functions.billing.listFeePlanClassOptions,
+      {},
+    )).resolves.toEqual([]);
+    await expect(accountant.query(
+      api.functions.academic.drafts.getFormDraft,
+      { schoolId: ids.schoolId, formKey: "fee_plan_builder" },
+    )).resolves.toBeNull();
+    await expect(accountant.mutation(api.functions.billing.createFeePlan, {
+      name: "Delegated new plan",
+      lineItems,
+    })).resolves.toMatchObject({ name: "Delegated new plan", isActive: true });
+    await expect(accountant.mutation(api.functions.billing.archiveFeePlan, {
+      feePlanId: ids.feePlanId,
+    })).resolves.toMatchObject({ status: "archived" });
+    const delegatedDashboard = await accountant.query(
+      api.functions.billing.getBillingDashboard,
+      {},
+    );
+    expect(delegatedDashboard.paymentGateway).toBeNull();
+    expect(delegatedDashboard.feePlans).toEqual(expect.arrayContaining([
+      expect.objectContaining({ _id: ids.feePlanId, isActive: false }),
+    ]));
+    await expect(accountant.mutation(api.functions.billing.restoreFeePlan, {
+      feePlanId: ids.feePlanId,
+    })).resolves.toMatchObject({ status: "active" });
+    await expect(accountant.mutation(api.functions.billing.revokeFeePlanInvoices, {
+      feePlanId: ids.feePlanId,
+      reason: "Incorrect amount",
+    })).rejects.toThrow(/finance.invoices.issue/);
+
+    await t.run((ctx) => ctx.db.insert("membershipDirectGrants", {
+      membershipId: ids.membershipId,
+      capability: "finance.invoices.issue",
+      grantedAt: Date.now(),
+    }));
+    await expect(accountant.mutation(api.functions.billing.revokeFeePlanInvoices, {
+      feePlanId: ids.feePlanId,
+      reason: "Incorrect amount",
+    })).resolves.toMatchObject({ revokedCount: 0, hasMore: false });
+  });
+
+  it("manages fee-plan deletion, archive, restore, and unpaid invoice revocation", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const now = Date.now();
+      const schoolId = await ctx.db.insert("schools", {
+        name: "Lifecycle Billing School",
+        slug: "lifecycle-billing-school",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const adminId = await ctx.db.insert("users", {
+        schoolId,
+        authId: adminIdentity.subject,
+        authTokenIdentifier: adminIdentity.tokenIdentifier,
+        name: "Lifecycle Admin",
+        email: "admin@lifecycle-billing.test",
+        role: "admin",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const classId = await ctx.db.insert("classes", {
+        schoolId,
+        name: "Primary 1",
+        gradeName: "Primary 1",
+        level: "Primary",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const sessionId = await ctx.db.insert("academicSessions", {
+        schoolId,
+        name: "2026/2027",
+        startDate: now,
+        endDate: now + 365 * 24 * 60 * 60 * 1000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const termId = await ctx.db.insert("academicTerms", {
+        schoolId,
+        sessionId,
+        name: "First Term",
+        startDate: now,
+        endDate: now + 90 * 24 * 60 * 60 * 1000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const studentUserId = await ctx.db.insert("users", {
+        schoolId,
+        authId: "lifecycle-student",
+        authTokenIdentifier: "https://auth.school.test|lifecycle-student",
+        name: "Lifecycle Student",
+        email: "student@lifecycle-billing.test",
+        role: "student",
+        createdAt: now,
+        updatedAt: now,
+      });
+      const studentId = await ctx.db.insert("students", {
+        schoolId,
+        classId,
+        userId: studentUserId,
+        admissionNumber: "LIFE-001",
+        enrollmentStatus: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { schoolId, adminId, classId, sessionId, termId, studentId };
+    });
+    const actor = t.withIdentity(adminIdentity);
+    const unusedPlan = await actor.mutation(api.functions.billing.createFeePlan, {
+      name: "Unused fees",
+      lineItems,
+    });
+    const applicationOnlyPlan = await actor.mutation(api.functions.billing.createFeePlan, {
+      name: "Application-only fees",
+      lineItems,
+    });
+    const usedPlan = await actor.mutation(api.functions.billing.createFeePlan, {
+      name: "Used fees",
+      lineItems,
+    });
+
+    await expect(actor.mutation(api.functions.billing.archiveFeePlan, {
+      feePlanId: unusedPlan._id,
+    })).resolves.toMatchObject({ status: "archived" });
+    await expect(actor.mutation(api.functions.billing.createInvoiceFromFeePlan, {
+      feePlanId: unusedPlan._id,
+      studentId: ids.studentId,
+      classId: ids.classId,
+      sessionId: ids.sessionId,
+      termId: ids.termId,
+    })).rejects.toThrow(/Archived fee plans cannot generate invoices/);
+    await expect(actor.mutation(api.functions.billing.restoreFeePlan, {
+      feePlanId: unusedPlan._id,
+    })).resolves.toMatchObject({ status: "active" });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: unusedPlan._id,
+      expectedName: unusedPlan.name,
+    })).resolves.toMatchObject({ status: "deleted" });
+    expect(await t.run((ctx) => ctx.db.get(unusedPlan._id))).toBeNull();
+
+    const invoiceIds = await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("feePlanApplications", {
+        schoolId: ids.schoolId,
+        feePlanId: applicationOnlyPlan._id,
+        classId: ids.classId,
+        sessionId: ids.sessionId,
+        termId: ids.termId,
+        studentCount: 0,
+        createdInvoiceCount: 0,
+        skippedInvoiceCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: ids.adminId,
+      });
+      const baseInvoice = {
+        schoolId: ids.schoolId,
+        feePlanId: usedPlan._id,
+        studentId: ids.studentId,
+        classId: ids.classId,
+        sessionId: ids.sessionId,
+        termId: ids.termId,
+        feePlanNameSnapshot: usedPlan.name,
+        currency: "NGN",
+        lineItems: storedLineItems,
+        installmentSchedule: [],
+        subtotal: 5000,
+        waiverAmount: 0,
+        discountAmount: 0,
+        totalAmount: 5000,
+        dueDate: now + 14 * 24 * 60 * 60 * 1000,
+        issuedAt: now,
+        issuedBy: ids.adminId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      for (let index = 0; index < 25; index += 1) {
+        await ctx.db.insert("studentInvoices", {
+          ...baseInvoice,
+          invoiceNumber: `LIFE-PAID-${index + 1}`,
+          amountPaid: 5000,
+          balanceDue: 0,
+          status: "paid",
+        });
+      }
+      const unpaidInvoiceId = await ctx.db.insert("studentInvoices", {
+        ...baseInvoice,
+        invoiceNumber: "LIFE-UNPAID",
+        amountPaid: 0,
+        balanceDue: 5000,
+        status: "issued",
+      });
+      const paidInvoiceId = await ctx.db.insert("studentInvoices", {
+        ...baseInvoice,
+        invoiceNumber: "LIFE-PAID",
+        amountPaid: 5000,
+        balanceDue: 0,
+        status: "paid",
+      });
+      const waivedInvoiceId = await ctx.db.insert("studentInvoices", {
+        ...baseInvoice,
+        invoiceNumber: "LIFE-WAIVED",
+        waiverAmount: 5000,
+        totalAmount: 0,
+        amountPaid: 0,
+        balanceDue: 0,
+        status: "waived",
+      });
+      const attemptId = await ctx.db.insert("billingPaymentAttempts", {
+        schoolId: ids.schoolId,
+        invoiceId: unpaidInvoiceId,
+        provider: "paystack",
+        reference: "life-pending",
+        gatewayReference: null,
+        authorizationUrl: "https://pay.test/life-pending",
+        accessCode: "life-access",
+        amount: 5000,
+        currency: "NGN",
+        status: "link_generated",
+        reconciliationSource: null,
+        checkoutPayload: {},
+        callbackUrl: null,
+        paymentId: null,
+        gatewayEventId: null,
+        lastCheckedAt: null,
+        resolvedAt: null,
+        resolutionMessage: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { unpaidInvoiceId, paidInvoiceId, waivedInvoiceId, attemptId };
+    });
+
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: applicationOnlyPlan._id,
+      expectedName: applicationOnlyPlan.name,
+    })).resolves.toMatchObject({ status: "archived", hasMore: false });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: usedPlan._id,
+      expectedName: usedPlan.name,
+    })).resolves.toMatchObject({ status: "archived", hasMore: false });
+
+    const paginatedUnusedPlan = await actor.mutation(api.functions.billing.createFeePlan, {
+      name: "Paginated unused fees",
+      lineItems,
+    });
+    const firstDeletePage = await actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      runId: null,
+    });
+    expect(firstDeletePage).toMatchObject({ status: "archived", hasMore: true });
+    const otherUnusedPlan = await actor.mutation(api.functions.billing.createFeePlan, {
+      name: "Other unused fees",
+      lineItems,
+    });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: otherUnusedPlan._id,
+      expectedName: otherUnusedPlan.name,
+      runId: firstDeletePage.continueRunId,
+    })).rejects.toThrow(/Invalid fee-plan lifecycle continuation/);
+    await expect(actor.mutation(api.functions.billing.restoreFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+    })).resolves.toMatchObject({ status: "active" });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      runId: firstDeletePage.continueRunId,
+    })).rejects.toThrow(/Invalid fee-plan lifecycle continuation/);
+    const restartedDelete = await actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      runId: null,
+    });
+    expect(restartedDelete).toMatchObject({ status: "archived", hasMore: true });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      runId: restartedDelete.continueRunId,
+    })).resolves.toMatchObject({ status: "deleted", hasMore: false });
+
+    const dashboard = await actor.query(api.functions.billing.getBillingDashboard, {}) as {
+      feePlans: Array<{
+        _id: Id<"feePlans">;
+        usage?: {
+          applicationCount: number;
+          invoiceCount: number;
+          revocableInvoiceCount: number;
+          blockedPaidInvoiceCount: number;
+          cancelledInvoiceCount: number;
+          canDelete: boolean;
+        };
+      }>;
+    };
+    expect(dashboard.feePlans.find((plan) => plan._id === applicationOnlyPlan._id)?.usage).toMatchObject({
+      applicationCount: 1,
+      invoiceCount: 0,
+      canDelete: false,
+    });
+    expect(dashboard.feePlans.find((plan) => plan._id === usedPlan._id)?.usage).toMatchObject({
+      invoiceCount: 28,
+      revocableInvoiceCount: 1,
+      blockedPaidInvoiceCount: 26,
+      canDelete: false,
+    });
+
+    const firstPage = await actor.mutation(api.functions.billing.revokeFeePlanInvoices, {
+      feePlanId: usedPlan._id,
+      reason: "Incorrect fee amount",
+      runId: null,
+    });
+    expect(firstPage).toMatchObject({ revokedCount: 0, hasMore: true });
+    const revoked = await actor.mutation(api.functions.billing.revokeFeePlanInvoices, {
+      feePlanId: usedPlan._id,
+      reason: "Incorrect fee amount",
+      runId: firstPage.continueRunId,
+    });
+    expect(revoked).toMatchObject({ revokedCount: 1, hasMore: false, continueRunId: null });
+
+    const latePayment = await t.mutation(internal.functions.billing.recordVerifiedGatewayEventInternal, {
+      schoolId: ids.schoolId,
+      provider: "paystack",
+      providerMode: "test",
+      eventId: "life-late-payment",
+      eventType: "charge.success",
+      reference: "life-pending",
+      invoiceId: invoiceIds.unpaidInvoiceId,
+      gatewayReference: "life-pending",
+      amountReceived: 5000,
+      rawBody: "{}",
+      payload: {},
+      signatureValid: true,
+      verificationMessage: "Provider payment verified",
+      attemptReconciliationSource: "webhook",
+    });
+    expect(latePayment.event).toMatchObject({ verificationStatus: "verified" });
+    expect(latePayment.invoice).toMatchObject({ status: "cancelled", amountPaid: 0 });
+    expect(latePayment.payment).toMatchObject({
+      amountApplied: 0,
+      unappliedAmount: 5000,
+      applicationStatus: "unapplied",
+      reconciliationStatus: "flagged",
+    });
+    const dashboardAfterRevocation = await actor.query(
+      api.functions.billing.getBillingDashboard,
+      {},
+    );
+    expect(dashboardAfterRevocation.summary.outstandingBalance).toBe(0);
+
+    const lifecycleState = await t.run(async (ctx) => ({
+      plan: await ctx.db.get("feePlans", usedPlan._id as Id<"feePlans">),
+      unpaid: await ctx.db.get(invoiceIds.unpaidInvoiceId),
+      paid: await ctx.db.get(invoiceIds.paidInvoiceId),
+      waived: await ctx.db.get(invoiceIds.waivedInvoiceId),
+      attempt: await ctx.db.get(invoiceIds.attemptId),
+      audit: await ctx.db.query("auditEvents").withIndex("by_school", (q) => q.eq("schoolId", ids.schoolId)).collect(),
+    }));
+    expect(lifecycleState.plan?.isActive).toBe(false);
+    expect(lifecycleState.unpaid).toMatchObject({
+      status: "cancelled",
+      revokedBy: ids.adminId,
+      revocationReason: "Incorrect fee amount",
+    });
+    expect(lifecycleState.paid).toMatchObject({ status: "paid", amountPaid: 5000 });
+    expect(lifecycleState.waived).toMatchObject({ status: "waived", balanceDue: 0 });
+    expect(lifecycleState.attempt).toMatchObject({
+      status: "webhook_reconciled",
+      paymentId: latePayment.payment?._id,
+      resolutionMessage: "Payment received after invoice revocation; recorded as unapplied for manual reconciliation (Provider payment verified)",
+    });
+    expect(lifecycleState.audit.map((event) => event.action)).toEqual(expect.arrayContaining([
+      "fee_plan.archived",
+      "fee_plan.restored",
+      "fee_plan.deleted_unused",
+      "fee_plan.invoices_revoked",
+    ]));
+    expect(lifecycleState.audit.filter(
+      (event) => event.action === "fee_plan.invoices_revoked",
+    )).toHaveLength(1);
+    expect(lifecycleState.audit.filter(
+      (event) => event.action.startsWith("fee_plan."),
+    ).every((event) => event.actorEmailSnapshot === "admin@lifecycle-billing.test")).toBe(true);
+  });
 
   it("keeps invoice-less gateway events only on unfiltered dashboards", async () => {
     const t = convexTest(schema, modules);

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Plus, Check, ShieldAlert, X, Layers, Sparkles, Send } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Archive, ArrowDown, ArrowUp, ArrowUpDown, Ban, Check, Layers, Plus, RotateCcw, Send, ShieldAlert, Sparkles, Trash2, X } from "lucide-react";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { formatMoney } from "../utils";
 import type { BillingDashboardData, FeePlanSortKey, SortDirection } from "../types";
 
@@ -11,7 +12,14 @@ interface FeePlanListProps {
   onSortChange: (key: FeePlanSortKey) => void;
   onNewPlan?: () => void;
   onApplyPlan?: (planId: string) => void;
+  onArchivePlan?: (planId: string) => Promise<boolean>;
+  onRestorePlan?: (planId: string) => Promise<boolean>;
+  onDeletePlan?: (planId: string, expectedName: string) => Promise<boolean>;
+  onRevokePlan?: (planId: string, reason: string) => Promise<boolean>;
 }
+
+type FeePlan = BillingDashboardData["feePlans"][number];
+type LifecycleAction = "archive" | "restore" | "delete" | "revoke";
 
 function FeePlanSortButton({
   label,
@@ -50,15 +58,96 @@ export function FeePlanList({
   onSortChange,
   onNewPlan,
   onApplyPlan,
+  onArchivePlan,
+  onRestorePlan,
+  onDeletePlan,
+  onRevokePlan,
 }: FeePlanListProps) {
-  const [selectedPlan, setSelectedPlan] = useState<BillingDashboardData["feePlans"][number] | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<FeePlan | null>(null);
+  const [view, setView] = useState<"active" | "archived">("active");
+  const [pendingAction, setPendingAction] = useState<{ action: LifecycleAction; plan: FeePlan } | null>(null);
+  const [revocationReason, setRevocationReason] = useState("");
+  const [actionPending, setActionPending] = useState(false);
+  const visiblePlans = useMemo(
+    () => plans.filter((plan) => view === "active" ? plan.isActive : !plan.isActive),
+    [plans, view],
+  );
+  const archivedCount = plans.filter((plan) => !plan.isActive).length;
+
+  const closeAction = () => {
+    if (actionPending) return;
+    setPendingAction(null);
+    setRevocationReason("");
+  };
+
+  const confirmAction = async () => {
+    if (!pendingAction) return;
+    setActionPending(true);
+    const { action, plan } = pendingAction;
+    let succeeded = false;
+    try {
+      if (action === "archive" && onArchivePlan) succeeded = await onArchivePlan(plan._id);
+      if (action === "restore" && onRestorePlan) succeeded = await onRestorePlan(plan._id);
+      if (action === "delete" && onDeletePlan) succeeded = await onDeletePlan(plan._id, plan.name);
+      if (action === "revoke" && onRevokePlan) succeeded = await onRevokePlan(plan._id, revocationReason.trim());
+      if (succeeded) {
+        setSelectedPlan(null);
+        setPendingAction(null);
+        setRevocationReason("");
+      }
+    } finally {
+      setActionPending(false);
+    }
+  };
+
+  const actionCopy = pendingAction ? {
+    archive: {
+      title: "Archive this fee plan?",
+      description: "The plan will stop generating invoices and move to the archived view. Existing invoices and payments stay unchanged.",
+      label: "Archive plan",
+      variant: "warning" as const,
+    },
+    restore: {
+      title: "Restore this fee plan?",
+      description: "The plan will return to the active list and can generate new invoices again.",
+      label: "Restore plan",
+      variant: "emerald" as const,
+    },
+    delete: {
+      title: "Permanently delete this fee plan?",
+      description: `Delete ${pendingAction.plan.name}. This is allowed only because it has no application runs or invoices. This action cannot be undone.`,
+      label: "Delete permanently",
+      variant: "danger" as const,
+    },
+    revoke: {
+      title: "Revoke unpaid invoices?",
+      description: `${pendingAction.plan.usage.revocableInvoiceCount} unpaid invoice${pendingAction.plan.usage.revocableInvoiceCount === 1 ? "" : "s"} will be cancelled and this plan will be archived. ${pendingAction.plan.usage.blockedPaidInvoiceCount} paid or partly paid invoice${pendingAction.plan.usage.blockedPaidInvoiceCount === 1 ? "" : "s"} will remain unchanged.`,
+      label: "Revoke invoices",
+      variant: "danger" as const,
+    },
+  }[pendingAction.action] : null;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 border-b border-slate-950/5 pb-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 px-1">Revenue Blueprints</h3>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block px-1">Active Templates</p>
+          <div className="flex rounded-full border border-slate-200 bg-white p-0.5">
+            <button
+              type="button"
+              onClick={() => setView("active")}
+              className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${view === "active" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              Active
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("archived")}
+              className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${view === "archived" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}
+            >
+              Archived {archivedCount > 0 ? `(${archivedCount})` : ""}
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-1">
           <FeePlanSortButton
@@ -97,7 +186,7 @@ export function FeePlanList({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {plans.map((plan) => (
+        {visiblePlans.map((plan) => (
           <div key={plan._id} className="group relative rounded-2xl border border-slate-200 bg-white p-5 hover:border-slate-400 transition-all shadow-xs">
             <div className="flex items-start justify-between gap-4 mb-4">
                <div className="min-w-0">
@@ -157,10 +246,10 @@ export function FeePlanList({
             </div>
           </div>
         ))}
-        {plans.length === 0 && (
+        {visiblePlans.length === 0 && (
           <div className="col-span-full py-16 text-center rounded-3xl border border-dashed border-slate-200 bg-white/50">
-            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">No Plans Defined</p>
-            <p className="text-xs text-slate-400 mt-1">Fee templates will appear here.</p>
+            <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em]">No {view} plans</p>
+            <p className="text-xs text-slate-400 mt-1">{view === "active" ? "Create a fee plan or restore one from the archive." : "Archived fee plans will appear here."}</p>
           </div>
         )}
       </div>
@@ -202,6 +291,19 @@ export function FeePlanList({
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Currency</span>
                   <p className="text-xs font-bold text-slate-900">{selectedPlan.currency || "NGN"}</p>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+                  <span><strong className="text-slate-900">{selectedPlan.usage.invoiceCount}</strong> <span className="text-slate-500">issued</span></span>
+                  <span><strong className="text-slate-900">{selectedPlan.usage.revocableInvoiceCount}</strong> <span className="text-slate-500">unpaid and revocable</span></span>
+                  <span><strong className="text-slate-900">{selectedPlan.usage.blockedPaidInvoiceCount}</strong> <span className="text-slate-500">payment-protected</span></span>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                  {selectedPlan.usage.canDelete
+                    ? "No invoice or application history exists. This plan can be permanently deleted."
+                    : "This plan has billing history and cannot be deleted. Archive it to stop future use."}
+                </p>
               </div>
 
               {/* Applicability */}
@@ -298,32 +400,104 @@ export function FeePlanList({
             </div>
 
             {/* Modal Footer Actions */}
-            <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 px-6 py-4 bg-slate-50/60">
-              <button
-                type="button"
-                onClick={() => setSelectedPlan(null)}
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-              >
-                Close
-              </button>
-              {onApplyPlan && (
+            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedPlan.isActive && onArchivePlan && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingAction({ action: "archive", plan: selectedPlan })}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                    Archive
+                  </button>
+                )}
+                {!selectedPlan.isActive && onRestorePlan && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingAction({ action: "restore", plan: selectedPlan })}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Restore
+                  </button>
+                )}
+                {selectedPlan.usage.revocableInvoiceCount > 0 && onRevokePlan && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingAction({ action: "revoke", plan: selectedPlan })}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                    Revoke invoices
+                  </button>
+                )}
+                {selectedPlan.usage.canDelete && onDeletePlan && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingAction({ action: "delete", plan: selectedPlan })}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-2.5">
                 <button
                   type="button"
-                  onClick={() => {
-                    const id = selectedPlan._id;
-                    setSelectedPlan(null);
-                    onApplyPlan(id);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-xs font-bold text-white hover:bg-slate-800 transition shadow-xs cursor-pointer"
+                  onClick={() => setSelectedPlan(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
                 >
-                  <Send className="h-3.5 w-3.5" />
-                  <span>Bulk Invoice with this Plan</span>
+                  Close
                 </button>
-              )}
+                {selectedPlan.isActive && onApplyPlan && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = selectedPlan._id;
+                      setSelectedPlan(null);
+                      onApplyPlan(id);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-xs font-bold text-white hover:bg-slate-800 transition shadow-xs cursor-pointer"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>Bulk Invoice with this Plan</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        isOpen={Boolean(pendingAction && actionCopy)}
+        onClose={closeAction}
+        onConfirm={() => void confirmAction()}
+        title={actionCopy?.title ?? "Confirm fee-plan action"}
+        description={actionCopy?.description ?? "Review this fee-plan action before continuing."}
+        confirmLabel={actionCopy?.label}
+        confirmVariant={actionCopy?.variant}
+        isLoading={actionPending}
+        confirmDisabled={pendingAction?.action === "revoke" && revocationReason.trim().length < 5}
+      >
+        {pendingAction?.action === "revoke" && (
+          <label className="block space-y-1.5 text-xs font-bold text-slate-700">
+            Reason for revocation
+            <textarea
+              value={revocationReason}
+              onChange={(event) => setRevocationReason(event.target.value)}
+              maxLength={500}
+              rows={3}
+              autoFocus
+              placeholder="For example, the approved fee amount changed."
+              className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            />
+            <span className="block text-[10px] font-medium text-slate-400">At least 5 characters. This reason is stored on every cancelled invoice.</span>
+          </label>
+        )}
+      </ConfirmationModal>
     </div>
   );
 }
