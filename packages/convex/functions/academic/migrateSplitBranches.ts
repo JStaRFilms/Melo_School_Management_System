@@ -2,6 +2,11 @@ import { internalMutation, internalQuery } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
+import {
+  adjustSchoolEnrollmentCount,
+  initializeSchoolEnrollmentCount,
+  isCurrentEnrollment,
+} from "./studentEnrollmentCounts";
 
 export const previewSplitMigrationInternal = internalQuery({
   args: {},
@@ -130,6 +135,7 @@ export const executeSplitMigrationInternal = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
+      await initializeSchoolEnrollmentCount(ctx, rugaSchoolId);
     } else {
       rugaSchoolId = rugaSchool._id;
       await ctx.db.patch(rugaSchoolId, {
@@ -241,6 +247,10 @@ export const executeSplitMigrationInternal = internalMutation({
         schoolId: rugaSchoolId,
         updatedAt: now,
       });
+      if (isCurrentEnrollment(student)) {
+        await adjustSchoolEnrollmentCount(ctx, fedrahSchoolId, -1);
+        await adjustSchoolEnrollmentCount(ctx, rugaSchoolId, 1);
+      }
 
       // Move student's user account
       const studentUser = await ctx.db.get(student.userId);

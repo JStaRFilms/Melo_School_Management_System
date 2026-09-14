@@ -3,6 +3,11 @@ import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
 import type { Id, TableNames } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
+import {
+  adjustSchoolEnrollmentCount,
+  initializeSchoolEnrollmentCount,
+  isCurrentEnrollment,
+} from "./studentEnrollmentCounts";
 
 // Dependency order tiers for duplication
 export const DUPLICATION_TIERS: string[][] = [
@@ -586,6 +591,7 @@ export const initBranchSplit = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
+      await initializeSchoolEnrollmentCount(ctx, rugaSchoolId);
     } else {
       rugaSchoolId = rugaSchool._id;
       await ctx.db.patch(rugaSchoolId, {
@@ -821,6 +827,9 @@ export const duplicateBatch = internalMutation({
 
       // Insert duplicated row
       const newId = await ctx.db.insert(currentTable, newDoc);
+      if (currentTable === "students" && isCurrentEnrollment(newDoc)) {
+        await adjustSchoolEnrollmentCount(ctx, targetSchoolId, 1);
+      }
       idMaps[currentTable][oldId] = newId as string;
     }
 
@@ -1095,6 +1104,9 @@ export const cascadeDeleteWrongBranchData = internalMutation({
       }
 
       await ctx.db.delete(student._id);
+      if (isCurrentEnrollment(student)) {
+        await adjustSchoolEnrollmentCount(ctx, schoolId, -1);
+      }
     }
 
     // Report card term settings groups
@@ -1652,6 +1664,9 @@ export const activateRetainedStudents = internalMutation({
           archivedBy: undefined,
           updatedAt: Date.now(),
         });
+        if ((student.enrollmentStatus ?? "active") === "active") {
+          await adjustSchoolEnrollmentCount(ctx, school._id, 1);
+        }
         if (branch.key === "fedrah") fedrahActivated++;
         else rugaActivated++;
       }
