@@ -14,7 +14,7 @@ import {
   approveCampaignPriceTermsRef, approveCampaignPublicationRequirementsRef, closeCampaignRef, createCampaignDraftRef, createReplacementDraftRef, editCampaignDraftRef, listCampaignsRef, listQueuePageRef, publishCampaignRef,
   type CampaignBundle, type CampaignFieldInput, type CampaignInput, type CampaignRequirementInput,
 } from "@school/convex/functions/admissions/refs";
-import { createCampaignEditorValues, parseDefinitions, slugifyCampaignValue, validateCampaign, type CampaignEditorValues } from "./admissions-model";
+import { createCampaignEditorValues, nextCampaignDefinitionKey, parseDefinitions, slugifyCampaignValue, validateCampaign, type CampaignEditorValues } from "./admissions-model";
 
 const fieldClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm transition placeholder:text-slate-400 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200 disabled:bg-slate-100 disabled:text-slate-500";
 const buttonClass = "inline-flex items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
@@ -388,7 +388,7 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
     saveDefinitions(fields, requirements.map((requirement, itemIndex) => itemIndex === index ? next : requirement));
   };
   const addQuestion = () => saveDefinitions([...fields, {
-    fieldKey: `question-${fields.length + 1}`,
+    fieldKey: nextCampaignDefinitionKey("question", fields.map((field) => field.fieldKey)),
     sectionKey: "additional-information",
     kind: "text",
     label: "",
@@ -399,7 +399,7 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
     order: fields.length + 1,
   }], requirements);
   const addRequirement = () => saveDefinitions(fields, [...requirements, {
-    requirementKey: `document-${requirements.length + 1}`,
+    requirementKey: nextCampaignDefinitionKey("document", requirements.map((requirement) => requirement.requirementKey)),
     category: "identity",
     label: "",
     requiredMode: "optional",

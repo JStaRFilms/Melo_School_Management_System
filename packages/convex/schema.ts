@@ -534,7 +534,7 @@ export default defineSchema({
   })
     .index("by_source_purchase_attempt", ["sourcePurchaseAttemptId"])
     .index("by_guardian_and_state_and_created_at", ["guardianId", "state", "createdAt"])
-    .index("by_school_and_guardian_and_created_at", ["schoolId", "guardianId", "createdAt"])
+    .index("by_school_and_guardian_and_created_at", { fields: ["schoolId", "guardianId", "createdAt"], staged: true })
     .index("by_school_and_state_and_created_at", ["schoolId", "state", "createdAt"])
     .index("by_application", ["applicationId"])
     .index("by_school", ["schoolId"]),
@@ -570,7 +570,7 @@ export default defineSchema({
     .index("by_entitlement", ["entitlementId"])
     .index("by_school_and_public_id", ["schoolId", "publicId"])
     .index("by_guardian_and_updated_at", ["guardianId", "updatedAt"])
-    .index("by_school_and_guardian_and_updated_at", ["schoolId", "guardianId", "updatedAt"])
+    .index("by_school_and_guardian_and_updated_at", { fields: ["schoolId", "guardianId", "updatedAt"], staged: true })
     .index("by_school_and_state_and_updated_at", ["schoolId", "state", "updatedAt"])
     .index("by_school_and_intake_and_state", ["schoolId", "intakeId", "state"])
     .index("by_school", ["schoolId"]),
@@ -1005,7 +1005,7 @@ export default defineSchema({
     .index("by_school_and_state_and_scheduled_at", ["schoolId", "state", "scheduledAt"])
     .index("by_application", ["applicationId"])
     .index("by_school_and_policy_key", ["schoolId", "policyKey"])
-    .index("by_state_and_scheduled_at", ["state", "scheduledAt"])
+    .index("by_state_and_scheduled_at", { fields: ["state", "scheduledAt"], staged: true })
     .index("by_school", ["schoolId"]),
 
   schoolCapabilityGrants: defineTable({
@@ -2951,7 +2951,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
-    .index("by_storage", ["storageId"])
+    .index("by_storage", { fields: ["storageId"], staged: true })
     .index("by_school_and_material", ["schoolId", "materialId"])
     .index("by_school_and_status", ["schoolId", "status"])
     .index("by_material_and_status", ["materialId", "status"]),

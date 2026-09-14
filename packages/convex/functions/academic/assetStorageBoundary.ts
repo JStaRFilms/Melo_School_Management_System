@@ -71,7 +71,7 @@ async function collectIndexedStorageClaims(
   ctx: Context,
   storageId: Id<"_storage">,
 ): Promise<CollectedStorageClaim[]> {
-  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, ocrJobs, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
+  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
     ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_storage_id", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
@@ -79,7 +79,6 @@ async function collectIndexedStorageClaims(
     ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
-    ctx.db.query("knowledgeOcrJobs").withIndex("by_storage", q => q.eq("storageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
     ctx.db.query("assetUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("schoolAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
     ctx.db.query("schoolAssets").withIndex("by_rollback_storage", q => q.eq("rollbackStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
@@ -89,7 +88,7 @@ async function collectIndexedStorageClaims(
     ctx.db.query("issuedReportCards").withIndex("by_student_photo_storage", q => q.eq("studentPhotoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
   ]);
   const primaryClaimSets = [admissions, admissionsUploadIntents, siteAssets, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup];
-  const referenceClaimSets = [schools, ocrJobs, reportLogos, reportPhotos];
+  const referenceClaimSets = [schools, reportLogos, reportPhotos];
   if (primaryClaimSets.some((rows) => rows.length > PRIMARY_CLAIM_LIMIT) || referenceClaimSets.some((rows) => rows.length > REFERENCE_CLAIM_LIMIT)) {
     throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
   }
@@ -111,7 +110,6 @@ async function collectIndexedStorageClaims(
       schoolId: row.schoolId,
       ...(row.status === "completed" && row.materialId ? { linkedOwnerId: String(row.materialId) } : {}),
     })),
-    ...ocrJobs.map(row => ({ purpose: "knowledgeOcrJobReference" as const, ownerId: String(row._id), schoolId: row.schoolId, linkedOwnerId: String(row.materialId) })),
     ...intents.map(row => ({
       purpose: "assetUploadIntent" as const,
       ownerId: String(row._id),
@@ -138,12 +136,13 @@ export async function collectStorageClaimInventory(
   }
   if (uniqueStorageIds.length === 0) return new Map();
 
-  const [indexedClaims, demoRuns, importWorkspaces] = await Promise.all([
+  const [indexedClaims, demoRuns, importWorkspaces, ocrJobs] = await Promise.all([
     Promise.all(uniqueStorageIds.map((storageId) => collectIndexedStorageClaims(ctx, storageId))),
     ctx.db.query("demoSeedRuns").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
     ctx.db.query("importWorkspaces").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
+    ctx.db.query("knowledgeOcrJobs").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
   ]);
-  if (demoRuns.length > UNINDEXED_CLAIM_SCAN_LIMIT || importWorkspaces.length > UNINDEXED_CLAIM_SCAN_LIMIT) {
+  if (demoRuns.length > UNINDEXED_CLAIM_SCAN_LIMIT || importWorkspaces.length > UNINDEXED_CLAIM_SCAN_LIMIT || ocrJobs.length > UNINDEXED_CLAIM_SCAN_LIMIT) {
     throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
   }
 
@@ -168,6 +167,14 @@ export async function collectStorageClaimInventory(
         ownerId: `${String(workspace._id)}:${index}`,
         schoolId: workspace.schoolId,
       });
+    });
+  }
+  for (const job of ocrJobs) {
+    inventory.get(String(job.storageId))?.push({
+      purpose: "knowledgeOcrJobReference",
+      ownerId: String(job._id),
+      schoolId: job.schoolId,
+      linkedOwnerId: String(job.materialId),
     });
   }
   return inventory;

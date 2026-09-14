@@ -58,16 +58,26 @@ export function isDraftConflict(error: unknown) { return error instanceof Error 
 
 export function dateInputToUtcTimestamp(value: string) { return Date.parse(`${value}T00:00:00Z`); }
 
+export function multiSelectValues(value: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    // Older in-memory values used comma-delimited text.
+  }
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 export function answerDisplay(kind: string, serializedValue: string) {
   if (kind === "date") { const value = Number(serializedValue); return Number.isSafeInteger(value) ? new Date(value).toISOString().slice(0, 10) : ""; }
   if (kind !== "multi_select") return serializedValue;
-  try { const value: unknown = JSON.parse(serializedValue); return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").join(", ") : ""; } catch { return ""; }
+  return JSON.stringify(multiSelectValues(serializedValue));
 }
 
 export function answerPayload(kind: string, value: string) {
   if (kind === "number") return { valueType: "number" as const, serializedValue: String(Number(value)) };
   if (kind === "boolean" || kind === "checkbox") return { valueType: "boolean" as const, serializedValue: value === "true" ? "true" : "false" };
-  if (kind === "multi_select") return { valueType: "string_array" as const, serializedValue: JSON.stringify(value.split(",").map((item) => item.trim()).filter(Boolean)) };
+  if (kind === "multi_select") return { valueType: "string_array" as const, serializedValue: JSON.stringify(multiSelectValues(value)) };
   if (kind === "date") return { valueType: "date" as const, serializedValue: String(dateInputToUtcTimestamp(value)) };
   return { valueType: "string" as const, serializedValue: value };
 }
@@ -89,7 +99,7 @@ function typedAnswer(kind: string, value: string): string | number | boolean | s
   if (!value) return undefined;
   if (kind === "boolean") return value === "true";
   if (kind === "number") return Number(value);
-  if (kind === "multi_select") return value.split(",").map((item) => item.trim()).filter(Boolean);
+  if (kind === "multi_select") return multiSelectValues(value);
   if (kind === "date") return dateInputToUtcTimestamp(value);
   return value;
 }

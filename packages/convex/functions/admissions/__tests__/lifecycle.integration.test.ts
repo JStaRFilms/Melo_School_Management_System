@@ -135,9 +135,14 @@ it("serves the restored UI read models without caller-supplied guardian identity
   expect(campaigns[0]).toMatchObject({ lifecycle: "published", programmeSlug: "primary", amountMinor: 500_000 });
   const landing = await f.t.query(listPublishedOfferingsRef, { schoolSlug: "admissions-school", now: Date.now() });
   expect(landing).toMatchObject({ available: true, offerings: [{ intakeSlug: "2026", availability: "open", amountMinor: 500_000 }] });
-  const paid = await paidApplication(f, "ui-owned-workspace");
+  const attempt = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "ui-owned-workspace" });
+  const payment = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: "test", providerEventId: "event-ui-owned-workspace", eventType: "charge.success", bodyDigest: "digest-ui-owned-workspace", amountMinor: attempt.amountMinor, currency: attempt.currency, receivedAt: Date.now() });
+  if (!payment.entitlementId) throw new Error("Expected paid entitlement");
+  const availableWorkspace = await f.guardian.query(listGuardianWorkspaceBySlugRef, { schoolSlug: "admissions-school" });
+  expect(availableWorkspace.entitlements).toEqual([expect.objectContaining({ entitlementId: payment.entitlementId, state: "available" })]);
+  const application = await f.guardian.mutation(createApplicationRef, { entitlementId: payment.entitlementId });
   const workspace = await f.guardian.query(listGuardianWorkspaceBySlugRef, { schoolSlug: "admissions-school" });
-  expect(workspace.applications).toEqual([expect.objectContaining({ applicationId: paid.application.applicationId })]);
+  expect(workspace.applications).toEqual([expect.objectContaining({ applicationId: application.applicationId })]);
   const otherWorkspace = await f.otherGuardian.query(listGuardianWorkspaceBySlugRef, { schoolSlug: "admissions-school" });
   expect(otherWorkspace.applications).toEqual([]);
 });

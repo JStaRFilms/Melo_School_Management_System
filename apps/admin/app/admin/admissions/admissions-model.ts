@@ -14,6 +14,13 @@ function localDateTime(value: Date, hour: number) {
   return new Date(local.getTime() - offset).toISOString().slice(0, 16);
 }
 
+export function nextCampaignDefinitionKey(prefix: "question" | "document", existingKeys: readonly string[]) {
+  const used = new Set(existingKeys);
+  let suffix = 1;
+  while (used.has(`${prefix}-${suffix}`)) suffix += 1;
+  return `${prefix}-${suffix}`;
+}
+
 export function slugifyCampaignValue(value: string) {
   return value
     .trim()

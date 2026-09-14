@@ -26,9 +26,16 @@ const dangerButtonClass = "inline-flex items-center justify-center rounded-lg bo
 function message(error: unknown) { return admissionsAdminErrorMessage(error); }
 function statusLabel(value: string) { return value.replaceAll("_", " "); }
 
-export function openAdminAdmissionsDocument(url: string) {
+export function openAdminAdmissionsDocument(url: string, openedWindow?: Window | null) {
   if (!/^\/api\/admissions\/documents\/[a-f0-9]{64}$/.test(url)) throw new Error("Checked document access is unavailable.");
-  window.open(url, "_blank", "noopener,noreferrer");
+  if (openedWindow) openedWindow.location.assign(url);
+  else window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function reserveDocumentWindow() {
+  const openedWindow = window.open("about:blank", "_blank");
+  if (openedWindow) openedWindow.opener = null;
+  return openedWindow;
 }
 
 function detailStateBadge(state: string) {
@@ -297,6 +304,19 @@ export function DocumentRow({ schoolId, document, canReview, onFeedback }: { sch
   const access = useMutation(getDocumentAccessRef), review = useMutation(recordDocumentReviewRef);
   const [reason, setReason] = useState("APPLICATION_REVIEW"), [guardianMessage, setGuardianMessage] = useState("");
   async function perform(operation: () => Promise<unknown>, success: string) { try { await operation(); onFeedback(success); appToast.success(success); } catch (error) { const text = message(error); onFeedback(text); appToast.error("Document action failed", { description: text }); } }
+  function performAccess(action: "view" | "download") {
+    const openedWindow = reserveDocumentWindow();
+    void perform(async () => {
+      try {
+        const result = await access({ schoolId, documentKey: document.documentKey, action, reason });
+        if (result.status !== "available") throw new Error("Checked document access is unavailable.");
+        openAdminAdmissionsDocument(result.url, openedWindow);
+      } catch (error) {
+        openedWindow?.close();
+        throw error;
+      }
+    }, action === "view" ? "Checked document access granted" : "Checked document download granted");
+  }
   return (
     <article className="space-y-3 rounded-lg border border-slate-200 bg-white p-3.5 shadow-sm">
       <div className="flex flex-wrap justify-between gap-2">
@@ -316,10 +336,10 @@ export function DocumentRow({ schoolId, document, canReview, onFeedback }: { sch
             <input className={`${inputClass} mt-1`} value={reason} onChange={(event) => setReason(event.target.value)} />
           </label>
           <div className="flex flex-wrap gap-2">
-            <button className={secondaryButtonClass} onClick={() => void perform(async () => { const result = await access({ schoolId, documentKey: document.documentKey, action: "view", reason }); if (result.status !== "available") throw new Error("Checked document access is unavailable."); openAdminAdmissionsDocument(result.url); }, "Checked document access granted")}>
+            <button className={secondaryButtonClass} onClick={() => performAccess("view")}>
               View
             </button>
-            <button className={secondaryButtonClass} onClick={() => void perform(async () => { const result = await access({ schoolId, documentKey: document.documentKey, action: "download", reason }); if (result.status !== "available") throw new Error("Checked document access is unavailable."); openAdminAdmissionsDocument(result.url); }, "Checked document download granted")}>
+            <button className={secondaryButtonClass} onClick={() => performAccess("download")}>
               Download
             </button>
             <button className={buttonClass} onClick={() => void perform(() => review({ schoolId, documentKey: document.documentKey, result: "accepted" }), "Document accepted")}>

@@ -172,7 +172,9 @@ export const processRetentionCleanup = internalMutation({
   handler: async (ctx, args) => {
     const now = args.now ?? Date.now();
     const limit = Math.min(Math.max(Math.trunc(args.limit ?? 25), 1), 50);
-    const jobs = await ctx.db.query("admissionsRetentionJobs").withIndex("by_state_and_scheduled_at", (q) => q.eq("state", "running").lte("scheduledAt", now)).take(limit);
+    const rolloutJobs = await ctx.db.query("admissionsRetentionJobs").take(501);
+    if (rolloutJobs.length > 500) throw new ConvexError("Retention job catalogue exceeds the supported rollout bound");
+    const jobs = rolloutJobs.filter((job) => job.state === "running" && job.scheduledAt <= now).sort((left, right) => left.scheduledAt - right.scheduledAt).slice(0, limit);
     let inspected = 0, archived = 0, deleted = 0, blocked = 0;
     let continuationRequired = false;
     for (const job of jobs) {
