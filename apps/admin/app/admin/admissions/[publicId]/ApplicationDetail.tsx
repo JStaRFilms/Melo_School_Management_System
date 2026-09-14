@@ -20,8 +20,17 @@ const buttonClass = "inline-flex items-center justify-center rounded-lg bg-slate
 const secondaryButtonClass = "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 const dangerButtonClass = "inline-flex items-center justify-center rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50 hover:border-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
-function message(error: unknown) { return error instanceof Error ? error.message : "The operation failed."; }
+export function admissionsAdminErrorMessage(error: unknown) {
+  const raw = error instanceof Error ? error.message : "";
+  return /\[CONVEX|ConvexError|Called by client/i.test(raw) ? "The operation could not be completed. Please try again." : raw || "The operation failed.";
+}
+function message(error: unknown) { return admissionsAdminErrorMessage(error); }
 function statusLabel(value: string) { return value.replaceAll("_", " "); }
+
+export function openAdminAdmissionsDocument(url: string) {
+  if (!/^\/api\/admissions\/documents\/[a-f0-9]{64}$/.test(url)) throw new Error("Checked document access is unavailable.");
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 
 function detailStateBadge(state: string) {
   switch (state) {
@@ -328,7 +337,7 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
   );
 }
 
-function DocumentRow({ schoolId, document, canReview, onFeedback }: { schoolId: Id<"schools">; document: DocumentMetadata; canReview: boolean; onFeedback: (value: string) => void }) {
+export function DocumentRow({ schoolId, document, canReview, onFeedback }: { schoolId: Id<"schools">; document: DocumentMetadata; canReview: boolean; onFeedback: (value: string) => void }) {
   const access = useMutation(getDocumentAccessRef), review = useMutation(recordDocumentReviewRef);
   const [reason, setReason] = useState("APPLICATION_REVIEW"), [guardianMessage, setGuardianMessage] = useState("");
   async function perform(operation: () => Promise<unknown>, success: string) { try { await operation(); onFeedback(success); appToast.success(success); } catch (error) { const text = message(error); onFeedback(text); appToast.error("Document action failed", { description: text }); } }
@@ -341,7 +350,6 @@ function DocumentRow({ schoolId, document, canReview, onFeedback }: { schoolId: 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span>Submitted: <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-700">{statusLabel(document.submittedState)}</span></span>
             <span>Current: <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium ${document.currentState === "accepted" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ["rejected", "needs_replacement"].includes(document.currentState) ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50 text-slate-700"}`}>{statusLabel(document.currentState)}</span></span>
-            <span className="font-mono text-slate-500 break-all">SHA-256: {document.sha256}</span>
           </div>
         </div>
       </div>
@@ -352,8 +360,11 @@ function DocumentRow({ schoolId, document, canReview, onFeedback }: { schoolId: 
             <input className={`${inputClass} mt-1`} value={reason} onChange={(event) => setReason(event.target.value)} />
           </label>
           <div className="flex flex-wrap gap-2">
-            <button className={secondaryButtonClass} onClick={() => void perform(async () => { const result = await access({ schoolId, documentKey: document.documentKey, action: "view", reason }); if (result.status !== "available") throw new Error("Checked document access is unavailable."); window.open(result.url, "_blank", "noopener,noreferrer"); }, "Checked document access granted")}>
+            <button className={secondaryButtonClass} onClick={() => void perform(async () => { const result = await access({ schoolId, documentKey: document.documentKey, action: "view", reason }); if (result.status !== "available") throw new Error("Checked document access is unavailable."); openAdminAdmissionsDocument(result.url); }, "Checked document access granted")}>
               View
+            </button>
+            <button className={secondaryButtonClass} onClick={() => void perform(async () => { const result = await access({ schoolId, documentKey: document.documentKey, action: "download", reason }); if (result.status !== "available") throw new Error("Checked document access is unavailable."); openAdminAdmissionsDocument(result.url); }, "Checked document download granted")}>
+              Download
             </button>
             <button className={buttonClass} onClick={() => void perform(() => review({ schoolId, documentKey: document.documentKey, result: "accepted" }), "Document accepted")}>
               Accept document

@@ -9,6 +9,7 @@ import {
   admissionsDocumentUploadOptions,
   uploadAdmissionsDocument,
 } from "./functions/admissions/uploadHttp";
+import { streamAdmissionsDocument } from "./functions/admissions/accessHttp";
 
 const http = httpRouter();
 
@@ -37,6 +38,11 @@ http.route({
   path: "/admissions/document-upload",
   method: "POST",
   handler: uploadAdmissionsDocument,
+});
+http.route({
+  path: "/admissions/document-access",
+  method: "POST",
+  handler: streamAdmissionsDocument,
 });
 
 export default http;

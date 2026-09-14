@@ -1,14 +1,18 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import type { Id } from "../../_generated/dataModel";
-import { documentAccessResultValidator } from "../foundation/contracts";
+import { documentAccessResultValidator, documentAccessUpstreamValidator } from "../foundation/contracts";
 import {
   admissionsError,
+  documentStateAllowsAccess,
   hasFreshAuthentication,
+  issueDocumentAccessGrant,
   normalizeRequiredText,
   recordAdmissionsAudit,
+  recordDocumentAccessAudit,
   requireAdmissionsStaff,
+  sha256Hex,
 } from "./shared";
 import { getCurrentRetentionPolicy } from "./retention";
 import { conditionMatches, isSensitiveDataClass, validateAnswerForField } from "./validation";
@@ -47,7 +51,6 @@ const documentMetadataValidator = v.object({
   fileName: v.string(),
   mimeType: v.string(),
   byteSize: v.number(),
-  sha256: v.string(),
   version: v.number(),
   submittedState: v.string(),
   currentState: v.string(),
@@ -144,7 +147,6 @@ async function loadImmutableDetail(ctx: QueryCtx | MutationCtx, schoolId: Id<"sc
       fileName: document.fileName,
       mimeType: requiredSnapshotString(manifest.mimeType, "Document MIME type"),
       byteSize: typeof manifest.byteSize === "number" ? manifest.byteSize : document.byteSize,
-      sha256: requiredSnapshotString(manifest.sha256, "Document digest"),
       version: typeof manifest.version === "number" ? manifest.version : document.version,
       submittedState: requiredSnapshotString(manifest.state, "Document submitted state"),
       currentState: document.state,
@@ -345,31 +347,77 @@ export const recordDocumentReview = mutation({
   },
 });
 
+function requiredDocumentAccessCapabilities(document: { sensitivity: string }, action: "view" | "download") {
+  return action === "download" || document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security"
+    ? ["enrollment.documents.review", "enrollment.applications.view_sensitive"]
+    : ["enrollment.documents.review"];
+}
+
 export const getDocumentAccess = mutation({
   args: { schoolId: v.id("schools"), documentKey: v.string(), action: v.union(v.literal("view"), v.literal("download")), reason: v.string() },
   returns: documentAccessResultValidator,
   handler: async (ctx, args) => {
-    const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", args.documentKey.trim())).unique();
-    if (!document || document.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Document not found");
-    const required = args.action === "download" || document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security"
-      ? ["enrollment.documents.review", "enrollment.applications.view_sensitive"]
-      : ["enrollment.documents.review"];
     let actor;
     try {
-      actor = await requireAdmissionsStaff(ctx, args.schoolId, required);
+      actor = await requireAdmissionsStaff(ctx, args.schoolId, []);
     } catch {
-      await ctx.db.insert("admissionsDocumentAccessAudits", { schoolId: args.schoolId, documentId: document._id, actorKind: "system", action: args.action, outcome: "denied", reason: "PERMISSION_DENIED", createdAt: Date.now() });
-      return { status: "unavailable" as const, documentKey: document.documentKey };
+      return { status: "unavailable" as const };
     }
+    const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", args.documentKey.trim())).unique();
+    if (!document || document.schoolId !== args.schoolId) return { status: "unavailable" as const };
+    try {
+      await requireAdmissionsStaff(ctx, args.schoolId, requiredDocumentAccessCapabilities(document, args.action));
+    } catch {
+      await recordDocumentAccessAudit(ctx, { document, actorKind: "staff", actorUserId: actor.userId, action: args.action, outcome: "denied", reason: "PERMISSION_DENIED" });
+      return { status: "unavailable" as const };
+    }
+    const application = await ctx.db.get(document.applicationId);
     const freshAuthenticationRequired = document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security";
     const freshEnough = !freshAuthenticationRequired || await hasFreshAuthentication(ctx);
-    if (["quarantined", "archived", "deleted"].includes(document.state) || !freshEnough) {
-      await ctx.db.insert("admissionsDocumentAccessAudits", { schoolId: args.schoolId, documentId: document._id, actorKind: "staff", actorUserId: actor.userId, action: args.action, outcome: "denied", reason: !freshEnough ? "FRESH_AUTH_REQUIRED" : normalizeRequiredText(args.reason, "Access reason", 240), createdAt: Date.now() });
-      return { status: "unavailable" as const, documentKey: document.documentKey };
+    if (!documentStateAllowsAccess(document, application) || !freshEnough) {
+      await recordDocumentAccessAudit(ctx, { document, actorKind: "staff", actorUserId: actor.userId, action: args.action, outcome: "denied", reason: !freshEnough ? "FRESH_AUTH_REQUIRED" : "ACCESS_STATE_DENIED" });
+      return { status: "unavailable" as const };
     }
-    const url = await ctx.storage.getUrl(document.storageId);
-    await ctx.db.insert("admissionsDocumentAccessAudits", { schoolId: args.schoolId, documentId: document._id, actorKind: "staff", actorUserId: actor.userId, action: args.action, outcome: url ? "granted" : "denied", reason: normalizeRequiredText(args.reason, "Access reason", 240), createdAt: Date.now() });
-    return url ? { status: "available" as const, documentKey: document.documentKey, url, expiresAt: null } : { status: "unavailable" as const, documentKey: document.documentKey };
+    const reason = normalizeRequiredText(args.reason, "Access reason", 240);
+    return await issueDocumentAccessGrant(ctx, { document, actorKind: "staff", actorUserId: actor.userId, audience: "admin", action: args.action, reason });
+  },
+});
+
+export const consumeDocumentAccessGrant = internalMutation({
+  args: { token: v.string() },
+  returns: documentAccessUpstreamValidator,
+  handler: async (ctx, args) => {
+    if (!/^[a-f0-9]{64}$/.test(args.token)) return { status: "unavailable" as const };
+    const tokenHash = await sha256Hex(args.token);
+    const grant = await ctx.db.query("admissionsDocumentAccessGrants").withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash)).unique();
+    if (!grant) return { status: "unavailable" as const };
+    const document = await ctx.db.get(grant.documentId);
+    if (!document) return { status: "unavailable" as const };
+    let actor;
+    try {
+      actor = await requireAdmissionsStaff(ctx, grant.schoolId, requiredDocumentAccessCapabilities(document, grant.action));
+    } catch {
+      await recordDocumentAccessAudit(ctx, { document, actorKind: "system", action: grant.action, outcome: "denied", reason: "PERMISSION_DENIED" });
+      return { status: "unavailable" as const };
+    }
+    const application = await ctx.db.get(document.applicationId);
+    const freshAuthenticationRequired = document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security";
+    const freshEnough = !freshAuthenticationRequired || await hasFreshAuthentication(ctx);
+    let deniedReason: string | null = null;
+    if (grant.actorKind !== "staff" || grant.audience !== "admin" || grant.actorUserId !== actor.userId) deniedReason = "WRONG_ACTOR_OR_AUDIENCE";
+    else if (grant.consumedAt !== undefined) deniedReason = "ACCESS_GRANT_REPLAYED";
+    else if (grant.expiresAt <= Date.now()) deniedReason = "ACCESS_GRANT_EXPIRED";
+    else if (grant.schoolId !== document.schoolId) deniedReason = "ACCESS_CONTEXT_DENIED";
+    else if (!documentStateAllowsAccess(document, application)) deniedReason = "ACCESS_STATE_DENIED";
+    else if (!freshEnough) deniedReason = "FRESH_AUTH_REQUIRED";
+    if (deniedReason) {
+      await recordDocumentAccessAudit(ctx, { document, actorKind: "staff", actorUserId: actor.userId, action: grant.action, outcome: "denied", reason: deniedReason });
+      return { status: "unavailable" as const };
+    }
+    const upstreamUrl = await ctx.storage.getUrl(document.storageId);
+    await ctx.db.patch(grant._id, { consumedAt: Date.now() });
+    await recordDocumentAccessAudit(ctx, { document, actorKind: "staff", actorUserId: actor.userId, action: grant.action, outcome: upstreamUrl ? "granted" : "denied", reason: upstreamUrl ? grant.reason ?? "ACCESS_GRANT_CONSUMED" : "STORAGE_UNAVAILABLE" });
+    return upstreamUrl ? { status: "available" as const, upstreamUrl, fileName: document.fileName, contentType: document.mimeType, byteSize: document.byteSize, action: grant.action } : { status: "unavailable" as const };
   },
 });
 

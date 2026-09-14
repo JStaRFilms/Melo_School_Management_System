@@ -16,6 +16,29 @@ function getStaticJwks() {
   return jwks && jwks.length > 0 ? jwks : undefined;
 }
 
+export function createConvexJwtPayload({
+  user,
+  session,
+}: {
+  user: Record<string, unknown>;
+  session: { createdAt: unknown };
+}) {
+  const userClaims = Object.fromEntries(
+    Object.entries(user).filter(([key]) => key !== "id" && key !== "image"),
+  );
+  const authenticatedAt = session.createdAt instanceof Date
+    ? session.createdAt.getTime()
+    : typeof session.createdAt === "number"
+      ? session.createdAt
+      : typeof session.createdAt === "string"
+        ? Date.parse(session.createdAt)
+        : Number.NaN;
+  if (!Number.isFinite(authenticatedAt) || authenticatedAt <= 0) {
+    throw new Error("Session authentication time is unavailable");
+  }
+  return { ...userClaims, authenticatedAt };
+}
+
 function escapeEmailHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -114,6 +137,7 @@ export function createAuthOptions(ctx: GenericCtx<DataModel>) {
         authConfig,
         jwks,
         jwksRotateOnTokenGenerationError: !jwks,
+        jwt: { definePayload: createConvexJwtPayload },
       }),
     ],
   } satisfies BetterAuthOptions;

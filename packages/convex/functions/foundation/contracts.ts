@@ -155,15 +155,27 @@ export const siteRevisionContentValidator = v.object({
   ),
 });
 
-/** Metadata-only output. Storage IDs and signed URLs are intentionally absent. */
+/** Browser-safe output. The URL is a same-origin proxy path containing only a one-time random grant. */
 export const documentAccessResultValidator = v.union(
   v.object({
     status: v.literal("available"),
-    documentKey: v.string(),
     url: v.string(),
-    expiresAt: v.union(v.number(), v.null()),
+    expiresAt: v.number(),
   }),
-  v.object({ status: v.literal("unavailable"), documentKey: v.string() })
+  v.object({ status: v.literal("unavailable") })
+);
+
+/** Server-route-only result used to stream an authorized document without redirecting the browser. */
+export const documentAccessUpstreamValidator = v.union(
+  v.object({
+    status: v.literal("available"),
+    upstreamUrl: v.string(),
+    fileName: v.string(),
+    contentType: v.string(),
+    byteSize: v.number(),
+    action: v.union(v.literal("view"), v.literal("download")),
+  }),
+  v.object({ status: v.literal("unavailable") })
 );
 
 export const freshAuthAssuranceValidator = v.object({

@@ -1,10 +1,12 @@
 import { createElement } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { AuthPanel, guardianFacingErrorMessage, PublishedField } from "../components/AdmissionsApply";
+import { ApplicationForm, AuthPanel, guardianFacingErrorMessage, PublishedField } from "../components/AdmissionsApply";
 import { answerPayload, availabilityMessage, conditionMatchesAnswers, correctionAllows, dateInputToUtcTimestamp, documentSelectionError, isDraftConflict, missingRequiredItemLabels, paymentMessage, validateSubmissionInput } from "../lib/journey";
 
 const authMocks = vi.hoisted(() => ({ signUp: vi.fn(), signIn: vi.fn(), resend: vi.fn(), signOut: vi.fn() }));
+const convexMocks = vi.hoisted(() => ({ mutate: vi.fn() }));
+vi.mock("convex/react", () => ({ useMutation: () => convexMocks.mutate, useQuery: () => undefined, useAction: () => vi.fn(), useConvexAuth: () => ({ isAuthenticated: false, isLoading: false }) }));
 vi.mock("@/lib/auth-client", () => ({ authClient: { useSession: () => ({ data: null, isPending: false }), signUp: { email: authMocks.signUp }, signIn: { email: authMocks.signIn }, sendVerificationEmail: authMocks.resend, signOut: authMocks.signOut } }));
 vi.mock("@/lib/auth-server", () => ({ getToken: vi.fn(async () => "guardian-token") }));
 
@@ -25,6 +27,15 @@ describe("application draft, correction, and submission", () => {
   it("requires signer, relationship, and declaration before submission", () => { expect(validateSubmissionInput({ signerName: "", signerRelationship: "Parent", declarationAccepted: true })).toMatch(/signer name/); expect(validateSubmissionInput({ signerName: "Guardian", signerRelationship: "", declarationAccepted: true })).toMatch(/relationship/); expect(validateSubmissionInput({ signerName: "Guardian", signerRelationship: "Parent", declarationAccepted: false })).toMatch(/declaration/); expect(validateSubmissionInput({ signerName: "Guardian", signerRelationship: "Parent", declarationAccepted: true })).toBeNull(); });
   it("names missing published questions and documents before submission", () => { const missing = missingRequiredItemLabels({ fields: [{ fieldKey: "language", label: "Preferred language", requiredMode: "required", conditionalRuleJson: null }], requirements: [{ requirementId: "requirement-1", label: "Birth certificate", requiredMode: "required", conditionJson: null }], answers: {}, fieldKinds: new Map([["language", "select"]]), documents: [] }); expect(missing).toEqual(["Preferred language", "Birth certificate"]); });
   it("rejects unsupported, oversized, and excess documents before upload", () => { const base = { acceptedMimeTypes: ["application/pdf"], maxBytes: 1024, maxFiles: 1, activeFileCount: 0, replacementAllowed: false }; expect(documentSelectionError({ ...base, file: { type: "image/png", size: 100 } })).toMatch(/accepted file types/); expect(documentSelectionError({ ...base, file: { type: "application/pdf", size: 2048 } })).toMatch(/too large/); expect(documentSelectionError({ ...base, activeFileCount: 1, file: { type: "application/pdf", size: 100 } })).toMatch(/at most 1 file/); expect(documentSelectionError({ ...base, file: { type: "application/pdf", size: 100 } })).toBeNull(); });
+  it("renders guardian documents without internal IDs and opens only the Melo proxy URL", async () => {
+    const proxyUrl = `/api/admissions/documents/${"d".repeat(64)}`;
+    convexMocks.mutate.mockResolvedValue({ status: "available", url: proxyUrl, expiresAt: Date.now() + 60_000 });
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const view = render(createElement(ApplicationForm, { schoolSlug: "school", applicationId: "database-application-id", financialHold: false, safeMessages: [], conversion: null, draft: { state: "draft", draftVersion: 0, currentRevision: 0, safeMessages: [], requestedEntryLabel: null, profile: null, primaryContact: null, form: { version: 1, schemaVersion: "1", status: "published", fields: [], requirements: [{ requirementId: "database-requirement-id", requirementKey: "birth", category: "identity", label: "Birth certificate", requiredMode: "required", acceptedMimeTypes: ["application/pdf"], maxBytes: 1000, maxFiles: 1, sensitivity: "personal", purpose: "Age evidence", conditionJson: null, order: 1 }] }, declaration: { version: 1, title: "Declaration", body: "Confirm", purpose: "Attestation", status: "published" }, correction: null, answers: [], documents: [{ documentKey: "internal-document-key", requirementId: "database-requirement-id", category: "identity", state: "uploaded", version: 1 }] } } as never));
+    expect(view.container.textContent).not.toMatch(/internal-document-key|database-application-id|database-requirement-id|convex\.cloud|api\/storage|sha-256/i);
+    fireEvent.click(screen.getByRole("button", { name: "View own document" }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith(proxyUrl, "_blank", "noopener,noreferrer"));
+  });
 });
 
 describe("conditional and typed published fields", () => {

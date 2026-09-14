@@ -11,6 +11,7 @@ export type AdmissionsContext = QueryCtx | MutationCtx;
 
 export const DAY_MS = 86_400_000;
 export const UPLOAD_INTENT_TTL_MS = 15 * 60 * 1000;
+export const DOCUMENT_ACCESS_GRANT_TTL_MS = 60 * 1000;
 export const MAX_ADMISSIONS_DOCUMENT_BYTES = 20 * 1024 * 1024;
 export const ADMISSIONS_UPLOAD_OPERATION = "admissions_document_secure_http_upload";
 
@@ -88,6 +89,85 @@ export function storageSha256ToHex(value: string): string {
     : Array.from(Uint8Array.from(atob(value), (character) => character.charCodeAt(0)),
         (byte) => byte.toString(16).padStart(2, "0"),
       ).join("");
+}
+
+export function documentStateAllowsAccess(
+  document: Doc<"admissionsDocuments">,
+  application: Doc<"admissionsApplications"> | null,
+) {
+  return Boolean(
+    application &&
+    application._id === document.applicationId &&
+    application.schoolId === document.schoolId &&
+    application.state !== "archived" &&
+    !["quarantined", "archived", "deleted"].includes(document.state),
+  );
+}
+
+export async function issueDocumentAccessGrant(
+  ctx: MutationCtx,
+  args: {
+    document: Doc<"admissionsDocuments">;
+    actorKind: "guardian" | "staff";
+    guardianId?: Id<"admissionsGuardians">;
+    actorUserId?: Id<"users">;
+    audience: "apply" | "admin";
+    action: "view" | "download";
+    reason?: string;
+  },
+) {
+  const token = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+  const tokenHash = await sha256Hex(token);
+  const now = Date.now();
+  const expiresAt = now + DOCUMENT_ACCESS_GRANT_TTL_MS;
+  await ctx.db.insert("admissionsDocumentAccessGrants", {
+    schoolId: args.document.schoolId,
+    documentId: args.document._id,
+    actorKind: args.actorKind,
+    ...(args.guardianId ? { guardianId: args.guardianId } : {}),
+    ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
+    audience: args.audience,
+    action: args.action,
+    tokenHash,
+    ...(args.reason ? { reason: args.reason } : {}),
+    expiresAt,
+    createdAt: now,
+  });
+  await recordDocumentAccessAudit(ctx, {
+    document: args.document,
+    actorKind: args.actorKind,
+    guardianId: args.guardianId,
+    actorUserId: args.actorUserId,
+    action: args.action,
+    outcome: "granted",
+    reason: "ACCESS_GRANT_ISSUED",
+  });
+  return { status: "available" as const, url: `/api/admissions/documents/${token}`, expiresAt };
+}
+
+export async function recordDocumentAccessAudit(
+  ctx: MutationCtx,
+  args: {
+    document: Doc<"admissionsDocuments">;
+    actorKind: "guardian" | "staff" | "system";
+    guardianId?: Id<"admissionsGuardians">;
+    actorUserId?: Id<"users">;
+    action: "view" | "download";
+    outcome: "granted" | "denied";
+    reason?: string;
+  },
+) {
+  await ctx.db.insert("admissionsDocumentAccessAudits", {
+    schoolId: args.document.schoolId,
+    documentId: args.document._id,
+    actorKind: args.actorKind,
+    ...(args.guardianId ? { guardianId: args.guardianId } : {}),
+    ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
+    action: args.action,
+    outcome: args.outcome,
+    ...(args.reason ? { reason: args.reason } : {}),
+    createdAt: Date.now(),
+  });
 }
 
 export async function requireGuardian(

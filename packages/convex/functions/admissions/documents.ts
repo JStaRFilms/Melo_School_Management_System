@@ -6,18 +6,21 @@ import { internal } from "../../_generated/api";
 import { assertStorageUnclaimed, storageClaimedOnlyBy } from "../academic/assetStorageBoundary";
 import { requireContractBoundStorageForUpload } from "../academic/knowledgeUploadReadiness";
 import type { QuotaReservationResult } from "../academic/metering";
-import { documentAccessResultValidator } from "../foundation/contracts";
+import { documentAccessResultValidator, documentAccessUpstreamValidator } from "../foundation/contracts";
 import { cleanupUploadIntentRef } from "./refs";
 import {
   ADMISSIONS_UPLOAD_OPERATION,
   MAX_ADMISSIONS_DOCUMENT_BYTES,
   UPLOAD_INTENT_TTL_MS,
   admissionsError,
+  documentStateAllowsAccess,
   hasFreshAuthentication,
   isApplicationEditable,
+  issueDocumentAccessGrant,
   mergeCorrectionScopes,
   normalizeRequiredText,
   recordAdmissionsAudit,
+  recordDocumentAccessAudit,
   requireGuardian,
   requireOwnedApplication,
   sha256Hex,
@@ -249,17 +252,49 @@ export const getOwnAccess = mutation({
   handler: async (ctx, args) => {
     const guardian = await requireGuardian(ctx);
     const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", args.documentKey.trim())).unique();
-    if (!document || document.uploadedByGuardianId !== guardian._id) return { status: "unavailable" as const, documentKey: args.documentKey };
-    const application = await ctx.db.get(document.applicationId);
-    const stateAllowed = !["quarantined", "archived", "deleted"].includes(document.state);
-    const contextAllowed = Boolean(application && application.guardianId === guardian._id && application.schoolId === document.schoolId);
-    const freshEnough = document.sensitivity !== "highly_sensitive" && document.sensitivity !== "financial_security" ? true : await hasFreshAuthentication(ctx);
-    if (!stateAllowed || !contextAllowed || !freshEnough) {
-      await ctx.db.insert("admissionsDocumentAccessAudits", { schoolId: document.schoolId, documentId: document._id, actorKind: "guardian", guardianId: guardian._id, action: args.action, outcome: "denied", reason: !freshEnough ? "FRESH_AUTH_REQUIRED" : "ACCESS_STATE_DENIED", createdAt: Date.now() });
-      return { status: "unavailable" as const, documentKey: document.documentKey };
+    if (!document) return { status: "unavailable" as const };
+    if (document.uploadedByGuardianId !== guardian._id) {
+      await recordDocumentAccessAudit(ctx, { document, actorKind: "guardian", guardianId: guardian._id, action: args.action, outcome: "denied", reason: "WRONG_ACTOR" });
+      return { status: "unavailable" as const };
     }
-    const url = await ctx.storage.getUrl(document.storageId);
-    await ctx.db.insert("admissionsDocumentAccessAudits", { schoolId: document.schoolId, documentId: document._id, actorKind: "guardian", guardianId: guardian._id, action: args.action, outcome: url ? "granted" : "denied", createdAt: Date.now() });
-    return url ? { status: "available" as const, documentKey: document.documentKey, url, expiresAt: null } : { status: "unavailable" as const, documentKey: document.documentKey };
+    const application = await ctx.db.get(document.applicationId);
+    const freshEnough = document.sensitivity !== "highly_sensitive" && document.sensitivity !== "financial_security" ? true : await hasFreshAuthentication(ctx);
+    const allowed = documentStateAllowsAccess(document, application) && application?.guardianId === guardian._id && freshEnough;
+    if (!allowed) {
+      await recordDocumentAccessAudit(ctx, { document, actorKind: "guardian", guardianId: guardian._id, action: args.action, outcome: "denied", reason: !freshEnough ? "FRESH_AUTH_REQUIRED" : "ACCESS_STATE_DENIED" });
+      return { status: "unavailable" as const };
+    }
+    return await issueDocumentAccessGrant(ctx, { document, actorKind: "guardian", guardianId: guardian._id, audience: "apply", action: args.action });
+  },
+});
+
+export const consumeOwnAccessGrant = internalMutation({
+  args: { token: v.string() },
+  returns: documentAccessUpstreamValidator,
+  handler: async (ctx, args) => {
+    const guardian = await requireGuardian(ctx);
+    if (!/^[a-f0-9]{64}$/.test(args.token)) return { status: "unavailable" as const };
+    const tokenHash = await sha256Hex(args.token);
+    const grant = await ctx.db.query("admissionsDocumentAccessGrants").withIndex("by_token_hash", (q) => q.eq("tokenHash", tokenHash)).unique();
+    if (!grant) return { status: "unavailable" as const };
+    const document = await ctx.db.get(grant.documentId);
+    if (!document) return { status: "unavailable" as const };
+    const application = await ctx.db.get(document.applicationId);
+    const freshEnough = document.sensitivity !== "highly_sensitive" && document.sensitivity !== "financial_security" ? true : await hasFreshAuthentication(ctx);
+    let deniedReason: string | null = null;
+    if (grant.actorKind !== "guardian" || grant.audience !== "apply" || grant.guardianId !== guardian._id) deniedReason = "WRONG_ACTOR_OR_AUDIENCE";
+    else if (grant.consumedAt !== undefined) deniedReason = "ACCESS_GRANT_REPLAYED";
+    else if (grant.expiresAt <= Date.now()) deniedReason = "ACCESS_GRANT_EXPIRED";
+    else if (grant.schoolId !== document.schoolId || !application || application.guardianId !== guardian._id) deniedReason = "ACCESS_CONTEXT_DENIED";
+    else if (!documentStateAllowsAccess(document, application)) deniedReason = "ACCESS_STATE_DENIED";
+    else if (!freshEnough) deniedReason = "FRESH_AUTH_REQUIRED";
+    if (deniedReason) {
+      await recordDocumentAccessAudit(ctx, { document, actorKind: "guardian", guardianId: guardian._id, action: grant.action, outcome: "denied", reason: deniedReason });
+      return { status: "unavailable" as const };
+    }
+    const upstreamUrl = await ctx.storage.getUrl(document.storageId);
+    await ctx.db.patch(grant._id, { consumedAt: Date.now() });
+    await recordDocumentAccessAudit(ctx, { document, actorKind: "guardian", guardianId: guardian._id, action: grant.action, outcome: upstreamUrl ? "granted" : "denied", reason: upstreamUrl ? "ACCESS_GRANT_CONSUMED" : "STORAGE_UNAVAILABLE" });
+    return upstreamUrl ? { status: "available" as const, upstreamUrl, fileName: document.fileName, contentType: document.mimeType, byteSize: document.byteSize, action: grant.action } : { status: "unavailable" as const };
   },
 });

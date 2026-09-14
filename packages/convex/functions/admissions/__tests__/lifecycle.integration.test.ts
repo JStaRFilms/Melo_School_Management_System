@@ -32,6 +32,8 @@ const startReviewRef = makeFunctionReference<"mutation">("functions/admissions/s
 const requestChangesRef = makeFunctionReference<"mutation">("functions/admissions/staff:requestChanges");
 const decisionRef = makeFunctionReference<"mutation">("functions/admissions/staff:recordDecision");
 const documentReviewRef = makeFunctionReference<"mutation">("functions/admissions/staff:recordDocumentReview");
+const documentAccessRef = makeFunctionReference<"mutation">("functions/admissions/staff:getDocumentAccess");
+const consumeStaffDocumentAccessGrantRef = makeFunctionReference<"mutation">("functions/admissions/staff:consumeDocumentAccessGrant");
 const workflowRef = makeFunctionReference<"query">("functions/admissions/staff:getApplicationWorkflow");
 const conversionWorkflowRef = makeFunctionReference<"query">("functions/admissions/staff:getConversionWorkflow");
 const ownedApplicationRef = makeFunctionReference<"query">("functions/admissions/applications:getOwnedApplicationByPublicId");
@@ -461,11 +463,41 @@ it("returns separate immutable basic and audited sensitive staff detail without 
   const basic = await f.limited.query(getApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId });
   expect(basic).toMatchObject({ profile: { firstName: "Zara", lastName: "Bello" }, primaryContact: { fullName: "Musa Bello", email: "musa@example.test" }, requestedEntryLabel: "Primary 1", answers: [{ fieldKey: "reason", serializedValue: "School community" }], documents: [{ documentKey: "opaque-basic-document", fileName: "report.pdf" }] });
   expect(JSON.stringify(basic)).not.toContain("storageId");
+  expect(JSON.stringify(basic)).not.toContain("basic-digest");
   expect(JSON.stringify(basic)).not.toContain("Sensitive note");
   await expect(f.limited.mutation(revealSensitiveApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId, reason: "Review health support" })).rejects.toThrow("capability");
   const sensitive = await f.staff.mutation(revealSensitiveApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId, reason: "Review health support" });
   expect(sensitive).toMatchObject({ answers: [{ fieldKey: "medical-note", serializedValue: "Sensitive note" }], documents: [{ documentKey: "opaque-sensitive-document", fileName: "medical.pdf" }] });
   expect(JSON.stringify(sensitive)).not.toContain("storageId");
+  expect(JSON.stringify(sensitive)).not.toContain("sensitive-digest");
+
+  expect(await f.limited.mutation(documentAccessRef, { schoolId: f.schoolId, documentKey: "opaque-basic-document", action: "view", reason: "Application review" })).toEqual({ status: "unavailable" });
+  const permissionAudit = await f.t.run(async (ctx) => {
+    const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", "opaque-basic-document")).unique();
+    if (!document) throw new Error("document missing");
+    return await ctx.db.query("admissionsDocumentAccessAudits").withIndex("by_document_and_created_at", (q) => q.eq("documentId", document._id)).unique();
+  });
+  expect(permissionAudit).toMatchObject({ actorKind: "staff", actorUserId: f.limitedUserId, outcome: "denied", reason: "PERMISSION_DENIED" });
+  expect(await f.staff.mutation(documentAccessRef, { schoolId: f.otherSchoolId, documentKey: "opaque-basic-document", action: "view", reason: "Cross-tenant request" })).toEqual({ status: "unavailable" });
+  expect(await f.t.mutation(documentAccessRef, { schoolId: f.schoolId, documentKey: "opaque-basic-document", action: "view", reason: "Unauthenticated request" })).toEqual({ status: "unavailable" });
+  const deniedAuditCount = await f.t.run(async (ctx) => {
+    const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", "opaque-basic-document")).unique();
+    if (!document) throw new Error("document missing");
+    return (await ctx.db.query("admissionsDocumentAccessAudits").withIndex("by_document_and_created_at", (q) => q.eq("documentId", document._id)).take(10)).length;
+  });
+  expect(deniedAuditCount).toBe(1);
+
+  const basicGrant = await f.staff.mutation(documentAccessRef, { schoolId: f.schoolId, documentKey: "opaque-basic-document", action: "view", reason: "Application review" }) as { status: "available"; url: string };
+  expect(basicGrant.url).toMatch(/^\/api\/admissions\/documents\/[a-f0-9]{64}$/);
+  expect(basicGrant.url).not.toMatch(/opaque-basic-document|convex\.cloud|api\/storage/);
+  const basicToken = basicGrant.url.split("/").at(-1) ?? "";
+  expect(await f.limited.mutation(consumeStaffDocumentAccessGrantRef, { token: basicToken })).toEqual({ status: "unavailable" });
+  expect(await f.staff.mutation(consumeStaffDocumentAccessGrantRef, { token: basicToken })).toMatchObject({ status: "available", fileName: "report.pdf", action: "view" });
+  expect(await f.staff.mutation(consumeStaffDocumentAccessGrantRef, { token: basicToken })).toEqual({ status: "unavailable" });
+  expect(await f.staff.mutation(documentAccessRef, { schoolId: f.schoolId, documentKey: "opaque-sensitive-document", action: "view", reason: "Sensitive application review" })).toEqual({ status: "unavailable" });
+  const freshStaff = f.t.withIdentity({ tokenIdentifier: "test|admissions-staff", subject: "admissions-staff", issuer: "test", authenticatedAt: Date.now() });
+  const sensitiveGrant = await freshStaff.mutation(documentAccessRef, { schoolId: f.schoolId, documentKey: "opaque-sensitive-document", action: "download", reason: "Sensitive application review" }) as { status: "available"; url: string };
+  expect(await freshStaff.mutation(consumeStaffDocumentAccessGrantRef, { token: sensitiveGrant.url.split("/").at(-1) ?? "" })).toMatchObject({ status: "available", fileName: "medical.pdf", action: "download" });
   expect(await f.t.run((ctx) => ctx.db.query("admissionsAuditEvents").withIndex("by_school_and_action_and_created_at", (q) => q.eq("schoolId", f.schoolId).eq("action", "application.reveal_sensitive")).unique())).toMatchObject({ applicationId: application.applicationId, actorUserId: f.staffUserId });
 });
 

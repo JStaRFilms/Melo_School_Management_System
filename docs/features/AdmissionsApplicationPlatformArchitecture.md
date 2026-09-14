@@ -42,7 +42,7 @@ Personal data about minors, identity documents, photographs, and medical data ar
 5. A submitted revision is immutable. Requested changes create a later snapshot revision; they never update a prior snapshot.
 6. `admissionsConversions.applicationId` is unique. A successful replay returns the recorded canonical IDs.
 7. Redirect success is not payment success. Only a provider-verified transaction can create an entitlement. Payment callbacks default to the canonical Apply origin. A local or alternate Apply client may request an exact origin already present in the server-controlled trusted-origin list; arbitrary origins are rejected.
-8. Signed storage URLs are generated only after authorization and are never stored as durable application data. Highly-sensitive and financial-security documents require fresh authentication for both view and download actions.
+8. Browser document access uses only authenticated Apply/Admin proxy routes backed by short-lived, one-time random grants stored as hashes. Direct storage URLs remain server-side only. Highly-sensitive and financial-security documents require fresh authentication for both grant issue and redemption.
 9. Caller-provided user IDs are never used for authorization. Identity is derived server-side.
 10. Cross-school duplicate detection is forbidden. Matching and warnings are scoped to one school.
 
@@ -153,6 +153,7 @@ Snapshot rows have no update API. A digest is calculated over a canonical, order
 | Table | Cardinality and key fields | Required indexes |
 | --- | --- | --- |
 | `admissionsDocuments` | Application/requirement 1:N upload versions. `schoolId`, `applicationId`, `requirementId`, `category`, opaque `documentKey`, `storageId`, filename, MIME, bytes, SHA-256, version, state, sensitivity, uploadedByGuardianId, supersedes ID, quarantine/deletion/retention metadata. | `by_application_id_and_category_and_version`; `by_document_key`; `by_storage_id`; `by_school_id_and_state_and_updated_at`; `by_application_id_and_requirement_id` |
+| `admissionsDocumentAccessGrants` | One-time document proxy grants. Stores `tokenHash` only, plus `schoolId`, `documentId`, actor kind/ID, Apply/Admin audience, view/download action, reason, expiry, and consumed time. Raw tokens exist only in immediate same-origin proxy paths. | `by_token_hash`; `by_expires_at`; `by_school` |
 | `admissionsDocumentReviews` | Document 1:N append-only reviews. `schoolId`, `documentId`, reviewer user ID, result, reason code, safe guardian message, internal note, createdAt. | `by_document_id_and_created_at`; `by_school_id_and_reviewer_user_id_and_created_at` |
 | `admissionsStaffGrants` | School/user explicit permissions. `schoolId`, `userId`, permission, optional programme/intake scope, granted/revoked metadata. | `by_school_id_and_user_id`; `by_school_id_and_permission`; `by_user_id_and_permission` |
 | `admissionsReviewAssignments` | Application 1:N assignments. `schoolId`, `applicationId`, `assigneeUserId`, role, state, dueAt, assigned/completed metadata. | `by_school_id_and_assignee_user_id_and_state`; `by_application_id_and_state`; `by_school_id_and_state_and_due_at` |
@@ -367,7 +368,7 @@ type ApplicationLinkV1 = {
 - Authenticated dashboard: `/s/{schoolSlug}/account`.
 - Application UI: `/s/{schoolSlug}/applications/{opaquePublicId}`. The opaque ID is not a secret and grants no access.
 - Payment return: `/s/{schoolSlug}/payments/paystack/return?reference={opaqueReference}`; ownership and provider verification are mandatory.
-- No document route contains a storage ID. A checked app route such as `/api/admissions/documents/{opaqueDocumentKey}` may exchange session authorization for an immediate redirect/stream and write an audit event.
+- No document route contains a storage ID, database ID, document key, or hash. Apply and Admin use `/api/admissions/documents/{oneTimeRandomGrant}`; each authenticated route atomically redeems its actor-, tenant-, document-, audience-, action-, and expiry-bound grant, then streams bytes server-side without redirecting the browser.
 - Links never encode price, form version, guardian identity, child identity, storage ID, or site hostname.
 - Managed and external sites consume/copy the same absolute `href`. `apps/sites` may redirect its `/apply` CTA to it, but `apps/apply` does not require a cookie from the website domain.
 
@@ -389,7 +390,7 @@ Public resolver contract: `getApplicationLink({ schoolSlug, intakeSlug? })` retu
 | `documents.requestUploadIntent` | mutation | Own editable application/requirement; MIME/size/category and contract-bound quota checked; return hashed-token transport credentials, never a storage ID |
 | `/admissions/document-upload` | HTTP action | Authenticated tenant-bound one-time transport; strict MIME/magic/size/hash/expiry checks and orphan cleanup |
 | `documents.finalizeUpload` | mutation | Own stored intent; revalidate `_storage` size/hash and ownership; commit measured shared quota once |
-| `documents.getOwnAccess` | mutation | Own document and allowed state; write the audit event and generate the immediate signed URL after the same authorization check |
+| `documents.getOwnAccess` | mutation | Own document and allowed state; write the audit event and issue a one-time hashed grant whose browser-safe URL targets the Apply proxy route |
 | `applications.submit` | mutation | Atomic validation, snapshot, state, entitlement consumption |
 | `applications.withdraw` | mutation | Own application and permitted state; reason/audit |
 
@@ -399,7 +400,7 @@ Public resolver contract: `getApplicationLink({ schoolSlug, intakeSlug? })` retu
 | --- | --- | --- |
 | `staff.listQueue` | paginated query | Server-derived school/grants; indexed intake/state/assignee filters; redacted list projection |
 | `staff.getApplicationDetail` | query | `view_basic`; sensitive sections omitted unless separately granted |
-| `staff.getDocumentAccess` | mutation | Explicit document permission; reason/context; audit before signed URL |
+| `staff.getDocumentAccess` | mutation | Explicit document permission; reason/context; audit and issue a one-time hashed grant whose browser-safe URL targets the Admin proxy route |
 | `staff.assignReview` | mutation | `reviews.assign`; same school/scoped assignee |
 | `staff.recordDocumentReview` | mutation | `documents.review`; legal transition and append-only review |
 | `staff.requestChanges` | mutation | `reviews.record`; fields/requirements whitelist + guardian-safe message |
@@ -415,6 +416,7 @@ Public resolver contract: `getApplicationLink({ schoolSlug, intakeSlug? })` retu
 - Shared verified webhook dispatch and `payments.recordVerifiedEventInternal`.
 - Conversion transaction, stale-lease recovery, and post-commit outbox scheduling.
 - Retention dry-run/batched cleanup and orphan upload cleanup.
+- One-time document-grant redemption and the authenticated non-CORS storage-byte transport used by Apply/Admin proxies.
 - Communication sender/retry.
 
 No sensitive webhook, conversion, retention, or communication mutation is public.
@@ -437,14 +439,15 @@ Every high-risk field has an explicit purpose or remains unavailable. The histor
 
 1. Authorize verified guardian ownership before reserving a one-time upload intent. The intent is tenant/application/requirement bound, short-lived, stores only a token hash, and reserves shared `storage_bytes` quota before transport starts.
 2. The dedicated `/admissions/document-upload` transport checks the authenticated guardian, one-time token, MIME header and file magic, exact measured body size, SHA-256, expiry, and active attempt before storing bytes. Convex `_storage` metadata then independently confirms size and hash before binding. Failed or expired attempts delete any known object before releasing quota.
-3. Use opaque application/document keys in client routes. Never return raw `storageId` in upload responses, queue/list contracts, or route-facing document payloads.
-4. Generate a signed URL only after a fresh authorization check. Do not persist it. Treat URL lifetime as storage-platform behavior and keep the app exchange immediate.
-5. Audit staff view/download, guardian download, quarantine, review, supersession, retention hold, and deletion. List views show document status/category, not previews.
-6. Keep medical/government documents behind explicit grants separate from ordinary review. Platform support has no default access.
-7. Quarantined files are not retrievable by ordinary guardians/reviewers.
-8. Clean unbound uploads after a short approved window. Delete stored objects only after checking snapshot manifests, accepted photo provenance, legal holds, and other references.
-9. Security headers prevent indexing/caching of application/document pages; logs and error telemetry redact names, emails, references, storage IDs, and answers.
-10. An existing school with unmetered files cannot receive a zero-byte storage baseline. A Platform operator first reviews a bounded inventory that measures unique storage objects, rejects missing, conflicting, cross-school, temporary, or unsupported claims, and confirms the displayed object/reference/byte totals. Reconciliation creates the contract, cycle, and meter in one mutation with the measured active, trash, and temporary byte baseline. It never changes or deletes files.
+3. Use opaque application IDs only where the application route contract requires them. Document proxy paths contain only a cryptographically random one-time grant; never put `storageId`, database IDs, document keys, hashes, or direct Convex storage URLs in browser-facing document URLs or visible UI.
+4. Store only the grant token hash. Bind each short-lived grant to tenant, document, server-derived actor, Apply/Admin audience, view/download action, reason where required, and expiry. Redemption is atomic and one-time; it repeats ownership/capability, tenant, document/application state, and fresh-auth checks before generating a direct storage URL for server use only. Better Auth signs the persisted session creation time as `authenticatedAt`; JWT issue time is not accepted as proof of recent authentication.
+5. An authenticated, non-CORS Convex transport redeems the grant and fetches the storage object without returning its URL. Apply and Admin then stream those bytes through their same-origin routes with `private, no-store`, `nosniff`, the validated content type and length, and a sanitized `inline` or `attachment` disposition. They never redirect the browser to Convex storage and never return raw Convex errors.
+6. Append granted and denied access audits. Expired, replayed, wrong-actor/audience, cross-tenant/context, quarantined, archived, deleted, missing-storage, and stale-sensitive-auth attempts fail closed.
+7. Keep medical/government documents behind explicit grants separate from ordinary review. Platform support has no default access.
+8. Quarantined files are not retrievable by ordinary guardians/reviewers.
+9. Clean unbound uploads after a short approved window. Delete stored objects only after checking snapshot manifests, accepted photo provenance, legal holds, and other references.
+10. Security headers prevent indexing/caching of application/document pages; logs and error telemetry redact names, emails, references, storage IDs, and answers.
+11. An existing school with unmetered files cannot receive a zero-byte storage baseline. A Platform operator first reviews a bounded inventory that measures unique storage objects, rejects missing, conflicting, cross-school, temporary, or unsupported claims, and confirms the displayed object/reference/byte totals. Reconciliation creates the contract, cycle, and meter in one mutation with the measured active, trash, and temporary byte baseline. It never changes or deletes files.
 
 ## 14. Accepted conversion algorithm
 

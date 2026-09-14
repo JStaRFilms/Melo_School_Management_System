@@ -4,7 +4,7 @@ import { expect, it } from "vitest";
 import schema from "../../../schema";
 import { TENANT_SCHOOL_TABLES } from "../tenantPurgeManifest";
 import { TENANT_STORAGE_TABLES } from "../tenantPurgeAction";
-import { SCHOOL_PURGE_TABLES } from "../branchSplitV2";
+import { ADMISSIONS_GUARDIAN_REFERENCE_TABLES, SCHOOL_PURGE_TABLES } from "../branchSplitV2";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(
@@ -18,9 +18,10 @@ const purgeBatch = makeFunctionReference<"mutation">(
   "functions/academic/tenantPurge:purgeTenantBatchInternal",
 );
 
-it("registers admissions upload intents and retention policies in tenant purge and branch-split boundaries", () => {
-  expect(TENANT_SCHOOL_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsRetentionPolicies"]));
-  expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsRetentionPolicies"]));
+it("registers admissions upload intents, access grants, and retention policies in tenant lifecycle boundaries", () => {
+  expect(TENANT_SCHOOL_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies"]));
+  expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies"]));
+  expect(ADMISSIONS_GUARDIAN_REFERENCE_TABLES).toContain("admissionsDocumentAccessGrants");
   expect(TENANT_STORAGE_TABLES).toContain("admissionsDocumentUploadIntents");
 });
 

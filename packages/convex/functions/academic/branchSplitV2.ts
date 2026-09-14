@@ -137,6 +137,7 @@ export const SCHOOL_PURGE_TABLES = [
   "admissionsEvaluations",
   "admissionsReviewAssignments",
   "admissionsDocumentReviews",
+  "admissionsDocumentAccessGrants",
   "admissionsDocumentAccessAudits",
   "admissionsDocumentUploadIntents",
   "admissionsDocuments",
@@ -1342,12 +1343,13 @@ export const isAuthIdRetainedInternal = internalQuery({
   },
 });
 
-const ADMISSIONS_GUARDIAN_REFERENCE_TABLES = [
+export const ADMISSIONS_GUARDIAN_REFERENCE_TABLES = [
   "admissionsPurchaseAttempts",
   "admissionsEntitlements",
   "admissionsApplications",
   "admissionsSubmissionSnapshots",
   "admissionsDocuments",
+  "admissionsDocumentAccessGrants",
   "admissionsDocumentAccessAudits",
   "admissionsReviewEvents",
   "admissionsCommunicationOutbox",

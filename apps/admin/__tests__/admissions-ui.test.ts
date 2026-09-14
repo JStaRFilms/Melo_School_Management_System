@@ -12,6 +12,7 @@ vi.mock("@school/shared/toast", () => ({ appToast: { success: vi.fn(), error: vi
 const valid = { ...EMPTY_CAMPAIGN, programmeSlug: "primary", programmeName: "Primary", intakeSlug: "intake", intakeName: "Intake", cycleLabel: "Cycle", opensAt: "2026-01-01T09:00", closesAt: "2026-02-01T09:00", declarationTitle: "Declaration", declarationBody: "Confirm details", declarationPurpose: "Attestation", productSlug: "slot", productName: "Application slot", amount: "5000", currency: "NGN", refundPolicyKey: "policy", feeDisclosure: "Published fee disclosure" };
 import { AdmissionsDashboard } from "../app/admin/admissions/AdmissionsDashboard";
 import { RetentionSettings } from "../app/admin/admissions/retention/RetentionSettings";
+import { admissionsAdminErrorMessage, DocumentRow } from "../app/admin/admissions/[publicId]/ApplicationDetail";
 
 function access(capabilities: string[]): WorkspaceAccessSummary { return { state: "ready", branch: { schoolId: "school", name: "School", slug: "school", status: "active" }, membership: { membershipId: "member", personId: "person", displayTitle: null, isProprietor: false }, displayTitle: null, effectiveCapabilities: capabilities, compatibility: { mode: "canonical", permissionManaged: true, legacyUserId: "user", legacyRole: "admin", legacyIsSchoolAdmin: true, adminParity: "review_required", legacyDefaultSchoolId: "school" }, teacherAssignments: { source: "domain_checks_required", legacyTeacherId: null } }; }
 
@@ -24,6 +25,16 @@ describe("admin admissions campaign and retention UI contracts", () => {
   it("renders separate retention labels and confirms permanent deletion", async () => { mocks.queryResult = { mode: "never", archiveAfterDays: null, version: 1, effectiveFrom: 1 }; mocks.eligibility = { state: "archived", canArchive: false, canDelete: true, archiveBlocker: "DOCUMENT_ALREADY_ARCHIVED", deleteBlocker: null }; render(createElement(RetentionSettings)); expect(screen.getByLabelText("Never automatically archive")).toBeChecked(); expect(screen.getByLabelText("Archive delay in days")).toHaveAttribute("min", "30"); fireEvent.change(screen.getByLabelText("Document key"), { target: { value: "document-1" } }); fireEvent.click(screen.getByRole("button", { name: "Check eligibility" })); fireEvent.click(await screen.findByRole("button", { name: "Permanently delete document" })); expect(screen.getByRole("dialog")).toHaveTextContent("Permanently delete this document?"); });
   it("validates paid campaign drafts, dates, JSON definitions, and replacement-ready definitions", () => { expect(validateCampaign(valid)).toEqual([]); expect(parseDefinitions(valid)).toEqual({ fields: [], requirements: [] }); expect(slugifyCampaignValue(" 2027 Main Intake ")).toBe("2027-main-intake"); expect(validateCampaign({ ...valid, amount: "0", closesAt: valid.opensAt }).join(" ")).toMatch(/after opening|greater than zero/); expect(() => parseDefinitions({ ...valid, fieldsJson: "{}" })).toThrow(/JSON arrays/); });
   it("enforces never or integer archive minimum", () => { expect(validateRetention("never", "")).toBeNull(); expect(validateRetention("archive", "29")).toMatch(/at least 30/); expect(validateRetention("archive", "30.5")).toMatch(/integer/); expect(validateRetention("archive", "30")).toBeNull(); });
+  it("renders document metadata without hashes or internal keys and opens only the Melo proxy URL", async () => {
+    const proxyUrl = `/api/admissions/documents/${"c".repeat(64)}`;
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    mocks.mutate.mockResolvedValue({ status: "available", url: proxyUrl, expiresAt: Date.now() + 60_000 });
+    const view = render(createElement(DocumentRow, { schoolId: "school" as never, document: { documentKey: "internal-document-key", requirementId: null, category: "medical", fileName: "medical.pdf", mimeType: "application/pdf", byteSize: 42, version: 1, submittedState: "uploaded", currentState: "uploaded", sensitivity: "highly_sensitive" }, canReview: true, onFeedback: vi.fn() }));
+    expect(view.container.textContent).not.toMatch(/internal-document-key|sha-256|private-hash|convex\.cloud|api\/storage/i);
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith(proxyUrl, "_blank", "noopener,noreferrer"));
+    expect(admissionsAdminErrorMessage(new Error("[CONVEX M(...)] ConvexError: internal-document-key Called by client"))).toBe("The operation could not be completed. Please try again.");
+  });
 });
 
 describe("admissions navigation and route capability gates", () => {

@@ -13,6 +13,7 @@ const guardianIdentityRef = makeFunctionReference<"mutation">("functions/admissi
 const requestUploadRef = makeFunctionReference<"mutation">("functions/admissions/documents:requestUploadIntent");
 const finalizeUploadRef = makeFunctionReference<"mutation">("functions/admissions/documents:finalizeUpload");
 const ownAccessRef = makeFunctionReference<"mutation">("functions/admissions/documents:getOwnAccess");
+const consumeOwnAccessGrantRef = makeFunctionReference<"mutation">("functions/admissions/documents:consumeOwnAccessGrant");
 
 const pdfBytes = new TextEncoder().encode("%PDF-1.7\nsecure admissions document");
 
@@ -149,7 +150,7 @@ it("allows only requested document corrections and atomically supersedes one-for
   expect(rows.find((row) => row.documentKey === replacement.documentKey)).toMatchObject({ state: "uploaded", version: 2 });
 }, 15_000);
 
-it("requires fresh current auth claims for sensitive download and audits denied and granted checks", async () => {
+it("uses hashed one-time guardian grants and fails closed across actor, tenant, expiry, replay, and document state", async () => {
   const f = await fixture();
   const hash = await sha256Hex(pdfBytes);
   const intent = await f.owner.mutation(requestUploadRef, { applicationId: f.applicationId, requirementId: f.requirementId, fileName: "sensitive.pdf", contentType: "application/pdf", size: pdfBytes.byteLength, sha256: hash });
@@ -157,17 +158,79 @@ it("requires fresh current auth claims for sensitive download and audits denied 
   const storageId = await f.t.run((ctx) => ctx.storage.store(new Blob([pdfBytes], { type: "application/pdf" })));
   await f.owner.mutation(recordHttpUploadStorageRef, { uploadIntentId: intent.uploadIntentId, uploadToken: intent.uploadToken, uploadAttemptId: "attempt-sensitive-01", storageId });
   const document = await f.owner.mutation(finalizeUploadRef, { uploadIntentId: intent.uploadIntentId });
-  expect(await f.owner.mutation(ownAccessRef, { documentKey: document.documentKey, action: "view" })).toMatchObject({ status: "unavailable" });
-  expect(await f.owner.mutation(ownAccessRef, { documentKey: document.documentKey, action: "download" })).toMatchObject({ status: "unavailable" });
-  const fresh = f.t.withIdentity({ tokenIdentifier: "test|document-owner", subject: "document-owner", issuer: "test", email: "owner@example.test", emailVerified: true, auth_time: Math.floor(Date.now() / 1000) });
-  expect(await fresh.mutation(ownAccessRef, { documentKey: document.documentKey, action: "view" })).toMatchObject({ status: "available", documentKey: document.documentKey });
-  expect(await fresh.mutation(ownAccessRef, { documentKey: document.documentKey, action: "download" })).toMatchObject({ status: "available", documentKey: document.documentKey });
+  expect(await f.owner.mutation(ownAccessRef, { documentKey: document.documentKey, action: "view" })).toEqual({ status: "unavailable" });
+  expect(await f.owner.mutation(ownAccessRef, { documentKey: document.documentKey, action: "download" })).toEqual({ status: "unavailable" });
+
+  const fresh = f.t.withIdentity({ tokenIdentifier: "test|document-owner", subject: "document-owner", issuer: "test", email: "owner@example.test", emailVerified: true, authenticatedAt: Date.now() });
+  const issue = await fresh.mutation(ownAccessRef, { documentKey: document.documentKey, action: "view" }) as { status: "available"; url: string; expiresAt: number };
+  expect(issue.url).toMatch(/^\/api\/admissions\/documents\/[a-f0-9]{64}$/);
+  expect(issue.url).not.toContain(document.documentKey);
+  expect(issue.url).not.toMatch(/convex\.cloud|api\/storage|storageId/);
+  const token = issue.url.split("/").at(-1) ?? "";
+  const persisted = await f.t.run((ctx) => ctx.db.query("admissionsDocumentAccessGrants").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).order("desc").first());
+  expect(persisted).toMatchObject({ schoolId: f.schoolId, actorKind: "guardian", guardianId: f.guardianId, action: "view", audience: "apply" });
+  expect(persisted?.tokenHash).toBe(await sha256Hex(token));
+  expect(JSON.stringify(persisted)).not.toContain(token);
+
+  expect(await f.other.mutation(consumeOwnAccessGrantRef, { token })).toEqual({ status: "unavailable" });
+  const consumed = await fresh.mutation(consumeOwnAccessGrantRef, { token });
+  expect(consumed).toMatchObject({ status: "available", fileName: "sensitive.pdf", contentType: "application/pdf", byteSize: pdfBytes.byteLength, action: "view" });
+  expect(JSON.stringify(consumed)).not.toContain(document.documentKey);
+  expect(await fresh.mutation(consumeOwnAccessGrantRef, { token })).toEqual({ status: "unavailable" });
+
+  async function issueToken() {
+    const result = await fresh.mutation(ownAccessRef, { documentKey: document.documentKey, action: "download" }) as { status: "available"; url: string };
+    return result.url.split("/").at(-1) ?? "";
+  }
+  const expiredToken = await issueToken();
+  const expiredTokenHash = await sha256Hex(expiredToken);
+  await f.t.run(async (ctx) => {
+    const row = await ctx.db.query("admissionsDocumentAccessGrants").withIndex("by_token_hash", (q) => q.eq("tokenHash", expiredTokenHash)).unique();
+    if (row) await ctx.db.patch(row._id, { expiresAt: Date.now() - 1 });
+  });
+  expect(await fresh.mutation(consumeOwnAccessGrantRef, { token: expiredToken })).toEqual({ status: "unavailable" });
+
+  const stateCases = ["quarantined", "archived", "deleted"] as const;
+  for (const state of stateCases) {
+    const stateToken = await issueToken();
+    await f.t.run(async (ctx) => {
+      const row = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", document.documentKey)).unique();
+      if (row) await ctx.db.patch(row._id, { state });
+    });
+    expect(await fresh.mutation(consumeOwnAccessGrantRef, { token: stateToken })).toEqual({ status: "unavailable" });
+    await f.t.run(async (ctx) => {
+      const row = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", document.documentKey)).unique();
+      if (row) await ctx.db.patch(row._id, { state: "uploaded" });
+    });
+  }
+
+  const wrongAudienceToken = await issueToken();
+  const wrongAudienceHash = await sha256Hex(wrongAudienceToken);
+  await f.t.run(async (ctx) => {
+    const row = await ctx.db.query("admissionsDocumentAccessGrants").withIndex("by_token_hash", (q) => q.eq("tokenHash", wrongAudienceHash)).unique();
+    if (row) await ctx.db.patch(row._id, { audience: "admin" });
+  });
+  expect(await fresh.mutation(consumeOwnAccessGrantRef, { token: wrongAudienceToken })).toEqual({ status: "unavailable" });
+
+  const archivedApplicationToken = await issueToken();
+  await f.t.run((ctx) => ctx.db.patch(f.applicationId, { state: "archived" }));
+  expect(await fresh.mutation(consumeOwnAccessGrantRef, { token: archivedApplicationToken })).toEqual({ status: "unavailable" });
+  await f.t.run((ctx) => ctx.db.patch(f.applicationId, { state: "draft" }));
+
+  const crossTenantToken = await issueToken();
+  await f.t.run(async (ctx) => {
+    const row = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", document.documentKey)).unique();
+    if (row) await ctx.db.patch(row._id, { schoolId: f.otherSchoolId });
+  });
+  expect(await fresh.mutation(consumeOwnAccessGrantRef, { token: crossTenantToken })).toEqual({ status: "unavailable" });
+
   const audits = await f.t.run(async (ctx) => {
     const row = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", document.documentKey)).unique();
     if (!row) throw new Error("document missing");
     return await ctx.db.query("admissionsDocumentAccessAudits").withIndex("by_document_and_created_at", (q) => q.eq("documentId", row._id)).collect();
   });
-  expect(audits.map((audit) => audit.outcome)).toEqual(["denied", "denied", "granted", "granted"]);
+  expect(audits.some((audit) => audit.outcome === "granted")).toBe(true);
+  expect(audits.filter((audit) => audit.outcome === "denied").map((audit) => audit.reason)).toEqual(expect.arrayContaining(["FRESH_AUTH_REQUIRED", "WRONG_ACTOR_OR_AUDIENCE", "ACCESS_GRANT_REPLAYED", "ACCESS_GRANT_EXPIRED", "ACCESS_STATE_DENIED", "ACCESS_CONTEXT_DENIED"]));
 });
 
 it("rejects stored MIME, size, and hash mismatches and releases failed reservations", async () => {

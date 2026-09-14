@@ -701,6 +701,24 @@ export default defineSchema({
     .index("by_status_and_expires_at", ["status", "expiresAt"])
     .index("by_school", ["schoolId"]),
 
+  admissionsDocumentAccessGrants: defineTable({
+    schoolId: v.id("schools"),
+    documentId: v.id("admissionsDocuments"),
+    actorKind: v.union(v.literal("guardian"), v.literal("staff")),
+    guardianId: v.optional(v.id("admissionsGuardians")),
+    actorUserId: v.optional(v.id("users")),
+    audience: v.union(v.literal("apply"), v.literal("admin")),
+    action: v.union(v.literal("view"), v.literal("download")),
+    tokenHash: v.string(),
+    reason: v.optional(v.string()),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_expires_at", ["expiresAt"])
+    .index("by_school", ["schoolId"]),
+
   admissionsDocumentAccessAudits: defineTable({
     schoolId: v.id("schools"),
     documentId: v.id("admissionsDocuments"),

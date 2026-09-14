@@ -109,6 +109,7 @@ import type * as functions_academic_tenantPurgeAction from "../functions/academi
 import type * as functions_academic_tenantPurgeManifest from "../functions/academic/tenantPurgeManifest.js";
 import type * as functions_academic_transfers from "../functions/academic/transfers.js";
 import type * as functions_academic_usageEntitlements from "../functions/academic/usageEntitlements.js";
+import type * as functions_admissions_accessHttp from "../functions/admissions/accessHttp.js";
 import type * as functions_admissions_applications from "../functions/admissions/applications.js";
 import type * as functions_admissions_catalogue from "../functions/admissions/catalogue.js";
 import type * as functions_admissions_conversion from "../functions/admissions/conversion.js";
@@ -254,6 +255,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/tenantPurgeManifest": typeof functions_academic_tenantPurgeManifest;
   "functions/academic/transfers": typeof functions_academic_transfers;
   "functions/academic/usageEntitlements": typeof functions_academic_usageEntitlements;
+  "functions/admissions/accessHttp": typeof functions_admissions_accessHttp;
   "functions/admissions/applications": typeof functions_admissions_applications;
   "functions/admissions/catalogue": typeof functions_admissions_catalogue;
   "functions/admissions/conversion": typeof functions_admissions_conversion;
