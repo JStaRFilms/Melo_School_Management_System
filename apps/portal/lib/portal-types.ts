@@ -92,14 +92,45 @@ export interface PortalBillingInvoice {
   issuedAt: number;
   status: "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "waived" | "cancelled";
   canPayOnline: boolean;
+  selectionRevision: number | null;
+  canEditOptionalItems: boolean;
+  selectionLockReason: null | "not_editable" | "parent_required" | "payment_recorded" | "cancelled";
   lineItems: Array<{
     id: string;
     label: string;
     amount: number;
     category: string;
     order: number;
+    isOptional: boolean;
+    isSelected: boolean;
+    unitAmount: number;
+    quantity: number;
   }>;
   notes: string | null;
+}
+
+export interface PortalEligibleBillingCollections {
+  student: {
+    studentId: string;
+    classId: string;
+    className: string;
+  };
+  collections: Array<{
+    collectionId: string;
+    name: string;
+    description: string | null;
+    currency: string;
+    existingInvoiceId: string | null;
+    canCreateInvoice: boolean;
+    items: Array<{
+      itemId: string;
+      label: string;
+      description: string | null;
+      unitAmount: number;
+      category: string;
+      order: number;
+    }>;
+  }>;
 }
 
 export interface PortalBillingPayment {

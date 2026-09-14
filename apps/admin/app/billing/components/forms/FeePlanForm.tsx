@@ -321,7 +321,7 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
                   value={item.label}
                   onChange={(e) => updateLineItem(idx, { label: e.target.value })}
                   className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 focus:border-slate-900 outline-none transition-all placeholder:text-slate-400 placeholder:font-normal"
-                  placeholder="Item name (e.g. Tuition, School Uniform, Bus Service)"
+                  placeholder="Item name (e.g. Tuition or Development Levy)"
                   required
                 />
 
@@ -353,9 +353,9 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
                         ? "bg-amber-100 border border-amber-300 text-amber-900 hover:bg-amber-200"
                         : "bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200"
                     )}
-                    title={item.isOptional ? "Optional Add-on: Parents can toggle during payment" : "Mandatory: Compulsory baseline fee"}
+                    title={item.isOptional ? "Starts unselected and may be added before payment" : "Compulsory baseline fee"}
                   >
-                    <span>{item.isOptional ? "✨ Optional" : "🔒 Mandatory"}</span>
+                    <span>{item.isOptional ? "Optional" : "Mandatory"}</span>
                   </button>
 
                   {/* Delete button */}
@@ -381,8 +381,6 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
             {[
               { label: "Tuition", optional: false },
               { label: "Development Levy", optional: false },
-              { label: "Uniform (Opt)", actualLabel: "School Uniform", optional: true },
-              { label: "Bus Service (Opt)", actualLabel: "Bus / Transport", optional: true },
               { label: "PTA Levy", actualLabel: "PTA Due", optional: false },
             ].map((preset) => (
               <button
@@ -395,6 +393,11 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
               </button>
             ))}
           </div>
+          {draft.lineItems.some((item) => item.isOptional) ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+              Optional items start unselected. A parent or authorized Admin can add them before the first payment.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -403,14 +406,14 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
         {/* Dynamic Real-Time Breakdown Card */}
         <div className="rounded-xl bg-slate-950 p-3.5 text-white shadow-xs space-y-1.5">
           <div className="flex items-center justify-between text-[11px]">
-            <span className="text-slate-400 font-semibold">Mandatory Base:</span>
+            <span className="text-slate-400 font-semibold">Initial invoice total</span>
             <span className="font-mono font-bold text-slate-200">
               ₦{mandatoryAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
           {optionalAmount > 0 && (
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-amber-400 font-semibold">+ Optional Add-ons:</span>
+              <span className="text-amber-400 font-semibold">Optional items available</span>
               <span className="font-mono font-bold text-amber-300">
                 ₦{optionalAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
@@ -418,7 +421,7 @@ export function FeePlanForm({ draft, onChange, onSubmit, classes, draftStatus, d
           )}
           <div className="flex items-center justify-between pt-1.5 border-t border-slate-800">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
-              Total (All Included)
+              Maximum invoice total
             </span>
             <span className="text-sm font-black font-mono tracking-tight text-emerald-400">
               ₦{totalAmount.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

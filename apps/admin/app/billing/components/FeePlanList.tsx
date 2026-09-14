@@ -113,9 +113,9 @@ export function FeePlanList({
 
             <div className="space-y-4">
                <div className="flex items-center justify-between py-2 border-y border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Plan Amount</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{plan.optionalSelectionMode === "parent_selectable" ? "Initial Invoice Total" : "Total Plan Amount"}</span>
                   <span className="font-mono font-bold text-slate-950 text-sm">
-                    {formatMoney(plan.lineItems.reduce((acc, curr) => acc + curr.amount, 0), plan.currency)}
+                    {formatMoney(plan.lineItems.filter((item) => plan.optionalSelectionMode !== "parent_selectable" || !item.isOptional).reduce((acc, curr) => acc + curr.amount, 0), plan.currency)}
                   </span>
                </div>
                
@@ -250,7 +250,7 @@ export function FeePlanList({
                             <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
                               item.isOptional ? "bg-amber-50 text-amber-800 border border-amber-200" : "bg-slate-100 text-slate-700"
                             }`}>
-                              {item.isOptional ? "✨ Optional Add-on" : "🔒 Mandatory"}
+                              {item.isOptional ? "Optional" : "Mandatory"}
                             </span>
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">
@@ -266,7 +266,7 @@ export function FeePlanList({
               {/* Total Financial Summary Card */}
               <div className="rounded-xl bg-slate-950 p-4 text-white space-y-1.5 shadow-sm">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-semibold">Mandatory Baseline Total:</span>
+                  <span className="text-slate-400 font-semibold">{selectedPlan.optionalSelectionMode === "parent_selectable" ? "Initial invoice total" : "Mandatory baseline total"}</span>
                   <span className="font-mono font-bold text-slate-200">
                     {formatMoney(
                       selectedPlan.lineItems.filter((i) => !i.isOptional).reduce((sum, curr) => sum + curr.amount, 0),
@@ -276,7 +276,7 @@ export function FeePlanList({
                 </div>
                 {selectedPlan.lineItems.some((i) => i.isOptional) && (
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-amber-400 font-semibold">+ Optional Add-ons Total:</span>
+                    <span className="text-amber-400 font-semibold">Optional items available</span>
                     <span className="font-mono font-bold text-amber-300">
                       {formatMoney(
                         selectedPlan.lineItems.filter((i) => i.isOptional).reduce((sum, curr) => sum + curr.amount, 0),
@@ -286,7 +286,7 @@ export function FeePlanList({
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-sm">
-                  <span className="font-bold uppercase tracking-wider text-slate-300">Total (All Included)</span>
+                  <span className="font-bold uppercase tracking-wider text-slate-300">{selectedPlan.optionalSelectionMode === "parent_selectable" ? "Maximum invoice total" : "Total (All Included)"}</span>
                   <span className="font-mono font-black text-emerald-400 text-base">
                     {formatMoney(
                       selectedPlan.lineItems.reduce((sum, curr) => sum + curr.amount, 0),

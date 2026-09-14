@@ -11,6 +11,9 @@ export function useBillingActions() {
   const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
   const recordPayment = useMutation("functions/billing:recordManualPayment" as never);
   const createInvoicePaymentLink = useAction("functions/billing:initializeOnlinePayment" as never);
+  const createSelectableBillingCollection = useMutation("functions/billing:createSelectableBillingCollection" as never);
+  const issueSelectableBillingItems = useMutation("functions/billing:issueSelectableBillingItems" as never);
+  const updateInvoiceOptionalSelections = useMutation("functions/billing:updateInvoiceOptionalSelections" as never);
 
   const runAction = async (
     action: () => Promise<unknown>,
@@ -39,5 +42,8 @@ export function useBillingActions() {
     applyFeePlanToClassStudents,
     recordPayment,
     createInvoicePaymentLink,
+    createSelectableBillingCollection,
+    issueSelectableBillingItems,
+    updateInvoiceOptionalSelections,
   };
 }

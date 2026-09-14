@@ -34,6 +34,7 @@ export const DUPLICATION_TIERS: string[][] = [
     "classSubjectAggregations",
     "reportCardExtraBundles",
     "reportCardTermSettingGroups",
+    "schoolBankAccounts",
     "feePlans",
     "schoolDomains",
     "schoolSiteProfiles",
@@ -61,6 +62,8 @@ export const DUPLICATION_TIERS: string[][] = [
     "reportCardAttendanceClassValues",
     "reportCardAttendanceStudentValues",
     "feePlanApplications",
+    "selectableBillingCollections",
+    "selectableBillingItems",
     "studentInvoices",
     "schoolSiteAssets",
     "schoolSiteRevisions",
@@ -114,6 +117,8 @@ export const KNOWLEDGE_AI_TABLES = [
 
 export const LEGACY_BILLING_TABLES = [
   "studentInvoices",
+  "selectableBillingItems",
+  "selectableBillingCollections",
   "feePlans",
   "feePlanApplications",
   "billingPayments",
@@ -220,6 +225,8 @@ export const SCHOOL_PURGE_TABLES = [
   "demoSeedRuns",
   "feePlanApplications",
   "studentInvoices",
+  "selectableBillingItems",
+  "selectableBillingCollections",
   "paymentGatewayEvents",
   "billingPaymentAttempts",
   "paymentAllocations",
@@ -356,7 +363,22 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
     { field: "classIds", targetTable: "classes", isArray: true },
   ],
   feePlans: [
+    { field: "bankAccountId", targetTable: "schoolBankAccounts" },
     { field: "targetClassIds", targetTable: "classes", isArray: true },
+    { field: "createdBy", targetTable: "users" },
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  schoolBankAccounts: [
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  selectableBillingCollections: [
+    { field: "bankAccountId", targetTable: "schoolBankAccounts" },
+    { field: "targetClassIds", targetTable: "classes", isArray: true },
+    { field: "createdBy", targetTable: "users" },
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  selectableBillingItems: [
+    { field: "collectionId", targetTable: "selectableBillingCollections" },
     { field: "createdBy", targetTable: "users" },
     { field: "updatedBy", targetTable: "users" },
   ],
@@ -468,6 +490,7 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
   ],
   studentInvoices: [
     { field: "feePlanId", targetTable: "feePlans" },
+    { field: "selectableCollectionId", targetTable: "selectableBillingCollections" },
     { field: "feePlanApplicationId", targetTable: "feePlanApplications" },
     { field: "studentId", targetTable: "students" },
     { field: "classId", targetTable: "classes" },

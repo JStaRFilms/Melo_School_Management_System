@@ -10,6 +10,12 @@ export function feePlanValidation(draft: FeePlanDraft): string | null {
   if (!draft.lineItems.length || draft.lineItems.some(item => !item.label.trim() || !item.amount.trim() || !Number.isFinite(Number(item.amount)) || Number(item.amount) <= 0)) {
     return "Every fee item needs a name and a finite amount greater than zero";
   }
+  const hasOptionalItems = draft.lineItems.some((item) => item.isOptional);
+  const mandatoryTotal = draft.lineItems
+    .filter((item) => !item.isOptional)
+    .reduce((total, item) => total + Number(item.amount || 0), 0);
+  if (hasOptionalItems && draft.billingMode !== "class_default") return "Optional fee-plan items are available only on class-default plans";
+  if (hasOptionalItems && mandatoryTotal <= 0) return "Optional items require a positive mandatory charge";
   if (draft.installmentEnabled && (!Number.isInteger(Number(draft.installmentCount)) || Number(draft.installmentCount) < 2 || !Number.isInteger(Number(draft.intervalDays)) || Number(draft.intervalDays) < 1)) {
     return "Installments need at least two payments and a positive whole-day interval";
   }

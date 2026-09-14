@@ -1,6 +1,8 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import type { QueryCtx } from "../../_generated/server";
+import type { MutationCtx, QueryCtx } from "../../_generated/server";
+
+type PortalCtx = QueryCtx | MutationCtx;
 import { resolveTokenFirstTrustedLegacyRow } from "./identityResolver";
 
 export type PortalMembership = {
@@ -29,7 +31,7 @@ function identityError(
 }
 
 async function getPortalRole(
-  ctx: QueryCtx,
+  ctx: PortalCtx,
   user: Doc<"users">,
 ): Promise<"parent" | "student" | null> {
   if (user.role === "student") return "student";
@@ -43,7 +45,7 @@ async function getPortalRole(
 
 /** Canonical token -> person -> explicit active branch membership -> linked user. */
 export async function resolvePortalMemberships(
-  ctx: QueryCtx,
+  ctx: PortalCtx,
 ): Promise<PortalAuth> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw identityError("FORBIDDEN", "Unauthorized");
@@ -171,7 +173,7 @@ export async function resolvePortalMemberships(
 }
 
 export async function getPortalStudentAccess(
-  ctx: QueryCtx,
+  ctx: PortalCtx,
   portalAuth: PortalAuth,
 ): Promise<PortalStudentAccess[]> {
   const accessible: PortalStudentAccess[] = [];
@@ -263,7 +265,7 @@ export async function getPortalStudentAccess(
 }
 
 export async function resolvePortalStudentContext(
-  ctx: QueryCtx,
+  ctx: PortalCtx,
   args: { studentId?: Id<"students"> | null } = {},
 ) {
   const portalAuth = await resolvePortalMemberships(ctx);

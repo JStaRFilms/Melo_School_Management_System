@@ -1,10 +1,11 @@
 "use client";
-import { InvoicePaymentInstructions } from "@school/shared";
 import { resolveGradeColor } from "@school/shared/exam-recording";
 
+import { buildPortalPaymentRequest } from "@/portal-billing";
 import type {
 PortalBillingData,
 PortalBillingInvoice,
+PortalEligibleBillingCollections,
 PortalHistoryItem,
 PortalNotificationItem,
 PortalWorkspaceData,
@@ -12,9 +13,10 @@ PortalWorkspaceData,
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar } from "@school/shared";
-import { buildPortalHref, formatDate, formatMoney, formatScore, getGreeting } from "./format";
-import { useAction,useQuery } from "convex/react";
-import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
+import { buildPortalHref, formatScore, getGreeting } from "./format";
+import { PortalBillingView } from "./PortalBillingView";
+import { useAction,useMutation,useQuery } from "convex/react";
+import { ArrowRight,ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname,useRouter,useSearchParams } from "next/navigation";
 import { useEffect,useMemo,useRef,useState } from "react";
@@ -50,6 +52,8 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
   const router = useRouter();
   const searchParams = useSearchParams();
   const initializePortalPayment = useAction(api.functions.billing.initializePortalOnlinePayment);
+  const createSelectableInvoice = useMutation(api.functions.portal.createSelectableInvoice);
+  const updateOptionalSelections = useMutation(api.functions.portal.updateInvoiceOptionalSelections);
 
   const studentId = searchParams.get("studentId");
   const sessionId = searchParams.get("sessionId");
@@ -74,6 +78,23 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
   const resolvedStudentId = workspace?.selectedStudentId ?? null;
   const resolvedSessionId = workspace?.selectedSessionId ?? null;
   const resolvedTermId = workspace?.selectedTermId ?? null;
+  const shouldLoadEligibleCollections =
+    mode === "billing" &&
+    workspace?.viewer.role === "parent" &&
+    workspace.selectedStudent?.enrollmentState === "active" &&
+    resolvedStudentId !== null &&
+    resolvedSessionId !== null &&
+    resolvedTermId !== null;
+  const eligibleCollections = useQuery(
+    api.functions.portal.listEligibleSelectableBillingCollections,
+    shouldLoadEligibleCollections
+      ? {
+          studentId: resolvedStudentId as Id<"students">,
+          sessionId: resolvedSessionId as Id<"academicSessions">,
+          termId: resolvedTermId as Id<"academicTerms">,
+        }
+      : "skip",
+  ) as PortalEligibleBillingCollections | undefined;
 
   useEffect(() => {
     if (workspace?.school?.name) {
@@ -141,9 +162,10 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
       setBillingNotice(null);
       setPayingInvoiceId(invoice.invoiceId);
       const callbackUrl = `${window.location.origin}/payments/paystack/return?studentId=${encodeURIComponent(invoice.studentId)}`;
+      const paymentRequest = buildPortalPaymentRequest(invoice, callbackUrl);
       const result = (await initializePortalPayment({
-        invoiceId: invoice.invoiceId as Id<"studentInvoices">,
-        callbackUrl,
+        ...paymentRequest,
+        invoiceId: paymentRequest.invoiceId as Id<"studentInvoices">,
       })) as {
         authorizationUrl: string | null;
       };
@@ -155,7 +177,17 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
       window.location.href = result.authorizationUrl;
     } catch (error) {
       paymentInitializingRef.current = false;
-      setBillingNotice(getUserFacingErrorMessage(error, "Unable to start online payment."));
+      const errorData = error && typeof error === "object"
+        ? (error as { data?: unknown }).data
+        : null;
+      const errorCode = errorData && typeof errorData === "object" && "code" in errorData
+        ? (errorData as { code?: unknown }).code
+        : null;
+      setBillingNotice(
+        errorCode === "SELECTION_CONFLICT"
+          ? "This invoice changed before checkout opened. Review the latest total and try again."
+          : getUserFacingErrorMessage(error, "Online payment could not be started. Your invoice has not changed."),
+      );
       setPayingInvoiceId(null);
     }
   };
@@ -200,11 +232,28 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
         )}
         {mode === "notifications" && <NotificationsView workspace={workspace} />}
         {mode === "billing" && (
-          <BillingView
+          <PortalBillingView
             workspace={workspace}
             billing={billing}
+            eligibleCollections={eligibleCollections}
             billingNotice={billingNotice}
             payingInvoiceId={payingInvoiceId}
+            createInvoice={async (args) => createSelectableInvoice({
+              requestKey: args.requestKey,
+              studentId: args.studentId as Id<"students">,
+              collectionId: args.collectionId as Id<"selectableBillingCollections">,
+              sessionId: args.sessionId as Id<"academicSessions">,
+              termId: args.termId as Id<"academicTerms">,
+              selections: args.selections.map((selection) => ({
+                itemId: selection.itemId as Id<"selectableBillingItems">,
+                quantity: selection.quantity,
+              })),
+            }) as Promise<{ invoice: PortalBillingInvoice; replayed: boolean }>}
+            updateSelections={async (args) => updateOptionalSelections({
+              invoiceId: args.invoiceId as Id<"studentInvoices">,
+              expectedSelectionRevision: args.expectedSelectionRevision,
+              selections: args.selections,
+            }) as Promise<{ invoice: PortalBillingInvoice; changed: boolean }>}
             onPayNow={handleStartPortalPayment}
           />
         )}
@@ -705,191 +754,6 @@ function ResultsView({
         <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
           Result history will appear here once the school publishes term results.
         </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── Billing View ─────────────────────────────────────────── */
-
-function BillingView({
-  workspace,
-  billing,
-  billingNotice,
-  payingInvoiceId,
-  onPayNow,
-}: {
-  workspace: PortalWorkspaceData;
-  billing: PortalBillingData | undefined;
-  billingNotice: string | null;
-  payingInvoiceId: string | null;
-  onPayNow: (invoice: PortalBillingInvoice) => Promise<void>;
-}) {
-  if (billing === undefined) {
-    return (
-      <div className="animate-pulse space-y-6">
-        <div className="h-8 w-48 rounded bg-slate-100" />
-        <div className="h-40 rounded-2xl bg-slate-100" />
-      </div>
-    );
-  }
-
-  const summaryCurrency = billing.invoices[0]?.currency ?? billing.settings.defaultCurrency;
-  const studentName = workspace.selectedStudent?.name ?? "your child";
-
-  return (
-    <div className="space-y-8">
-      {/* Summary line */}
-      <div>
-        <h2 className="text-lg font-bold text-slate-900">Fees & payments</h2>
-        <p className="mt-2 text-[15px] text-slate-600">
-          {billing.studentSummary.outstandingBalance > 0 ? (
-            <>
-              {studentName} has{" "}
-              <span className="font-bold text-amber-600">
-                {formatMoney(billing.studentSummary.outstandingBalance, summaryCurrency)}
-              </span>{" "}
-              outstanding across {billing.studentSummary.invoiceCount} invoice
-              {billing.studentSummary.invoiceCount !== 1 ? "s" : ""}.
-              {billing.studentSummary.totalPaid > 0 && (
-                <span className="text-slate-500">
-                  {" "}
-                  {formatMoney(billing.studentSummary.totalPaid, summaryCurrency)} paid so far.
-                </span>
-              )}
-            </>
-          ) : (
-            <>
-              All fees for {studentName} are settled.{" "}
-              <span className="text-emerald-600 font-semibold">No outstanding balance.</span>
-            </>
-          )}
-        </p>
-      </div>
-
-      {billingNotice && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
-          {billingNotice}
-        </div>
-      )}
-
-      {/* Invoices */}
-      {billing.invoices.length > 0 ? (
-        <div className="space-y-6">
-          {billing.invoices.map((invoice) => (
-            <div key={invoice.invoiceId} className="overflow-hidden rounded-xl border border-slate-200">
-              {/* Invoice header */}
-              <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">{invoice.feePlanName}</h3>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {invoice.invoiceNumber} · Due {formatDate(invoice.dueDate)}
-                  </p>
-                </div>
-                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-                  invoice.status === "paid"
-                    ? "bg-emerald-50 text-emerald-700"
-                    : invoice.status === "overdue"
-                    ? "bg-rose-50 text-rose-700"
-                    : "bg-amber-50 text-amber-700"
-                }`}>
-                  {invoice.status}
-                </span>
-              </div>
-
-              {/* Line items — receipt style */}
-              {invoice.lineItems.length > 0 && (
-                <div className="divide-y divide-slate-100 px-5">
-                  {invoice.lineItems.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between py-3 text-sm">
-                      <span className="text-slate-600">{item.label}</span>
-                      <span className="font-semibold text-slate-900 tabular-nums">
-                        {formatMoney(item.amount, invoice.currency)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Totals */}
-              <div className="border-t border-slate-200 bg-slate-50/50 px-5 py-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Total</span>
-                  <span className="font-bold text-slate-900 tabular-nums">
-                    {formatMoney(invoice.totalAmount, invoice.currency)}
-                  </span>
-                </div>
-                {invoice.amountPaid > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Paid</span>
-                    <span className="font-semibold text-emerald-600 tabular-nums">
-                      −{formatMoney(invoice.amountPaid, invoice.currency)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-[15px] pt-2 border-t border-dashed border-slate-200">
-                  <span className="font-semibold text-slate-700">Balance due</span>
-                  <span className="font-bold text-slate-900 tabular-nums">
-                    {formatMoney(invoice.balanceDue, invoice.currency)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Pay button */}
-              <InvoicePaymentInstructions instructions={invoice.paymentInstructions} reference={invoice.invoiceNumber} payable={invoice.balanceDue > 0 && ["issued", "overdue", "partially_paid"].includes(invoice.status)} />
-              {invoice.canPayOnline && invoice.balanceDue > 0 && (
-                <div className="border-t border-slate-100 px-5 py-4">
-                  <button
-                    type="button"
-                    onClick={() => void onPayNow(invoice)}
-                    disabled={payingInvoiceId !== null}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    {payingInvoiceId === invoice.invoiceId
-                      ? "Opening Paystack..."
-                      : `Pay ${formatMoney(invoice.balanceDue, invoice.currency)} now`}
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-          No invoices for {studentName} right now.
-        </div>
-      )}
-
-      {/* Payment history */}
-      {billing.payments.length > 0 && (
-        <section className="space-y-4">
-          <h3 className="text-base font-bold text-slate-900">Payment history</h3>
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/80">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Invoice</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Method</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">Date</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {billing.payments.map((payment) => (
-                  <tr key={payment.paymentId}>
-                    <td className="px-4 py-3 font-medium text-slate-700">{payment.invoiceNumber}</td>
-                    <td className="px-4 py-3 text-slate-500">{payment.provider ?? payment.paymentMethod}</td>
-                    <td className="px-4 py-3 text-slate-500 tabular-nums">{formatDate(payment.receivedAt)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-emerald-600 tabular-nums">
-                      {formatMoney(payment.amountApplied, summaryCurrency)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
       )}
     </div>
   );

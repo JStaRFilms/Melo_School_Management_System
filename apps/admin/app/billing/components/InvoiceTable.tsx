@@ -1,4 +1,5 @@
-import { FileText, ReceiptText } from "lucide-react";
+import { FileText, ListChecks, ReceiptText } from "lucide-react";
+import { invoiceHasManageableChoices } from "./InvoiceOptionalChoices";
 import type { BillingDashboardData, InvoiceSortKey, SortDirection } from "../types";
 import { formatMoney } from "../utils";
 import { SortHeaderButton } from "./SortHeaderButton";
@@ -11,6 +12,7 @@ interface InvoiceTableProps {
   sortable?: boolean;
   onViewInvoice?: (id: string) => void;
   onViewStatement?: (id: string) => void;
+  onManageChoices?: (invoice: BillingDashboardData["invoices"][number]["invoice"]) => void;
 }
 
 export function InvoiceTable({
@@ -21,8 +23,9 @@ export function InvoiceTable({
   sortable = true,
   onViewInvoice,
   onViewStatement,
+  onManageChoices,
 }: InvoiceTableProps) {
-  const hasPrintActions = Boolean(onViewInvoice || onViewStatement);
+  const hasPrintActions = Boolean(onViewInvoice || onViewStatement || onManageChoices);
 
   return (
     <div className="overflow-x-auto scrollbar-hide">
@@ -139,6 +142,16 @@ export function InvoiceTable({
               {hasPrintActions && (
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                   <div className="inline-flex items-center gap-2">
+                    {onManageChoices && invoiceHasManageableChoices(row.invoice) && (
+                      <button
+                        type="button"
+                        onClick={() => onManageChoices(row.invoice)}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:border-slate-950 hover:text-slate-950"
+                      >
+                        <ListChecks className="h-3.5 w-3.5" />
+                        {row.invoice.canEditOptionalItems ? "Manage choices" : "View choices"}
+                      </button>
+                    )}
                     {onViewInvoice && (
                       <button
                         type="button"

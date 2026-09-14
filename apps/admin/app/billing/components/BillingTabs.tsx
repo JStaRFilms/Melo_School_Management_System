@@ -3,11 +3,12 @@ import {
   FileText, 
   Banknote, 
   Settings2, 
-  ClipboardList, 
-  History 
+  ClipboardList,
+  History,
+  ShoppingBag,
 } from "lucide-react";
 
-export type BillingTab = "overview" | "invoices" | "payments" | "plans" | "settings";
+export type BillingTab = "overview" | "invoices" | "payments" | "plans" | "selectable" | "settings";
 
 interface BillingTabsProps {
   activeTab: BillingTab;
@@ -19,16 +20,19 @@ const tabs: { id: BillingTab; label: string; icon: React.ReactNode }[] = [
   { id: "invoices", label: "Invoices", icon: <FileText className="h-4 w-4" /> },
   { id: "payments", label: "Payments", icon: <Banknote className="h-4 w-4" /> },
   { id: "plans", label: "Plans", icon: <History className="h-4 w-4" /> },
+  { id: "selectable", label: "Selectable items", icon: <ShoppingBag className="h-4 w-4" /> },
   { id: "settings", label: "Config", icon: <Settings2 className="h-4 w-4" /> },
 ];
 
 export function BillingTabs({ activeTab, onTabChange }: BillingTabsProps) {
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-0.5">
+    <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-0.5" role="tablist" aria-label="Billing sections">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
+          role="tab"
+          aria-selected={activeTab === tab.id}
           className={`group flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all whitespace-nowrap ${
             activeTab === tab.id
               ? "bg-slate-900 text-white shadow-sm shadow-slate-900/10"

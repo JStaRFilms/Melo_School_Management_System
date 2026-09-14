@@ -20,13 +20,17 @@ import type {
   PaymentLinkResult,
   SessionOption,
   TermOption,
+  SelectableBillingCollection,
+  SelectableIssuanceResult,
 } from "../types";
 import { formatMoney } from "../utils";
 import { BulkApplicationForm } from "./forms/BulkApplicationForm";
 import { FeePlanForm } from "./forms/FeePlanForm";
+import { SelectableCollectionForm } from "./forms/SelectableCollectionForm";
+import { SelectableIssuanceForm } from "./forms/SelectableIssuanceForm";
 import type { DraftStatus } from "@school/shared/drafts";
 
-type BillingSidebarVariant = "arsenal" | "payment" | "invoice" | "application" | "link" | "plan";
+export type BillingSidebarVariant = "arsenal" | "payment" | "invoice" | "application" | "link" | "plan" | "collection" | "issuance";
 
 interface BillingSidebarProps {
   onClose?: () => void;
@@ -59,6 +63,16 @@ interface BillingSidebarProps {
   applicationTerms: TermOption[];
   feePlans: BillingDashboardData["feePlans"];
   canManageFeePlans: boolean;
+  canIssueInvoices: boolean;
+  selectableCollections: SelectableBillingCollection[];
+  initialSelectableCollectionId?: string;
+  defaultCurrency: string;
+  createSelectableCollection: Parameters<typeof SelectableCollectionForm>[0]["createCollection"];
+  issueSelectableItems: (args: Parameters<Parameters<typeof SelectableIssuanceForm>[0]["issueItems"]>[0]) => Promise<SelectableIssuanceResult>;
+  onSelectableCollectionCreated: (collection: SelectableBillingCollection) => void;
+  onSelectableIssuanceDone: () => void;
+  onSelectableForbidden: () => void;
+  onOpenSelectableInvoice: (invoiceId: string) => void;
 }
 
 const labelCx = "text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500 font-display";
@@ -89,6 +103,16 @@ export function BillingSidebar({
   applicationTerms,
   feePlans,
   canManageFeePlans,
+  canIssueInvoices,
+  selectableCollections,
+  initialSelectableCollectionId,
+  defaultCurrency,
+  createSelectableCollection,
+  issueSelectableItems,
+  onSelectableCollectionCreated,
+  onSelectableIssuanceDone,
+  onSelectableForbidden,
+  onOpenSelectableInvoice,
 }: BillingSidebarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -166,6 +190,19 @@ export function BillingSidebar({
               <svg className="h-4 w-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
             </button>
 
+            {canIssueInvoices && <button
+              onClick={() => onVariantChange?.("issuance")}
+              className="w-full flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50 transition-colors group text-left cursor-pointer"
+            >
+              <div className="h-10 w-10 shrink-0 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center">
+                <ReceiptText className="h-[18px] w-[18px]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-slate-900">Issue selected items</p>
+                <p className="text-[11px] text-slate-500 leading-snug">Create invoices for chosen collection items</p>
+              </div>
+            </button>}
+
             {canManageFeePlans && <button
               onClick={() => onVariantChange?.("plan")}
               className="w-full flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50 transition-colors group text-left cursor-pointer"
@@ -182,6 +219,33 @@ export function BillingSidebar({
           </div>
         </div>
       )}
+
+      {variant === "collection" && canManageFeePlans ? (
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 custom-scrollbar">
+          <SelectableCollectionForm
+            classes={classes}
+            defaultCurrency={defaultCurrency}
+            createCollection={createSelectableCollection}
+            onCreated={onSelectableCollectionCreated}
+            onForbidden={onSelectableForbidden}
+          />
+        </div>
+      ) : null}
+
+      {variant === "issuance" && canIssueInvoices ? (
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 custom-scrollbar">
+          <SelectableIssuanceForm
+            key={initialSelectableCollectionId ?? "all"}
+            collections={selectableCollections}
+            sessions={sessions}
+            initialCollectionId={initialSelectableCollectionId}
+            issueItems={issueSelectableItems}
+            onDone={onSelectableIssuanceDone}
+            onForbidden={onSelectableForbidden}
+            onOpenInvoice={onOpenSelectableInvoice}
+          />
+        </div>
+      ) : null}
 
       {/* ── Payment: Record Receipt Form ─────────────────── */}
       {variant === "payment" && (

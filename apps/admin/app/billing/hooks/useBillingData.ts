@@ -1,9 +1,9 @@
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
-import type { BillingDashboardData, DashboardFilters, ClassOption, SessionOption, TermOption, StudentOption } from "../types";
+import type { BillingDashboardData, DashboardFilters, ClassOption, SessionOption, TermOption, StudentOption, SelectableBillingCollection } from "../types";
 import { toQueryArgs } from "../utils";
 
-export function useBillingData(filters: DashboardFilters, invoiceDraft: any, feePlanApplicationDraft: any) {
+export function useBillingData(filters: DashboardFilters, invoiceDraft: any, feePlanApplicationDraft: any, includeInactiveCollections = false, canViewSelectableCollections = false) {
   const dashboardArgs = {
     classId: filters.classId ? (filters.classId as never) : (null as never),
     sessionId: filters.sessionId ? (filters.sessionId as never) : (null as never),
@@ -44,6 +44,11 @@ export function useBillingData(filters: DashboardFilters, invoiceDraft: any, fee
     toQueryArgs("sessionId", feePlanApplicationDraft.sessionId)
   ) as TermOption[] | undefined;
 
+  const selectableCollections = useQuery(
+    "functions/billing:listSelectableBillingCollections" as never,
+    canViewSelectableCollections ? { includeInactive: includeInactiveCollections } as never : "skip",
+  ) as SelectableBillingCollection[] | undefined;
+
   const schoolPaymentAttemptRows = useQuery(
     "functions/billing:listBillingPaymentAttempts" as never,
     { status: null, limit: 50 } as never
@@ -63,6 +68,7 @@ export function useBillingData(filters: DashboardFilters, invoiceDraft: any, fee
     invoiceStudents,
     applicationTerms,
     schoolPaymentAttemptRows,
+    selectableCollections,
     classNameById,
   };
 }
