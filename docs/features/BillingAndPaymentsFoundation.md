@@ -135,7 +135,7 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - Convex checks authorization and school ownership on every lifecycle mutation. Hiding UI controls is not an authorization boundary.
 - A fee plan is deletable only if no `feePlanApplications` or `studentInvoices` row references it.
 - Revocation never deletes invoice, payment, allocation, attempt, or gateway history.
-- An invoice with a positive paid amount, or a `paid` or `partially_paid` status, blocks cancellation of that invoice. Other unpaid invoices from the same plan may still be cancelled.
+- An invoice with a positive paid amount, or a `paid`, `partially_paid`, or `waived` status, blocks cancellation of that invoice. Other unpaid invoices from the same plan may still be cancelled.
 - Manual payments cannot be recorded against a cancelled invoice. A verified gateway payment that arrives after revocation is preserved as a successful but unapplied, flagged payment without changing the cancelled invoice balance.
 - Bulk deletion and revocation read bounded invoice pages through server-owned continuation runs, so clients cannot transplant cursors to skip financial history.
 - Cancelled invoice balances remain preserved on the invoice record but are excluded from active school and household outstanding totals.

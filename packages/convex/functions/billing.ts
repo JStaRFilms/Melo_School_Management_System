@@ -438,7 +438,7 @@ function buildFeePlanUsageById(
       summary.blockedPaidInvoiceCount += 1;
     } else if (invoice.status === "cancelled") {
       summary.cancelledInvoiceCount += 1;
-    } else {
+    } else if (invoice.status !== "waived") {
       summary.revocableInvoiceCount += 1;
     }
   }
@@ -2090,7 +2090,7 @@ export const revokeFeePlanInvoices = mutation({
         invoice.amountPaid > 0 ||
         invoice.status === "paid" ||
         invoice.status === "partially_paid";
-      return !paymentBlocked && invoice.status !== "cancelled";
+      return !paymentBlocked && invoice.status !== "cancelled" && invoice.status !== "waived";
     });
 
     const now = Date.now();

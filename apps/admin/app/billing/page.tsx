@@ -117,6 +117,13 @@ export default function BillingPage() {
   const canRevokeFeePlanInvoices = canManageFeePlans && canIssueInvoices;
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const draftConnection = useDraftConnection();
+  useEffect(() => {
+    if (canManageFeePlans || sidebarVariant !== "plan") return;
+    setSidebarVariant("payment");
+    setSidebarOpen(false);
+    setFeePlanDraft(initialFeePlanDraft());
+    setFeePlanDraftInstanceKey((key) => key + 1);
+  }, [canManageFeePlans, sidebarVariant]);
   const feePlanDraftData = useMemo<DraftPayload<"fee_plan_builder">>(() => ({
     bankAccountId: feePlanDraft.bankAccountId ?? "",
     name: feePlanDraft.name,
@@ -823,7 +830,7 @@ export default function BillingPage() {
 
             <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
               <div className="absolute inset-0 bg-white/40 pointer-events-none" />
-              {(canUseLegacyBillingOperations || sidebarVariant === "plan") && <BillingSidebar
+              {(canUseLegacyBillingOperations || (canManageFeePlans && sidebarVariant === "plan")) && <BillingSidebar
                 onClose={() => void closeFeeSidebar()}
                 variant={sidebarVariant}
                 onVariantChange={(v) => {
@@ -867,7 +874,7 @@ export default function BillingPage() {
         onClose={() => void closeFeeSidebar()}
         title={sidebarTitles[sidebarVariant]}
       >
-        {(canUseLegacyBillingOperations || sidebarVariant === "plan") && <BillingSidebar
+        {(canUseLegacyBillingOperations || (canManageFeePlans && sidebarVariant === "plan")) && <BillingSidebar
           onClose={() => void closeFeeSidebar()}
           variant={sidebarVariant}
           onVariantChange={setSidebarVariant}

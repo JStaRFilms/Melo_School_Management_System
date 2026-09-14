@@ -647,6 +647,15 @@ describe("billing registered functions", () => {
         balanceDue: 0,
         status: "paid",
       });
+      const waivedInvoiceId = await ctx.db.insert("studentInvoices", {
+        ...baseInvoice,
+        invoiceNumber: "LIFE-WAIVED",
+        waiverAmount: 5000,
+        totalAmount: 0,
+        amountPaid: 0,
+        balanceDue: 0,
+        status: "waived",
+      });
       const attemptId = await ctx.db.insert("billingPaymentAttempts", {
         schoolId: ids.schoolId,
         invoiceId: unpaidInvoiceId,
@@ -669,7 +678,7 @@ describe("billing registered functions", () => {
         createdAt: now,
         updatedAt: now,
       });
-      return { unpaidInvoiceId, paidInvoiceId, attemptId };
+      return { unpaidInvoiceId, paidInvoiceId, waivedInvoiceId, attemptId };
     });
 
     await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
@@ -725,7 +734,7 @@ describe("billing registered functions", () => {
       canDelete: false,
     });
     expect(dashboard.feePlans.find((plan) => plan._id === usedPlan._id)?.usage).toMatchObject({
-      invoiceCount: 27,
+      invoiceCount: 28,
       revocableInvoiceCount: 1,
       blockedPaidInvoiceCount: 26,
       canDelete: false,
@@ -778,6 +787,7 @@ describe("billing registered functions", () => {
       plan: await ctx.db.get("feePlans", usedPlan._id as Id<"feePlans">),
       unpaid: await ctx.db.get(invoiceIds.unpaidInvoiceId),
       paid: await ctx.db.get(invoiceIds.paidInvoiceId),
+      waived: await ctx.db.get(invoiceIds.waivedInvoiceId),
       attempt: await ctx.db.get(invoiceIds.attemptId),
       audit: await ctx.db.query("auditEvents").withIndex("by_school", (q) => q.eq("schoolId", ids.schoolId)).collect(),
     }));
@@ -788,6 +798,7 @@ describe("billing registered functions", () => {
       revocationReason: "Incorrect fee amount",
     });
     expect(lifecycleState.paid).toMatchObject({ status: "paid", amountPaid: 5000 });
+    expect(lifecycleState.waived).toMatchObject({ status: "waived", balanceDue: 0 });
     expect(lifecycleState.attempt).toMatchObject({
       status: "webhook_reconciled",
       paymentId: latePayment.payment?._id,
