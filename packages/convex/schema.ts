@@ -2216,6 +2216,48 @@ export default defineSchema({
     updatedAt: v.number(),
     updatedBy: v.union(v.id("users"), v.null()),
   }).index("by_school", ["schoolId"]),
+  selectableBillingCollections: defineTable({
+    schoolId: v.id("schools"),
+    bankAccountId: v.optional(v.id("schoolBankAccounts")),
+    name: v.string(),
+    description: v.optional(v.string()),
+    currency: v.string(),
+    targetClassIds: v.array(v.id("classes")),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_isActive", ["schoolId", "isActive"])
+    .index("by_school_and_bankAccountId", ["schoolId", "bankAccountId"]),
+
+  selectableBillingItems: defineTable({
+    schoolId: v.id("schools"),
+    collectionId: v.id("selectableBillingCollections"),
+    label: v.string(),
+    description: v.optional(v.string()),
+    unitAmount: v.number(),
+    category: v.union(
+      v.literal("tuition"),
+      v.literal("boarding"),
+      v.literal("transport"),
+      v.literal("exam"),
+      v.literal("activity"),
+      v.literal("other")
+    ),
+    order: v.number(),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.id("users"),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_collection", ["collectionId"])
+    .index("by_collection_and_isActive", ["collectionId", "isActive"]),
+
   feePlans: defineTable({
     schoolId: v.id("schools"),
     bankAccountId: v.optional(v.id("schoolBankAccounts")),
@@ -2226,6 +2268,9 @@ export default defineSchema({
       v.union(v.literal("class_default"), v.literal("manual_extra"))
     ),
     targetClassIds: v.optional(v.array(v.id("classes"))),
+    optionalSelectionMode: v.optional(
+      v.union(v.literal("legacy_included"), v.literal("parent_selectable"))
+    ),
     lineItems: v.array(
       v.object({
         id: v.string(),
@@ -2281,8 +2326,12 @@ export default defineSchema({
 
   studentInvoices: defineTable({
     schoolId: v.id("schools"),
-    feePlanId: v.id("feePlans"),
+    feePlanId: v.optional(v.id("feePlans")),
+    selectableCollectionId: v.optional(v.id("selectableBillingCollections")),
     feePlanApplicationId: v.optional(v.id("feePlanApplications")),
+    selectionRevision: v.optional(v.number()),
+    creationRequestKey: v.optional(v.string()),
+    creationRequestFingerprint: v.optional(v.string()),
     studentId: v.id("students"),
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
@@ -2306,6 +2355,9 @@ export default defineSchema({
         order: v.number(),
         isOptional: v.optional(v.boolean()),
         isSelected: v.optional(v.boolean()),
+        sourceSelectableItemId: v.optional(v.id("selectableBillingItems")),
+        unitAmount: v.optional(v.number()),
+        quantity: v.optional(v.number()),
       })
     ),
     installmentSchedule: v.array(

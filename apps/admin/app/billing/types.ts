@@ -165,6 +165,58 @@ export type StudentOption = {
   admissionNumber: string;
 };
 
+export type BillingLineItemCategory =
+  | "tuition"
+  | "boarding"
+  | "transport"
+  | "exam"
+  | "activity"
+  | "other";
+
+export type SelectableBillingCollection = {
+  _id: string;
+  schoolId: string;
+  bankAccountId: string | null;
+  name: string;
+  description: string | null;
+  currency: string;
+  targetClassIds: string[];
+  targetClasses: Array<{ _id: string; name: string }>;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+  items: Array<{
+    _id: string;
+    label: string;
+    description: string | null;
+    unitAmount: number;
+    category: BillingLineItemCategory;
+    order: number;
+    isActive: boolean;
+  }>;
+};
+
+export type SelectableCollectionDraft = {
+  name: string;
+  description: string;
+  currency: string;
+  bankAccountId: string;
+  targetClassIds: string[];
+  items: Array<{
+    draftId: string;
+    label: string;
+    description: string;
+    unitAmount: string;
+    category: BillingLineItemCategory;
+  }>;
+};
+
+export type SelectableIssuanceResult = {
+  createdInvoices: BillingDashboardData["invoices"][number]["invoice"][];
+  replayedInvoices: BillingDashboardData["invoices"][number]["invoice"][];
+  skippedExistingStudentIds: string[];
+};
+
 export type BillingDashboardData = {
   school: {
     id: string;
@@ -206,6 +258,7 @@ export type BillingDashboardData = {
     currency: string;
     billingMode: "class_default" | "manual_extra";
     targetClassIds: string[];
+    optionalSelectionMode: "legacy_included" | "parent_selectable";
     lineItems: Array<{
       id: string;
       label: string;
@@ -252,8 +305,12 @@ export type BillingDashboardData = {
     invoice: {
       _id: string;
       schoolId: string;
-      feePlanId: string;
+      feePlanId: string | null;
+      selectableCollectionId: string | null;
       feePlanApplicationId: string | null;
+      selectionRevision: number | null;
+      canEditOptionalItems: boolean;
+      selectionLockReason: null | "not_editable" | "payment_recorded" | "cancelled";
       studentId: string;
       classId: string;
       sessionId: string;
@@ -269,6 +326,9 @@ export type BillingDashboardData = {
         order: number;
         isOptional?: boolean;
         isSelected?: boolean;
+        sourceSelectableItemId?: string;
+        unitAmount?: number;
+        quantity?: number;
       }>;
       installmentSchedule: Array<{ id: string; label: string; dueAt: number; amount: number; isPaid: boolean }>;
       subtotal: number;

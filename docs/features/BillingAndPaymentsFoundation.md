@@ -14,8 +14,18 @@ This feature is for **school billing only**:
 - school-scoped Paystack setup and payment-link handoff
 - online payment initialization and webhook verification
 - admin collections visibility
+- school-configured selectable billing collections for books, uniforms, transport, and similar purchases
+- Parent and Admin selection of optional rows on unpaid class-default invoices
 
-It does **not** include platform SaaS subscription billing.
+It does **not** include platform SaaS subscription billing, inventory, stock, sizing, suppliers, returns, or fulfilment tracking.
+
+### Selectable billing boundary
+
+Selectable collections are catalogs, not receivables. Class targeting grants eligibility only. Listing or browsing a collection never creates an invoice or changes an outstanding balance.
+
+A Parent or authorized Admin creates a collection invoice by submitting at least one active item with a positive integer quantity. The backend validates the current catalog, class eligibility, student enrollment, school, session, term, and settlement account in one transaction. It then writes one positive invoice containing only immutable snapshots of the committed items. Collection invoices cannot be edited through this feature after creation.
+
+Class-default fee plans remain the source of compulsory charges. Plans using `optionalSelectionMode: "parent_selectable"` write optional rows as explicitly unselected while mandatory rows keep the invoice total positive. A Parent or authorized Admin may update those optional rows before the first payment. Each update requires the current selection revision and recalculates invoice totals, balance, status, and installments atomically. Any positive `amountPaid` or payment allocation locks the composition permanently.
 
 ### Routing Model
 
@@ -51,16 +61,20 @@ The current implementation now uses a **per-school Paystack merchant** model:
 3. The admin can create a fee plan with itemized charges, an installment policy, and optional class targeting.
 4. The admin can bulk-apply a class-default fee plan to covered students for a selected session and term.
 5. The admin can generate a student invoice from a fee plan for one-off or student-specific charges.
-6. Manual cash or bank payments can be recorded against an invoice and automatically update invoice balances.
-7. Admins can configure school-level billing defaults, choose the active Paystack merchant mode, and enable or disable online payments for the school.
-8. School admins can save and validate per-mode Paystack merchant credentials from the billing workspace without exposing raw secrets back to the normal UI.
-9. Online payment initialization is provided through a provider adapter, the admin can generate a front-desk payment URL, and the default return target is an authenticated Paystack callback page inside the correct workspace.
-10. Every generated online payment link now creates a durable payment-attempt record that preserves the active merchant mode alongside the reference so pending references can survive cross-device handoff gaps.
-11. Paystack webhook callbacks now resolve the candidate school invoice context first and verify the signature with the correct school-specific merchant secret before mutating invoice state.
-12. The admin billing workspace can passively recheck pending references and surface whether they are still pending, verified, webhook reconciled, or need manual attention.
-13. Admins can filter collections by class, term, invoice status, or search text.
-14. Admins can open a selected invoice in a printable finance pack, generate or reuse a Paystack-first payment URL, and print the invoice with the URL and QR code.
-15. Admins can open a printable student statement from an invoice row showing charge lines, payment date/times, invoice references, and calculated charge/payment/balance totals.
+6. Admin users can create selectable collections for one or more eligible classes. This catalog write creates no invoice.
+7. An authorized Admin can issue selected collection items to one or several eligible active students. A linked Parent can browse eligible collections for an accessible active student and create the same positive snapshot invoice atomically.
+8. Parent-selectable optional rows on class-default invoices can be revision-updated before payment. Legacy optional rows with missing `isSelected` remain included until an authorized user explicitly changes them.
+9. Online payment initialization requires the current selection revision for invoices whose fee-plan optional rows remain mutable. The attempt-recording mutation reloads the invoice and rejects a changed revision or balance before the payment URL is returned.
+10. Manual cash or bank payments can be recorded against an invoice and automatically update invoice balances.
+11. Admins can configure school-level billing defaults, choose the active Paystack merchant mode, and enable or disable online payments for the school.
+12. School admins can save and validate per-mode Paystack merchant credentials from the billing workspace without exposing raw secrets back to the normal UI.
+13. Online payment initialization is provided through a provider adapter, the admin can generate a front-desk payment URL, and the default return target is an authenticated Paystack callback page inside the correct workspace.
+14. Every generated online payment link now creates a durable payment-attempt record that preserves the active merchant mode alongside the reference so pending references can survive cross-device handoff gaps.
+15. Paystack webhook callbacks now resolve the candidate school invoice context first and verify the signature with the correct school-specific merchant secret before mutating invoice state.
+16. The admin billing workspace can passively recheck pending references and surface whether they are still pending, verified, webhook reconciled, or need manual attention.
+17. Admins can filter collections by class, term, invoice status, or search text.
+18. Admins can open a selected invoice in a printable finance pack, generate or reuse a Paystack-first payment URL, and print the invoice with the URL and QR code.
+19. Admins can open a printable student statement from an invoice row showing charge lines, payment date/times, invoice references, and calculated charge/payment/balance totals.
 
 ## Database Schema
 
@@ -80,6 +94,15 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - installment policy snapshot
 - class-targeting mode for class defaults vs manual extras
 - target class ids for class-default plans
+- optional selection policy, with missing values preserving legacy included behavior
+
+### `selectableBillingCollections`
+- school-scoped catalog metadata, currency, optional settlement account, active state, and one or more eligible class ids
+- contains no invoice total and creates no debt by itself
+
+### `selectableBillingItems`
+- bounded child rows for collection item name, description, unit amount, category, display order, and active state
+- invoice creation copies immutable name, unit amount, quantity, and extended amount snapshots
 
 ### `feePlanApplications`
 - auditable bulk application runs for class-default plans
@@ -87,7 +110,11 @@ The current implementation now uses a **per-school Paystack merchant** model:
 
 ### `studentInvoices`
 - school-scoped invoice records for one student, class, session, and term
-- fee-plan snapshot and totals
+- exactly one source for new writes: a fee plan or selectable collection
+- fee-plan or collection-name snapshot and accounting totals
+- collection request key and deterministic fingerprint for per-student idempotency
+- optional selection revision for editable class-default invoices
+- line-item quantity, unit amount, and source-item provenance snapshots
 - balance, waiver, discount, and payment tracking fields
 
 ### `billingPayments`
@@ -116,6 +143,32 @@ The current implementation now uses a **per-school Paystack merchant** model:
 +### `schoolPaymentProviderSecrets`
 +- encrypted secret storage for school-scoped provider credentials
 +- keeps secret material separate from normal UI-facing provider metadata
+
+## Public backend contracts
+
+Admin contracts in `functions.billing`:
+
+- `listSelectableBillingCollections({ includeInactive? })`
+- `createSelectableBillingCollection({ bankAccountId?, name, description?, currency?, targetClassIds, items })`
+- `issueSelectableBillingItems({ requestKey, collectionId, studentIds, sessionId, termId, selections, bankAccountId?, dueDate?, notes? })`
+- `updateInvoiceOptionalSelections({ invoiceId, expectedSelectionRevision, selections })`
+- `initializeOnlinePayment(...)` with `expectedSelectionRevision?`
+
+Parent contracts in `functions.portal`:
+
+- `listEligibleSelectableBillingCollections({ studentId, sessionId, termId })`
+- `createSelectableInvoice({ requestKey, studentId, collectionId, sessionId, termId, selections })`
+- `updateInvoiceOptionalSelections({ invoiceId, expectedSelectionRevision, selections })`
+- extended `getBillingData` optional-row, revision, and lock projections
+- `functions.billing.initializePortalOnlinePayment(...)` with `expectedSelectionRevision?`
+
+New collection creation paths return structured `ConvexError` data for inaccessible records, permission failures, validation, idempotency conflict, duplicate invoice, stale selection revision, payment/cancellation lock, and zero-value invoice rejection. School and Parent student access come from authenticated server-side membership. The new catalog and issuance contracts do not accept `schoolId`.
+
+## Compatibility and migration
+
+No historical invoice backfill is required or permitted for this feature. Existing fee plans with a missing optional selection mode use `legacy_included`. Existing optional invoice rows with missing `isSelected` remain included in reads and accounting. Existing invoice source fields become optional only to support collection invoices; all new invoice writes enforce exactly one source.
+
+Deployment adds two tables and optional fields. Branch duplication remaps collection class, bank, user, and invoice source references. Tenant purge and demo seed cleanup delete item rows before collection rows. Nested invoice `sourceSelectableItemId` values are provenance snapshots and are not authoritative foreign keys.
 
 ## UX Direction
 

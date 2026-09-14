@@ -10,10 +10,12 @@ export function BankAccountSelection({
   value,
   onChange,
   label = "Deposit Account",
+  helperText,
 }: {
   value: string;
   onChange: (value: string) => void;
   label?: string;
+  helperText?: string;
 }) {
   const { workspaceAccess } = useAuth();
   const schoolId =
@@ -56,13 +58,13 @@ export function BankAccountSelection({
       </select>
 
       <p className="text-[10px] text-slate-400 leading-normal">
-        {value ? (
+        {helperText ?? (value ? (
           <span className="text-indigo-600 font-semibold">
             Invoices from this plan will deposit into this account.
           </span>
         ) : (
           "Leave unset to route payments to the school's primary account."
-        )}
+        ))}
       </p>
     </div>
   );

@@ -3,12 +3,32 @@ import { ConvexError, v } from "convex/values";
 import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
 import type { Doc, Id } from "../_generated/dataModel";
 import { api } from "../_generated/api";
-import { query, type QueryCtx } from "../_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 import { getPortalStudentAccess, resolvePortalMemberships, type PortalAuth } from "./academic/portalIdentity";
 import { buildStudentReportCard, reportCardResultValidator } from "./academic/reportCards";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { resolveDomainSetting } from "./academic/groupSettings";
+import {
+  billingContractError,
+  billingLineItemCategoryValidator,
+  invoiceHasOptionalSelectionRows,
+  invoiceOptionalSelectionValidator,
+  MAX_SELECTABLE_BILLING_COLLECTIONS,
+  MAX_SELECTABLE_BILLING_ITEMS,
+  MAX_STUDENT_INVOICE_HISTORY,
+  projectBillingLineItem,
+  selectableBillingSelectionValidator,
+} from "./billingShared";
+import {
+  buildCollectionInvoiceRequest,
+  createSelectableInvoiceRecord,
+  findCollectionInvoiceRequest,
+  findDuplicateCollectionInvoice,
+  selectableCollectionItemProjection,
+  updateOptionalInvoiceSelections,
+  validateSelectableInvoiceContext,
+} from "./billingSelectableShared";
 
 const portalStudentValidator = v.object({
   studentId: v.id("students"),
@@ -77,6 +97,15 @@ const portalBillingInvoiceValidator = v.object({
     v.literal("cancelled")
   ),
   canPayOnline: v.boolean(),
+  selectionRevision: v.union(v.number(), v.null()),
+  canEditOptionalItems: v.boolean(),
+  selectionLockReason: v.union(
+    v.null(),
+    v.literal("not_editable"),
+    v.literal("parent_required"),
+    v.literal("payment_recorded"),
+    v.literal("cancelled")
+  ),
   lineItems: v.array(
     v.object({
       id: v.string(),
@@ -84,10 +113,105 @@ const portalBillingInvoiceValidator = v.object({
       amount: v.number(),
       category: v.string(),
       order: v.number(),
+      isOptional: v.boolean(),
+      isSelected: v.boolean(),
+      unitAmount: v.number(),
+      quantity: v.number(),
     })
   ),
   notes: v.union(v.string(), v.null()),
 });
+
+const eligibleSelectableBillingCollectionsValidator = v.object({
+  student: v.object({
+    studentId: v.id("students"),
+    classId: v.id("classes"),
+    className: v.string(),
+  }),
+  collections: v.array(v.object({
+    collectionId: v.id("selectableBillingCollections"),
+    name: v.string(),
+    description: v.union(v.string(), v.null()),
+    currency: v.string(),
+    existingInvoiceId: v.union(v.id("studentInvoices"), v.null()),
+    canCreateInvoice: v.boolean(),
+    items: v.array(v.object({
+      itemId: v.id("selectableBillingItems"),
+      label: v.string(),
+      description: v.union(v.string(), v.null()),
+      unitAmount: v.number(),
+      category: billingLineItemCategoryValidator,
+      order: v.number(),
+    })),
+  })),
+});
+
+const createSelectableInvoiceResultValidator = v.object({
+  invoice: portalBillingInvoiceValidator,
+  replayed: v.boolean(),
+});
+
+const updateInvoiceOptionalSelectionsResultValidator = v.object({
+  invoice: portalBillingInvoiceValidator,
+  changed: v.boolean(),
+});
+
+function portalInvoiceProjection(args: {
+  invoice: Doc<"studentInvoices">;
+  allowOnlinePayments: boolean;
+  portalRole: "parent" | "student";
+  hasPaymentAllocation: boolean;
+}) {
+  const hasOptionalRows = invoiceHasOptionalSelectionRows(args.invoice);
+  const selectionLockReason = !hasOptionalRows
+    ? "not_editable" as const
+    : args.invoice.status === "cancelled"
+      ? "cancelled" as const
+      : args.invoice.amountPaid > 0 || args.hasPaymentAllocation || args.invoice.status === "paid"
+        ? "payment_recorded" as const
+        : args.portalRole !== "parent"
+          ? "parent_required" as const
+          : null;
+  return {
+    invoiceId: args.invoice._id,
+    paymentInstructions: invoicePaymentInstructions(args.invoice),
+    studentId: args.invoice.studentId,
+    invoiceNumber: args.invoice.invoiceNumber,
+    feePlanName: args.invoice.feePlanNameSnapshot,
+    currency: args.invoice.currency,
+    totalAmount: args.invoice.totalAmount,
+    amountPaid: args.invoice.amountPaid,
+    balanceDue: args.invoice.balanceDue,
+    dueDate: args.invoice.dueDate,
+    issuedAt: args.invoice.issuedAt,
+    status: args.invoice.status,
+    canPayOnline:
+      args.allowOnlinePayments &&
+      args.invoice.balanceDue > 0 &&
+      args.invoice.status !== "paid" &&
+      args.invoice.status !== "waived" &&
+      args.invoice.status !== "cancelled",
+    selectionRevision: hasOptionalRows ? args.invoice.selectionRevision ?? 0 : null,
+    canEditOptionalItems: selectionLockReason === null,
+    selectionLockReason,
+    lineItems: args.invoice.lineItems.map(projectBillingLineItem),
+    notes: args.invoice.notes ?? null,
+  };
+}
+
+async function requireParentStudentAccess(
+  ctx: QueryCtx | MutationCtx,
+  studentId: Id<"students">,
+) {
+  const portalAuth = await resolvePortalMemberships(ctx);
+  const access = await getPortalStudentAccess(ctx, portalAuth);
+  const selected = access.find((entry) => entry.student._id === studentId);
+  if (!selected) throw billingContractError("NOT_FOUND", "Student not found");
+  if (selected.portalMembership.role !== "parent") {
+    throw billingContractError("FORBIDDEN", "Only a linked parent or guardian can perform this operation");
+  }
+  return selected;
+}
 
 const portalBillingPaymentValidator = v.object({
   paymentId: v.id("billingPayments"),
@@ -700,6 +824,215 @@ export const getWorkspaceData = query({
   },
 });
 
+export const listEligibleSelectableBillingCollections = query({
+  args: {
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+  },
+  returns: eligibleSelectableBillingCollectionsValidator,
+  handler: async (ctx, args) => {
+    const access = await requireParentStudentAccess(ctx, args.studentId);
+    if (access.student.enrollmentStatus !== "active" || access.student.isArchived) {
+      throw billingContractError("VALIDATION_FAILED", "Student enrollment is not active");
+    }
+    const [classDoc, session, term] = await Promise.all([
+      ctx.db.get(access.student.classId),
+      ctx.db.get(args.sessionId),
+      ctx.db.get(args.termId),
+    ]);
+    if (!classDoc || classDoc.schoolId !== access.student.schoolId || classDoc.isArchived) {
+      throw billingContractError("NOT_FOUND", "Student class not found");
+    }
+    if (!session || session.schoolId !== access.student.schoolId || session.isArchived) {
+      throw billingContractError("NOT_FOUND", "Academic session not found");
+    }
+    if (!term || term.schoolId !== access.student.schoolId || term.isArchived || term.sessionId !== session._id) {
+      throw billingContractError("NOT_FOUND", "Academic term not found in the selected session");
+    }
+    const [collections, invoiceHistory] = await Promise.all([
+      ctx.db
+        .query("selectableBillingCollections")
+        .withIndex("by_school_and_isActive", (q) =>
+          q.eq("schoolId", access.student.schoolId).eq("isActive", true),
+        )
+        .take(MAX_SELECTABLE_BILLING_COLLECTIONS + 1),
+      ctx.db
+        .query("studentInvoices")
+        .withIndex("by_student", (q) => q.eq("studentId", access.student._id))
+        .take(MAX_STUDENT_INVOICE_HISTORY + 1),
+    ]);
+    if (collections.length > MAX_SELECTABLE_BILLING_COLLECTIONS || invoiceHistory.length > MAX_STUDENT_INVOICE_HISTORY) {
+      throw billingContractError("VALIDATION_FAILED", "Billing history exceeds supported bounds and needs review");
+    }
+    const eligible = collections.filter((collection) =>
+      collection.targetClassIds.some((classId) => classId === access.student.classId),
+    );
+    const projected = await Promise.all(eligible.map(async (collection) => {
+      const items = await ctx.db
+        .query("selectableBillingItems")
+        .withIndex("by_collection_and_isActive", (q) =>
+          q.eq("collectionId", collection._id).eq("isActive", true),
+        )
+        .take(MAX_SELECTABLE_BILLING_ITEMS + 1);
+      if (items.length > MAX_SELECTABLE_BILLING_ITEMS) {
+        throw billingContractError("VALIDATION_FAILED", "Collection item count exceeds supported bounds");
+      }
+      const existingInvoice = findDuplicateCollectionInvoice(invoiceHistory, {
+        collectionId: collection._id,
+        sessionId: session._id,
+        termId: term._id,
+      });
+      return {
+        collectionId: collection._id,
+        name: collection.name,
+        description: collection.description ?? null,
+        currency: collection.currency,
+        existingInvoiceId: existingInvoice?._id ?? null,
+        canCreateInvoice: !existingInvoice && items.length > 0,
+        items: items
+          .sort((left, right) => left.order - right.order || left.label.localeCompare(right.label))
+          .map((item) => {
+            const projection = selectableCollectionItemProjection(item);
+            return {
+              itemId: projection._id,
+              label: projection.label,
+              description: projection.description,
+              unitAmount: projection.unitAmount,
+              category: projection.category,
+              order: projection.order,
+            };
+          }),
+      };
+    }));
+    return {
+      student: {
+        studentId: access.student._id,
+        classId: classDoc._id,
+        className: formatClassDisplayName(classDoc),
+      },
+      collections: projected
+        .filter((collection) => collection.items.length > 0)
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    };
+  },
+});
+
+export const createSelectableInvoice = mutation({
+  args: {
+    requestKey: v.string(),
+    studentId: v.id("students"),
+    collectionId: v.id("selectableBillingCollections"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    selections: v.array(selectableBillingSelectionValidator),
+  },
+  returns: createSelectableInvoiceResultValidator,
+  handler: async (ctx, args) => {
+    const access = await requireParentStudentAccess(ctx, args.studentId);
+    const request = buildCollectionInvoiceRequest({
+      actorKind: "parent",
+      actorUserId: access.portalMembership.user._id,
+      schoolId: access.student.schoolId,
+      studentId: access.student._id,
+      collectionId: args.collectionId,
+      sessionId: args.sessionId,
+      termId: args.termId,
+      requestKey: args.requestKey,
+      selections: args.selections,
+    });
+    const requestLookup = await findCollectionInvoiceRequest({
+      ctx,
+      studentId: access.student._id,
+      requestKey: request.requestKey,
+      fingerprint: request.fingerprint,
+    });
+    const settings = await ctx.db
+      .query("schoolBillingSettings")
+      .withIndex("by_school", (q) => q.eq("schoolId", access.student.schoolId))
+      .unique();
+    if (requestLookup.requestInvoice) {
+      return {
+        invoice: portalInvoiceProjection({
+          invoice: requestLookup.requestInvoice,
+          allowOnlinePayments: Boolean(settings?.allowOnlinePayments),
+          portalRole: "parent",
+          hasPaymentAllocation: false,
+        }),
+        replayed: true,
+      };
+    }
+    const duplicate = findDuplicateCollectionInvoice(requestLookup.history, args);
+    if (duplicate) {
+      throw billingContractError(
+        "DUPLICATE_INVOICE",
+        "An invoice already exists for this collection and term",
+        { existingInvoiceId: duplicate._id },
+      );
+    }
+    const context = await validateSelectableInvoiceContext({
+      ctx,
+      schoolId: access.student.schoolId,
+      studentId: access.student._id,
+      collectionId: args.collectionId,
+      sessionId: args.sessionId,
+      termId: args.termId,
+      selections: request.selections,
+    });
+    const school = await ctx.db.get(access.student.schoolId);
+    if (!school) throw billingContractError("NOT_FOUND", "School not found");
+    const invoice = await createSelectableInvoiceRecord({
+      ctx,
+      school,
+      settings,
+      actorUserId: access.portalMembership.user._id,
+      requestKey: request.requestKey,
+      fingerprint: request.fingerprint,
+      context,
+    });
+    return {
+      invoice: portalInvoiceProjection({
+        invoice,
+        allowOnlinePayments: Boolean(settings?.allowOnlinePayments),
+        portalRole: "parent",
+        hasPaymentAllocation: false,
+      }),
+      replayed: false,
+    };
+  },
+});
+
+export const updateInvoiceOptionalSelections = mutation({
+  args: {
+    invoiceId: v.id("studentInvoices"),
+    expectedSelectionRevision: v.number(),
+    selections: v.array(invoiceOptionalSelectionValidator),
+  },
+  returns: updateInvoiceOptionalSelectionsResultValidator,
+  handler: async (ctx, args) => {
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice) throw billingContractError("NOT_FOUND", "Invoice not found");
+    const access = await requireParentStudentAccess(ctx, invoice.studentId);
+    if (access.student.schoolId !== invoice.schoolId) {
+      throw billingContractError("NOT_FOUND", "Invoice not found");
+    }
+    const result = await updateOptionalInvoiceSelections({ ctx, invoice, ...args });
+    const settings = await ctx.db
+      .query("schoolBillingSettings")
+      .withIndex("by_school", (q) => q.eq("schoolId", invoice.schoolId))
+      .unique();
+    return {
+      invoice: portalInvoiceProjection({
+        invoice: result.invoice,
+        allowOnlinePayments: Boolean(settings?.allowOnlinePayments),
+        portalRole: "parent",
+        hasPaymentAllocation: false,
+      }),
+      changed: result.changed,
+    };
+  },
+});
+
 export const getBillingData = query({
   args: {
     studentId: v.optional(v.union(v.id("students"), v.null())),
@@ -771,6 +1104,18 @@ export const getBillingData = query({
         return invoicePayments.map((payment: any) => ({ invoice, payment }));
       })
     );
+    const allocationRows = await Promise.all(
+      selectedStudentInvoices.map(async (invoice) => ({
+        invoiceId: invoice._id,
+        allocation: await ctx.db
+          .query("paymentAllocations")
+          .withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+          .first(),
+      })),
+    );
+    const allocatedInvoiceIds = new Set(
+      allocationRows.filter((row) => row.allocation).map((row) => String(row.invoiceId)),
+    );
 
     const payments = invoicePaymentGroups
       .flat()
@@ -793,27 +1138,11 @@ export const getBillingData = query({
 
     const invoices = [...selectedStudentInvoices]
       .sort((left: any, right: any) => right.issuedAt - left.issuedAt)
-      .map((invoice: any) => ({
-        invoiceId: invoice._id,
-        paymentInstructions: invoicePaymentInstructions(invoice),
-        studentId: invoice.studentId,
-        invoiceNumber: invoice.invoiceNumber,
-        feePlanName: invoice.feePlanNameSnapshot,
-        currency: invoice.currency,
-        totalAmount: invoice.totalAmount,
-        amountPaid: invoice.amountPaid,
-        balanceDue: invoice.balanceDue,
-        dueDate: invoice.dueDate,
-        issuedAt: invoice.issuedAt,
-        status: invoice.status,
-        canPayOnline:
-          Boolean(settingsRecord?.allowOnlinePayments) &&
-          invoice.balanceDue > 0 &&
-          invoice.status !== "paid" &&
-          invoice.status !== "waived" &&
-          invoice.status !== "cancelled",
-        lineItems: invoice.lineItems,
-        notes: invoice.notes ?? null,
+      .map((invoice) => portalInvoiceProjection({
+        invoice,
+        allowOnlinePayments: Boolean(settingsRecord?.allowOnlinePayments),
+        portalRole: selectedStudentRow?.portalMembership.role ?? "student",
+        hasPaymentAllocation: allocatedInvoiceIds.has(String(invoice._id)),
       }));
 
     const summarizeInvoices = (entries: any[]) => ({

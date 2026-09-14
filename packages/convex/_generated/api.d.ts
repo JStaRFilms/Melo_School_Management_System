@@ -113,6 +113,7 @@ import type * as functions_auth from "../functions/auth.js";
 import type * as functions_billing from "../functions/billing.js";
 import type * as functions_billingGateway from "../functions/billingGateway.js";
 import type * as functions_billingProviders from "../functions/billingProviders.js";
+import type * as functions_billingSelectableShared from "../functions/billingSelectableShared.js";
 import type * as functions_billingShared from "../functions/billingShared.js";
 import type * as functions_billingWebhooks from "../functions/billingWebhooks.js";
 import type * as functions_foundation_applicationLinks from "../functions/foundation/applicationLinks.js";
@@ -246,6 +247,7 @@ declare const fullApi: ApiFromModules<{
   "functions/billing": typeof functions_billing;
   "functions/billingGateway": typeof functions_billingGateway;
   "functions/billingProviders": typeof functions_billingProviders;
+  "functions/billingSelectableShared": typeof functions_billingSelectableShared;
   "functions/billingShared": typeof functions_billingShared;
   "functions/billingWebhooks": typeof functions_billingWebhooks;
   "functions/foundation/applicationLinks": typeof functions_foundation_applicationLinks;

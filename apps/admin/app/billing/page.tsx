@@ -7,7 +7,6 @@ Filter,
 Link2,
 Plus,
 Search,
-X,
 } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
@@ -22,7 +21,7 @@ import { feePlanSignature, feePlanValidation } from "./fee-plan-validation";
 
 // Local Components
 import { BillingHeader } from "./components/BillingHeader";
-import { BillingSidebar } from "./components/BillingSidebar";
+import { BillingSidebar, type BillingSidebarVariant } from "./components/BillingSidebar";
 import { BillingTabs,type BillingTab } from "./components/BillingTabs";
 import { DashboardSkeleton } from "./components/DashboardSkeleton";
 import { FeePlanList } from "./components/FeePlanList";
@@ -30,6 +29,8 @@ import { InvoiceTable } from "./components/InvoiceTable";
 import { PaymentTable } from "./components/PaymentTable";
 import { PrintableFinanceModal } from "./components/PrintableFinanceModal";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { SelectableItemsPanel } from "./components/SelectableItemsPanel";
+import { InvoiceOptionalChoices, invoiceHasManageableChoices } from "./components/InvoiceOptionalChoices";
 
 // Hooks & Utils
 import { useBillingActions } from "./hooks/useBillingActions";
@@ -38,6 +39,7 @@ import { useBillingData } from "./hooks/useBillingData";
 import { useBillingSortPreferences } from "./hooks/useBillingSortPreferences";
 import type {
 BillingSettingsDraft,
+BillingDashboardData,
 DashboardFilters,
 FeePlanApplicationDraft,
 FeePlanDraft,
@@ -48,7 +50,9 @@ PaymentDraft,
 PaymentLinkDraft,
 PaymentLinkResult,
 PaymentSortKey,
-PaystackGatewayConfigDraft
+PaystackGatewayConfigDraft,
+SelectableBillingCollection,
+SelectableIssuanceResult
 } from "./types";
 import {
 buildBillingSettingsDraft,
@@ -87,7 +91,10 @@ export default function BillingPage() {
     search: "",
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarVariant, setSidebarVariant] = useState<"arsenal" | "payment" | "invoice" | "application" | "link" | "plan">("payment");
+  const [sidebarVariant, setSidebarVariant] = useState<BillingSidebarVariant>("payment");
+  const [includeInactiveCollections, setIncludeInactiveCollections] = useState(false);
+  const [initialSelectableCollectionId, setInitialSelectableCollectionId] = useState<string>();
+  const [choicesInvoice, setChoicesInvoice] = useState<BillingDashboardData["invoices"][number]["invoice"] | null>(null);
 
   // Drafts
   const [feePlanDraft, setFeePlanDraft] = useState<FeePlanDraft>(initialFeePlanDraft());
@@ -98,6 +105,8 @@ export default function BillingPage() {
   const { session, workspaceAccess } = useAuth();
   const canManageFeePlans = workspaceAccess?.state === "ready" &&
     workspaceAccess.effectiveCapabilities.includes("finance.fee_plans.manage");
+  const canIssueInvoices = workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("finance.invoices.issue");
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const draftConnection = useDraftConnection();
   const feePlanDraftData = useMemo<DraftPayload<"fee_plan_builder">>(() => ({
@@ -148,8 +157,10 @@ export default function BillingPage() {
       setFeePlanDraftInstanceKey((key) => key + 1);
     },
   });
-  const closeFeeSidebar = async () => {
-    if (await requestFeeDeparture({ kind: "close" })) setSidebarOpen(false);
+  const closeBillingSidebar = async () => {
+    if (sidebarVariant !== "plan" || await requestFeeDeparture({ kind: "close" })) {
+      setSidebarOpen(false);
+    }
   };
   const [feePlanApplicationDraft, setFeePlanApplicationDraft] = useState<FeePlanApplicationDraft>(initialFeePlanApplicationDraft());
   const [invoiceDraft] = useState<InvoiceDraft>(initialInvoiceDraft());
@@ -171,6 +182,8 @@ export default function BillingPage() {
     application: "Bulk Distribution",
     link: "Payment Handoff",
     plan: "New Fee Plan",
+    collection: "New selectable collection",
+    issuance: "Issue selected items",
   };
 
   const showNotice = (notice: { tone: "success" | "error"; title: string; message: string }) => {
@@ -187,9 +200,16 @@ export default function BillingPage() {
     data, 
     classes, 
     sessions, 
-    classNameById, 
-    applicationTerms 
-  } = useBillingData(filters, invoiceDraft, feePlanApplicationDraft);
+    classNameById,
+    applicationTerms,
+    selectableCollections,
+  } = useBillingData(
+    filters,
+    invoiceDraft,
+    feePlanApplicationDraft,
+    includeInactiveCollections,
+    canManageFeePlans || canIssueInvoices,
+  );
   const selectedFinanceInvoice = useMemo(
     () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
     [data?.invoices, financePack?.invoiceId]
@@ -278,6 +298,19 @@ export default function BillingPage() {
     }
   }, [data?.settings, data?.school.slug]);
 
+  useEffect(() => {
+    if (!choicesInvoice) return;
+    const latestInvoice = data?.invoices.find((row) => row.invoice._id === choicesInvoice._id)?.invoice;
+    if (
+      latestInvoice &&
+      (latestInvoice.updatedAt !== choicesInvoice.updatedAt ||
+        latestInvoice.canEditOptionalItems !== choicesInvoice.canEditOptionalItems ||
+        latestInvoice.selectionLockReason !== choicesInvoice.selectionLockReason)
+    ) {
+      setChoicesInvoice(latestInvoice);
+    }
+  }, [choicesInvoice, data?.invoices]);
+
   // 4. Handlers
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -342,6 +375,9 @@ export default function BillingPage() {
             firstDueDays: Number(feePlanDraft.firstDueDays),
           },
           lineItems: validLineItems,
+          ...(validLineItems.some((item) => item.isOptional)
+            ? { optionalSelectionMode: "parent_selectable" as const }
+            : {}),
         } as never);
       }, "Fee Plan Created", "Unable to create new fee plan.");
       if (success) {
@@ -388,15 +424,21 @@ export default function BillingPage() {
     const fallbackDescription = selectedInvoice
       ? `Payment for ${selectedInvoice.invoice.invoiceNumber}`
       : "Front-desk invoice payment";
+    const paymentAmount = selectedInvoice && invoiceHasManageableChoices(selectedInvoice.invoice)
+      ? selectedInvoice.invoice.balanceDue
+      : Number(paymentLinkDraft.amount);
 
     const success = await actions.runAction(async () => {
       const result = await actions.createInvoicePaymentLink({
         schoolId: data.school.id,
         invoiceId: paymentLinkDraft.invoiceId,
-        amount: Number(paymentLinkDraft.amount),
+        amount: paymentAmount,
         email: paymentLinkDraft.email,
         description: paymentLinkDraft.description.trim() || fallbackDescription,
         callbackUrl: `${window.location.origin}/payments/paystack/return`,
+        ...(selectedInvoice && invoiceHasManageableChoices(selectedInvoice.invoice)
+          ? { expectedSelectionRevision: selectedInvoice.invoice.selectionRevision ?? 0 }
+          : {}),
       } as never) as PaymentLinkActionResult;
 
       setGeneratedPaymentLink({
@@ -405,7 +447,7 @@ export default function BillingPage() {
         authorizationUrl: result?.authorizationUrl ?? result?.authorization_url ?? null,
         accessCode: result?.accessCode ?? result?.access_code ?? null,
         checkoutPayload: result?.checkoutPayload ?? result?.checkout_payload ?? {},
-        amount: Number(paymentLinkDraft.amount),
+        amount: paymentAmount,
         currency: selectedInvoice?.invoice.currency,
       });
     }, "Link Generated", "Unable to initialize Paystack session.");
@@ -421,6 +463,18 @@ export default function BillingPage() {
   const handleOpenFinancePack = (mode: "invoice" | "statement", invoiceId: string) => {
     setFinancePack({ mode, invoiceId });
     setFinancePackPaymentEmail("");
+  };
+
+  const handleOpenSelectableInvoice = (invoiceId: string) => {
+    setSidebarOpen(false);
+    setFilters({
+      classId: "",
+      sessionId: "",
+      termId: "",
+      status: "",
+      search: "",
+    });
+    handleOpenFinancePack("invoice", invoiceId);
   };
 
   const handleGenerateFinancePackPaymentLink = async (event: React.FormEvent) => {
@@ -448,6 +502,9 @@ export default function BillingPage() {
         email: financePackPaymentEmail,
         description: `Payment for ${selectedFinanceInvoice.invoice.invoiceNumber}`,
         callbackUrl: `${window.location.origin}/payments/paystack/return`,
+        ...(invoiceHasManageableChoices(selectedFinanceInvoice.invoice)
+          ? { expectedSelectionRevision: selectedFinanceInvoice.invoice.selectionRevision ?? 0 }
+          : {}),
         } as never) as PaymentLinkActionResult;
 
         const nextPaymentLink: PaymentLinkResult = {
@@ -501,7 +558,8 @@ export default function BillingPage() {
     }, "Credentials Validated", "Verification failed for merchant credentials.");
   };
 
-  const openSidebar = (variant: typeof sidebarVariant) => {
+  const openSidebar = (variant: BillingSidebarVariant, collectionId?: string) => {
+    setInitialSelectableCollectionId(collectionId);
     setSidebarVariant(variant);
     if (variant !== "link") {
       setGeneratedPaymentLink(null);
@@ -510,6 +568,19 @@ export default function BillingPage() {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       setSidebarOpen(true);
     }
+  };
+
+  const handleSelectableCollectionCreated = (collection: SelectableBillingCollection) => {
+    appToast.success("Collection created", { description: `${collection.name} is ready for eligible students.` });
+    setSidebarOpen(false);
+    setSidebarVariant("arsenal");
+    window.setTimeout(() => document.getElementById(`collection-${collection._id}`)?.focus(), 0);
+  };
+
+  const handleSelectableForbidden = () => {
+    setSidebarOpen(false);
+    setSidebarVariant("arsenal");
+    appToast.error("Permission changed", { description: "You no longer have permission to complete this billing action." });
   };
 
   // 5. Loading State
@@ -591,6 +662,7 @@ export default function BillingPage() {
                            sortable={false}
                            onViewInvoice={(invoiceId) => handleOpenFinancePack("invoice", invoiceId)}
                            onViewStatement={(invoiceId) => handleOpenFinancePack("statement", invoiceId)}
+                           onManageChoices={canIssueInvoices ? setChoicesInvoice : undefined}
                          />
                       </AdminSurface>
                    </div>
@@ -605,6 +677,7 @@ export default function BillingPage() {
                       onSortChange={handleInvoiceSortChange}
                       onViewInvoice={(invoiceId) => handleOpenFinancePack("invoice", invoiceId)}
                       onViewStatement={(invoiceId) => handleOpenFinancePack("statement", invoiceId)}
+                      onManageChoices={canIssueInvoices ? setChoicesInvoice : undefined}
                     />
                   </AdminSurface>
                 )}
@@ -636,6 +709,18 @@ export default function BillingPage() {
                        openSidebar("application");
                      }}
                    />
+                )}
+
+                {activeTab === "selectable" && (
+                  <SelectableItemsPanel
+                    collections={canManageFeePlans || canIssueInvoices ? selectableCollections : []}
+                    includeInactive={includeInactiveCollections}
+                    canCreate={canManageFeePlans}
+                    canIssue={canIssueInvoices}
+                    onIncludeInactiveChange={setIncludeInactiveCollections}
+                    onNewCollection={() => openSidebar("collection")}
+                    onIssue={(collectionId) => openSidebar("issuance", collectionId)}
+                  />
                 )}
 
                 {activeTab === "settings" && (
@@ -742,7 +827,7 @@ export default function BillingPage() {
             <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
               <div className="absolute inset-0 bg-white/40 pointer-events-none" />
               <BillingSidebar 
-                onClose={() => void closeFeeSidebar()}
+                onClose={() => void closeBillingSidebar()}
                 variant={sidebarVariant}
                 onVariantChange={(v) => {
                   setSidebarVariant(v);
@@ -773,6 +858,16 @@ export default function BillingPage() {
                 applicationTerms={applicationTerms ?? []}
                 feePlans={data.feePlans}
                 canManageFeePlans={canManageFeePlans}
+                canIssueInvoices={canIssueInvoices}
+                selectableCollections={selectableCollections ?? []}
+                initialSelectableCollectionId={initialSelectableCollectionId}
+                defaultCurrency={data.settings?.defaultCurrency ?? "NGN"}
+                createSelectableCollection={(args) => actions.createSelectableBillingCollection(args as never) as Promise<SelectableBillingCollection>}
+                issueSelectableItems={(args) => actions.issueSelectableBillingItems(args as never) as Promise<SelectableIssuanceResult>}
+                onSelectableCollectionCreated={handleSelectableCollectionCreated}
+                onSelectableIssuanceDone={() => { setSidebarOpen(false); setSidebarVariant("arsenal"); }}
+                onSelectableForbidden={handleSelectableForbidden}
+                onOpenSelectableInvoice={handleOpenSelectableInvoice}
               />
             </div>
           </div>
@@ -782,11 +877,11 @@ export default function BillingPage() {
       {/* Mobile Sidebar */}
       <AdminSheet
         isOpen={sidebarOpen}
-        onClose={() => void closeFeeSidebar()}
+        onClose={() => void closeBillingSidebar()}
         title={sidebarTitles[sidebarVariant]}
       >
         <BillingSidebar 
-          onClose={() => void closeFeeSidebar()}
+          onClose={() => void closeBillingSidebar()}
           variant={sidebarVariant}
           onVariantChange={setSidebarVariant}
           paymentDraft={paymentDraft}
@@ -814,7 +909,32 @@ export default function BillingPage() {
           applicationTerms={applicationTerms ?? []}
           feePlans={data.feePlans}
           canManageFeePlans={canManageFeePlans}
+          canIssueInvoices={canIssueInvoices}
+          selectableCollections={selectableCollections ?? []}
+          initialSelectableCollectionId={initialSelectableCollectionId}
+          defaultCurrency={data.settings?.defaultCurrency ?? "NGN"}
+          createSelectableCollection={(args) => actions.createSelectableBillingCollection(args as never) as Promise<SelectableBillingCollection>}
+          issueSelectableItems={(args) => actions.issueSelectableBillingItems(args as never) as Promise<SelectableIssuanceResult>}
+          onSelectableCollectionCreated={handleSelectableCollectionCreated}
+          onSelectableIssuanceDone={() => { setSidebarOpen(false); setSidebarVariant("arsenal"); }}
+          onSelectableForbidden={handleSelectableForbidden}
+          onOpenSelectableInvoice={handleOpenSelectableInvoice}
         />
+      </AdminSheet>
+
+      <AdminSheet
+        isOpen={Boolean(choicesInvoice)}
+        onClose={() => setChoicesInvoice(null)}
+        title={choicesInvoice ? `${choicesInvoice.invoiceNumber} choices` : "Invoice choices"}
+        description="Class-default optional items"
+      >
+        {choicesInvoice ? (
+          <InvoiceOptionalChoices
+            invoice={choicesInvoice}
+            updateSelections={(args) => actions.updateInvoiceOptionalSelections(args as never) as Promise<{ invoice: BillingDashboardData["invoices"][number]["invoice"]; changed: boolean }>}
+            onSaved={setChoicesInvoice}
+          />
+        ) : null}
       </AdminSheet>
 
       {financePack && selectedFinanceInvoice && (

@@ -11,6 +11,7 @@ import { finishFormDraft } from "./academic/drafts";
 import {
   billingFeePlanApplicationValidator,
   billingFeePlanBillingModeValidator,
+  billingLineItemCategoryValidator,
   billingFeePlanValidator,
   billingGatewayEventValidator,
   billingInvoiceStatusValidator,
@@ -23,6 +24,15 @@ import {
   billingPaymentProviderModeValidator,
   billingPaymentStatusValidator,
   billingPaymentValidator,
+  billingOptionalSelectionModeValidator,
+  invoiceHasOptionalSelectionRows,
+  invoiceOptionalSelectionValidator,
+  MAX_SELECTABLE_BILLING_COLLECTIONS,
+  MAX_SELECTABLE_BILLING_ITEMS,
+  MAX_SELECTABLE_BILLING_STUDENTS,
+  selectableBillingCollectionValidator,
+  selectableBillingSelectionValidator,
+  billingContractError,
   billingPaystackProviderOverviewValidator,
   billingSettingsValidator,
   buildBillingInstallmentPolicy,
@@ -37,6 +47,15 @@ import {
   normalizeCurrencyCode,
   summarizeBillingCollections,
 } from "./billingShared";
+import {
+  buildCollectionInvoiceRequest,
+  createSelectableInvoiceRecord,
+  findCollectionInvoiceRequest,
+  findDuplicateCollectionInvoice,
+  selectableCollectionProjection,
+  updateOptionalInvoiceSelections,
+  validateSelectableInvoiceContext,
+} from "./billingSelectableShared";
 import { createBillingGatewayAdapter } from "./billingGateway";
 
 const billingSummaryValidator = v.object({
@@ -60,6 +79,25 @@ const billingSummaryValidator = v.object({
 
 const billingInvoiceRowValidator = v.object({
   invoice: billingInvoiceValidator,
+  studentName: v.string(),
+  className: v.string(),
+  sessionName: v.string(),
+  termName: v.string(),
+});
+
+const billingDashboardInvoiceValidator = v.object({
+  ...billingInvoiceValidator.fields,
+  canEditOptionalItems: v.boolean(),
+  selectionLockReason: v.union(
+    v.null(),
+    v.literal("not_editable"),
+    v.literal("payment_recorded"),
+    v.literal("cancelled")
+  ),
+});
+
+const billingDashboardInvoiceRowValidator = v.object({
+  invoice: billingDashboardInvoiceValidator,
   studentName: v.string(),
   className: v.string(),
   sessionName: v.string(),
@@ -101,6 +139,8 @@ const billingPaymentAttemptUpsertValidator = v.object({
   paymentId: v.optional(v.union(v.id("billingPayments"), v.null())),
   gatewayEventId: v.optional(v.union(v.id("paymentGatewayEvents"), v.null())),
   providerMode: v.optional(v.union(v.literal("test"), v.literal("live"), v.null())),
+  expectedSelectionRevision: v.optional(v.number()),
+  expectedInvoiceBalance: v.optional(v.number()),
   lastCheckedAt: v.optional(v.union(v.number(), v.null())),
   resolvedAt: v.optional(v.union(v.number(), v.null())),
   resolutionMessage: v.optional(v.union(v.string(), v.null())),
@@ -125,7 +165,7 @@ const billingDashboardValidator = v.object({
   summary: billingSummaryValidator,
   feePlans: v.array(billingFeePlanValidator),
   applications: v.array(billingFeePlanApplicationRowValidator),
-  invoices: v.array(billingInvoiceRowValidator),
+  invoices: v.array(billingDashboardInvoiceRowValidator),
   payments: v.array(billingPaymentRowValidator),
   paymentAttempts: v.array(billingPaymentAttemptRowValidator),
   gatewayEvents: v.array(billingGatewayEventValidator),
@@ -149,6 +189,7 @@ const createFeePlanValidator = v.object({
   currency: v.optional(v.string()),
   billingMode: v.optional(billingFeePlanBillingModeValidator),
   targetClassIds: v.optional(v.array(v.id("classes"))),
+  optionalSelectionMode: v.optional(billingOptionalSelectionModeValidator),
   lineItems: v.array(
     v.object({
       label: v.string(),
@@ -202,6 +243,49 @@ const createInvoiceValidator = v.object({
   discountAmount: v.optional(v.number()),
   dueDate: v.optional(v.number()),
   notes: v.optional(v.string()),
+});
+
+const createSelectableBillingCollectionValidator = v.object({
+  bankAccountId: v.optional(v.id("schoolBankAccounts")),
+  name: v.string(),
+  description: v.optional(v.string()),
+  currency: v.optional(v.string()),
+  targetClassIds: v.array(v.id("classes")),
+  items: v.array(v.object({
+    label: v.string(),
+    description: v.optional(v.string()),
+    unitAmount: v.number(),
+    category: v.optional(billingLineItemCategoryValidator),
+  })),
+});
+
+const issueSelectableBillingItemsValidator = v.object({
+  requestKey: v.string(),
+  collectionId: v.id("selectableBillingCollections"),
+  studentIds: v.array(v.id("students")),
+  sessionId: v.id("academicSessions"),
+  termId: v.id("academicTerms"),
+  selections: v.array(selectableBillingSelectionValidator),
+  bankAccountId: v.optional(v.id("schoolBankAccounts")),
+  dueDate: v.optional(v.number()),
+  notes: v.optional(v.string()),
+});
+
+const issueSelectableBillingItemsResultValidator = v.object({
+  createdInvoices: v.array(billingInvoiceValidator),
+  replayedInvoices: v.array(billingInvoiceValidator),
+  skippedExistingStudentIds: v.array(v.id("students")),
+});
+
+const updateInvoiceOptionalSelectionsValidator = v.object({
+  invoiceId: v.id("studentInvoices"),
+  expectedSelectionRevision: v.number(),
+  selections: v.array(invoiceOptionalSelectionValidator),
+});
+
+const updateInvoiceOptionalSelectionsResultValidator = v.object({
+  invoice: billingInvoiceValidator,
+  changed: v.boolean(),
 });
 
 const manualPaymentValidator = v.object({
@@ -274,8 +358,10 @@ function invoiceDocToReturn(invoice: Doc<"studentInvoices">) {
     paymentInstructions: invoicePaymentInstructions(invoice),
     _id: invoice._id,
     schoolId: invoice.schoolId,
-    feePlanId: invoice.feePlanId,
+    feePlanId: invoice.feePlanId ?? null,
+    selectableCollectionId: invoice.selectableCollectionId ?? null,
     feePlanApplicationId: invoice.feePlanApplicationId ?? null,
+    selectionRevision: invoice.selectionRevision ?? null,
     studentId: invoice.studentId,
     classId: invoice.classId,
     sessionId: invoice.sessionId,
@@ -300,6 +386,26 @@ function invoiceDocToReturn(invoice: Doc<"studentInvoices">) {
     lastPaymentAt: invoice.lastPaymentAt ?? null,
     createdAt: invoice.createdAt,
     updatedAt: invoice.updatedAt,
+  };
+}
+
+function adminDashboardInvoiceProjection(
+  invoice: Doc<"studentInvoices">,
+  hasPaymentAllocation: boolean,
+) {
+  const hasEditableFeePlanChoices = invoiceHasOptionalSelectionRows(invoice);
+  const selectionLockReason = !hasEditableFeePlanChoices
+    ? "not_editable" as const
+    : invoice.status === "cancelled"
+      ? "cancelled" as const
+      : invoice.amountPaid > 0 || hasPaymentAllocation || invoice.status === "paid"
+        ? "payment_recorded" as const
+        : null;
+
+  return {
+    ...invoiceDocToReturn(invoice),
+    canEditOptionalItems: selectionLockReason === null,
+    selectionLockReason,
   };
 }
 
@@ -368,6 +474,7 @@ function feePlanDocToReturn(feePlan: any) {
     currency: feePlan.currency,
     billingMode: feePlan.billingMode ?? "class_default",
     targetClassIds: feePlan.targetClassIds ?? [],
+    optionalSelectionMode: feePlan.optionalSelectionMode ?? "legacy_included",
     lineItems: feePlan.lineItems,
     installmentPolicy: feePlan.installmentPolicy,
     isActive: feePlan.isActive,
@@ -432,6 +539,12 @@ async function createInvoiceFromFeePlanRecord(args: {
     waiverAmount: args.waiverAmount,
     discountAmount: args.discountAmount,
   });
+  if (args.feePlan.optionalSelectionMode === "parent_selectable" && total.totalAmount <= 0) {
+    throw billingContractError(
+      "ZERO_VALUE_INVOICE",
+      "Parent-selectable fee-plan invoices require a positive mandatory total",
+    );
+  }
   const dueDate =
     args.dueDate ??
     issuedAt +
@@ -462,6 +575,9 @@ async function createInvoiceFromFeePlanRecord(args: {
     feePlanNameSnapshot: args.feePlan.name,
     currency: args.feePlan.currency,
     lineItems: args.feePlan.lineItems,
+    ...(args.feePlan.optionalSelectionMode === "parent_selectable"
+      ? { selectionRevision: 0 }
+      : {}),
     installmentSchedule,
     subtotal: total.subtotal,
     waiverAmount: total.waiverAmount,
@@ -1223,6 +1339,18 @@ export const getBillingDashboard = query({
       return true;
     });
 
+    const allocationRows = await Promise.all(
+      filteredInvoices.map(async (invoice) => ({
+        invoiceId: invoice._id,
+        allocation: await ctx.db
+          .query("paymentAllocations")
+          .withIndex("by_invoice", (q) => q.eq("invoiceId", invoice._id))
+          .first(),
+      })),
+    );
+    const allocatedInvoiceIds = new Set(
+      allocationRows.filter((row) => row.allocation).map((row) => String(row.invoiceId)),
+    );
     const visibleInvoiceIds = new Set(filteredInvoices.map((invoice: any) => String(invoice._id)));
     const hasEffectiveInvoiceFilter = Boolean(
       args.classId || args.sessionId || args.termId || args.status || args.search?.trim()
@@ -1264,7 +1392,10 @@ export const getBillingDashboard = query({
       });
 
     const invoiceRows = filteredInvoices.map((invoice: any) => ({
-      invoice: invoiceDocToReturn(invoice),
+      invoice: adminDashboardInvoiceProjection(
+        invoice,
+        allocatedInvoiceIds.has(String(invoice._id)),
+      ),
       studentName: lookups.studentUserByStudentId.get(String(invoice.studentId)) ?? "Unknown student",
       className: lookups.classNameById.get(String(invoice.classId)) ?? "Unknown class",
       sessionName: lookups.sessionNameById.get(String(invoice.sessionId)) ?? "Unknown session",
@@ -1589,6 +1720,242 @@ export const listFeePlans = query({
   },
 });
 
+export const listSelectableBillingCollections = query({
+  args: { includeInactive: v.optional(v.boolean()) },
+  returns: v.array(selectableBillingCollectionValidator),
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx, {
+      capability: ["finance.fee_plans.manage", "finance.invoices.issue"],
+    });
+    assertAdmin(viewer);
+    const rows = args.includeInactive
+      ? await ctx.db
+          .query("selectableBillingCollections")
+          .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
+          .take(MAX_SELECTABLE_BILLING_COLLECTIONS + 1)
+      : await ctx.db
+          .query("selectableBillingCollections")
+          .withIndex("by_school_and_isActive", (q) =>
+            q.eq("schoolId", viewer.schoolId).eq("isActive", true),
+          )
+          .take(MAX_SELECTABLE_BILLING_COLLECTIONS + 1);
+    if (rows.length > MAX_SELECTABLE_BILLING_COLLECTIONS) {
+      throw billingContractError("VALIDATION_FAILED", "Collection count exceeds supported bounds");
+    }
+    const projections = await Promise.all(rows.map((row) => selectableCollectionProjection(ctx, row)));
+    return projections.sort((left, right) => left.name.localeCompare(right.name));
+  },
+});
+
+export const createSelectableBillingCollection = mutation({
+  args: createSelectableBillingCollectionValidator.fields,
+  returns: selectableBillingCollectionValidator,
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx, {
+      capability: "finance.fee_plans.manage",
+    });
+    assertAdmin(viewer);
+    const name = normalizeBillingText(args.name);
+    if (!name) {
+      throw billingContractError("VALIDATION_FAILED", "Collection name is required");
+    }
+    const targetClassIds = normalizeClassIdList(args.targetClassIds);
+    if (
+      targetClassIds.length === 0 ||
+      targetClassIds.length !== args.targetClassIds.length ||
+      targetClassIds.length > MAX_SELECTABLE_BILLING_STUDENTS
+    ) {
+      throw billingContractError(
+        "VALIDATION_FAILED",
+        `Select between 1 and ${MAX_SELECTABLE_BILLING_STUDENTS} unique eligible classes`,
+      );
+    }
+    if (args.items.length === 0 || args.items.length > MAX_SELECTABLE_BILLING_ITEMS) {
+      throw billingContractError(
+        "VALIDATION_FAILED",
+        `Add between 1 and ${MAX_SELECTABLE_BILLING_ITEMS} items`,
+      );
+    }
+    const classes = await Promise.all(targetClassIds.map((classId) => ctx.db.get(classId)));
+    if (classes.some((classDoc) => !classDoc || classDoc.schoolId !== viewer.schoolId || classDoc.isArchived)) {
+      throw billingContractError("NOT_FOUND", "One or more eligible classes are not available");
+    }
+    const normalizedItems = args.items.map((item) => {
+      const label = normalizeBillingText(item.label);
+      const unitAmount = normalizeBillingAmount(item.unitAmount);
+      if (!label) throw billingContractError("VALIDATION_FAILED", "Each item needs a name");
+      if (!Number.isFinite(item.unitAmount) || unitAmount <= 0) {
+        throw billingContractError("VALIDATION_FAILED", "Each item unit amount must be greater than zero");
+      }
+      return {
+        label,
+        normalizedLabel: label.toLocaleLowerCase(),
+        description: normalizeBillingText(item.description),
+        unitAmount,
+        category: item.category ?? ("other" as const),
+      };
+    });
+    if (new Set(normalizedItems.map((item) => item.normalizedLabel)).size !== normalizedItems.length) {
+      throw billingContractError("VALIDATION_FAILED", "Item names must be unique in this collection");
+    }
+    const currency = normalizeCurrencyCode(args.currency);
+    if (args.bankAccountId) {
+      const account = await ctx.db.get(args.bankAccountId);
+      if (!account || account.schoolId !== viewer.schoolId || account.status !== "active" || account.currency !== currency) {
+        throw billingContractError(
+          "VALIDATION_FAILED",
+          `Choose an active settlement account in ${currency}, or use the school default`,
+        );
+      }
+    }
+    const now = Date.now();
+    const collectionId = await ctx.db.insert("selectableBillingCollections", {
+      schoolId: viewer.schoolId,
+      ...(args.bankAccountId ? { bankAccountId: args.bankAccountId } : {}),
+      name,
+      ...(normalizeBillingText(args.description) ? { description: normalizeBillingText(args.description) } : {}),
+      currency,
+      targetClassIds,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: viewer.userId,
+      updatedBy: viewer.userId,
+    });
+    for (const [order, item] of normalizedItems.entries()) {
+      await ctx.db.insert("selectableBillingItems", {
+        schoolId: viewer.schoolId,
+        collectionId,
+        label: item.label,
+        ...(item.description ? { description: item.description } : {}),
+        unitAmount: item.unitAmount,
+        category: item.category,
+        order,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: viewer.userId,
+        updatedBy: viewer.userId,
+      });
+    }
+    const collection = await ctx.db.get("selectableBillingCollections", collectionId);
+    if (!collection) throw billingContractError("NOT_FOUND", "Collection not found after creation");
+    return await selectableCollectionProjection(ctx, collection);
+  },
+});
+
+export const issueSelectableBillingItems = mutation({
+  args: issueSelectableBillingItemsValidator.fields,
+  returns: issueSelectableBillingItemsResultValidator,
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.invoices.issue" });
+    assertAdmin(viewer);
+    if (
+      args.studentIds.length === 0 ||
+      args.studentIds.length > MAX_SELECTABLE_BILLING_STUDENTS ||
+      new Set(args.studentIds.map(String)).size !== args.studentIds.length
+    ) {
+      throw billingContractError(
+        "VALIDATION_FAILED",
+        `Select between 1 and ${MAX_SELECTABLE_BILLING_STUDENTS} unique students`,
+      );
+    }
+    if (args.dueDate !== undefined && (!Number.isFinite(args.dueDate) || args.dueDate <= 0)) {
+      throw billingContractError("VALIDATION_FAILED", "Due date must be valid");
+    }
+    const [school, settings, students] = await Promise.all([
+      ctx.db.get(viewer.schoolId),
+      ctx.db.query("schoolBillingSettings").withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId)).unique(),
+      Promise.all(args.studentIds.map((studentId) => ctx.db.get(studentId))),
+    ]);
+    if (!school) throw billingContractError("NOT_FOUND", "School not found");
+    if (students.some((student) => !student || student.schoolId !== viewer.schoolId)) {
+      throw billingContractError("NOT_FOUND", "Student not found");
+    }
+
+    const replayedInvoices: Doc<"studentInvoices">[] = [];
+    const skippedExistingStudentIds: Id<"students">[] = [];
+    const pending: Array<{
+      request: ReturnType<typeof buildCollectionInvoiceRequest>;
+      context: Awaited<ReturnType<typeof validateSelectableInvoiceContext>>;
+    }> = [];
+    for (const studentId of args.studentIds) {
+      const request = buildCollectionInvoiceRequest({
+        actorKind: "admin",
+        actorUserId: viewer.userId,
+        schoolId: viewer.schoolId,
+        studentId,
+        collectionId: args.collectionId,
+        sessionId: args.sessionId,
+        termId: args.termId,
+        requestedDueDate: args.dueDate,
+        requestKey: args.requestKey,
+        selections: args.selections,
+      });
+      const requestLookup = await findCollectionInvoiceRequest({
+        ctx,
+        studentId,
+        requestKey: request.requestKey,
+        fingerprint: request.fingerprint,
+      });
+      if (requestLookup.requestInvoice) {
+        replayedInvoices.push(requestLookup.requestInvoice);
+        continue;
+      }
+      const context = await validateSelectableInvoiceContext({
+        ctx,
+        schoolId: viewer.schoolId,
+        studentId,
+        collectionId: args.collectionId,
+        sessionId: args.sessionId,
+        termId: args.termId,
+        selections: request.selections,
+        bankAccountId: args.bankAccountId,
+      });
+      if (findDuplicateCollectionInvoice(requestLookup.history, args)) {
+        skippedExistingStudentIds.push(studentId);
+        continue;
+      }
+      pending.push({ request, context });
+    }
+
+    const createdInvoices: Doc<"studentInvoices">[] = [];
+    for (const entry of pending) {
+      createdInvoices.push(await createSelectableInvoiceRecord({
+        ctx,
+        school,
+        settings,
+        actorUserId: viewer.userId,
+        requestKey: entry.request.requestKey,
+        fingerprint: entry.request.fingerprint,
+        dueDate: args.dueDate,
+        notes: args.notes,
+        context: entry.context,
+      }));
+    }
+    return {
+      createdInvoices: createdInvoices.map(invoiceDocToReturn),
+      replayedInvoices: replayedInvoices.map(invoiceDocToReturn),
+      skippedExistingStudentIds,
+    };
+  },
+});
+
+export const updateInvoiceOptionalSelections = mutation({
+  args: updateInvoiceOptionalSelectionsValidator.fields,
+  returns: updateInvoiceOptionalSelectionsResultValidator,
+  handler: async (ctx, args) => {
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.invoices.issue" });
+    assertAdmin(viewer);
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice || invoice.schoolId !== viewer.schoolId) {
+      throw billingContractError("NOT_FOUND", "Invoice not found");
+    }
+    const result = await updateOptionalInvoiceSelections({ ctx, invoice, ...args });
+    return { invoice: invoiceDocToReturn(result.invoice), changed: result.changed };
+  },
+});
+
 export const createFeePlan = mutation({
   args: createFeePlanValidator,
   returns: billingFeePlanValidator,
@@ -1605,7 +1972,8 @@ export const createFeePlan = mutation({
       throw new ConvexError("At least one fee-plan line item is required");
     }
 
-    const normalizedLineItems = normalizeBillingLineItems(args.lineItems, name);
+    const optionalSelectionMode = args.optionalSelectionMode ?? "legacy_included";
+    const normalizedLineItems = normalizeBillingLineItems(args.lineItems, name, optionalSelectionMode);
     const policy = buildBillingInstallmentPolicy(args.installmentPolicy);
     if (policy.enabled && policy.installmentCount > 1 && policy.intervalDays <= 0) {
       throw new ConvexError("Installment plans need a positive interval");
@@ -1615,6 +1983,23 @@ export const createFeePlan = mutation({
     const targetClassIds = normalizeClassIdList(args.targetClassIds ?? []);
     if (billingMode === "manual_extra" && targetClassIds.length > 0) {
       throw new ConvexError("Manual extra fee plans cannot target classes");
+    }
+    if (optionalSelectionMode === "parent_selectable") {
+      if (billingMode !== "class_default") {
+        throw billingContractError(
+          "VALIDATION_FAILED",
+          "Parent-selectable optional items are only valid on class-default fee plans",
+        );
+      }
+      const mandatorySubtotal = normalizedLineItems
+        .filter((item) => !item.isOptional)
+        .reduce((sum, item) => sum + item.amount, 0);
+      if (mandatorySubtotal <= 0) {
+        throw billingContractError(
+          "VALIDATION_FAILED",
+          "Parent-selectable fee plans require a positive mandatory charge",
+        );
+      }
     }
 
     if (targetClassIds.length > 0) {
@@ -1642,6 +2027,7 @@ export const createFeePlan = mutation({
       currency: normalizeBillingText(args.currency)?.toUpperCase() ?? "NGN",
       billingMode,
       targetClassIds,
+      optionalSelectionMode,
       lineItems: normalizedLineItems,
       installmentPolicy: policy,
       isActive: true,
@@ -1975,6 +2361,43 @@ export const recordBillingPaymentAttemptGeneratedInternal = internalMutation({
   args: billingPaymentAttemptUpsertValidator,
   returns: billingPaymentAttemptValidator,
   handler: async (ctx, args) => {
+    if (args.expectedInvoiceBalance !== undefined || args.expectedSelectionRevision !== undefined) {
+      const invoice = await ctx.db.get(args.invoiceId);
+      if (!invoice || invoice.schoolId !== args.schoolId) {
+        throw billingContractError("NOT_FOUND", "Invoice not found");
+      }
+      if (
+        args.expectedInvoiceBalance !== undefined &&
+        normalizeBillingAmount(invoice.balanceDue) !== normalizeBillingAmount(args.expectedInvoiceBalance)
+      ) {
+        throw billingContractError(
+          "SELECTION_CONFLICT",
+          "Invoice balance changed before checkout opened",
+          { currentRevision: invoice.selectionRevision ?? 0 },
+        );
+      }
+      if (
+        args.expectedSelectionRevision !== undefined &&
+        (invoice.selectionRevision ?? 0) !== args.expectedSelectionRevision
+      ) {
+        throw billingContractError(
+          "SELECTION_CONFLICT",
+          "Invoice choices changed before checkout opened",
+          { currentRevision: invoice.selectionRevision ?? 0 },
+        );
+      }
+      if (
+        args.expectedSelectionRevision !== undefined &&
+        args.expectedInvoiceBalance !== undefined &&
+        normalizeBillingAmount(args.amount ?? 0) !== normalizeBillingAmount(args.expectedInvoiceBalance)
+      ) {
+        throw billingContractError(
+          "SELECTION_CONFLICT",
+          "Payment amount no longer matches the committed invoice balance",
+          { currentRevision: invoice.selectionRevision ?? 0 },
+        );
+      }
+    }
     const attempt = await upsertBillingPaymentAttemptRecord({
       ctx,
       schoolId: args.schoolId,
@@ -2425,6 +2848,21 @@ export const reconcilePendingOnlinePayments = action({
   },
 });
 
+function requireCurrentPaymentSelectionRevision(
+  invoice: { feePlanId?: unknown; lineItems: Array<{ isOptional?: boolean }>; selectionRevision?: number },
+  expectedSelectionRevision?: number,
+) {
+  if (!invoiceHasOptionalSelectionRows(invoice)) return;
+  const currentRevision = invoice.selectionRevision ?? 0;
+  if (!Number.isInteger(expectedSelectionRevision) || expectedSelectionRevision !== currentRevision) {
+    throw billingContractError(
+      "SELECTION_CONFLICT",
+      "The current invoice selection revision is required before payment",
+      { currentRevision },
+    );
+  }
+}
+
 async function createOnlinePaymentLinkForInvoiceContext(args: {
   ctx: any;
   paymentContext: any;
@@ -2508,6 +2946,7 @@ export const initializeOnlinePayment = action({
     email: v.string(),
     description: v.string(),
     callbackUrl: v.optional(v.string()),
+    expectedSelectionRevision: v.optional(v.number()),
   },
   returns: v.object({
     provider: billingPaymentProviderValidator,
@@ -2546,12 +2985,17 @@ export const initializeOnlinePayment = action({
     if (!paymentContext || String(paymentContext.schoolId) !== String(args.schoolId)) {
       throw new ConvexError("Invoice not found");
     }
+    requireCurrentPaymentSelectionRevision(paymentContext.invoice, args.expectedSelectionRevision);
+    const expectedInvoiceBalance = paymentContext.invoice.balanceDue;
+    const paymentAmount = invoiceHasOptionalSelectionRows(paymentContext.invoice)
+      ? expectedInvoiceBalance
+      : args.amount;
 
     const paymentLink = await createOnlinePaymentLinkForInvoiceContext({
       ctx,
       paymentContext,
       invoiceId: args.invoiceId,
-      amount: args.amount,
+      amount: paymentAmount,
       email: args.email,
       description: args.description || `Pay ${paymentContext.invoice.invoiceNumber} via front desk`,
       callbackUrl: args.callbackUrl,
@@ -2566,13 +3010,15 @@ export const initializeOnlinePayment = action({
       gatewayReference: paymentLink.reference,
       authorizationUrl: paymentLink.authorizationUrl,
       accessCode: paymentLink.accessCode,
-      amount: args.amount,
+      amount: paymentAmount,
       currency: paymentContext.invoice.currency,
       status: "link_generated",
       reconciliationSource: null,
       checkoutPayload: paymentLink.checkoutPayload,
       callbackUrl: args.callbackUrl ?? null,
       resolutionMessage: "Payment link generated",
+      expectedSelectionRevision: args.expectedSelectionRevision,
+      expectedInvoiceBalance,
     });
 
     return paymentLink;
@@ -2583,6 +3029,7 @@ export const initializePortalOnlinePayment = action({
   args: {
     invoiceId: v.id("studentInvoices"),
     callbackUrl: v.optional(v.string()),
+    expectedSelectionRevision: v.optional(v.number()),
   },
   returns: v.object({
     provider: billingPaymentProviderValidator,
@@ -2616,6 +3063,8 @@ export const initializePortalOnlinePayment = action({
     if (!paymentContext || String(paymentContext.schoolId) !== String(portalPaymentContext.schoolId)) {
       throw new ConvexError("Invoice not found");
     }
+    requireCurrentPaymentSelectionRevision(paymentContext.invoice, args.expectedSelectionRevision);
+    const expectedInvoiceBalance = paymentContext.invoice.balanceDue;
 
     const paymentLink = await createOnlinePaymentLinkForInvoiceContext({
       ctx,
@@ -2643,6 +3092,8 @@ export const initializePortalOnlinePayment = action({
       checkoutPayload: paymentLink.checkoutPayload,
       callbackUrl: args.callbackUrl ?? null,
       resolutionMessage: "Payment link generated",
+      expectedSelectionRevision: args.expectedSelectionRevision,
+      expectedInvoiceBalance,
     });
 
     return paymentLink;
@@ -2658,62 +3109,18 @@ export const toggleInvoiceOptionalLineItem = mutation({
   returns: billingInvoiceValidator,
   handler: async (ctx, args) => {
     const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.invoices.issue" });
+    assertAdmin(viewer);
     const invoice = await ctx.db.get(args.invoiceId);
     if (!invoice || invoice.schoolId !== viewer.schoolId) {
-      throw new ConvexError("Invoice not found");
+      throw billingContractError("NOT_FOUND", "Invoice not found");
     }
-
-    assertAdmin(viewer);
-
-    if (invoice.status === "paid" || invoice.status === "cancelled") {
-      throw new ConvexError("Cannot modify items on a paid or cancelled invoice");
-    }
-
-    let found = false;
-    const updatedLineItems = invoice.lineItems.map((item) => {
-      if (item.id === args.lineItemId && item.isOptional) {
-        found = true;
-        return { ...item, isSelected: args.isSelected };
-      }
-      return item;
+    const result = await updateOptionalInvoiceSelections({
+      ctx,
+      invoice,
+      expectedSelectionRevision: invoice.selectionRevision ?? 0,
+      selections: [{ lineItemId: args.lineItemId, isSelected: args.isSelected }],
     });
-
-    if (!found) {
-      throw new ConvexError("Optional line item not found on this invoice");
-    }
-
-    const total = computeBillingInvoiceTotal({
-      lineItems: updatedLineItems,
-      waiverAmount: invoice.waiverAmount,
-      discountAmount: invoice.discountAmount,
-    });
-
-    const balanceDue = Math.max(
-      0,
-      normalizeBillingAmount(total.totalAmount - invoice.amountPaid)
-    );
-    const status = deriveBillingInvoiceStatus({
-      totalAmount: total.totalAmount,
-      amountPaid: invoice.amountPaid,
-      dueDate: invoice.dueDate,
-    });
-
-    const now = Date.now();
-    await ctx.db.patch(invoice._id, {
-      lineItems: updatedLineItems,
-      subtotal: total.subtotal,
-      totalAmount: total.totalAmount,
-      balanceDue,
-      status,
-      updatedAt: now,
-    });
-
-    const refreshed = await ctx.db.get(invoice._id);
-    if (!refreshed) {
-      throw new ConvexError("Invoice not found after update");
-    }
-
-    return invoiceDocToReturn(refreshed);
+    return invoiceDocToReturn(result.invoice);
   },
 });
 

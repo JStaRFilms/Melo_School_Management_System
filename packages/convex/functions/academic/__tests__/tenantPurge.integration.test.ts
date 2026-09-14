@@ -32,7 +32,7 @@ it("purges only the exact development tenant in bounded dependency order", async
       createdAt: 1,
       updatedAt: 1,
     });
-    await ctx.db.insert("classes", {
+    const targetClassId = await ctx.db.insert("classes", {
       schoolId: target,
       name: "Target class",
       level: "Y1",
@@ -58,6 +58,30 @@ it("purges only the exact development tenant in bounded dependency order", async
       role: "admin",
       createdAt: 1,
       updatedAt: 1,
+    });
+    const selectableCollectionId = await ctx.db.insert("selectableBillingCollections", {
+      schoolId: target,
+      name: "Disposable items",
+      currency: "NGN",
+      targetClassIds: [targetClassId],
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+      createdBy: userId,
+      updatedBy: userId,
+    });
+    const selectableItemId = await ctx.db.insert("selectableBillingItems", {
+      schoolId: target,
+      collectionId: selectableCollectionId,
+      label: "Disposable book",
+      unitAmount: 100,
+      category: "other",
+      order: 0,
+      isActive: true,
+      createdAt: 1,
+      updatedAt: 1,
+      createdBy: userId,
+      updatedBy: userId,
     });
     const membershipId = await ctx.db.insert("branchMemberships", {
       personId,
@@ -101,6 +125,8 @@ it("purges only the exact development tenant in bounded dependency order", async
       grantId,
       targetFingerprintId,
       retainedFingerprintId,
+      selectableCollectionId,
+      selectableItemId,
     };
   });
 
@@ -126,6 +152,8 @@ it("purges only the exact development tenant in bounded dependency order", async
     grant: await ctx.db.get(fixture.grantId),
     targetFingerprint: await ctx.db.get(fixture.targetFingerprintId),
     retainedFingerprint: await ctx.db.get(fixture.retainedFingerprintId),
+    selectableCollection: await ctx.db.get(fixture.selectableCollectionId),
+    selectableItem: await ctx.db.get(fixture.selectableItemId),
   }));
   expect(state.target).toBeNull();
   expect(state.retained).not.toBeNull();
@@ -134,4 +162,6 @@ it("purges only the exact development tenant in bounded dependency order", async
   expect(state.grant).toBeNull();
   expect(state.targetFingerprint).toBeNull();
   expect(state.retainedFingerprint).not.toBeNull();
+  expect(state.selectableCollection).toBeNull();
+  expect(state.selectableItem).toBeNull();
 });

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { paymentInstructionsValidator } from "./foundation/bankInstructions";
 
 export const billingLineItemCategoryValidator = v.union(
@@ -25,6 +25,49 @@ export const billingLineItemValidator = v.object({
   order: v.number(),
   isOptional: v.optional(v.boolean()),
   isSelected: v.optional(v.boolean()),
+  sourceSelectableItemId: v.optional(v.id("selectableBillingItems")),
+  unitAmount: v.optional(v.number()),
+  quantity: v.optional(v.number()),
+});
+
+export const billingOptionalSelectionModeValidator = v.union(
+  v.literal("legacy_included"),
+  v.literal("parent_selectable")
+);
+
+export const selectableBillingSelectionValidator = v.object({
+  itemId: v.id("selectableBillingItems"),
+  quantity: v.number(),
+});
+
+export const invoiceOptionalSelectionValidator = v.object({
+  lineItemId: v.string(),
+  isSelected: v.boolean(),
+});
+
+const selectableBillingItemProjectionValidator = v.object({
+  _id: v.id("selectableBillingItems"),
+  label: v.string(),
+  description: v.union(v.string(), v.null()),
+  unitAmount: v.number(),
+  category: billingLineItemCategoryValidator,
+  order: v.number(),
+  isActive: v.boolean(),
+});
+
+export const selectableBillingCollectionValidator = v.object({
+  _id: v.id("selectableBillingCollections"),
+  schoolId: v.id("schools"),
+  bankAccountId: v.union(v.id("schoolBankAccounts"), v.null()),
+  name: v.string(),
+  description: v.union(v.string(), v.null()),
+  currency: v.string(),
+  targetClassIds: v.array(v.id("classes")),
+  targetClasses: v.array(v.object({ _id: v.id("classes"), name: v.string() })),
+  isActive: v.boolean(),
+  createdAt: v.number(),
+  updatedAt: v.number(),
+  items: v.array(selectableBillingItemProjectionValidator),
 });
 
 export const billingInstallmentScheduleValidator = v.object({
@@ -49,6 +92,7 @@ export const billingFeePlanValidator = v.object({
   currency: v.string(),
   billingMode: billingFeePlanBillingModeValidator,
   targetClassIds: v.array(v.id("classes")),
+  optionalSelectionMode: billingOptionalSelectionModeValidator,
   lineItems: v.array(billingLineItemValidator),
   installmentPolicy: billingInstallmentPolicyValidator,
   isActive: v.boolean(),
@@ -88,8 +132,10 @@ export const billingInvoiceValidator = v.object({
   paymentInstructions: v.union(paymentInstructionsValidator, v.null()),
   _id: v.id("studentInvoices"),
   schoolId: v.id("schools"),
-  feePlanId: v.id("feePlans"),
+  feePlanId: v.union(v.id("feePlans"), v.null()),
+  selectableCollectionId: v.union(v.id("selectableBillingCollections"), v.null()),
   feePlanApplicationId: v.union(v.id("feePlanApplications"), v.null()),
+  selectionRevision: v.union(v.number(), v.null()),
   studentId: v.id("students"),
   classId: v.id("classes"),
   sessionId: v.id("academicSessions"),
@@ -479,7 +525,7 @@ export function normalizeBillingLineItems(input: Array<{
   amount: number;
   category?: string;
   isOptional?: boolean;
-}>, prefix: string) {
+}>, prefix: string, optionalSelectionMode: "legacy_included" | "parent_selectable" = "legacy_included") {
   return input.map((item, index) => ({
     id: makeBillingLineItemId(prefix, index, item.label),
     label: normalizeBillingText(item.label) ?? `Item ${index + 1}`,
@@ -493,6 +539,143 @@ export function normalizeBillingLineItems(input: Array<{
       | "other") ?? "other",
     order: index,
     isOptional: Boolean(item.isOptional),
+    ...(optionalSelectionMode === "parent_selectable"
+      ? { isSelected: !item.isOptional }
+      : {}),
+  }));
+}
+
+export type BillingErrorCode =
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "VALIDATION_FAILED"
+  | "IDEMPOTENCY_CONFLICT"
+  | "DUPLICATE_INVOICE"
+  | "SELECTION_CONFLICT"
+  | "SELECTION_LOCKED"
+  | "ZERO_VALUE_INVOICE";
+
+export function billingContractError(
+  code: BillingErrorCode,
+  message: string,
+  details: Record<string, string | number> = {},
+) {
+  return new ConvexError({ code, message, ...details });
+}
+
+export function normalizeSelectableRequestKey(value: string) {
+  const requestKey = value.trim();
+  if (requestKey.length < 8 || requestKey.length > 128) {
+    throw billingContractError(
+      "VALIDATION_FAILED",
+      "Request key must contain between 8 and 128 characters",
+    );
+  }
+  return requestKey;
+}
+
+export const MAX_SELECTABLE_BILLING_COLLECTIONS = 100;
+export const MAX_SELECTABLE_BILLING_ITEMS = 100;
+export const MAX_SELECTABLE_BILLING_STUDENTS = 100;
+export const MAX_SELECTABLE_BILLING_QUANTITY = 9999;
+export const MAX_STUDENT_INVOICE_HISTORY = 200;
+
+export function normalizeSelectableSelections<T extends string>(
+  selections: Array<{ itemId: T; quantity: number }>,
+) {
+  if (selections.length === 0 || selections.length > MAX_SELECTABLE_BILLING_ITEMS) {
+    throw billingContractError(
+      "VALIDATION_FAILED",
+      `Select between 1 and ${MAX_SELECTABLE_BILLING_ITEMS} items`,
+    );
+  }
+  const normalized = selections
+    .map((selection) => {
+      if (
+        !Number.isInteger(selection.quantity) ||
+        selection.quantity < 1 ||
+        selection.quantity > MAX_SELECTABLE_BILLING_QUANTITY
+      ) {
+        throw billingContractError(
+          "VALIDATION_FAILED",
+          `Quantity must be a whole number from 1 to ${MAX_SELECTABLE_BILLING_QUANTITY}`,
+        );
+      }
+      return { itemId: selection.itemId, quantity: selection.quantity };
+    })
+    .sort((left, right) => String(left.itemId).localeCompare(String(right.itemId)));
+  if (new Set(normalized.map((selection) => String(selection.itemId))).size !== normalized.length) {
+    throw billingContractError("VALIDATION_FAILED", "Each item may be selected only once");
+  }
+  return normalized;
+}
+
+export function buildSelectableInvoiceFingerprint(args: {
+  actorKind: "parent" | "admin";
+  actorUserId: string;
+  schoolId: string;
+  studentId: string;
+  collectionId: string;
+  sessionId: string;
+  termId: string;
+  requestedDueDate: number | null;
+  selections: Array<{ itemId: string; quantity: number }>;
+}) {
+  return JSON.stringify({
+    ...args,
+    selections: [...args.selections].sort((left, right) =>
+      left.itemId.localeCompare(right.itemId),
+    ),
+  });
+}
+
+export function projectBillingLineItem(item: {
+  id: string;
+  label: string;
+  amount: number;
+  category: string;
+  order: number;
+  isOptional?: boolean;
+  isSelected?: boolean;
+  unitAmount?: number;
+  quantity?: number;
+}) {
+  return {
+    id: item.id,
+    label: item.label,
+    amount: item.amount,
+    category: item.category,
+    order: item.order,
+    isOptional: item.isOptional === true,
+    isSelected: item.isOptional ? item.isSelected !== false : true,
+    unitAmount: item.unitAmount ?? item.amount,
+    quantity: item.quantity ?? 1,
+  };
+}
+
+export function invoiceHasOptionalSelectionRows(invoice: {
+  feePlanId?: unknown;
+  lineItems: Array<{ isOptional?: boolean }>;
+}) {
+  return Boolean(invoice.feePlanId) &&
+    invoice.lineItems.some((item) => item.isOptional === true) &&
+    invoice.lineItems.some((item) => item.isOptional !== true);
+}
+
+export function redistributeBillingInstallments(
+  schedule: Array<{ id: string; label: string; dueAt: number; amount: number; isPaid: boolean }>,
+  totalAmount: number,
+  dueDate: number,
+) {
+  const rows = schedule.length > 0
+    ? schedule
+    : [{ id: "inst-1", label: "Installment 1", dueAt: dueDate, amount: totalAmount, isPaid: false }];
+  const amountPerRow = normalizeBillingAmount(totalAmount / rows.length);
+  return rows.map((row, index) => ({
+    ...row,
+    amount: index === rows.length - 1
+      ? normalizeBillingAmount(totalAmount - amountPerRow * (rows.length - 1))
+      : amountPerRow,
   }));
 }
 
