@@ -612,7 +612,11 @@ export default function BillingPage() {
             <div className="flex flex-col gap-6">
               {/* Tab Navigation & Search */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-950/5 pb-2 sticky top-0 bg-slate-50/50 backdrop-blur-md z-10">
-                <BillingTabs activeTab={activeTab} onTabChange={setActiveTab} />
+                <BillingTabs
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                  showSettings={canUseLegacyBillingOperations}
+                />
                 
                 <div className="flex items-center gap-2">
                   <div className="relative group">
@@ -711,7 +715,7 @@ export default function BillingPage() {
                    />
                 )}
 
-                {activeTab === "settings" && (
+                {activeTab === "settings" && canUseLegacyBillingOperations && data.paymentGateway && (
                    <SettingsPanel 
                      settingsDraft={billingSettingsDraft}
                      onSettingsChange={setBillingSettingsDraft}

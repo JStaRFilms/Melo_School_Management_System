@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { FeePlanList } from "../app/billing/components/FeePlanList";
+import { BillingTabs } from "../app/billing/components/BillingTabs";
 import type { BillingDashboardData } from "../app/billing/types";
 
 type FeePlan = BillingDashboardData["feePlans"][number];
@@ -38,6 +39,21 @@ const listProps = {
   sortDirection: "desc" as const,
   onSortChange: vi.fn(),
 };
+
+describe("delegated billing navigation", () => {
+  it("hides legacy configuration from delegated finance users", () => {
+    render(
+      <BillingTabs
+        activeTab="plans"
+        onTabChange={vi.fn()}
+        showSettings={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Plans" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Config" })).not.toBeInTheDocument();
+  });
+});
 
 describe("FeePlanList lifecycle controls", () => {
   it("deletes only an unused plan after confirmation", async () => {

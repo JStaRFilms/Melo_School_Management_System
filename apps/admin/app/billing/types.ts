@@ -181,7 +181,7 @@ export type BillingDashboardData = {
     allowManualPayments: boolean;
     allowOnlinePayments: boolean;
   } | null;
-  paymentGateway: PaystackProviderOverview;
+  paymentGateway: PaystackProviderOverview | null;
   summary: {
     totalInvoiceAmount: number;
     amountCollected: number;

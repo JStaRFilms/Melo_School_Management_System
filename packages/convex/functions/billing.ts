@@ -123,7 +123,7 @@ const billingDashboardValidator = v.object({
     slug: v.string(),
   }),
   settings: billingSettingsValidator,
-  paymentGateway: billingPaystackProviderOverviewValidator,
+  paymentGateway: v.union(billingPaystackProviderOverviewValidator, v.null()),
   summary: billingSummaryValidator,
   feePlans: v.array(billingFeePlanValidator),
   applications: v.array(billingFeePlanApplicationRowValidator),
@@ -282,8 +282,8 @@ async function getAuthorizedBillingViewer(
   capability: string,
 ) {
   const viewer = await getAuthenticatedSchoolMembership(ctx);
-  await requireCapability(ctx, viewer.schoolId, capability);
-  return viewer;
+  const authorization = await requireCapability(ctx, viewer.schoolId, capability);
+  return { ...viewer, effectiveCapabilities: authorization.effectiveCapabilities };
 }
 
 function getInvoiceDisplayName(invoiceNumber: string) {
@@ -400,34 +400,50 @@ type FeePlanUsageSummary = {
   canDelete: boolean;
 };
 
-function summarizeFeePlanUsage(
-  feePlanId: Id<"feePlans">,
+function buildFeePlanUsageById(
   invoices: Doc<"studentInvoices">[],
   applications: Doc<"feePlanApplications">[],
-): FeePlanUsageSummary {
-  const planInvoices = invoices.filter((invoice) => invoice.feePlanId === feePlanId);
-  const applicationCount = applications.filter(
-    (application) => application.feePlanId === feePlanId,
-  ).length;
-  const blockedPaidInvoiceCount = planInvoices.filter(
-    (invoice) =>
+) {
+  const summaries = new Map<string, FeePlanUsageSummary>();
+  const getSummary = (feePlanId: Id<"feePlans">) => {
+    const key = String(feePlanId);
+    const existing = summaries.get(key);
+    if (existing) return existing;
+    const created: FeePlanUsageSummary = {
+      applicationCount: 0,
+      invoiceCount: 0,
+      revocableInvoiceCount: 0,
+      blockedPaidInvoiceCount: 0,
+      cancelledInvoiceCount: 0,
+      canDelete: true,
+    };
+    summaries.set(key, created);
+    return created;
+  };
+
+  for (const invoice of invoices) {
+    const summary = getSummary(invoice.feePlanId);
+    summary.invoiceCount += 1;
+    summary.canDelete = false;
+    if (
       invoice.amountPaid > 0 ||
       invoice.status === "paid" ||
-      invoice.status === "partially_paid",
-  ).length;
-  const cancelledInvoiceCount = planInvoices.filter(
-    (invoice) => invoice.status === "cancelled",
-  ).length;
-  const revocableInvoiceCount = planInvoices.length - blockedPaidInvoiceCount - cancelledInvoiceCount;
+      invoice.status === "partially_paid"
+    ) {
+      summary.blockedPaidInvoiceCount += 1;
+    } else if (invoice.status === "cancelled") {
+      summary.cancelledInvoiceCount += 1;
+    } else {
+      summary.revocableInvoiceCount += 1;
+    }
+  }
+  for (const application of applications) {
+    const summary = getSummary(application.feePlanId);
+    summary.applicationCount += 1;
+    summary.canDelete = false;
+  }
 
-  return {
-    applicationCount,
-    invoiceCount: planInvoices.length,
-    revocableInvoiceCount,
-    blockedPaidInvoiceCount,
-    cancelledInvoiceCount,
-    canDelete: planInvoices.length === 0 && applicationCount === 0,
-  };
+  return summaries;
 }
 
 function feePlanDocToReturn(feePlan: any, usage?: FeePlanUsageSummary) {
@@ -1287,10 +1303,15 @@ export const getBillingDashboard = query({
       .query("schoolBillingSettings")
       .withIndex("by_school", (q: any) => q.eq("schoolId", viewer.schoolId))
       .unique();
-    const paymentGateway: any = await ctx.runQuery(
-      (internal as any).functions.billingProviders.getSchoolPaystackGatewayOverviewInternal,
-      { schoolId: viewer.schoolId }
+    const canManageBankDetails = viewer.effectiveCapabilities.includes(
+      "finance.bank_details.manage",
     );
+    const paymentGateway: any = canManageBankDetails
+      ? await ctx.runQuery(
+          (internal as any).functions.billingProviders.getSchoolPaystackGatewayOverviewInternal,
+          { schoolId: viewer.schoolId },
+        )
+      : null;
 
     const lookups = await loadBillingLookups(ctx, viewer.schoolId);
     const allInvoices = await ctx.db
@@ -1435,6 +1456,7 @@ export const getBillingDashboard = query({
     const manualAttentionPaymentAttempts = visibleAttempts.filter(
       (attempt: any) => attempt.status === "manual_attention_needed"
     ).length;
+    const feePlanUsageById = buildFeePlanUsageById(allInvoices, allApplications);
 
     return {
       school: {
@@ -1456,7 +1478,14 @@ export const getBillingDashboard = query({
       feePlans: lookups.feePlans.map((feePlan: Doc<"feePlans">) =>
         feePlanDocToReturn(
           feePlan,
-          summarizeFeePlanUsage(feePlan._id, allInvoices, allApplications),
+          feePlanUsageById.get(String(feePlan._id)) ?? {
+            applicationCount: 0,
+            invoiceCount: 0,
+            revocableInvoiceCount: 0,
+            blockedPaidInvoiceCount: 0,
+            cancelledInvoiceCount: 0,
+            canDelete: true,
+          },
         )
       ),
       applications: applicationRows,

@@ -455,6 +455,7 @@ describe("billing registered functions", () => {
       api.functions.billing.getBillingDashboard,
       {},
     );
+    expect(delegatedDashboard.paymentGateway).toBeNull();
     expect(delegatedDashboard.feePlans).toEqual(expect.arrayContaining([
       expect.objectContaining({ _id: ids.feePlanId, isActive: false }),
     ]));
