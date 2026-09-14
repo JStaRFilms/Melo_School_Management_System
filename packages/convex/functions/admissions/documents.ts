@@ -13,6 +13,7 @@ import {
   MAX_ADMISSIONS_DOCUMENT_BYTES,
   UPLOAD_INTENT_TTL_MS,
   admissionsError,
+  consumeAdmissionsRateLimit,
   documentStateAllowsAccess,
   hasFreshAuthentication,
   isApplicationEditable,
@@ -21,6 +22,7 @@ import {
   normalizeRequiredText,
   recordAdmissionsAudit,
   recordDocumentAccessAudit,
+  requireAdmissionsModuleEnabled,
   requireGuardian,
   requireOwnedApplication,
   sha256Hex,
@@ -67,6 +69,7 @@ export const requestUploadIntent = mutation({
   returns: v.object({ uploadIntentId: v.id("admissionsDocumentUploadIntents"), uploadToken: v.string(), uploadPath: v.literal("/admissions/document-upload"), expiresAt: v.number() }),
   handler: async (ctx, args) => {
     const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
+    await requireAdmissionsModuleEnabled(ctx, application.schoolId);
     if (!isApplicationEditable(application.state) || application.financialHoldAt !== undefined) admissionsError("APPLICATION_LOCKED", "Application documents are locked");
     const requirement = await ctx.db.get(args.requirementId);
     if (!requirement || requirement.schoolId !== application.schoolId || requirement.formVersionId !== application.formVersionId) admissionsError("NOT_FOUND_OR_DENIED", "Document requirement not found");
@@ -78,6 +81,11 @@ export const requestUploadIntent = mutation({
     if (application.state === "changes_requested" && !await correctionAllowsRequirement(ctx, application, requirement._id)) admissionsError("APPLICATION_LOCKED", "Only requested document corrections may be changed");
     if (activeDocuments.length >= requirement.maxFiles && !replacementAllowed) throw new ConvexError("Document requirement file limit reached");
     await requireContractBoundStorageForUpload(ctx, application.schoolId, args.size);
+    await consumeAdmissionsRateLimit(ctx, {
+      action: "upload_intent_reserve",
+      schoolId: application.schoolId,
+      applicationId: application._id,
+    });
     const uploadToken = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
     const tokenHash = await sha256Hex(uploadToken);
     const quotaReservationKey = `admissions-upload:${tokenHash}`;
@@ -125,6 +133,7 @@ export const beginHttpUpload = internalMutation({
     const application = await ctx.db.get(intent.applicationId);
     const requirement = await ctx.db.get(intent.requirementId);
     if (!application || !requirement || application.schoolId !== intent.schoolId || requirement.schoolId !== intent.schoolId || !isApplicationEditable(application.state) || application.financialHoldAt !== undefined) admissionsError("NOT_FOUND_OR_DENIED", "Upload intent not found");
+    await requireAdmissionsModuleEnabled(ctx, intent.schoolId);
     if (intent.status !== "pending" || intent.expiresAt <= Date.now() || !/^[A-Za-z0-9_-]{16,128}$/.test(args.uploadAttemptId)) throw new ConvexError("Upload intent is no longer available");
     await ctx.db.patch(intent._id, { status: "uploading", activeAttemptId: args.uploadAttemptId, updatedAt: Date.now() });
     return { contentType: intent.contentType, expectedSize: intent.expectedSize, expectedSha256: intent.expectedSha256 };
@@ -138,6 +147,7 @@ export const recordHttpUploadStorage = internalMutation({
     const guardian = await requireGuardian(ctx);
     const intent = await ctx.db.get(args.uploadIntentId);
     if (!intent || intent.guardianId !== guardian._id || intent.tokenHash !== await sha256Hex(args.uploadToken) || intent.status !== "uploading" || intent.activeAttemptId !== args.uploadAttemptId || intent.expiresAt <= Date.now()) throw new ConvexError("Upload intent is no longer available");
+    await requireAdmissionsModuleEnabled(ctx, intent.schoolId);
     await assertStorageUnclaimed(ctx, args.storageId);
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (!metadata || metadata.size !== intent.expectedSize || storageSha256ToHex(metadata.sha256) !== intent.expectedSha256) throw new ConvexError("Stored document metadata does not match the reserved upload");
@@ -158,6 +168,7 @@ export const finalizeUpload = mutation({
       if (!document || document.applicationId !== intent.applicationId) throw new ConvexError("Finalized document is unavailable");
       return { documentKey: document.documentKey, state: document.state, replayed: true };
     }
+    await requireAdmissionsModuleEnabled(ctx, intent.schoolId);
     if (intent.status !== "stored" || !intent.storageId || intent.expiresAt <= Date.now()) throw new ConvexError("Upload is not ready to finalize");
     const [application, requirement, metadata] = await Promise.all([ctx.db.get(intent.applicationId), ctx.db.get(intent.requirementId), ctx.db.system.get("_storage", intent.storageId)]);
     if (!application || application.guardianId !== guardian._id || application.schoolId !== intent.schoolId || !isApplicationEditable(application.state) || application.financialHoldAt !== undefined || !requirement || requirement.schoolId !== intent.schoolId || requirement.formVersionId !== application.formVersionId) admissionsError("NOT_FOUND_OR_DENIED", "Upload context changed");

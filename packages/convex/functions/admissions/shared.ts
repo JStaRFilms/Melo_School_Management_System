@@ -1,4 +1,6 @@
+import { RateLimiter } from "@convex-dev/rate-limiter";
 import { ConvexError } from "convex/values";
+import { components } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import {
@@ -14,6 +16,60 @@ export const UPLOAD_INTENT_TTL_MS = 15 * 60 * 1000;
 export const DOCUMENT_ACCESS_GRANT_TTL_MS = 60 * 1000;
 export const MAX_ADMISSIONS_DOCUMENT_BYTES = 20 * 1024 * 1024;
 export const ADMISSIONS_UPLOAD_OPERATION = "admissions_document_secure_http_upload";
+
+const admissionsRateLimiter = new RateLimiter(components.rateLimiter, {
+  checkoutAttemptCreate: { kind: "fixed window", rate: 5, period: 15 * 60 * 1_000 },
+  uploadIntentReserve: { kind: "fixed window", rate: 6, period: 10 * 60 * 1_000 },
+  documentAccessGrant: { kind: "fixed window", rate: 20, period: 60 * 1_000 },
+});
+
+type AdmissionsRateLimitArgs =
+  | { action: "checkout_attempt_create"; schoolId: Id<"schools">; guardianId: Id<"admissionsGuardians"> }
+  | { action: "upload_intent_reserve"; schoolId: Id<"schools">; applicationId: Id<"admissionsApplications"> }
+  | ({ action: "document_access_grant"; schoolId: Id<"schools">; applicationId: Id<"admissionsApplications"> } & (
+    | { actorKind: "guardian"; guardianId: Id<"admissionsGuardians"> }
+    | { actorKind: "staff"; actorUserId: Id<"users"> }
+  ));
+
+export async function requireAdmissionsModuleEnabled(
+  ctx: AdmissionsContext,
+  schoolId: Id<"schools">,
+) {
+  const school = await ctx.db.get(schoolId);
+  if (!school || school.status !== "active" || school.features?.admissions !== true) {
+    admissionsError("ADMISSIONS_UNAVAILABLE", "Admissions is unavailable");
+  }
+  return school;
+}
+
+export async function consumeAdmissionsRateLimit(
+  ctx: MutationCtx,
+  args: AdmissionsRateLimitArgs,
+) {
+  let result: { ok: boolean };
+  switch (args.action) {
+    case "checkout_attempt_create":
+      result = await admissionsRateLimiter.limit(ctx, "checkoutAttemptCreate", {
+        key: `${String(args.schoolId)}:guardian:${String(args.guardianId)}`,
+      });
+      break;
+    case "upload_intent_reserve":
+      result = await admissionsRateLimiter.limit(ctx, "uploadIntentReserve", {
+        key: `${String(args.schoolId)}:application:${String(args.applicationId)}`,
+      });
+      break;
+    case "document_access_grant": {
+      const actorKey = args.actorKind === "guardian"
+        ? `guardian:${String(args.guardianId)}`
+        : `staff:${String(args.actorUserId)}`;
+      result = await admissionsRateLimiter.limit(ctx, "documentAccessGrant", {
+        key: `${String(args.schoolId)}:${actorKey}:application:${String(args.applicationId)}`,
+      });
+      break;
+    }
+  }
+  if (!result.ok) admissionsError("RATE_LIMITED", "Please wait before trying again");
+}
 
 export function mergeCorrectionScopes(events: Doc<"admissionsReviewEvents">[], snapshotId?: Id<"admissionsSubmissionSnapshots">) {
   const fieldKeys = new Set<string>();
@@ -108,18 +164,31 @@ export async function issueDocumentAccessGrant(
   ctx: MutationCtx,
   args: {
     document: Doc<"admissionsDocuments">;
-    actorKind: "guardian" | "staff";
-    guardianId?: Id<"admissionsGuardians">;
-    actorUserId?: Id<"users">;
     audience: "apply" | "admin";
     action: "view" | "download";
     reason?: string;
-  },
+  } & (
+    | { actorKind: "guardian"; guardianId: Id<"admissionsGuardians">; actorUserId?: never }
+    | { actorKind: "staff"; actorUserId: Id<"users">; guardianId?: never }
+  ),
 ) {
   const token = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
   const expiresAt = now + DOCUMENT_ACCESS_GRANT_TTL_MS;
+  await consumeAdmissionsRateLimit(ctx, args.actorKind === "guardian" ? {
+    action: "document_access_grant",
+    schoolId: args.document.schoolId,
+    applicationId: args.document.applicationId,
+    actorKind: "guardian",
+    guardianId: args.guardianId,
+  } : {
+    action: "document_access_grant",
+    schoolId: args.document.schoolId,
+    applicationId: args.document.applicationId,
+    actorKind: "staff",
+    actorUserId: args.actorUserId,
+  });
   await ctx.db.insert("admissionsDocumentAccessGrants", {
     schoolId: args.document.schoolId,
     documentId: args.document._id,
@@ -264,6 +333,7 @@ export async function requireAdmissionsStaff(
   if (membership.isPlatformAdmin || !membership.membershipId || !membership.userId) {
     admissionsError("FORBIDDEN", "Current school membership is required");
   }
+  await requireAdmissionsModuleEnabled(ctx, schoolId);
   const capabilities = await getContextCapabilities(ctx, membership);
   const normalized = new Set(capabilities.map(normalizeCapability));
   if (!requiredCapabilities.every((capability) => normalized.has(normalizeCapability(capability)))) {

@@ -6,9 +6,11 @@ import type { Id } from "../../../_generated/dataModel";
 import { cleanupUploadIntentRef, beginHttpUploadRef, recordHttpUploadStorageRef, failHttpUploadRef } from "../refs";
 import { sha256Hex } from "../shared";
 import { storageClaimedOnlyBy } from "../../academic/assetStorageBoundary";
+import rateLimiterSchema from "../../../node_modules/@convex-dev/rate-limiter/src/component/schema";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"])).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(root.length)}`, module]));
+const rateLimiterModules = import.meta.glob("../../../node_modules/@convex-dev/rate-limiter/src/component/**/*.ts");
 const guardianIdentityRef = makeFunctionReference<"mutation">("functions/admissions/guardian:getOrCreateIdentity");
 const requestUploadRef = makeFunctionReference<"mutation">("functions/admissions/documents:requestUploadIntent");
 const finalizeUploadRef = makeFunctionReference<"mutation">("functions/admissions/documents:finalizeUpload");
@@ -19,9 +21,10 @@ const pdfBytes = new TextEncoder().encode("%PDF-1.7\nsecure admissions document"
 
 async function fixture() {
   const t = convexTest(schema, modules);
+  t.registerComponent("rateLimiter", rateLimiterSchema, rateLimiterModules);
   const ids = await t.run(async (ctx) => {
     const now = Date.now();
-    const schoolId = await ctx.db.insert("schools", { name: "Storage School", slug: "storage-school", status: "active", createdAt: now, updatedAt: now });
+    const schoolId = await ctx.db.insert("schools", { name: "Storage School", slug: "storage-school", status: "active", features: { billing: true, curriculum: true, knowledgeLibrary: true, admissions: true }, createdAt: now, updatedAt: now });
     const otherSchoolId = await ctx.db.insert("schools", { name: "Other", slug: "other", status: "active", createdAt: now, updatedAt: now });
     const rateVersionId = await ctx.db.insert("commercialRateVersions", { code: "test", name: "Test", version: 1, effectiveFrom: now - 1, rate: { currency: "NGN", perStudentMinor: 0, setupMinor: 0, minimumMinor: 0, discountBps: 0, bands: [], cadence: "termly", proration: "daily" }, createdAt: now });
     const entitlement = { allowances: [{ meterType: "storage_bytes" as const, baseUnits: 1_000_000, graceUnits: 0 }], warningPercent: 75, criticalPercent: 90, hardStopPercent: 100, maxFileSizeBytes: 1_000_000, maxPagesPerOperation: 20, profiles: [] };
@@ -73,6 +76,38 @@ it("binds upload intents to guardian, school, application, requirement, token, t
   await expect(f.owner.mutation(beginHttpUploadRef, { uploadIntentId: intent.uploadIntentId, uploadToken: intent.uploadToken, uploadAttemptId: "attempt-expired-001" })).rejects.toThrow("no longer available");
   await f.t.run((ctx) => ctx.db.patch(f.applicationId, { financialHoldAt: Date.now(), financialHoldReason: "VERIFIED_REFUNDED" }));
   await expect(f.owner.mutation(requestUploadRef, { applicationId: f.applicationId, requirementId: f.requirementId, fileName: "held.pdf", contentType: "application/pdf", size: pdfBytes.byteLength, sha256: hash })).rejects.toThrow("locked");
+});
+
+it("component-limits concurrent upload intents before reserving denied quota", async () => {
+  const f = await fixture();
+  const hash = await sha256Hex(pdfBytes);
+  const results = await Promise.allSettled(Array.from({ length: 7 }, (_, index) =>
+    f.owner.mutation(requestUploadRef, { applicationId: f.applicationId, requirementId: f.requirementId, fileName: `bounded-${index}.pdf`, contentType: "application/pdf", size: pdfBytes.byteLength, sha256: hash }),
+  ));
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(6);
+  const denied = results.filter((result) => result.status === "rejected");
+  expect(denied).toHaveLength(1);
+  expect(String(denied[0]?.reason)).toContain("Please wait");
+  const reservations = await f.t.run((ctx) => ctx.db.query("usageQuotaReservations").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).take(10));
+  expect(reservations).toHaveLength(6);
+});
+
+it("component-limits concurrent document grants with server-derived actor and application keys", async () => {
+  const f = await fixture();
+  const documentKey = "grant-rate-document";
+  await f.t.run(async (ctx) => {
+    const storageId = await ctx.storage.store(new Blob([pdfBytes], { type: "application/pdf" }));
+    await ctx.db.insert("admissionsDocuments", { schoolId: f.schoolId, applicationId: f.applicationId, requirementId: f.requirementId, category: "identity", documentKey, storageId, fileName: "grant-rate.pdf", mimeType: "application/pdf", byteSize: pdfBytes.byteLength, sha256: await sha256Hex(pdfBytes), version: 1, state: "uploaded", sensitivity: "personal", uploadedByGuardianId: f.guardianId, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() });
+  });
+  const results = await Promise.allSettled(Array.from({ length: 21 }, () =>
+    f.owner.mutation(ownAccessRef, { documentKey, action: "view" }),
+  ));
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(20);
+  const denied = results.filter((result) => result.status === "rejected");
+  expect(denied).toHaveLength(1);
+  expect(String(denied[0]?.reason)).toContain("Please wait");
+  const grants = await f.t.run((ctx) => ctx.db.query("admissionsDocumentAccessGrants").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).take(25));
+  expect(grants).toHaveLength(20);
 });
 
 it("commits measured quota once on finalize and releases abandoned bytes only after storage deletion", async () => {

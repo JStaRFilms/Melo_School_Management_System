@@ -188,7 +188,7 @@ async function insertDefinitionRows(
       ...(field.purpose ? { purpose: field.purpose.trim().slice(0, 500) } : {}),
       validationJson: field.validationJson,
       ...(field.conditionalRuleJson ? { conditionalRuleJson: field.conditionalRuleJson } : {}),
-      ...(field.approvalEvidenceId ? { approvalEvidenceId: field.approvalEvidenceId } : {}),
+      // Approval links are minted and attached only by the server approval mutation.
       order: field.order,
       status: "active",
       createdAt: now,
@@ -209,7 +209,6 @@ async function insertDefinitionRows(
       sensitivity: requirement.sensitivity,
       purpose: normalizeRequiredText(requirement.purpose, "Document purpose", 500),
       ...(requirement.conditionJson ? { conditionJson: requirement.conditionJson } : {}),
-      ...(requirement.approvalEvidenceId ? { approvalEvidenceId: requirement.approvalEvidenceId } : {}),
       order: requirement.order,
       createdAt: now,
       updatedAt: now,
@@ -306,7 +305,6 @@ export const createCampaignDraft = mutation({
       currency: args.currency,
       refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100),
       feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000),
-      ...(args.priceApprovalEvidenceId ? { approvalEvidenceId: args.priceApprovalEvidenceId } : {}),
       effectiveFrom: args.effectiveFrom,
       ...(args.effectiveTo ? { effectiveTo: args.effectiveTo } : {}),
       status: "draft",
@@ -335,6 +333,39 @@ async function priceApprovalSubjectKey(price: Doc<"admissionsProductPrices">) {
     effectiveTo: price.effectiveTo ?? null,
   }));
   return `${String(price._id)}:${termsDigest}`;
+}
+
+async function fieldApprovalSubjectKey(field: Doc<"admissionsFormFields">) {
+  const digest = await sha256Hex(JSON.stringify({
+    sectionKey: field.sectionKey,
+    kind: field.kind,
+    label: field.label,
+    helpText: field.helpText ?? null,
+    requiredMode: field.requiredMode,
+    dataClass: field.dataClass,
+    purpose: field.purpose ?? null,
+    validationJson: field.validationJson,
+    conditionalRuleJson: field.conditionalRuleJson ?? null,
+    order: field.order,
+    status: field.status,
+  }));
+  return `${String(field.formVersionId)}:${field.fieldKey}:${digest}`;
+}
+
+async function requirementApprovalSubjectKey(requirement: Doc<"admissionsDocumentRequirements">) {
+  const digest = await sha256Hex(JSON.stringify({
+    category: requirement.category,
+    label: requirement.label,
+    requiredMode: requirement.requiredMode,
+    acceptedMimeTypes: [...requirement.acceptedMimeTypes].sort(),
+    maxBytes: requirement.maxBytes,
+    maxFiles: requirement.maxFiles,
+    sensitivity: requirement.sensitivity,
+    purpose: requirement.purpose,
+    conditionJson: requirement.conditionJson ?? null,
+    order: requirement.order,
+  }));
+  return `${String(requirement.formVersionId)}:${requirement.requirementKey}:${digest}`;
 }
 
 async function assertPublicationApproval(
@@ -384,16 +415,37 @@ export const editCampaignDraft = mutation({
     const oldFields = await ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101);
     const oldRequirements = await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(31);
     if (oldFields.length > 100 || oldRequirements.length > 30) throw new ConvexError("Campaign draft exceeds editable bounds");
+    const priorPriceSubjectKey = await priceApprovalSubjectKey(price);
     for (const row of oldFields) await ctx.db.delete(row._id);
     for (const row of oldRequirements) await ctx.db.delete(row._id);
     await insertDefinitionRows(ctx, args.schoolId, form._id, args.fields, args.requirements, now);
+    const [newFields, newRequirements] = await Promise.all([
+      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101),
+      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(31),
+    ]);
+    for (const field of newFields) {
+      const prior = oldFields.find((candidate) => candidate.fieldKey === field.fieldKey);
+      if (prior?.approvalEvidenceId && await fieldApprovalSubjectKey(prior) === await fieldApprovalSubjectKey(field)) {
+        await ctx.db.patch(field._id, { approvalEvidenceId: prior.approvalEvidenceId });
+      }
+    }
+    for (const requirement of newRequirements) {
+      const prior = oldRequirements.find((candidate) => candidate.requirementKey === requirement.requirementKey);
+      if (prior?.approvalEvidenceId && await requirementApprovalSubjectKey(prior) === await requirementApprovalSubjectKey(requirement)) {
+        await ctx.db.patch(requirement._id, { approvalEvidenceId: prior.approvalEvidenceId });
+      }
+    }
     await ctx.db.patch(programme._id, { name: normalizeRequiredText(args.programmeName, "Programme name", 160), description: args.programmeDescription?.trim() || undefined, updatedAt: now });
     await ctx.db.patch(intake._id, { name: normalizeRequiredText(args.intakeName, "Intake name", 160), cycleLabel: normalizeRequiredText(args.cycleLabel, "Cycle label", 120), opensAt: args.opensAt, closesAt: args.closesAt, startsAt: args.startsAt, targetClassId: args.targetClassId, updatedAt: now });
     const nextDraftRevision = (form.draftRevision ?? 1) + 1;
     await ctx.db.patch(form._id, { schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), draftRevision: nextDraftRevision, updatedAt: now });
     await ctx.db.patch(declaration._id, { title: normalizeRequiredText(args.declarationTitle, "Declaration title", 200), body: normalizeRequiredText(args.declarationBody, "Declaration body", 20_000), bodyDigest: await sha256Hex(args.declarationBody.trim()), purpose: normalizeRequiredText(args.declarationPurpose, "Declaration purpose", 500), updatedAt: now });
     await ctx.db.patch(product._id, { name: normalizeRequiredText(args.productName, "Product name", 160), updatedAt: now });
-    await ctx.db.patch(price._id, { amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), approvalEvidenceId: args.priceApprovalEvidenceId, effectiveFrom: args.effectiveFrom, effectiveTo: args.effectiveTo, updatedAt: now });
+    await ctx.db.patch(price._id, { amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), approvalEvidenceId: undefined, effectiveFrom: args.effectiveFrom, effectiveTo: args.effectiveTo, updatedAt: now });
+    const updatedPrice = await ctx.db.get(price._id);
+    if (price.approvalEvidenceId && updatedPrice && priorPriceSubjectKey === await priceApprovalSubjectKey(updatedPrice)) {
+      await ctx.db.patch(price._id, { approvalEvidenceId: price.approvalEvidenceId });
+    }
     await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "campaign.edit_draft", entityType: "admissionsIntake", entityId: intake._id });
     return { programmeId: programme._id, intakeId: intake._id, formVersionId: form._id, declarationVersionId: declaration._id, productId: product._id, priceId: price._id, draftRevision: draftRevision(form._id, nextDraftRevision) };
   },
@@ -505,11 +557,11 @@ export const approveCampaignPublicationRequirements = mutation({
     const priceSubjectKey = await priceApprovalSubjectKey(price);
     let sensitiveFieldsNeedApproval = false;
     for (const field of sensitiveFields) {
-      if (!(await approvalIsCurrent(field.approvalEvidenceId, "admissions_form_field", `${String(form._id)}:${field.fieldKey}`, "privacy"))) sensitiveFieldsNeedApproval = true;
+      if (!(await approvalIsCurrent(field.approvalEvidenceId, "admissions_form_field", await fieldApprovalSubjectKey(field), "privacy"))) sensitiveFieldsNeedApproval = true;
     }
     let requirementsNeedApproval = false;
     for (const requirement of controlledRequirements) {
-      if (!(await approvalIsCurrent(requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, "privacy"))) requirementsNeedApproval = true;
+      if (!(await approvalIsCurrent(requirement.approvalEvidenceId, "admissions_document_requirement", await requirementApprovalSubjectKey(requirement), "privacy"))) requirementsNeedApproval = true;
     }
     const priceNeedsApproval = !(await approvalIsCurrent(price.approvalEvidenceId, "admissions_product_price", priceSubjectKey, "finance"));
     const capabilities = ["enrollment.intakes.manage"];
@@ -544,11 +596,11 @@ export const approveCampaignPublicationRequirements = mutation({
     };
 
     for (const field of sensitiveFields) {
-      const approvalEvidenceId = await ensureApproval(field.approvalEvidenceId, "admissions_form_field", `${String(form._id)}:${field.fieldKey}`, "privacy");
+      const approvalEvidenceId = await ensureApproval(field.approvalEvidenceId, "admissions_form_field", await fieldApprovalSubjectKey(field), "privacy");
       if (approvalEvidenceId !== field.approvalEvidenceId) await ctx.db.patch(field._id, { approvalEvidenceId, updatedAt: now });
     }
     for (const requirement of controlledRequirements) {
-      const approvalEvidenceId = await ensureApproval(requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, "privacy");
+      const approvalEvidenceId = await ensureApproval(requirement.approvalEvidenceId, "admissions_document_requirement", await requirementApprovalSubjectKey(requirement), "privacy");
       if (approvalEvidenceId !== requirement.approvalEvidenceId) await ctx.db.patch(requirement._id, { approvalEvidenceId, updatedAt: now });
     }
     const priceEvidenceId = await ensureApproval(price.approvalEvidenceId, "admissions_product_price", priceSubjectKey, "finance");
@@ -589,7 +641,7 @@ export const createReplacementDraft = mutation({
     const formVersionId = await ctx.db.insert("admissionsFormVersions", { schoolId: args.schoolId, programmeId: programme._id, intakeId: intake._id, version: Math.max(0, ...forms.map((row) => row.version)) + 1, schemaVersion: normalizeRequiredText(args.schemaVersion, "Schema version", 40), draftRevision: 1, status: "draft", createdAt: now, updatedAt: now });
     await insertDefinitionRows(ctx, args.schoolId, formVersionId, args.fields, args.requirements, now);
     const declarationVersionId = await ctx.db.insert("admissionsDeclarationVersions", { schoolId: args.schoolId, programmeId: programme._id, version: Math.max(0, ...declarations.map((row) => row.version)) + 1, title: normalizeRequiredText(args.declarationTitle, "Declaration title", 200), body: normalizeRequiredText(args.declarationBody, "Declaration body", 20_000), bodyDigest: await sha256Hex(args.declarationBody.trim()), purpose: normalizeRequiredText(args.declarationPurpose, "Declaration purpose", 500), status: "draft", createdAt: now, updatedAt: now });
-    const priceId = await ctx.db.insert("admissionsProductPrices", { schoolId: args.schoolId, productId: product._id, version: Math.max(0, ...prices.map((row) => row.version)) + 1, amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), ...(args.priceApprovalEvidenceId ? { approvalEvidenceId: args.priceApprovalEvidenceId } : {}), effectiveFrom: args.effectiveFrom, ...(args.effectiveTo ? { effectiveTo: args.effectiveTo } : {}), status: "draft", createdAt: now, updatedAt: now });
+    const priceId = await ctx.db.insert("admissionsProductPrices", { schoolId: args.schoolId, productId: product._id, version: Math.max(0, ...prices.map((row) => row.version)) + 1, amountMinor: args.amountMinor, currency: args.currency, refundPolicyKey: normalizeRequiredText(args.refundPolicyKey, "Refund policy", 100), feeDisclosure: normalizeRequiredText(args.feeDisclosure, "Fee disclosure", 1000), effectiveFrom: args.effectiveFrom, ...(args.effectiveTo ? { effectiveTo: args.effectiveTo } : {}), status: "draft", createdAt: now, updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId: args.schoolId, actorKind: "staff", actorUserId: actor.userId, action: "campaign.create_replacement", entityType: "admissionsIntake", entityId: intake._id });
     return { programmeId: programme._id, intakeId: intake._id, formVersionId, declarationVersionId, productId: product._id, priceId, draftRevision: draftRevision(formVersionId, 1) };
   },
@@ -619,12 +671,12 @@ export const publishCampaign = mutation({
       parseFieldValidation(field.validationJson, field.kind as AdmissionsFieldKind);
       parseCondition(field.conditionalRuleJson);
       if (field.dataClass !== "public" && !field.purpose?.trim()) throw new ConvexError("Non-public fields require a purpose");
-      if (isSensitiveDataClass(field.dataClass)) await assertPublicationApproval(ctx, schoolId, field.approvalEvidenceId, "admissions_form_field", `${String(form._id)}:${field.fieldKey}`, now, undefined, `Question "${field.label}"`);
+      if (isSensitiveDataClass(field.dataClass)) await assertPublicationApproval(ctx, schoolId, field.approvalEvidenceId, "admissions_form_field", await fieldApprovalSubjectKey(field), now, undefined, `Question "${field.label}"`);
     }
     for (const requirement of requirements) {
       parseCondition(requirement.conditionJson);
       if (!requirement.purpose.trim()) throw new ConvexError("Document requirements require a purpose");
-      if (requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity)) await assertPublicationApproval(ctx, schoolId, requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, now, undefined, `Document requirement "${requirement.label}"`);
+      if (requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity)) await assertPublicationApproval(ctx, schoolId, requirement.approvalEvidenceId, "admissions_document_requirement", await requirementApprovalSubjectKey(requirement), now, undefined, `Document requirement "${requirement.label}"`);
     }
     await assertPublicationApproval(ctx, schoolId, price.approvalEvidenceId, "admissions_product_price", await priceApprovalSubjectKey(price), now, "finance", "Fee terms");
     const [publishedForms, publishedDeclarations, publishedPrices] = await Promise.all([

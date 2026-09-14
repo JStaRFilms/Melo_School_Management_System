@@ -7,6 +7,7 @@ import {
   mergeCorrectionScopes,
   normalizeRequiredText,
   recordAdmissionsAudit,
+  requireAdmissionsModuleEnabled,
   requireGuardian,
   requireOwnedApplication,
   sha256Hex,
@@ -97,6 +98,7 @@ function submittedDocumentVersions(items: Doc<"admissionsSubmissionSnapshotItems
   return versions;
 }
 
+/** Paid ownership recovery remains available after module suspension so a verified entitlement is never stranded. */
 export const createOrResume = mutation({
   args: { entitlementId: v.id("admissionsEntitlements") },
   returns: v.object({ applicationId: v.id("admissionsApplications"), publicId: v.string(), state: v.string(), replayed: v.boolean() }),
@@ -169,6 +171,7 @@ export const saveDraft = mutation({
   returns: v.object({ draftVersion: v.number(), replayed: v.boolean() }),
   handler: async (ctx, args) => {
     const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
+    await requireAdmissionsModuleEnabled(ctx, application.schoolId);
     assertDraftMutationKey(args.mutationKey);
     if (!isApplicationEditable(application.state) || application.financialHoldAt !== undefined) admissionsError("APPLICATION_LOCKED", "Submitted or financially held application data is locked");
     const clearAnswerKeys = args.clearAnswerKeys ?? [];
@@ -254,6 +257,7 @@ export const submit = mutation({
   returns: v.object({ snapshotId: v.id("admissionsSubmissionSnapshots"), revision: v.number(), replayed: v.boolean() }),
   handler: async (ctx, args) => {
     const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
+    await requireAdmissionsModuleEnabled(ctx, application.schoolId);
     assertDraftMutationKey(args.submissionKey);
     if (application.lastSubmissionKey === args.submissionKey && application.latestSnapshotId) return { snapshotId: application.latestSnapshotId, revision: application.currentRevision, replayed: true };
     if (!isApplicationEditable(application.state) || application.financialHoldAt !== undefined) admissionsError("APPLICATION_LOCKED", "Application cannot be submitted in its current state");
@@ -336,6 +340,7 @@ export const withdraw = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { guardian, application } = await requireOwnedApplication(ctx, args.applicationId);
+    await requireAdmissionsModuleEnabled(ctx, application.schoolId);
     if (["accepted", "rejected", "withdrawn", "archived"].includes(application.state)) throw new ConvexError("Application cannot be withdrawn in its current state");
     const now = Date.now();
     const policy = await getCurrentRetentionPolicy(ctx, application.schoolId);

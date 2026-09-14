@@ -92,6 +92,7 @@ export const ownedProviderAttemptRef = makeFunctionReference<
     state: string;
     authorizationUrl: string | null;
     entitlementId: Id<"admissionsEntitlements"> | null;
+    moduleEnabled: boolean;
   }
 >("functions/admissions/payments:getOwnedProviderAttemptInternal");
 

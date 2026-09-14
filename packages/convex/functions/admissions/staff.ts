@@ -426,6 +426,9 @@ export const recordDecision = mutation({
   returns: v.object({ decisionId: v.id("admissionsDecisions"), version: v.number(), replayed: v.boolean() }),
   handler: async (ctx, args) => {
     const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.decisions.record"]);
+    if (!await hasFreshAuthentication(ctx)) {
+      admissionsError("FRESH_AUTH_REQUIRED", "Fresh authentication is required to record a decision");
+    }
     const application = await ctx.db.get(args.applicationId);
     if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
     if (!["submitted", "under_review"].includes(application.state) || !application.latestSnapshotId || application.financialHoldAt !== undefined) throw new ConvexError("Application is not ready for a decision");

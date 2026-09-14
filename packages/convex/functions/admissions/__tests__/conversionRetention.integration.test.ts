@@ -30,7 +30,7 @@ async function fixture() {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx): Promise<BaseIds> => {
     const now = Date.now();
-    const schoolId = await ctx.db.insert("schools", { name: "Conversion School", slug: "conversion-school", status: "active", createdAt: now, updatedAt: now });
+    const schoolId = await ctx.db.insert("schools", { name: "Conversion School", slug: "conversion-school", status: "active", features: { billing: true, curriculum: true, knowledgeLibrary: true, admissions: true }, createdAt: now, updatedAt: now });
     const otherSchoolId = await ctx.db.insert("schools", { name: "Other School", slug: "conversion-other", status: "active", createdAt: now, updatedAt: now });
     const classId = await ctx.db.insert("classes", { schoolId, name: "Primary 1", gradeName: "Primary 1", level: "primary", createdAt: now, updatedAt: now });
     const operator = await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|conversion-staff", ["enrollment.intakes.manage", "enrollment.decisions.record", "enrollment.admissions.override_number"]);

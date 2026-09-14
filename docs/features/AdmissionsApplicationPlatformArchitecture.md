@@ -15,6 +15,9 @@ This document started as the G1 decision draft. The build now exists. Use the de
 - **Public surface:** `apps/apply` (`app/s/[schoolSlug]`, `app/s/[schoolSlug]/i/[intakeSlug]`, `app/s/[schoolSlug]/applications/[publicId]`, `app/s/[schoolSlug]/account`, `app/s/[schoolSlug]/payments/paystack/return`)
 - **Staff surface:** `apps/admin/app/admin/admissions/` (`AdmissionsDashboard.tsx`, `admissions-model.ts`, `[publicId]/ApplicationDetail.tsx`, `retention/`)
 - **Dependencies:** Better Auth guardian session, Paystack merchant routing, Convex storage, `billingWebhooks.ts` dispatch
+- **Security boundary:** The school `features.admissions === true` entitlement is enforced fail-closed for staff and guardian write operations. Verified settlement and authenticated ownership/read recovery for already-paid applications remain available.
+- **Publication approvals:** Sensitive fields, controlled document requirements, and prices use server-computed subject digests; editing approval-relevant content requires reapproval.
+- **Abuse controls:** Checkout creation, upload-intent quota reservation, and document-grant issuance use typed fixed windows in the mounted `@convex-dev/rate-limiter` component, keyed only by server-derived school, actor, and application IDs.
 
 ## 1. Executive decision
 
@@ -354,7 +357,7 @@ Phase 2 uses the current canonical membership/RBAC resolver and only the establi
 
 Every function follows: authenticate -> derive actor -> resolve persisted object -> compare object `schoolId` to actor grant scope -> check ownership/permission -> perform bounded indexed read/write. A school slug selects a public tenant; it never authorizes private data. IDs from another school return a generic not-found/denied result with no existence oracle.
 
-Rate-limit public catalogue reads by IP hash/school, auth/signup/verification by identity and IP, checkout creation by guardian/school, upload URLs by guardian/application, and signed document reads by actor/document. Store only rotating salted IP hashes, not durable raw IP addresses.
+Rate-limit public catalogue reads by IP hash/school and auth/signup/verification by identity and IP. The admissions backend uses the mounted `@convex-dev/rate-limiter` component for checkout creation by guardian/school, upload-intent quota reservation by application/school, and signed document-grant issuance by actor/application/school. These per-key fixed windows use only server-derived Convex IDs; store only rotating salted IP hashes, not durable raw IP addresses.
 
 ## 11. Proposed API and link contracts
 

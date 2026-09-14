@@ -7,9 +7,11 @@ import { admissionsProviderValidator, paymentProviderModeValidator } from "../fo
 import { resolveApplicationCallbackOrigin } from "../foundation/applicationLinks";
 import {
   admissionsError,
+  consumeAdmissionsRateLimit,
   normalizeRequiredText,
   normalizeSlug,
   recordAdmissionsAudit,
+  requireAdmissionsModuleEnabled,
   requireGuardian,
 } from "./shared";
 import {
@@ -35,7 +37,8 @@ export const createAttempt = mutation({
     const guardian = await requireGuardian(ctx);
     const idempotencyKey = normalizeRequiredText(args.idempotencyKey, "Idempotency key", 128);
     const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", normalizeSlug(args.schoolSlug, "School slug"))).unique();
-    if (!school || school.status !== "active" || school.features?.admissions !== true) admissionsError("OFFERING_UNAVAILABLE", "Application offering is unavailable");
+    if (!school) admissionsError("OFFERING_UNAVAILABLE", "Application offering is unavailable");
+    await requireAdmissionsModuleEnabled(ctx, school._id);
     const product = await ctx.db.query("admissionsProducts").withIndex("by_school_and_slug", (q) => q.eq("schoolId", school._id).eq("slug", normalizeSlug(args.productSlug, "Product slug"))).unique();
     if (!product || product.status !== "active" || product.slotCount !== 1) admissionsError("OFFERING_UNAVAILABLE", "Application offering is unavailable");
     const intake = await ctx.db.get(product.intakeId);
@@ -52,6 +55,11 @@ export const createAttempt = mutation({
     const providerRows = await ctx.db.query("schoolPaymentProviders").withIndex("by_school_and_provider", (q) => q.eq("schoolId", school._id).eq("provider", "paystack")).take(2);
     const provider = providerRows.find((row) => row.isEnabled && (row.status === "ready" || row.status === "rotation_pending"));
     if (!provider) admissionsError("OFFERING_UNAVAILABLE", "Application payment is unavailable");
+    await consumeAdmissionsRateLimit(ctx, {
+      action: "checkout_attempt_create",
+      schoolId: school._id,
+      guardianId: guardian._id,
+    });
     const reference = `adm_${crypto.randomUUID().replaceAll("-", "")}`;
     const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: school._id, guardianId: guardian._id, productId: product._id, priceId: price._id, provider: "paystack", providerMode: provider.mode, reference, idempotencyKey, amountMinor: price.amountMinor, currency: price.currency, feeDisclosureSnapshot: price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId: school._id, actorKind: "guardian", actorGuardianId: guardian._id, action: "payment.attempt_created", entityType: "admissionsPurchaseAttempt", entityId: attemptId });
@@ -73,7 +81,7 @@ export const getOwnedStatus = query({
 const providerAttemptValidator = v.object({
   attemptId: v.id("admissionsPurchaseAttempts"), schoolId: v.id("schools"), schoolSlug: v.string(), guardianEmail: v.string(),
   providerMode: paymentProviderModeValidator, reference: v.string(), amountMinor: v.number(), currency: v.string(), state: v.string(),
-  authorizationUrl: v.union(v.string(), v.null()), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()),
+  authorizationUrl: v.union(v.string(), v.null()), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()), moduleEnabled: v.boolean(),
 });
 
 export const getOwnedProviderAttemptInternal = internalQuery({
@@ -85,7 +93,7 @@ export const getOwnedProviderAttemptInternal = internalQuery({
     if (!attempt || attempt.guardianId !== guardian._id || attempt.provider !== "paystack") admissionsError("NOT_FOUND_OR_DENIED", "Payment attempt not found");
     const school = await ctx.db.get(attempt.schoolId);
     if (!school) throw new ConvexError("Payment school is unavailable");
-    return { attemptId: attempt._id, schoolId: attempt.schoolId, schoolSlug: school.slug, guardianEmail: guardian.normalizedEmail, providerMode: attempt.providerMode, reference: attempt.reference, amountMinor: attempt.amountMinor, currency: attempt.currency, state: attempt.state, authorizationUrl: attempt.providerAuthorizationUrl ?? null, entitlementId: attempt.entitlementId ?? null };
+    return { attemptId: attempt._id, schoolId: attempt.schoolId, schoolSlug: school.slug, guardianEmail: guardian.normalizedEmail, providerMode: attempt.providerMode, reference: attempt.reference, amountMinor: attempt.amountMinor, currency: attempt.currency, state: attempt.state, authorizationUrl: attempt.providerAuthorizationUrl ?? null, entitlementId: attempt.entitlementId ?? null, moduleEnabled: school.status === "active" && school.features?.admissions === true };
   },
 });
 
@@ -97,6 +105,7 @@ export const markCheckoutInitialized = internalMutation({
     const attempt = await ctx.db.get(args.attemptId);
     if (!attempt || attempt.guardianId !== guardian._id) admissionsError("NOT_FOUND_OR_DENIED", "Payment attempt not found");
     if (attempt.providerAuthorizationUrl) return { state: attempt.state, authorizationUrl: attempt.providerAuthorizationUrl, replayed: true };
+    await requireAdmissionsModuleEnabled(ctx, attempt.schoolId);
     if (attempt.state !== "created") throw new ConvexError("Payment attempt cannot be initialized in its current state");
     const authorizationUrl = new URL(args.authorizationUrl);
     if (authorizationUrl.protocol !== "https:") throw new ConvexError("Payment provider returned an invalid checkout URL");
@@ -111,6 +120,7 @@ export const initializeAttempt = action({
   handler: async (ctx, args) => {
     const attempt = await ctx.runQuery(ownedProviderAttemptRef, { reference: args.reference });
     if (attempt.authorizationUrl) return { reference: attempt.reference, state: attempt.state, authorizationUrl: attempt.authorizationUrl, replayed: true };
+    if (!attempt.moduleEnabled) throw new ConvexError("Admissions is unavailable");
     if (attempt.amountMinor <= 0) throw new ConvexError("A positive application price is required");
     const applicationOrigin = resolveApplicationCallbackOrigin(args.returnOrigin);
     const callback = new URL(`/s/${encodeURIComponent(attempt.schoolSlug)}/payments/paystack/return`, applicationOrigin);

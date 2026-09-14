@@ -6,9 +6,11 @@ import type { Id } from "../../../_generated/dataModel";
 import { internal } from "../../../_generated/api";
 import { seedReviewedTenantOperatorWithCapabilities } from "../../academic/__tests__/securityFixtures";
 import { listCampaignsRef, listGuardianWorkspaceBySlugRef, listPublishedOfferingsRef, recordVerifiedPaymentRef } from "../refs";
+import rateLimiterSchema from "../../../node_modules/@convex-dev/rate-limiter/src/component/schema";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"])).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(root.length)}`, module]));
+const rateLimiterModules = import.meta.glob("../../../node_modules/@convex-dev/rate-limiter/src/component/**/*.ts");
 
 const guardianIdentityRef = makeFunctionReference<"mutation", Record<string, never>, { guardianId: Id<"admissionsGuardians">; normalizedEmail: string; emailVerifiedAt: number }>("functions/admissions/guardian:getOrCreateIdentity");
 const createCampaignRef = makeFunctionReference<"mutation">("functions/admissions/catalogue:createCampaignDraft");
@@ -50,6 +52,7 @@ type CampaignIds = {
 
 async function fixture() {
   const t = convexTest(schema, modules);
+  t.registerComponent("rateLimiter", rateLimiterSchema, rateLimiterModules);
   const ids = await t.run(async (ctx) => {
     const now = Date.now();
     const schoolId = await ctx.db.insert("schools", { name: "Admissions School", slug: "admissions-school", status: "active", features: { billing: true, curriculum: true, knowledgeLibrary: true, admissions: true }, createdAt: now, updatedAt: now });
@@ -61,6 +64,7 @@ async function fixture() {
     return { schoolId, otherSchoolId, classId, staffUserId: staff.memberships[0].userId, limitedUserId: limited.memberships[0].userId };
   });
   const staff = t.withIdentity({ tokenIdentifier: "test|admissions-staff", subject: "admissions-staff", issuer: "test" });
+  const freshStaff = t.withIdentity({ tokenIdentifier: "test|admissions-staff", subject: "admissions-staff", issuer: "test", authenticatedAt: Date.now() });
   const limited = t.withIdentity({ tokenIdentifier: "test|limited-staff", subject: "limited-staff", issuer: "test" });
   const guardian = t.withIdentity({ tokenIdentifier: "test|guardian-one", subject: "guardian-one", issuer: "test", email: "guardian@example.test", emailVerified: true });
   const otherGuardian = t.withIdentity({ tokenIdentifier: "test|guardian-two", subject: "guardian-two", issuer: "test", email: "other@example.test", emailVerified: true });
@@ -95,7 +99,7 @@ async function fixture() {
   await staff.mutation(publishCampaignRef, { ...campaign, draftRevision: campaign.draftRevision });
   await guardian.mutation(guardianIdentityRef, {});
   await otherGuardian.mutation(guardianIdentityRef, {});
-  return { t, staff, limited, guardian, otherGuardian, campaign, ...ids };
+  return { t, staff, freshStaff, limited, guardian, otherGuardian, campaign, ...ids };
 }
 
 async function paidApplication(f: Awaited<ReturnType<typeof fixture>>, key = "purchase-key-1") {
@@ -140,6 +144,51 @@ it("keeps admissions unavailable unless the school feature is explicitly enabled
   await expect(f.t.query(listPublishedOfferingsRef, { schoolSlug: "admissions-school", now: Date.now() })).resolves.toEqual({ available: false });
   await expect(f.t.query(offeringRef, { schoolSlug: "admissions-school", intakeSlug: "2026", now: Date.now() })).resolves.toMatchObject({ available: false, link: { availability: "unavailable" } });
   await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "disabled-feature" })).rejects.toThrow("unavailable");
+});
+
+it("enforces the module boundary on direct staff and guardian writes while preserving paid ownership and settlement recovery", async () => {
+  const f = await fixture();
+  const paid = await paidApplication(f, "module-paid-application");
+  const unsettled = await f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "module-unsettled" });
+  await f.t.run(async (ctx) => {
+    const school = await ctx.db.get(f.schoolId);
+    if (!school?.features) throw new Error("School features missing");
+    await ctx.db.patch(f.schoolId, { features: { ...school.features, admissions: false } });
+  });
+
+  await expect(f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).rejects.toThrow("Admissions is unavailable");
+  await expect(f.guardian.mutation(saveDraftRef, { applicationId: paid.application.applicationId, expectedVersion: 0, mutationKey: "disabled-save", answers: [] })).rejects.toThrow("Admissions is unavailable");
+  await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "disabled-new-attempt" })).rejects.toThrow("unavailable");
+  await expect(f.guardian.action(initializeAttemptRef, { reference: unsettled.reference })).rejects.toThrow("Admissions is unavailable");
+
+  await expect(f.guardian.query(getDraftRef, { applicationId: paid.application.applicationId })).resolves.toMatchObject({ state: "draft" });
+  await expect(f.guardian.query(listGuardianWorkspaceBySlugRef, { schoolSlug: "admissions-school" })).resolves.toMatchObject({ applications: [expect.objectContaining({ applicationId: paid.application.applicationId })] });
+  if (!paid.payment.entitlementId) throw new Error("Paid entitlement missing");
+  await expect(f.guardian.mutation(createApplicationRef, { entitlementId: paid.payment.entitlementId })).resolves.toMatchObject({ applicationId: paid.application.applicationId, replayed: true });
+
+  const settled = await f.t.mutation(recordVerifiedPaymentRef, { schoolId: f.schoolId, purchaseAttemptId: unsettled.attemptId, provider: "paystack", providerMode: "test", providerEventId: "module-disabled-settlement", eventType: "charge.success", bodyDigest: "module-disabled-digest", amountMinor: unsettled.amountMinor, currency: unsettled.currency, receivedAt: Date.now() });
+  expect(settled).toMatchObject({ state: "paid", processed: true });
+  if (!settled.entitlementId) throw new Error("Settlement entitlement missing");
+  await expect(f.guardian.mutation(createApplicationRef, { entitlementId: settled.entitlementId })).resolves.toMatchObject({ replayed: false });
+});
+
+it("component-limits concurrent checkout creation without charging idempotent replays", async () => {
+  const f = await fixture();
+  const results = await Promise.allSettled(Array.from({ length: 6 }, (_, index) =>
+    f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: `rate-attempt-${index}` }),
+  ));
+  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(5);
+  const denied = results.filter((result) => result.status === "rejected");
+  expect(denied).toHaveLength(1);
+  expect(String(denied[0]?.reason)).toContain("Please wait");
+
+  const first = results[0];
+  if (first.status !== "fulfilled") throw new Error("First checkout attempt was unexpectedly denied");
+  const firstAttempt = first.value as { attemptId: Id<"admissionsPurchaseAttempts"> };
+  await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "rate-attempt-0" })).resolves.toMatchObject({ attemptId: firstAttempt.attemptId, replayed: true });
+  await expect(f.otherGuardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "other-guardian-attempt" })).resolves.toMatchObject({ replayed: false });
+  const attempts = await f.t.run((ctx) => ctx.db.query("admissionsPurchaseAttempts").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).take(10));
+  expect(attempts.filter((attempt) => attempt.idempotencyKey.startsWith("rate-attempt-"))).toHaveLength(5);
 });
 
 it("returns canonical apply links and rejects stale campaign draft overwrites", async () => {
@@ -249,27 +298,68 @@ it("allows an owned paid draft to submit after campaign closure while blocking n
   await expect(f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "close-draft-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true })).resolves.toMatchObject({ revision: 1 });
 });
 
-it("requires current approval evidence bound to each optional sensitive field and document subject", async () => {
+it("invalidates digest-bound field and document approvals after same-key edits and requires reapproval", async () => {
   const f = await fixture();
-  const [fieldEvidenceId, requirementEvidenceId] = await f.t.run(async (ctx) => {
-    const now = Date.now();
-    return Promise.all([
-      ctx.db.insert("schoolApprovalEvidence", { schoolId: f.schoolId, approvalClass: "privacy", subjectType: "admissions_form", subjectKey: "broad", evidenceReference: "privacy-review", approvedByUserId: f.staffUserId, approvedAt: now, createdAt: now }),
-      ctx.db.insert("schoolApprovalEvidence", { schoolId: f.schoolId, approvalClass: "finance", subjectType: "admissions_form", subjectKey: "broad", evidenceReference: "finance-review", approvedByUserId: f.staffUserId, approvedAt: now, createdAt: now }),
-    ]);
+  const forgedEvidenceId = await f.t.run((ctx) => ctx.db.insert("schoolApprovalEvidence", { schoolId: f.schoolId, approvalClass: "privacy", subjectType: "admissions_form", subjectKey: "caller-supplied", evidenceReference: "must not be trusted", approvedByUserId: f.staffUserId, approvedAt: Date.now(), createdAt: Date.now() }));
+  const replacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "sensitive", fields: [{ fieldKey: "medical-note", sectionKey: "health", kind: "text", label: "Medical note", requiredMode: "optional", dataClass: "highly_sensitive", purpose: "Applicant support", validationJson: "{}", approvalEvidenceId: forgedEvidenceId, order: 1 }], requirements: [{ requirementKey: "financial-evidence", category: "financial", label: "Financial evidence", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 100_000, maxFiles: 1, sensitivity: "financial_security", purpose: "Financial assessment", approvalEvidenceId: forgedEvidenceId, order: 1 }], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 600_000, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", priceApprovalEvidenceId: forgedEvidenceId, effectiveFrom: Date.now() - 1 }) as CampaignIds;
+  const unapprovedRows = await f.t.run(async (ctx) => ({
+    field: await ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_field_key", (q) => q.eq("formVersionId", replacement.formVersionId).eq("fieldKey", "medical-note")).unique(),
+    requirement: await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q) => q.eq("formVersionId", replacement.formVersionId).eq("requirementKey", "financial-evidence")).unique(),
+    price: await ctx.db.get(replacement.priceId),
+  }));
+  expect(unapprovedRows.field?.approvalEvidenceId).toBeUndefined();
+  expect(unapprovedRows.requirement?.approvalEvidenceId).toBeUndefined();
+  expect(unapprovedRows.price?.approvalEvidenceId).toBeUndefined();
+
+  await expect(f.staff.mutation(approveCampaignPublicationRequirementsRef, replacement)).resolves.toMatchObject({ approvedCount: 3, replayedCount: 0 });
+  const approvedDraft = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.priceId === replacement.priceId);
+  if (!approvedDraft) throw new Error("Approved sensitive campaign draft missing");
+  const priorFieldApproval = approvedDraft.fields[0]?.approvalEvidenceId;
+  const priorRequirementApproval = approvedDraft.requirements[0]?.approvalEvidenceId;
+  if (!priorFieldApproval || !priorRequirementApproval) throw new Error("Definition approvals were not attached");
+  const priorSubjects = await f.t.run(async (ctx) => Promise.all([ctx.db.get(priorFieldApproval), ctx.db.get(priorRequirementApproval)]));
+  expect(priorSubjects[0]?.subjectKey).toMatch(/:medical-note:[a-f0-9]{64}$/);
+  expect(priorSubjects[1]?.subjectKey).toMatch(/:financial-evidence:[a-f0-9]{64}$/);
+
+  const edited = await f.staff.mutation(editCampaignRef, {
+    schoolId: f.schoolId,
+    programmeId: approvedDraft.programmeId,
+    intakeId: approvedDraft.intakeId,
+    formVersionId: approvedDraft.formVersionId,
+    declarationVersionId: approvedDraft.declarationVersionId,
+    productId: approvedDraft.productId,
+    priceId: approvedDraft.priceId,
+    programmeSlug: approvedDraft.programmeSlug,
+    programmeName: approvedDraft.programmeName,
+    intakeSlug: approvedDraft.intakeSlug,
+    intakeName: approvedDraft.intakeName,
+    cycleLabel: approvedDraft.cycleLabel,
+    opensAt: approvedDraft.opensAt,
+    closesAt: approvedDraft.closesAt,
+    schemaVersion: approvedDraft.schemaVersion,
+    fields: approvedDraft.fields.map((field) => ({ ...field, label: "Updated medical note" })),
+    requirements: approvedDraft.requirements.map((requirement) => ({ ...requirement, maxBytes: 120_000 })),
+    declarationTitle: approvedDraft.declarationTitle,
+    declarationBody: approvedDraft.declarationBody,
+    declarationPurpose: approvedDraft.declarationPurpose,
+    productSlug: approvedDraft.productSlug,
+    productName: approvedDraft.productName,
+    amountMinor: approvedDraft.amountMinor,
+    currency: approvedDraft.currency,
+    refundPolicyKey: approvedDraft.refundPolicyKey,
+    feeDisclosure: approvedDraft.feeDisclosure,
+    effectiveFrom: approvedDraft.effectiveFrom,
+    expectedDraftRevision: approvedDraft.draftRevision,
   });
-  const replacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "sensitive", fields: [{ fieldKey: "medical-note", sectionKey: "health", kind: "text", label: "Medical note", requiredMode: "optional", dataClass: "highly_sensitive", purpose: "Applicant support", validationJson: "{}", approvalEvidenceId: fieldEvidenceId, order: 1 }], requirements: [{ requirementKey: "financial-evidence", category: "financial", label: "Financial evidence", requiredMode: "optional", acceptedMimeTypes: ["application/pdf"], maxBytes: 100_000, maxFiles: 1, sensitivity: "financial_security", purpose: "Financial assessment", approvalEvidenceId: requirementEvidenceId, order: 1 }], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 600_000, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() - 1 });
-  const sensitiveDraft = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.priceId === replacement.priceId);
-  if (!sensitiveDraft) throw new Error("Sensitive campaign draft missing");
-  await f.t.run(async (ctx) => {
-    const priceEvidenceId = await ctx.db.insert("schoolApprovalEvidence", { schoolId: f.schoolId, approvalClass: "finance", subjectType: "admissions_product_price", subjectKey: sensitiveDraft.priceApprovalSubjectKey, evidenceReference: "finance-approved-sensitive-price", approvedByUserId: f.staffUserId, approvedAt: Date.now(), createdAt: Date.now() });
-    await ctx.db.patch(replacement.priceId, { approvalEvidenceId: priceEvidenceId });
-  });
-  await expect(f.staff.mutation(publishCampaignRef, replacement)).rejects.toThrow("subject-bound");
-  await f.t.run((ctx) => ctx.db.patch(fieldEvidenceId, { subjectType: "admissions_form_field", subjectKey: `${String(replacement.formVersionId)}:medical-note` }));
-  await expect(f.staff.mutation(publishCampaignRef, replacement)).rejects.toThrow("subject-bound");
-  await f.t.run((ctx) => ctx.db.patch(requirementEvidenceId, { subjectType: "admissions_document_requirement", subjectKey: `${String(replacement.formVersionId)}:financial-evidence` }));
-  await expect(f.staff.mutation(publishCampaignRef, replacement)).resolves.toBeNull();
+  await expect(f.staff.mutation(publishCampaignRef, edited)).rejects.toThrow("approval evidence");
+  await expect(f.staff.mutation(approveCampaignPublicationRequirementsRef, edited)).resolves.toMatchObject({ approvedCount: 2, replayedCount: 1 });
+  const reapprovedRows = await f.t.run(async (ctx) => ({
+    field: await ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_field_key", (q) => q.eq("formVersionId", replacement.formVersionId).eq("fieldKey", "medical-note")).unique(),
+    requirement: await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q) => q.eq("formVersionId", replacement.formVersionId).eq("requirementKey", "financial-evidence")).unique(),
+  }));
+  expect(reapprovedRows.field?.approvalEvidenceId).not.toBe(priorFieldApproval);
+  expect(reapprovedRows.requirement?.approvalEvidenceId).not.toBe(priorRequirementApproval);
+  await expect(f.staff.mutation(publishCampaignRef, edited)).resolves.toBeNull();
 });
 
 it("initializes guardian-owned checkout and fulfils only server-verified Paystack return data", async () => {
@@ -396,8 +486,8 @@ it("allows rejection when a required document fails review but still blocks acce
   await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "reject-doc-draft", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
   await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "reject-doc-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
   await f.staff.mutation(documentReviewRef, { schoolId: f.schoolId, documentKey: document.documentKey, result: "rejected", reasonCode: "INVALID_DOCUMENT", guardianMessage: "The identity document could not be accepted." });
-  await expect(f.staff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "ACCEPT", guardianMessage: "Accepted." })).rejects.toThrow("before an acceptance decision");
-  await expect(f.staff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "rejected", reasonCode: "DOCUMENT_FAILED", guardianMessage: "The application could not be approved." })).resolves.toMatchObject({ version: 1 });
+  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "ACCEPT", guardianMessage: "Accepted." })).rejects.toThrow("before an acceptance decision");
+  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "rejected", reasonCode: "DOCUMENT_FAILED", guardianMessage: "The application could not be approved." })).resolves.toMatchObject({ version: 1 });
 });
 
 it("atomically turns a needs-replacement document review into a guardian correction", async () => {
@@ -519,8 +609,11 @@ it("authorizes review and decisions from current enrollment capabilities, not hi
   await f.t.run((ctx) => ctx.db.insert("schoolCapabilityGrants", { schoolId: f.schoolId, userId: f.limitedUserId, capability: "decisions.record", scope: "school", grantedByUserId: f.staffUserId, reason: "Historical B0 grant must not authorize", isBreakGlass: false, createdAt: Date.now() }));
   await f.limited.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
   await expect(f.limited.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "The application has been accepted." })).rejects.toThrow("capability");
-  await expect(f.staff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "" })).rejects.toThrow("Guardian-safe");
-  const decision = await f.staff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "The application has been accepted.", rationale: "Reviewed" });
+  const staleStaff = f.t.withIdentity({ tokenIdentifier: "test|admissions-staff", subject: "admissions-staff", issuer: "test", authenticatedAt: Date.now() - 6 * 60 * 1_000 });
+  await expect(staleStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "The application has been accepted." })).rejects.toThrow("Fresh authentication");
+  expect(await f.t.run((ctx) => ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application.applicationId)).take(1))).toEqual([]);
+  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "" })).rejects.toThrow("Guardian-safe");
+  const decision = await f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "MEETS_REQUIREMENTS", guardianMessage: "The application has been accepted.", rationale: "Reviewed" });
   expect(decision).toMatchObject({ version: 1, replayed: false });
   await expect(f.staff.mutation(startReviewRef, { schoolId: f.otherSchoolId, applicationId: application.applicationId })).rejects.toThrow();
 });
