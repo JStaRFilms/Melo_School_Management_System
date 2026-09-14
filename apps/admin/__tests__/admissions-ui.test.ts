@@ -33,7 +33,7 @@ describe("admin admissions campaign and retention UI contracts", () => {
     expect(view.container.textContent).not.toMatch(/internal-document-key|sha-256|private-hash|convex\.cloud|api\/storage/i);
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     await waitFor(() => expect(open).toHaveBeenCalledWith(proxyUrl, "_blank", "noopener,noreferrer"));
-    expect(admissionsAdminErrorMessage(new Error("[CONVEX M(...)] ConvexError: internal-document-key Called by client"))).toBe("The operation could not be completed. Please try again.");
+    expect(admissionsAdminErrorMessage(new Error("[CONVEX M(...)] ConvexError: internal-document-key Called by client"))).toBe("The operation could not be completed safely. Review the current workflow state and try again.");
   });
 });
 

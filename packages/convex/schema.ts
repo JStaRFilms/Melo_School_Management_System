@@ -474,6 +474,7 @@ export default defineSchema({
     amountMinor: v.number(),
     currency: v.string(),
     feeDisclosureSnapshot: v.string(),
+    refundPolicySnapshot: v.optional(v.string()),
     state: admissionsPurchaseStateValidator,
     providerAuthorizationReference: v.optional(v.string()),
     providerAuthorizationUrl: v.optional(v.string()),

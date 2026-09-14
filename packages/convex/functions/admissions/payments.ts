@@ -14,6 +14,7 @@ import {
   requireAdmissionsModuleEnabled,
   requireGuardian,
 } from "./shared";
+import { immutablePurchaseTerms } from "./paymentTerms";
 import {
   markAttemptRecoveryOutcomeRef,
   markCheckoutInitializedRef,
@@ -21,12 +22,21 @@ import {
   recordVerifiedPaymentRef,
 } from "./refs";
 
+const purchaseTermsValidator = v.object({
+  amountMinor: v.number(),
+  currency: v.string(),
+  feeDisclosure: v.string(),
+  refundPolicyKey: v.string(),
+  termsDigest: v.string(),
+});
+
 const attemptResultValidator = v.object({
   attemptId: v.id("admissionsPurchaseAttempts"),
   reference: v.string(),
   state: v.string(),
   amountMinor: v.number(),
   currency: v.string(),
+  terms: purchaseTermsValidator,
   entitlementId: v.union(v.id("admissionsEntitlements"), v.null()),
   replayed: v.boolean(),
 });
@@ -52,7 +62,7 @@ export const createAttempt = mutation({
     const existing = await ctx.db.query("admissionsPurchaseAttempts").withIndex("by_school_and_guardian_and_idempotency_key", (q) => q.eq("schoolId", school._id).eq("guardianId", guardian._id).eq("idempotencyKey", idempotencyKey)).unique();
     if (existing) {
       if (existing.productId !== product._id) throw new ConvexError("Idempotency key is already bound to another purchase");
-      return { attemptId: existing._id, reference: existing.reference, state: existing.state, amountMinor: existing.amountMinor, currency: existing.currency, entitlementId: existing.entitlementId ?? null, replayed: true };
+      return { attemptId: existing._id, reference: existing.reference, state: existing.state, amountMinor: existing.amountMinor, currency: existing.currency, terms: await immutablePurchaseTerms(ctx, existing), entitlementId: existing.entitlementId ?? null, replayed: true };
     }
     const guard = await ctx.db.query("admissionsPurchaseGuards").withIndex("by_school_and_guardian_and_product", (q) => q.eq("schoolId", school._id).eq("guardianId", guardian._id).eq("productId", product._id)).unique();
     let guardedAttempt = guard ? await ctx.db.get(guard.currentAttemptId) : null;
@@ -71,7 +81,7 @@ export const createAttempt = mutation({
       }
     }
     if (guardedAttempt?.schoolId === school._id && guardedAttempt.guardianId === guardian._id && guardedAttempt.productId === product._id && isUnresolvedPurchaseAttempt(guardedAttempt.state)) {
-      return { attemptId: guardedAttempt._id, reference: guardedAttempt.reference, state: guardedAttempt.state, amountMinor: guardedAttempt.amountMinor, currency: guardedAttempt.currency, entitlementId: guardedAttempt.entitlementId ?? null, replayed: true };
+      return { attemptId: guardedAttempt._id, reference: guardedAttempt.reference, state: guardedAttempt.state, amountMinor: guardedAttempt.amountMinor, currency: guardedAttempt.currency, terms: await immutablePurchaseTerms(ctx, guardedAttempt), entitlementId: guardedAttempt.entitlementId ?? null, replayed: true };
     }
     if (product.status !== "active") admissionsError("OFFERING_UNAVAILABLE", "Application offering is unavailable");
     const intake = await ctx.db.get(product.intakeId);
@@ -88,11 +98,13 @@ export const createAttempt = mutation({
       guardianId: guardian._id,
     });
     const reference = `adm_${crypto.randomUUID().replaceAll("-", "")}`;
-    const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: school._id, guardianId: guardian._id, productId: product._id, priceId: price._id, provider: "paystack", providerMode: provider.mode, reference, idempotencyKey, amountMinor: price.amountMinor, currency: price.currency, feeDisclosureSnapshot: price.feeDisclosure, state: "created", createdAt: now, updatedAt: now });
+    const attemptId = await ctx.db.insert("admissionsPurchaseAttempts", { schoolId: school._id, guardianId: guardian._id, productId: product._id, priceId: price._id, provider: "paystack", providerMode: provider.mode, reference, idempotencyKey, amountMinor: price.amountMinor, currency: price.currency, feeDisclosureSnapshot: price.feeDisclosure, refundPolicySnapshot: price.refundPolicyKey, state: "created", createdAt: now, updatedAt: now });
     if (guard) await ctx.db.patch(guard._id, { currentAttemptId: attemptId, updatedAt: now });
     else await ctx.db.insert("admissionsPurchaseGuards", { schoolId: school._id, guardianId: guardian._id, productId: product._id, currentAttemptId: attemptId, createdAt: now, updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId: school._id, actorKind: "guardian", actorGuardianId: guardian._id, action: "payment.attempt_created", entityType: "admissionsPurchaseAttempt", entityId: attemptId });
-    return { attemptId, reference, state: "created", amountMinor: price.amountMinor, currency: price.currency, entitlementId: null, replayed: false };
+    const attempt = await ctx.db.get(attemptId);
+    if (!attempt) throw new Error("Purchase attempt was not persisted");
+    return { attemptId, reference, state: "created", amountMinor: price.amountMinor, currency: price.currency, terms: await immutablePurchaseTerms(ctx, attempt), entitlementId: null, replayed: false };
   },
 });
 
@@ -103,13 +115,13 @@ export const getOwnedStatus = query({
     const guardian = await requireGuardian(ctx);
     const attempt = await ctx.db.query("admissionsPurchaseAttempts").withIndex("by_reference", (q) => q.eq("reference", args.reference.trim())).unique();
     if (!attempt || attempt.guardianId !== guardian._id) return null;
-    return { attemptId: attempt._id, reference: attempt.reference, state: attempt.state, amountMinor: attempt.amountMinor, currency: attempt.currency, entitlementId: attempt.entitlementId ?? null, replayed: true };
+    return { attemptId: attempt._id, reference: attempt.reference, state: attempt.state, amountMinor: attempt.amountMinor, currency: attempt.currency, terms: await immutablePurchaseTerms(ctx, attempt), entitlementId: attempt.entitlementId ?? null, replayed: true };
   },
 });
 
 const providerAttemptValidator = v.object({
   attemptId: v.id("admissionsPurchaseAttempts"), schoolId: v.id("schools"), schoolSlug: v.string(), guardianEmail: v.string(),
-  providerMode: paymentProviderModeValidator, reference: v.string(), amountMinor: v.number(), currency: v.string(), state: v.string(),
+  providerMode: paymentProviderModeValidator, reference: v.string(), amountMinor: v.number(), currency: v.string(), terms: purchaseTermsValidator, state: v.string(),
   failureCode: v.union(v.string(), v.null()), authorizationUrl: v.union(v.string(), v.null()), entitlementId: v.union(v.id("admissionsEntitlements"), v.null()), moduleEnabled: v.boolean(),
 });
 
@@ -122,7 +134,8 @@ export const getOwnedProviderAttemptInternal = internalQuery({
     if (!attempt || attempt.guardianId !== guardian._id || attempt.provider !== "paystack") admissionsError("NOT_FOUND_OR_DENIED", "Payment attempt not found");
     const school = await ctx.db.get(attempt.schoolId);
     if (!school) throw new ConvexError("Payment school is unavailable");
-    return { attemptId: attempt._id, schoolId: attempt.schoolId, schoolSlug: school.slug, guardianEmail: guardian.normalizedEmail, providerMode: attempt.providerMode, reference: attempt.reference, amountMinor: attempt.amountMinor, currency: attempt.currency, state: attempt.state, failureCode: attempt.failureCode ?? null, authorizationUrl: attempt.providerAuthorizationUrl ?? null, entitlementId: attempt.entitlementId ?? null, moduleEnabled: school.status === "active" && school.features?.admissions === true };
+    const terms = await immutablePurchaseTerms(ctx, attempt);
+    return { attemptId: attempt._id, schoolId: attempt.schoolId, schoolSlug: school.slug, guardianEmail: guardian.normalizedEmail, providerMode: attempt.providerMode, reference: attempt.reference, amountMinor: attempt.amountMinor, currency: attempt.currency, terms, state: attempt.state, failureCode: attempt.failureCode ?? null, authorizationUrl: attempt.providerAuthorizationUrl ?? null, entitlementId: attempt.entitlementId ?? null, moduleEnabled: school.status === "active" && school.features?.admissions === true };
   },
 });
 
@@ -171,10 +184,11 @@ export const markAttemptRecoveryOutcome = internalMutation({
 });
 
 export const initializeAttempt = action({
-  args: { reference: v.string(), returnOrigin: v.optional(v.string()) },
+  args: { reference: v.string(), confirmedTermsDigest: v.string(), returnOrigin: v.optional(v.string()) },
   returns: v.object({ reference: v.string(), state: v.string(), authorizationUrl: v.string(), replayed: v.boolean() }),
   handler: async (ctx, args) => {
     const attempt = await ctx.runQuery(ownedProviderAttemptRef, { reference: args.reference });
+    if (args.confirmedTermsDigest !== attempt.terms.termsDigest) admissionsError("PAYMENT_TERMS_MISMATCH", "Confirmed payment terms do not match this purchase attempt");
     if (attempt.authorizationUrl) return { reference: attempt.reference, state: attempt.state, authorizationUrl: attempt.authorizationUrl, replayed: true };
     if (attempt.state !== "created") throw new ConvexError("Payment initialization is unavailable in its current state");
     if (!attempt.moduleEnabled || attempt.amountMinor <= 0) {
@@ -230,10 +244,10 @@ export const verifyReturn = action({
   returns: attemptResultValidator,
   handler: async (ctx, args) => {
     const attempt = await ctx.runQuery(ownedProviderAttemptRef, { reference: args.reference });
-    const recoveryState = attempt.state === "manual_attention" ? "manual_attention" : "verification_pending";
-    const pendingResult = { attemptId: attempt.attemptId, reference: attempt.reference, state: recoveryState, amountMinor: attempt.amountMinor, currency: attempt.currency, entitlementId: attempt.entitlementId, replayed: false };
-    if (["paid", "refunded", "reversed", "failed"].includes(attempt.state)) return { ...pendingResult, state: attempt.state, replayed: true };
-    if (attempt.state !== "manual_attention") await ctx.runMutation(markAttemptRecoveryOutcomeRef, { attemptId: attempt.attemptId, outcome: "verification_pending", failureCode: "PAYMENT_VERIFICATION_PENDING" });
+    const recoveryState = attempt.state === "manual_attention" ? "manual_attention" : attempt.state === "failed" ? "failed" : "verification_pending";
+    const pendingResult = { attemptId: attempt.attemptId, reference: attempt.reference, state: recoveryState, amountMinor: attempt.amountMinor, currency: attempt.currency, terms: attempt.terms, entitlementId: attempt.entitlementId, replayed: false };
+    if (["paid", "refunded", "reversed"].includes(attempt.state)) return { ...pendingResult, state: attempt.state, replayed: true };
+    if (attempt.state !== "manual_attention" && attempt.state !== "failed") await ctx.runMutation(markAttemptRecoveryOutcomeRef, { attemptId: attempt.attemptId, outcome: "verification_pending", failureCode: "PAYMENT_VERIFICATION_PENDING" });
     const gatewayContext = await ctx.runQuery(internal.functions.billingProviders.resolveSchoolPaystackGatewaySecretContextInternal, { schoolId: attempt.schoolId, mode: attempt.providerMode, purpose: "payment_verification" });
     if (!gatewayContext?.activeSecretKey) return pendingResult;
     let verification;
@@ -256,7 +270,7 @@ export const verifyReturn = action({
     if (providerStatus !== "success") return pendingResult;
     const amountMinor = Math.round(verification.amount * 100);
     const result = await ctx.runMutation(recordVerifiedPaymentRef, { schoolId: attempt.schoolId, purchaseAttemptId: attempt.attemptId, provider: "paystack", providerMode: attempt.providerMode, providerEventId: providerEventId(verification.raw, attempt.reference), eventType: "charge.success", bodyDigest: await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(verification.raw))).then((digest) => Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")), amountMinor, currency: verification.currency.trim().toUpperCase(), receivedAt: Date.now() });
-    return { attemptId: attempt.attemptId, reference: attempt.reference, state: result.state, amountMinor: attempt.amountMinor, currency: attempt.currency, entitlementId: result.entitlementId, replayed: result.replayed };
+    return { attemptId: attempt.attemptId, reference: attempt.reference, state: result.state, amountMinor: attempt.amountMinor, currency: attempt.currency, terms: attempt.terms, entitlementId: result.entitlementId, replayed: result.replayed };
   },
 });
 

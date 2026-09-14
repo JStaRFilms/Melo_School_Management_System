@@ -11,19 +11,18 @@ import { AdminHeader } from "@/components/ui/AdminHeader";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
-  executeAcceptedConversionRef, getAdmissionNumberPolicyRef, getApplicationDetailRef, getApplicationWorkflowRef, getConversionWorkflowRef, getDocumentAccessRef, recordDecisionRef, recordDocumentReviewRef, requestChangesRef, resolveApplicationByPublicIdRef, revealSensitiveApplicationDetailRef, startReviewRef,
+  executeAcceptedConversionRef, getAdmissionNumberPolicyRef, getApplicationDetailRef, getApplicationWorkflowRef, getConversionWorkflowRef, getDecisionWorkflowRef, getDocumentAccessRef, recordDocumentReviewRef, requestChangesRef, resolveApplicationByPublicIdRef, revealSensitiveApplicationDetailRef,
   type DocumentMetadata,
 } from "@school/convex/functions/admissions/refs";
+import { admissionsAdminErrorMessage } from "../admissions-errors";
+import { DecisionWorkflowSection } from "./DecisionWorkflowSection";
+export { admissionsAdminErrorMessage } from "../admissions-errors";
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm transition placeholder:text-slate-400 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-200 disabled:bg-slate-100 disabled:text-slate-500";
 const buttonClass = "inline-flex items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 const secondaryButtonClass = "inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 const dangerButtonClass = "inline-flex items-center justify-center rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition hover:bg-rose-50 hover:border-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
-export function admissionsAdminErrorMessage(error: unknown) {
-  const raw = error instanceof Error ? error.message : "";
-  return /\[CONVEX|ConvexError|Called by client/i.test(raw) ? "The operation could not be completed. Please try again." : raw || "The operation failed.";
-}
 function message(error: unknown) { return admissionsAdminErrorMessage(error); }
 function statusLabel(value: string) { return value.replaceAll("_", " "); }
 
@@ -63,20 +62,20 @@ export function ApplicationDetail({ publicId }: { publicId: string }) {
   const resolved = useQuery(resolveApplicationByPublicIdRef, schoolId ? { schoolId, publicId } : "skip");
   const detail = useQuery(getApplicationDetailRef, schoolId && resolved ? { schoolId, applicationId: resolved.applicationId } : "skip");
   const workflow = useQuery(getApplicationWorkflowRef, schoolId && resolved ? { schoolId, applicationId: resolved.applicationId } : "skip");
+  const decisionWorkflow = useQuery(getDecisionWorkflowRef, schoolId && resolved ? { schoolId, applicationId: resolved.applicationId, evaluationLimit: 20 } : "skip");
   const canConvert = canManage && canDecide;
   const conversionWorkflow = useQuery(getConversionWorkflowRef, schoolId && resolved && canConvert ? { schoolId, applicationId: resolved.applicationId } : "skip");
   const selectedConversionClass = conversionWorkflow?.classes.find((item) => item.classId === classId);
   const admissionNumbering = useQuery(getAdmissionNumberPolicyRef, schoolId && selectedConversionClass ? { schoolId, level: selectedConversionClass.level } : "skip");
-  const reveal = useMutation(revealSensitiveApplicationDetailRef), startReview = useMutation(startReviewRef), requestChanges = useMutation(requestChangesRef), decide = useMutation(recordDecisionRef), convert = useMutation(executeAcceptedConversionRef);
+  const reveal = useMutation(revealSensitiveApplicationDetailRef), requestChanges = useMutation(requestChangesRef), convert = useMutation(executeAcceptedConversionRef);
   const [sensitive, setSensitive] = useState<{ answers: Array<{ fieldKey: string; valueType: string; serializedValue: string; dataClass: string }>; documents: DocumentMetadata[] } | null>(null);
   const [feedback, setFeedback] = useState("Sensitive details are hidden by default.");
   const [busy, setBusy] = useState(false);
   const [selectedFields, setSelectedFields] = useState<string[]>([]), [selectedRequirements, setSelectedRequirements] = useState<Id<"admissionsDocumentRequirements">[]>([]);
   const [correctionReason, setCorrectionReason] = useState(""), [correctionMessage, setCorrectionMessage] = useState("");
-  const [decisionState, setDecisionState] = useState<"accepted" | "rejected">("accepted"), [decisionReason, setDecisionReason] = useState(""), [decisionMessage, setDecisionMessage] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState(""), [familyKind, setFamilyKind] = useState<"create" | "existing">("create"), [familyName, setFamilyName] = useState(""), [familyId, setFamilyId] = useState("");
   const [overrideReason, setOverrideReason] = useState(""), [overrideConfirmed, setOverrideConfirmed] = useState(false), [keepCounterConfirmed, setKeepCounterConfirmed] = useState(false);
-  const [confirmDecision, setConfirmDecision] = useState(false), [confirmConversion, setConfirmConversion] = useState(false);
+  const [confirmConversion, setConfirmConversion] = useState(false);
 
   async function run(label: string, operation: () => Promise<unknown>) { setBusy(true); setFeedback(`${label}…`); try { await operation(); setFeedback(`${label} completed.`); appToast.success(`${label} completed`); } catch (error) { const text = message(error); setFeedback(text); appToast.error(`${label} failed`, { description: text }); } finally { setBusy(false); } }
   function runConversion() {
@@ -101,7 +100,7 @@ export function ApplicationDetail({ publicId }: { publicId: string }) {
   const automaticNumberingReady = numberingPolicyConfigured && !admissionNumber.trim() && Boolean(admissionNumbering?.preview && admissionNumbering.formatVersion && admissionNumbering.counter && admissionNumbering.activeSessionId && admissionNumbering.resetPeriod);
   const conversionNumberingReady = admissionNumbering !== undefined && (manualNumberingReady || automaticNumberingReady);
   if (resolved === null) return <main className="p-6"><AdminHeader title="Application unavailable" description="The reference was not found or is outside this school." /><Link className={secondaryButtonClass} href="/admin/admissions">Return to admissions</Link></main>;
-  if (!detail || !workflow || !resolved || !schoolId) return <main className="p-6"><p role="status">Loading application…</p></main>;
+  if (!detail || !workflow || !decisionWorkflow || !resolved || !schoolId) return <main className="p-6"><p role="status">Loading application…</p></main>;
   const documents = [...detail.documents, ...(sensitive?.documents ?? [])];
   return <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6">
     <AdminHeader label="Admissions review" title={`Application ${detail.context.publicId}`} description={`Immutable submitted revision ${detail.context.currentRevision}`} actions={<Link className={secondaryButtonClass} href="/admin/admissions">Queue</Link>} />
@@ -159,64 +158,22 @@ export function ApplicationDetail({ publicId }: { publicId: string }) {
         <p className="text-sm text-slate-500 py-2">No documents in this revision.</p>
       )}
     </AdminSurface>
-    <AdminSurface as="section" className="space-y-4 p-4 sm:p-5">
-      <div className="border-b border-slate-100 pb-3">
-        <h2 className="font-display text-lg font-bold text-slate-900">Review actions</h2>
-      </div>
-      {detail.context.state === "submitted" ? (
-        <div className="pb-2">
-          <button className={buttonClass} disabled={busy} onClick={() => void run("Review start", () => startReview({ schoolId, applicationId: resolved.applicationId }))}>
-            Start review
-          </button>
+    <DecisionWorkflowSection schoolId={schoolId} applicationId={resolved.applicationId} applicationState={detail.context.state} workflow={decisionWorkflow} canReviewDocuments={canReviewDocuments} canDecide={canDecide} canReopenFinalDecision={canManage && canDecide && conversionWorkflow !== undefined && conversionWorkflow.conversion?.state !== "succeeded"} onFeedback={setFeedback} />
+    {canReviewDocuments && ["submitted", "under_review"].includes(detail.context.state) ? <AdminSurface as="section" className="space-y-4 p-4 sm:p-5">
+      <div className="border-b border-slate-100 pb-3"><h2 className="font-display text-lg font-bold text-slate-900">Request corrections</h2></div>
+      <form className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" onSubmit={(event) => { event.preventDefault(); void run("Correction request", () => requestChanges({ schoolId, applicationId: resolved.applicationId, fieldKeys: selectedFields, requirementIds: selectedRequirements, reasonCode: correctionReason, guardianMessage: correctionMessage })); }}>
+        <p className="text-xs text-slate-500">Select fields or documents requiring correction, specify the reason, and provide an explanatory message.</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {workflow.fieldKeys.map((key) => <Check key={key} label={`Field: ${key}`} checked={selectedFields.includes(key)} onChange={(checked) => setSelectedFields((current) => checked ? [...current, key] : current.filter((item) => item !== key))} />)}
+          {workflow.requirements.map((item) => <Check key={item.requirementId} label={`Document: ${item.label}`} checked={selectedRequirements.includes(item.requirementId)} onChange={(checked) => setSelectedRequirements((current) => checked ? [...current, item.requirementId] : current.filter((id) => id !== item.requirementId))} />)}
         </div>
-      ) : null}
-      {canReviewDocuments && ["submitted", "under_review"].includes(detail.context.state) ? (
-        <form className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" onSubmit={(event) => { event.preventDefault(); void run("Correction request", () => requestChanges({ schoolId, applicationId: resolved.applicationId, fieldKeys: selectedFields, requirementIds: selectedRequirements, reasonCode: correctionReason, guardianMessage: correctionMessage })); }}>
-          <h3 className="text-sm font-bold text-slate-900">Request corrections</h3>
-          <p className="text-xs text-slate-500">Select fields or documents requiring correction, specify the reason, and provide an explanatory message.</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {workflow.fieldKeys.map((key) => <Check key={key} label={`Field: ${key}`} checked={selectedFields.includes(key)} onChange={(checked) => setSelectedFields((current) => checked ? [...current, key] : current.filter((item) => item !== key))} />)}
-            {workflow.requirements.map((item) => <Check key={item.requirementId} label={`Document: ${item.label}`} checked={selectedRequirements.includes(item.requirementId)} onChange={(checked) => setSelectedRequirements((current) => checked ? [...current, item.requirementId] : current.filter((id) => id !== item.requirementId))} />)}
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold text-slate-700">
-              Reason code
-              <input required className={`${inputClass} mt-1`} value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} />
-            </label>
-            <label className="block text-xs font-semibold text-slate-700">
-              Guardian-safe message
-              <textarea required className={`${inputClass} mt-1 min-h-20`} value={correctionMessage} onChange={(event) => setCorrectionMessage(event.target.value)} />
-            </label>
-          </div>
-          <button className={buttonClass} disabled={busy || (!selectedFields.length && !selectedRequirements.length)}>
-            Request corrections
-          </button>
-        </form>
-      ) : null}
-      {canDecide && ["submitted", "under_review"].includes(detail.context.state) ? (
-        <form className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" onSubmit={(event) => { event.preventDefault(); setConfirmDecision(true); }}>
-          <h3 className="text-sm font-bold text-slate-900">Decision</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold text-slate-700">
-              Outcome
-              <select className={`${inputClass} mt-1`} value={decisionState} onChange={(event) => setDecisionState(event.target.value === "rejected" ? "rejected" : "accepted")}>
-                <option value="accepted">Accept</option>
-                <option value="rejected">Reject</option>
-              </select>
-            </label>
-            <label className="block text-xs font-semibold text-slate-700">
-              Reason code
-              <input required className={`${inputClass} mt-1`} value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} />
-            </label>
-          </div>
-          <label className="block text-xs font-semibold text-slate-700">
-            Guardian-safe message
-            <textarea required className={`${inputClass} mt-1 min-h-20`} value={decisionMessage} onChange={(event) => setDecisionMessage(event.target.value)} />
-          </label>
-          <button className={buttonClass}>Record decision</button>
-        </form>
-      ) : null}
-    </AdminSurface>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs font-semibold text-slate-700">Reason code<input required maxLength={100} className={`${inputClass} mt-1`} value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)} /></label>
+          <label className="block text-xs font-semibold text-slate-700">Guardian-safe message<textarea required maxLength={1000} className={`${inputClass} mt-1 min-h-20`} value={correctionMessage} onChange={(event) => setCorrectionMessage(event.target.value)} /></label>
+        </div>
+        <button className={buttonClass} disabled={busy || (!selectedFields.length && !selectedRequirements.length)}>Request corrections</button>
+      </form>
+    </AdminSurface> : null}
     {detail.context.state === "accepted" && canConvert ? (
       <AdminSurface as="section" className="space-y-4 p-4 sm:p-5">
         <div className="border-b border-slate-100 pb-3">
@@ -232,7 +189,7 @@ export function ApplicationDetail({ publicId }: { publicId: string }) {
                 <p><strong>Conversion:</strong> {statusLabel(conversionWorkflow.conversion.state)}</p>
                 <p><strong>Admission number:</strong> {conversionWorkflow.conversion.admissionNumber ?? "Pending"}</p>
                 <p><strong>Onboarding:</strong> {conversionWorkflow.conversion.onboardingState ? statusLabel(conversionWorkflow.conversion.onboardingState) : "Not queued"}</p>
-                {conversionWorkflow.conversion.errorCode ? <p className="text-rose-700 font-medium">{conversionWorkflow.conversion.errorCode}</p> : null}
+                {conversionWorkflow.conversion.errorCode ? <p className="text-rose-700 font-medium">Conversion needs staff attention. Review the current selections before retrying.</p> : null}
               </div>
             ) : null}
             {!conversionWorkflow.conversion || conversionWorkflow.conversion.state === "failed_retryable" ? (
@@ -299,7 +256,6 @@ export function ApplicationDetail({ publicId }: { publicId: string }) {
         )}
       </AdminSurface>
     ) : null}
-    <ConfirmDialog open={confirmDecision} title={`${decisionState === "accepted" ? "Accept" : "Reject"} this application?`} description="This records a decision against the immutable submitted revision and sends only the guardian-safe message to the guardian workflow." confirmLabel="Record decision" onCancel={() => setConfirmDecision(false)} onConfirm={() => { setConfirmDecision(false); void run("Decision", () => decide({ schoolId, applicationId: resolved.applicationId, state: decisionState, reasonCode: decisionReason, guardianMessage: decisionMessage })); }} />
     <ConfirmDialog open={confirmConversion} title="Start accepted-application conversion?" description="This creates or links the canonical family and student records. Confirm only after reviewing the selected class, admission number, and family resolution." confirmLabel={conversionWorkflow?.conversion?.state === "failed_retryable" ? "Retry conversion" : "Start conversion"} onCancel={() => setConfirmConversion(false)} onConfirm={runConversion} />
   </main>;
 }

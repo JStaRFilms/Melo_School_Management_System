@@ -8,16 +8,50 @@ export function availabilityMessage(state: "open" | "upcoming" | "paused" | "clo
   return "This application offering is unavailable.";
 }
 
+export const PAYMENT_STATES = ["created", "checkout_pending", "verification_pending", "paid", "failed", "expired", "manual_attention", "refunded", "reversed"] as const;
+export type PaymentState = typeof PAYMENT_STATES[number];
+
 export function paymentMessage(state: string) {
   switch (state) {
-    case "created": return "Checkout has not started.";
-    case "checkout_pending": return "Payment is pending provider verification.";
-    case "paid": return "Payment verified. One child application slot is available.";
-    case "refunded": return "Payment was refunded. The related slot is not available.";
-    case "reversed": return "Payment was reversed. The related application may be on financial hold.";
-    case "manual_attention": return "Payment needs manual review; no paid slot is claimed yet.";
-    default: return `Payment state: ${state}.`;
+    case "created": return "Checkout has not started. No payment or application place has been confirmed.";
+    case "checkout_pending": return "Checkout is open or incomplete. Payment has not been verified, and no admission place is reserved.";
+    case "verification_pending": return "The payment check is still pending. No paid application slot or admission place is confirmed yet.";
+    case "paid": return "Payment is verified and one child application slot is available. This is not an admission decision or a reserved school place.";
+    case "failed": return "This payment attempt was unsuccessful. No application slot or admission place was created.";
+    case "expired": return "This checkout expired without verified payment. You can check for a late payment, but no place is reserved.";
+    case "manual_attention": return "This payment needs school review. No paid application slot or admission place is confirmed yet.";
+    case "refunded": return "This payment was refunded. The related slot is unavailable and no admission place is reserved.";
+    case "reversed": return "This payment was reversed. The related application may be on financial hold; contact the school before taking further action.";
+    default: return "The latest payment status is unavailable. Contact the school if you need help.";
   }
+}
+
+export function applicationStateMessage(state: string) {
+  switch (state) {
+    case "draft": return "This application is a draft and has not been submitted.";
+    case "submitted": return "This application was submitted for review. Submission does not guarantee admission or reserve a place.";
+    case "under_review": return "The school is reviewing this application. A place has not been offered or reserved.";
+    case "changes_requested": return "The school requested changes. Update only the requested information and resubmit it for review.";
+    case "waitlisted": return "This application is waitlisted. The waitlist is not an offer of admission and does not reserve a place.";
+    case "accepted": return "The school recorded an acceptance decision. Enrollment setup is a separate step.";
+    case "rejected": return "The school recorded that this application was not accepted.";
+    case "withdrawn": return "This application was withdrawn and is no longer under consideration.";
+    case "archived": return "This application has been archived and is no longer active.";
+    default: return "Contact the school for the latest application status.";
+  }
+}
+
+export function shortenPaymentReference(reference: string) {
+  if (reference.length <= 14) return reference;
+  return `${reference.slice(0, 8)}…${reference.slice(-4)}`;
+}
+
+export function canContinueCheckout(state: string) {
+  return state === "created" || state === "checkout_pending";
+}
+
+export function canCheckPayment(state: string) {
+  return state === "checkout_pending" || state === "verification_pending" || state === "failed" || state === "expired" || state === "manual_attention";
 }
 
 export function isDraftConflict(error: unknown) { return error instanceof Error && /DRAFT_VERSION_CONFLICT|Draft changed/i.test(error.message); }

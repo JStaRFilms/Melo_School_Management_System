@@ -356,8 +356,8 @@ async function computeDecisionReadiness(ctx: QueryCtx | MutationCtx, application
 export const getLatestReviewState = query({
   args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications"), evaluationLimit: v.optional(v.number()) },
   returns: v.object({
-    decision: v.union(v.null(), v.object({ decisionId: v.id("admissionsDecisions"), snapshotId: v.union(v.id("admissionsSubmissionSnapshots"), v.null()), version: v.number(), state: admissionsDecisionStateValidator, reasonCode: v.union(v.string(), v.null()), guardianMessage: v.union(v.string(), v.null()), rationale: v.union(v.string(), v.null()), decidedAt: v.number() })),
-    evaluations: v.array(v.object({ evaluationId: v.id("admissionsEvaluations"), type: v.union(v.literal("entrance_assessment"), v.literal("interview")), state: v.union(v.literal("scheduled"), v.literal("completed"), v.literal("cancelled")), scheduledAt: v.union(v.number(), v.null()), completedAt: v.union(v.number(), v.null()), resultCode: v.union(v.string(), v.null()), score: v.union(v.number(), v.null()), version: v.number(), notes: v.union(v.string(), v.null()) })),
+    decision: v.union(v.null(), v.object({ decisionId: v.id("admissionsDecisions"), snapshotId: v.union(v.id("admissionsSubmissionSnapshots"), v.null()), version: v.number(), state: admissionsDecisionStateValidator, reasonCode: v.union(v.string(), v.null()), guardianMessage: v.union(v.string(), v.null()), decidedAt: v.number() })),
+    evaluations: v.array(v.object({ evaluationId: v.id("admissionsEvaluations"), type: v.union(v.literal("entrance_assessment"), v.literal("interview")), state: v.union(v.literal("scheduled"), v.literal("completed"), v.literal("cancelled")), scheduledAt: v.union(v.number(), v.null()), completedAt: v.union(v.number(), v.null()), resultCode: v.union(v.string(), v.null()), score: v.union(v.number(), v.null()), version: v.number() })),
     readiness: v.object({ ready: v.boolean(), acceptanceReady: v.boolean(), blockers: v.array(v.string()) }),
   }),
   handler: async (ctx, args) => {
@@ -373,8 +373,8 @@ export const getLatestReviewState = query({
     ]);
     const evaluations = [...entranceEvaluations, ...interviewEvaluations].sort((a, b) => b._creationTime - a._creationTime).slice(0, limit);
     return {
-      decision: decision ? { decisionId: decision._id, snapshotId: decision.snapshotId ?? null, version: decision.version, state: decision.state, reasonCode: decision.reasonCode ?? null, guardianMessage: decision.guardianMessage ?? null, rationale: decision.rationale ?? null, decidedAt: decision.decidedAt } : null,
-      evaluations: evaluations.map((evaluation) => ({ evaluationId: evaluation._id, type: evaluation.type, state: evaluation.state, scheduledAt: evaluation.scheduledAt ?? null, completedAt: evaluation.completedAt ?? null, resultCode: evaluation.resultCode ?? null, score: evaluation.score ?? null, version: evaluation.version, notes: evaluation.notes ?? null })),
+      decision: decision ? { decisionId: decision._id, snapshotId: decision.snapshotId ?? null, version: decision.version, state: decision.state, reasonCode: decision.reasonCode ?? null, guardianMessage: decision.guardianMessage ?? null, decidedAt: decision.decidedAt } : null,
+      evaluations: evaluations.map((evaluation) => ({ evaluationId: evaluation._id, type: evaluation.type, state: evaluation.state, scheduledAt: evaluation.scheduledAt ?? null, completedAt: evaluation.completedAt ?? null, resultCode: evaluation.resultCode ?? null, score: evaluation.score ?? null, version: evaluation.version })),
       readiness,
     };
   },
@@ -384,7 +384,7 @@ export const startReview = mutation({
   args: { schoolId: v.id("schools"), applicationId: v.id("admissionsApplications") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.applications.view_basic"]);
+    const actor = await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.documents.review"]);
     const application = await ctx.db.get(args.applicationId);
     if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
     if ((application.state !== "submitted" && application.state !== "under_review") || !application.latestSnapshotId) throw new ConvexError("Only a submitted application can enter review");
