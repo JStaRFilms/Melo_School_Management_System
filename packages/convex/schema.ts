@@ -2289,7 +2289,7 @@ export default defineSchema({
     reason: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }),
+  }).index("by_school", ["schoolId"]),
 
   studentInvoices: defineTable({
     schoolId: v.id("schools"),

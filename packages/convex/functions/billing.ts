@@ -2100,6 +2100,12 @@ export const revokeFeePlanInvoices = mutation({
         updatedAt: now,
         updatedBy: viewer.userId,
       });
+      await recordFeePlanLifecycleAudit(ctx, actor, {
+        schoolId: viewer.schoolId,
+        feePlanId: feePlan._id,
+        action: "archived_for_revocation",
+        summary: `Archived fee plan ${feePlan.name} before revoking unpaid invoices; reason: ${reason}`,
+      });
     }
 
     for (const invoice of batch) {
@@ -2112,12 +2118,14 @@ export const revokeFeePlanInvoices = mutation({
       });
     }
 
-    await recordFeePlanLifecycleAudit(ctx, actor, {
-      schoolId: viewer.schoolId,
-      feePlanId: feePlan._id,
-      action: "invoices_revoked",
-      summary: `Archived fee plan ${feePlan.name} and revoked ${batch.length} unpaid invoice${batch.length === 1 ? "" : "s"}; reason: ${reason}`,
-    });
+    if (batch.length > 0) {
+      await recordFeePlanLifecycleAudit(ctx, actor, {
+        schoolId: viewer.schoolId,
+        feePlanId: feePlan._id,
+        action: "invoices_revoked",
+        summary: `Revoked ${batch.length} unpaid invoice${batch.length === 1 ? "" : "s"} from fee plan ${feePlan.name}; reason: ${reason}`,
+      });
+    }
     if (invoicePage.isDone) {
       await ctx.db.delete(run.runId);
     } else {

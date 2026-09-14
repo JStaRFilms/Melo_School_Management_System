@@ -134,8 +134,8 @@ export default function BillingPage() {
   }), [feePlanDraft]);
   const persistentFeePlanDraft = usePersistentFormDraft({
     formKey: "fee_plan_builder",
-    schoolId,
-    accountId: session?.user.id,
+    schoolId: canManageFeePlans ? schoolId : undefined,
+    accountId: canManageFeePlans ? session?.user.id : undefined,
     connection: draftConnection,
     currentData: feePlanDraftData,
     isDirty: feePlanDirty,
@@ -589,17 +589,19 @@ export default function BillingPage() {
 
   return (
     <main className="h-full min-h-0 w-full overflow-hidden bg-slate-50/50 flex flex-col">
-      <PersistentFormDraftControls
-            draft={persistentFeePlanDraft}
-            formTitle="fee plan"
-            isDirty={feePlanDirty}
-            excludedFieldsNotice="The private draft stores fee-plan configuration and an optional bank-account record ID only. It never stores bank details, payment secrets, provider payloads, credentials, or raw documents."
-            onDiscard={async () => {
-              await persistentFeePlanDraft.handleDiscardDraft();
-              setFeePlanDraft(initialFeePlanDraft());
-              setFeePlanDraftInstanceKey((key) => key + 1);
-            }}
-          />
+      {canManageFeePlans && (
+        <PersistentFormDraftControls
+          draft={persistentFeePlanDraft}
+          formTitle="fee plan"
+          isDirty={feePlanDirty}
+          excludedFieldsNotice="The private draft stores fee-plan configuration and an optional bank-account record ID only. It never stores bank details, payment secrets, provider payloads, credentials, or raw documents."
+          onDiscard={async () => {
+            await persistentFeePlanDraft.handleDiscardDraft();
+            setFeePlanDraft(initialFeePlanDraft());
+            setFeePlanDraftInstanceKey((key) => key + 1);
+          }}
+        />
+      )}
       <div className="flex-1 flex lg:overflow-hidden min-h-0">
         {/* Main Content Area */}
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">

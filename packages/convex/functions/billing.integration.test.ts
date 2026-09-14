@@ -799,6 +799,9 @@ describe("billing registered functions", () => {
       "fee_plan.deleted_unused",
       "fee_plan.invoices_revoked",
     ]));
+    expect(lifecycleState.audit.filter(
+      (event) => event.action === "fee_plan.invoices_revoked",
+    )).toHaveLength(1);
   });
 
   it("keeps invoice-less gateway events only on unfiltered dashboards", async () => {
