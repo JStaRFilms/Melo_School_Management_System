@@ -67,13 +67,13 @@ toggleSortDirection
 type FeePlanDeletionResult = {
   status: "archived" | "deleted";
   hasMore: boolean;
-  continueCursor: string | null;
+  continueRunId: string | null;
 };
 
 type FeePlanRevocationResult = {
   revokedCount: number;
   hasMore: boolean;
-  continueCursor: string | null;
+  continueRunId: string | null;
 };
 
 type PaymentLinkActionResult = {
@@ -107,7 +107,9 @@ export default function BillingPage() {
   const [emptyFeePlanSignature] = useState(() => feePlanSignature(initialFeePlanDraft()));
   const feePlanDirty = feePlanSignature(feePlanDraft) !== emptyFeePlanSignature;
   const { session, workspaceAccess } = useAuth();
-  const canUseLegacyBillingOperations = session?.user.role === "admin";
+  const canUseLegacyBillingOperations = session?.user.role === "admin" &&
+    workspaceAccess?.state === "ready" &&
+    workspaceAccess.compatibility.permissionManaged === false;
   const canManageFeePlans = workspaceAccess?.state === "ready" &&
     workspaceAccess.effectiveCapabilities.includes("finance.fee_plans.manage");
   const canIssueInvoices = workspaceAccess?.state === "ready" &&
@@ -403,30 +405,30 @@ export default function BillingPage() {
 
   const handleDeleteFeePlan = (feePlanId: string, expectedName: string) =>
     actions.runAction(async () => {
-      let cursor: string | null = null;
+      let runId: string | null = null;
       let hasMore = true;
       while (hasMore) {
         const result = await actions.deleteUnusedFeePlan({
           feePlanId,
           expectedName,
-          cursor,
+          runId,
         } as never) as FeePlanDeletionResult;
         if (result.status === "archived" && !result.hasMore) {
           throw new Error("Used fee plans cannot be deleted. The plan was archived instead.");
         }
         hasMore = result.hasMore;
-        cursor = result.continueCursor;
+        runId = result.continueRunId;
       }
     }, "Unused fee plan deleted", "Unable to delete this fee plan.");
 
   const handleRevokeFeePlanInvoices = (feePlanId: string, reason: string) =>
     actions.runAction(async () => {
-      let cursor: string | null = null;
+      let runId: string | null = null;
       let hasMore = true;
       while (hasMore) {
-        const result = await actions.revokeFeePlanInvoices({ feePlanId, reason, cursor } as never) as FeePlanRevocationResult;
+        const result = await actions.revokeFeePlanInvoices({ feePlanId, reason, runId } as never) as FeePlanRevocationResult;
         hasMore = result.hasMore;
-        cursor = result.continueCursor;
+        runId = result.continueRunId;
       }
     }, "Eligible invoices revoked and fee plan archived", "Invoice revocation did not finish. Refresh the plan details before retrying because earlier batches may have succeeded.");
 

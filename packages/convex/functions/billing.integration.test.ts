@@ -405,7 +405,7 @@ describe("billing registered functions", () => {
         authTokenIdentifier: accountantIdentity.tokenIdentifier,
         name: "Delegated Accountant",
         email: "accountant@billing.test",
-        role: "teacher",
+        role: "admin",
         createdAt: now,
         updatedAt: now,
       });
@@ -444,6 +444,10 @@ describe("billing registered functions", () => {
     });
     const accountant = t.withIdentity(accountantIdentity);
 
+    await expect(accountant.query(
+      api.functions.billing.listFeePlans,
+      {},
+    )).rejects.toThrow(/Admin access required/);
     await expect(accountant.query(
       api.functions.billing.listFeePlanClassOptions,
       {},
@@ -684,13 +688,22 @@ describe("billing registered functions", () => {
     const firstDeletePage = await actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
       feePlanId: paginatedUnusedPlan._id,
       expectedName: paginatedUnusedPlan.name,
-      cursor: null,
+      runId: null,
     });
     expect(firstDeletePage).toMatchObject({ status: "archived", hasMore: true });
+    const otherUnusedPlan = await actor.mutation(api.functions.billing.createFeePlan, {
+      name: "Other unused fees",
+      lineItems,
+    });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: otherUnusedPlan._id,
+      expectedName: otherUnusedPlan.name,
+      runId: firstDeletePage.continueRunId,
+    })).rejects.toThrow(/Invalid fee-plan lifecycle continuation/);
     await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
       feePlanId: paginatedUnusedPlan._id,
       expectedName: paginatedUnusedPlan.name,
-      cursor: firstDeletePage.continueCursor,
+      runId: firstDeletePage.continueRunId,
     })).resolves.toMatchObject({ status: "deleted", hasMore: false });
 
     const dashboard = await actor.query(api.functions.billing.getBillingDashboard, {}) as {
@@ -721,15 +734,15 @@ describe("billing registered functions", () => {
     const firstPage = await actor.mutation(api.functions.billing.revokeFeePlanInvoices, {
       feePlanId: usedPlan._id,
       reason: "Incorrect fee amount",
-      cursor: null,
+      runId: null,
     });
     expect(firstPage).toMatchObject({ revokedCount: 0, hasMore: true });
     const revoked = await actor.mutation(api.functions.billing.revokeFeePlanInvoices, {
       feePlanId: usedPlan._id,
       reason: "Incorrect fee amount",
-      cursor: firstPage.continueCursor,
+      runId: firstPage.continueRunId,
     });
-    expect(revoked).toMatchObject({ revokedCount: 1, hasMore: false, continueCursor: null });
+    expect(revoked).toMatchObject({ revokedCount: 1, hasMore: false, continueRunId: null });
 
     const latePayment = await t.mutation(internal.functions.billing.recordVerifiedGatewayEventInternal, {
       schoolId: ids.schoolId,

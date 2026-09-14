@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import { FeePlanList } from "../app/billing/components/FeePlanList";
 import { BillingTabs } from "../app/billing/components/BillingTabs";
+import { PaymentTable } from "../app/billing/components/PaymentTable";
 import type { BillingDashboardData } from "../app/billing/types";
 
 type FeePlan = BillingDashboardData["feePlans"][number];
@@ -52,6 +53,48 @@ describe("delegated billing navigation", () => {
 
     expect(screen.getByRole("button", { name: "Plans" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Config" })).not.toBeInTheDocument();
+  });
+});
+
+describe("payment reconciliation status", () => {
+  it("marks unapplied gateway funds for review instead of confirming them", () => {
+    const payments: BillingDashboardData["payments"] = [{
+      payment: {
+        _id: "payment-1",
+        invoiceId: "invoice-1",
+        reference: "late-payment",
+        gatewayReference: "gateway-1",
+        provider: "paystack",
+        paymentMethod: "online",
+        amountReceived: 5000,
+        amountApplied: 0,
+        unappliedAmount: 5000,
+        applicationStatus: "unapplied",
+        status: "successful",
+        payerName: null,
+        payerEmail: null,
+        receivedAt: 1,
+        reconciliationStatus: "flagged",
+        reconciledAt: null,
+        notes: "Payment received after invoice revocation",
+      },
+      invoiceNumber: "INV-001",
+      studentName: "Student",
+      className: "Class 1",
+      sessionName: "2026/2027",
+      termName: "First Term",
+    }];
+
+    render(
+      <PaymentTable
+        payments={payments}
+        sortKey="date"
+        sortDirection="desc"
+      />,
+    );
+
+    expect(screen.getByText("Unapplied — review")).toBeInTheDocument();
+    expect(screen.queryByText("Confirmed")).not.toBeInTheDocument();
   });
 });
 

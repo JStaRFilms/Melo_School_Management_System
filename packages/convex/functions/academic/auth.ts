@@ -20,6 +20,7 @@ export async function getAuthenticatedSchoolMembership(
   role: string;
   isSchoolAdmin: boolean;
   isSuspended: boolean;
+  permissionManaged: boolean;
 }> {
   if (!(await ctx.auth.getUserIdentity())) throw new ConvexError("Unauthorized");
   const defaultUser = options?.schoolId ? null : await resolveLegacyViewer(ctx);
@@ -32,7 +33,8 @@ export async function getAuthenticatedSchoolMembership(
     allowSuspended: options?.allowSuspended === true && !options.schoolId,
   });
   if (context.isPlatformAdmin) throw new ConvexError("Forbidden: Platform governance does not authorize tenant operations");
-  if (options?.capability && await isPermissionManaged(ctx, context)) {
+  const permissionManaged = await isPermissionManaged(ctx, context);
+  if (options?.capability && permissionManaged) {
     // Capability contracts become authoritative per migrated caller. Uncontracted
     // callers retain their existing domain checks until their migration is reviewed.
     const required = typeof options.capability === "string" ? [options.capability] : options.capability;
@@ -50,6 +52,7 @@ export async function getAuthenticatedSchoolMembership(
     role: user.role,
     isSchoolAdmin: user.role === "admin" || user.isSchoolAdmin === true,
     isSuspended,
+    permissionManaged,
   };
 }
 

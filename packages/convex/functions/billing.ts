@@ -207,14 +207,14 @@ const deleteUnusedFeePlanResultValidator = v.object({
   feePlanId: v.id("feePlans"),
   status: v.union(v.literal("archived"), v.literal("deleted")),
   hasMore: v.boolean(),
-  continueCursor: v.union(v.string(), v.null()),
+  continueRunId: v.union(v.id("feePlanLifecycleRuns"), v.null()),
 });
 
 const revokeFeePlanInvoicesResultValidator = v.object({
   feePlanId: v.id("feePlans"),
   revokedCount: v.number(),
   hasMore: v.boolean(),
-  continueCursor: v.union(v.string(), v.null()),
+  continueRunId: v.union(v.id("feePlanLifecycleRuns"), v.null()),
 });
 
 const createInvoiceValidator = v.object({
@@ -276,8 +276,8 @@ const portalPaymentVerificationResultValidator = v.object({
   message: v.string(),
 });
 
-function assertAdmin(user: { isSchoolAdmin: boolean }) {
-  if (!user.isSchoolAdmin) {
+function assertAdmin(user: { isSchoolAdmin: boolean; permissionManaged: boolean }) {
+  if (!user.isSchoolAdmin || user.permissionManaged) {
     throw new ConvexError("Admin access required");
   }
 }
@@ -512,6 +512,49 @@ async function authorizeFeePlanLifecycle(
     await requireCapability(ctx, viewer.schoolId, "finance.invoices.issue");
   }
   return { viewer, actor };
+}
+
+async function startOrResumeFeePlanLifecycleRun(
+  ctx: MutationCtx,
+  args: {
+    runId?: Id<"feePlanLifecycleRuns"> | null;
+    schoolId: Id<"schools">;
+    feePlanId: Id<"feePlans">;
+    actorUserId: Id<"users">;
+    operation: "delete_unused" | "revoke_invoices";
+    expectedName?: string;
+    reason?: string;
+  },
+) {
+  if (args.runId) {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.schoolId !== args.schoolId ||
+      run.feePlanId !== args.feePlanId ||
+      run.actorUserId !== args.actorUserId ||
+      run.operation !== args.operation ||
+      run.expectedName !== args.expectedName ||
+      run.reason !== args.reason
+    ) {
+      throw new ConvexError("Invalid fee-plan lifecycle continuation");
+    }
+    return { runId: run._id, cursor: run.cursor };
+  }
+
+  const now = Date.now();
+  const runId = await ctx.db.insert("feePlanLifecycleRuns", {
+    schoolId: args.schoolId,
+    feePlanId: args.feePlanId,
+    actorUserId: args.actorUserId,
+    operation: args.operation,
+    cursor: null,
+    ...(args.expectedName !== undefined ? { expectedName: args.expectedName } : {}),
+    ...(args.reason !== undefined ? { reason: args.reason } : {}),
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { runId, cursor: null };
 }
 
 async function recordFeePlanLifecycleAudit(
@@ -1905,7 +1948,7 @@ export const deleteUnusedFeePlan = mutation({
   args: {
     feePlanId: v.id("feePlans"),
     expectedName: v.string(),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    runId: v.optional(v.union(v.id("feePlanLifecycleRuns"), v.null())),
   },
   returns: deleteUnusedFeePlanResultValidator,
   handler: async (ctx, args) => {
@@ -1918,6 +1961,14 @@ export const deleteUnusedFeePlan = mutation({
       throw new ConvexError("Fee plan changed; reload before deleting it");
     }
 
+    const run = await startOrResumeFeePlanLifecycleRun(ctx, {
+      runId: args.runId,
+      schoolId: viewer.schoolId,
+      feePlanId: feePlan._id,
+      actorUserId: viewer.userId,
+      operation: "delete_unused",
+      expectedName: args.expectedName,
+    });
     const application = await ctx.db
       .query("feePlanApplications")
       .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))
@@ -1928,7 +1979,7 @@ export const deleteUnusedFeePlan = mutation({
           .query("studentInvoices")
           .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
           .paginate({
-            cursor: args.cursor ?? null,
+            cursor: run.cursor,
             numItems: 25,
             maximumRowsRead: 25,
           });
@@ -1936,6 +1987,7 @@ export const deleteUnusedFeePlan = mutation({
     const now = Date.now();
 
     if (application || invoice) {
+      await ctx.db.delete(run.runId);
       if (feePlan.isActive) {
         await ctx.db.patch(feePlan._id, {
           isActive: false,
@@ -1953,7 +2005,7 @@ export const deleteUnusedFeePlan = mutation({
         feePlanId: feePlan._id,
         status: "archived" as const,
         hasMore: false,
-        continueCursor: null,
+        continueRunId: null,
       };
     }
 
@@ -1965,15 +2017,20 @@ export const deleteUnusedFeePlan = mutation({
           updatedBy: viewer.userId,
         });
       }
+      await ctx.db.patch(run.runId, {
+        cursor: invoicePage?.continueCursor ?? null,
+        updatedAt: now,
+      });
       return {
         feePlanId: feePlan._id,
         status: "archived" as const,
         hasMore: true,
-        continueCursor: invoicePage?.continueCursor ?? null,
+        continueRunId: run.runId,
       };
     }
 
     await ctx.db.delete(feePlan._id);
+    await ctx.db.delete(run.runId);
     await recordFeePlanLifecycleAudit(ctx, actor, {
       schoolId: viewer.schoolId,
       feePlanId: feePlan._id,
@@ -1984,7 +2041,7 @@ export const deleteUnusedFeePlan = mutation({
       feePlanId: feePlan._id,
       status: "deleted" as const,
       hasMore: false,
-      continueCursor: null,
+      continueRunId: null,
     };
   },
 });
@@ -1993,7 +2050,7 @@ export const revokeFeePlanInvoices = mutation({
   args: {
     feePlanId: v.id("feePlans"),
     reason: v.string(),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    runId: v.optional(v.union(v.id("feePlanLifecycleRuns"), v.null())),
   },
   returns: revokeFeePlanInvoicesResultValidator,
   handler: async (ctx, args) => {
@@ -2011,11 +2068,19 @@ export const revokeFeePlanInvoices = mutation({
       throw new ConvexError("Invoice revocation reason must be 500 characters or fewer");
     }
 
+    const run = await startOrResumeFeePlanLifecycleRun(ctx, {
+      runId: args.runId,
+      schoolId: viewer.schoolId,
+      feePlanId: feePlan._id,
+      actorUserId: viewer.userId,
+      operation: "revoke_invoices",
+      reason,
+    });
     const invoicePage = await ctx.db
       .query("studentInvoices")
       .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
       .paginate({
-        cursor: args.cursor ?? null,
+        cursor: run.cursor,
         numItems: 25,
         maximumRowsRead: 25,
       });
@@ -2053,11 +2118,19 @@ export const revokeFeePlanInvoices = mutation({
       action: "invoices_revoked",
       summary: `Archived fee plan ${feePlan.name} and revoked ${batch.length} unpaid invoice${batch.length === 1 ? "" : "s"}; reason: ${reason}`,
     });
+    if (invoicePage.isDone) {
+      await ctx.db.delete(run.runId);
+    } else {
+      await ctx.db.patch(run.runId, {
+        cursor: invoicePage.continueCursor,
+        updatedAt: now,
+      });
+    }
     return {
       feePlanId: feePlan._id,
       revokedCount: batch.length,
       hasMore: !invoicePage.isDone,
-      continueCursor: invoicePage.isDone ? null : invoicePage.continueCursor,
+      continueRunId: invoicePage.isDone ? null : run.runId,
     };
   },
 });
@@ -2623,7 +2696,10 @@ export const verifyOnlinePaymentByReference = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
+    assertAdmin({
+      isSchoolAdmin: viewer.isSchoolAdmin === true,
+      permissionManaged: viewer.permissionManaged === true,
+    });
 
     return await verifyPaystackReferenceAndReconcile(ctx, args.reference, {
       expectedSchoolId: viewer.schoolId ?? null,
@@ -2708,7 +2784,10 @@ export const reconcilePendingOnlinePayments = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
+    assertAdmin({
+      isSchoolAdmin: viewer.isSchoolAdmin === true,
+      permissionManaged: viewer.permissionManaged === true,
+    });
 
     const pendingAttempts: any[] = await ctx.runQuery(
       (internal as any).functions.billing.listBillingPaymentAttemptsForReconciliationInternal,
@@ -2923,7 +3002,10 @@ export const initializeOnlinePayment = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
+    assertAdmin({
+      isSchoolAdmin: viewer.isSchoolAdmin === true,
+      permissionManaged: viewer.permissionManaged === true,
+    });
 
     if (!viewer.schoolId || String(viewer.schoolId) !== String(args.schoolId)) {
       throw new ConvexError("Cross-school access denied");

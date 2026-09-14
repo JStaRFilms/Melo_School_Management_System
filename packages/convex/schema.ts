@@ -2279,6 +2279,18 @@ export default defineSchema({
     .index("by_class_session_term", ["classId", "sessionId", "termId"])
     .index("by_school_and_created_at", ["schoolId", "createdAt"]),
 
+  feePlanLifecycleRuns: defineTable({
+    schoolId: v.id("schools"),
+    feePlanId: v.id("feePlans"),
+    actorUserId: v.id("users"),
+    operation: v.union(v.literal("delete_unused"), v.literal("revoke_invoices")),
+    cursor: v.union(v.string(), v.null()),
+    expectedName: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
+
   studentInvoices: defineTable({
     schoolId: v.id("schools"),
     feePlanId: v.id("feePlans"),
