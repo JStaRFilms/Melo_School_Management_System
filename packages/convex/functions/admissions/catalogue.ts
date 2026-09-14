@@ -16,6 +16,7 @@ import {
 import {
   ADMISSIONS_FIELD_KINDS,
   isSensitiveDataClass,
+  isSensitiveDocumentClass,
   parseCondition,
   parseFieldValidation,
   type AdmissionsFieldKind,
@@ -206,7 +207,7 @@ async function insertDefinitionRows(
       acceptedMimeTypes: requirement.acceptedMimeTypes.map((item) => item.trim().toLowerCase()),
       maxBytes: requirement.maxBytes,
       maxFiles: requirement.maxFiles,
-      sensitivity: requirement.sensitivity,
+      sensitivity: ["identity", "medical"].includes(requirement.category.trim().toLowerCase()) ? "highly_sensitive" : requirement.sensitivity,
       purpose: normalizeRequiredText(requirement.purpose, "Document purpose", 500),
       ...(requirement.conditionJson ? { conditionJson: requirement.conditionJson } : {}),
       order: requirement.order,
@@ -543,7 +544,7 @@ export const approveCampaignPublicationRequirements = mutation({
     ]);
     if (fields.length > 100 || requirements.length > 30) throw new ConvexError("Campaign draft exceeds approval bounds");
     const sensitiveFields = fields.filter((field) => isSensitiveDataClass(field.dataClass));
-    const controlledRequirements = requirements.filter((requirement) => requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity));
+    const controlledRequirements = requirements.filter((requirement) => requirement.requiredMode !== "optional" || isSensitiveDocumentClass(requirement.category, requirement.sensitivity));
     const now = Date.now();
     const approvalIsCurrent = async (
       evidenceId: Id<"schoolApprovalEvidence"> | undefined,
@@ -676,7 +677,7 @@ export const publishCampaign = mutation({
     for (const requirement of requirements) {
       parseCondition(requirement.conditionJson);
       if (!requirement.purpose.trim()) throw new ConvexError("Document requirements require a purpose");
-      if (requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity)) await assertPublicationApproval(ctx, schoolId, requirement.approvalEvidenceId, "admissions_document_requirement", await requirementApprovalSubjectKey(requirement), now, undefined, `Document requirement "${requirement.label}"`);
+      if (requirement.requiredMode !== "optional" || isSensitiveDocumentClass(requirement.category, requirement.sensitivity)) await assertPublicationApproval(ctx, schoolId, requirement.approvalEvidenceId, "admissions_document_requirement", await requirementApprovalSubjectKey(requirement), now, undefined, `Document requirement "${requirement.label}"`);
     }
     await assertPublicationApproval(ctx, schoolId, price.approvalEvidenceId, "admissions_product_price", await priceApprovalSubjectKey(price), now, "finance", "Fee terms");
     const [publishedForms, publishedDeclarations, publishedPrices] = await Promise.all([
@@ -688,10 +689,10 @@ export const publishCampaign = mutation({
     for (const row of publishedDeclarations) await ctx.db.patch(row._id, { status: "retired", updatedAt: now });
     for (const row of publishedPrices) await ctx.db.patch(row._id, { status: "retired", effectiveTo: Math.min(row.effectiveTo ?? now, now), updatedAt: now });
     await ctx.db.patch(programme._id, { status: "published", updatedAt: now });
-    await ctx.db.patch(intake._id, { status: "open", updatedAt: now });
+    await ctx.db.patch(intake._id, { ...(intake.status === "draft" ? { status: "open" as const } : {}), updatedAt: now });
     await ctx.db.patch(form._id, { status: "published", publishedAt: now, publishedBy: actor.userId, updatedAt: now });
     await ctx.db.patch(declaration._id, { status: "published", publishedAt: now, publishedBy: actor.userId, updatedAt: now });
-    await ctx.db.patch(product._id, { status: "active", updatedAt: now });
+    await ctx.db.patch(product._id, { ...(product.status === "draft" ? { status: "active" as const } : {}), updatedAt: now });
     await ctx.db.patch(price._id, { status: "published", updatedAt: now });
     await recordAdmissionsAudit(ctx, { schoolId, actorKind: "staff", actorUserId: actor.userId, action: "campaign.publish", entityType: "admissionsIntake", entityId: intake._id });
     return null;

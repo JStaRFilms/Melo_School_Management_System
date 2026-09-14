@@ -193,16 +193,16 @@ export const processAcceptedConversionTransaction = internalMutation({
     const application = await ctx.db.get(conversion.applicationId);
     if (!application) throw new ConvexError("CONVERSION_CONTEXT_CHANGED");
     const entitlement = await ctx.db.get(application.entitlementId);
-    const [decision, snapshot, guardian, selectedClass, items, purchase] = await Promise.all([
+    const photoItemKey = conversion.photoDocumentKey ? `document:${conversion.photoDocumentKey}` : null;
+    const [decision, snapshot, guardian, selectedClass, profileItem, contactItem, photoManifestItem, purchase] = await Promise.all([
       ctx.db.get(conversion.acceptedDecisionId), ctx.db.get(conversion.snapshotId), ctx.db.get(application.guardianId), ctx.db.get(conversion.classId),
-      ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", conversion.snapshotId)).take(202),
+      ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", conversion.snapshotId).eq("itemKey", "profile")).unique(),
+      ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", conversion.snapshotId).eq("itemKey", "primaryContact")).unique(),
+      photoItemKey ? ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", (q) => q.eq("snapshotId", conversion.snapshotId).eq("itemKey", photoItemKey)).unique() : null,
       entitlement ? ctx.db.get(entitlement.sourcePurchaseAttemptId) : null,
     ]);
     if (application.state !== "accepted" || application.financialHoldAt !== undefined || application.currentDecisionId !== conversion.acceptedDecisionId || application.latestSnapshotId !== conversion.snapshotId || !decision || decision.state !== "accepted" || decision.applicationId !== application._id || decision.schoolId !== conversion.schoolId || (decision.snapshotId !== undefined && decision.snapshotId !== conversion.snapshotId) || !snapshot || snapshot.applicationId !== application._id || snapshot.schoolId !== conversion.schoolId || !guardian || !selectedClass || selectedClass.schoolId !== conversion.schoolId || !entitlement || entitlement.schoolId !== conversion.schoolId || entitlement.guardianId !== application.guardianId || entitlement.applicationId !== application._id || entitlement.state !== "consumed" || !purchase || purchase.schoolId !== conversion.schoolId || purchase.guardianId !== application.guardianId || purchase.state !== "paid" || (purchase.entitlementId !== undefined && purchase.entitlementId !== entitlement._id)) throw new ConvexError("CONVERSION_CONTEXT_CHANGED");
-    if (items.length > 201) throw new ConvexError("CONVERSION_SNAPSHOT_TOO_LARGE");
-    const profileItem = items.find((item) => item.itemKey === "profile" && item.kind === "profile");
-    const contactItem = items.find((item) => item.itemKey === "primaryContact" && item.kind === "contact");
-    if (!profileItem || !contactItem) throw new ConvexError("CONVERSION_SNAPSHOT_INCOMPLETE");
+    if (profileItem?.kind !== "profile" || contactItem?.kind !== "contact") throw new ConvexError("CONVERSION_SNAPSHOT_INCOMPLETE");
     let profileUnknown: unknown;
     let contactUnknown: unknown;
     try { profileUnknown = JSON.parse(profileItem.serializedValue) as unknown; contactUnknown = JSON.parse(contactItem.serializedValue) as unknown; } catch { throw new ConvexError("CONVERSION_SNAPSHOT_INVALID"); }
@@ -239,9 +239,8 @@ export const processAcceptedConversionTransaction = internalMutation({
     if (existingStudents.length) throw new ConvexError("STUDENT_ORIGIN_REQUIRES_RECONCILIATION");
     let photo: { storageId: Id<"_storage">; fileName: string; contentType: string; sourceApplicationId: Id<"admissionsApplications">; sourceDocumentId: Id<"admissionsDocuments"> } | undefined;
     if (conversion.photoDocumentKey) {
-      const manifest = items.find((item) => item.itemKey === `document:${conversion.photoDocumentKey}` && item.kind === "document_manifest");
       const document = await ctx.db.query("admissionsDocuments").withIndex("by_document_key", (q) => q.eq("documentKey", conversion.photoDocumentKey!)).unique();
-      if (!manifest || !document || document.schoolId !== conversion.schoolId || document.applicationId !== application._id || document.state !== "accepted" || !document.mimeType.startsWith("image/")) throw new ConvexError("PHOTO_NOT_IN_ACCEPTED_SNAPSHOT");
+      if (photoManifestItem?.kind !== "document_manifest" || !document || document.schoolId !== conversion.schoolId || document.applicationId !== application._id || document.state !== "accepted" || !document.mimeType.startsWith("image/")) throw new ConvexError("PHOTO_NOT_IN_ACCEPTED_SNAPSHOT");
       photo = { storageId: document.storageId, fileName: document.fileName, contentType: document.mimeType, sourceApplicationId: application._id, sourceDocumentId: document._id };
     }
     const enrollment = await createCanonicalStudentEnrollmentHelper(ctx, { schoolId: conversion.schoolId, classId: selectedClass._id, name: [firstName, optionalString(profile, "middleName"), lastName].filter(Boolean).join(" "), firstName, lastName, admissionNumber: conversion.requestedAdmissionNumber ?? "", ...(optionalString(profile, "gender") ? { gender: optionalString(profile, "gender") } : {}), dateOfBirth, guardianName: requiredString(contact, "fullName", "Primary contact name"), address: optionalString(profile, "address"), sourceApplicationId: application._id, ...(photo ? { photo } : {}), overrideReason: conversion.overrideReason, overrideConfirmed: conversion.overrideConfirmed, overrideCounterDecision: conversion.overrideCounterDecision, advanceCounterTo: conversion.advanceCounterTo, numberingVersion: conversion.numberingVersion, numberingFormatVersion: conversion.numberingFormatVersion, numberingCounterKey: conversion.numberingCounterKey, numberingCounterVersion: conversion.numberingCounterVersion, numberingSessionId: conversion.numberingSessionId, numberingResetPeriod: conversion.numberingResetPeriod });

@@ -99,8 +99,10 @@ it("component-limits concurrent document grants with server-derived actor and ap
     const storageId = await ctx.storage.store(new Blob([pdfBytes], { type: "application/pdf" }));
     await ctx.db.insert("admissionsDocuments", { schoolId: f.schoolId, applicationId: f.applicationId, requirementId: f.requirementId, category: "identity", documentKey, storageId, fileName: "grant-rate.pdf", mimeType: "application/pdf", byteSize: pdfBytes.byteLength, sha256: await sha256Hex(pdfBytes), version: 1, state: "uploaded", sensitivity: "personal", uploadedByGuardianId: f.guardianId, retentionHold: false, createdAt: Date.now(), updatedAt: Date.now() });
   });
+  expect(await f.owner.mutation(ownAccessRef, { documentKey, action: "view" })).toEqual({ status: "unavailable" });
+  const freshOwner = f.t.withIdentity({ tokenIdentifier: "test|document-owner", subject: "document-owner", issuer: "test", email: "owner@example.test", emailVerified: true, authenticatedAt: Date.now() });
   const results = await Promise.allSettled(Array.from({ length: 21 }, () =>
-    f.owner.mutation(ownAccessRef, { documentKey, action: "view" }),
+    freshOwner.mutation(ownAccessRef, { documentKey, action: "view" }),
   ));
   expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(20);
   const denied = results.filter((result) => result.status === "rejected");
@@ -160,6 +162,10 @@ it("allows only requested document corrections and atomically supersedes one-for
     return await f.owner.mutation(finalizeUploadRef, { uploadIntentId: intent.uploadIntentId });
   };
   const first = await store("first.pdf");
+  const draftReplacement = await store("draft-replacement.pdf");
+  let rows = await f.t.run((ctx) => ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", f.applicationId).eq("requirementId", f.requirementId)).collect());
+  expect(rows.find((row) => row.documentKey === first.documentKey)).toMatchObject({ state: "superseded" });
+  expect(rows.find((row) => row.documentKey === draftReplacement.documentKey)).toMatchObject({ state: "uploaded", version: 2 });
   const secondRequested = await f.t.run(async (ctx) => {
     const application = await ctx.db.get(f.applicationId);
     if (!application) throw new Error("application missing");
@@ -180,9 +186,9 @@ it("allows only requested document corrections and atomically supersedes one-for
   });
   if (neverRequested) await expect(f.owner.mutation(requestUploadRef, { applicationId: f.applicationId, requirementId: neverRequested._id, fileName: "wrong.pdf", contentType: "application/pdf", size: pdfBytes.byteLength, sha256: hash })).rejects.toThrow("requested document corrections");
   const replacement = await store("replacement.pdf");
-  const rows = await f.t.run((ctx) => ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", f.applicationId).eq("requirementId", f.requirementId)).collect());
-  expect(rows.find((row) => row.documentKey === first.documentKey)).toMatchObject({ state: "superseded" });
-  expect(rows.find((row) => row.documentKey === replacement.documentKey)).toMatchObject({ state: "uploaded", version: 2 });
+  rows = await f.t.run((ctx) => ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", f.applicationId).eq("requirementId", f.requirementId)).collect());
+  expect(rows.find((row) => row.documentKey === draftReplacement.documentKey)).toMatchObject({ state: "superseded" });
+  expect(rows.find((row) => row.documentKey === replacement.documentKey)).toMatchObject({ state: "uploaded", version: 3 });
 }, 15_000);
 
 it("uses hashed one-time guardian grants and fails closed across actor, tenant, expiry, replay, and document state", async () => {

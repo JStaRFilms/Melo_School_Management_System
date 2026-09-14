@@ -84,6 +84,13 @@ it("converts one accepted application transactionally, reuses canonical admissio
   vi.useFakeTimers();
   const restoreEmail = mockOnboardingEmailDelivery();
   const f = await fixture();
+  await f.t.run(async (ctx) => {
+    const application = await ctx.db.get(f.applicationId);
+    if (!application?.latestSnapshotId) throw new Error("accepted snapshot missing");
+    for (let index = 0; index < 200; index += 1) {
+      await ctx.db.insert("admissionsSubmissionSnapshotItems", { schoolId: f.schoolId, snapshotId: application.latestSnapshotId, itemKey: `answer:bounded-${index}`, kind: "answer", valueType: "string", serializedValue: "accepted", dataClass: "personal", createdAt: Date.now() });
+    }
+  });
   const args = { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "conversion-request-001", classId: f.classId, admissionNumber: "ADM/2026/001", familyResolution: { kind: "create" as const }, photoDocumentKey: f.photoDocumentKey };
   const requested = await f.staff.mutation(conversionRef, args);
   expect(requested).toMatchObject({ state: "requested", replayed: false });

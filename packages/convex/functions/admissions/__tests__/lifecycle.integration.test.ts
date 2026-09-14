@@ -282,9 +282,15 @@ it("publishes replacement form, declaration, and positive price versions without
   await f.guardian.mutation(saveDraftRef, { applicationId: oldDraft.application.applicationId, expectedVersion: 0, mutationKey: "old-bound-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Amaka", lastName: "Eze", dateOfBirth: Date.UTC(2019, 2, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Original form" }] });
   await expect(f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "2", fields: [{ fieldKey: "bad", sectionKey: "child", kind: "script", label: "Bad", requiredMode: "optional", dataClass: "public", validationJson: "{}", order: 1 }], requirements: [], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 0, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() })).rejects.toThrow();
   const replacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "2", fields: [{ fieldKey: "reason", sectionKey: "child", kind: "textarea", label: "Reason", requiredMode: "required", dataClass: "personal", purpose: "Understand the application", validationJson: JSON.stringify({ maxLength: 500 }), order: 1 }], requirements: [{ requirementKey: "birth-certificate", category: "identity", label: "Birth certificate", requiredMode: "required", acceptedMimeTypes: ["application/pdf", "image/jpeg", "image/png"], maxBytes: 5_000_000, maxFiles: 1, sensitivity: "personal", purpose: "Verify the applicant's identity", order: 1 }], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 600_000, currency: "NGN", refundPolicyKey: "current", feeDisclosure: "Current fee", effectiveFrom: Date.now() - 1 });
+  await f.t.run(async (ctx) => {
+    const requirement = await ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_requirement_key", (q) => q.eq("formVersionId", replacement.formVersionId).eq("requirementKey", "birth-certificate")).unique();
+    expect(requirement).toMatchObject({ sensitivity: "highly_sensitive" });
+    if (requirement) await ctx.db.patch(requirement._id, { requiredMode: "optional", sensitivity: "personal" });
+  });
   await expect(f.staff.mutation(publishCampaignRef, replacement)).rejects.toThrow("approval evidence");
   const replacementDraft = (await f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).find((item) => item.priceId === replacement.priceId);
   if (!replacementDraft) throw new Error("Replacement campaign draft missing");
+  expect(replacementDraft.requirements[0]).toMatchObject({ category: "identity", requiredMode: "optional", sensitivity: "personal" });
   await expect(f.limited.mutation(approveCampaignPriceTermsRef, { schoolId: f.schoolId, priceId: replacement.priceId, expectedSubjectKey: replacementDraft.priceApprovalSubjectKey })).rejects.toThrow("FORBIDDEN");
   await expect(f.staff.mutation(approveCampaignPriceTermsRef, { schoolId: f.schoolId, priceId: replacement.priceId, expectedSubjectKey: `${replacementDraft.priceApprovalSubjectKey}-stale` })).rejects.toThrow("CAMPAIGN_PRICE_CHANGED");
   const approval = await f.staff.mutation(approveCampaignPriceTermsRef, { schoolId: f.schoolId, priceId: replacement.priceId, expectedSubjectKey: replacementDraft.priceApprovalSubjectKey });
@@ -328,6 +334,12 @@ it("allows an owned paid draft to submit after campaign closure while blocking n
   await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "close-draft-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
   await f.staff.mutation(closeCampaignRef, { schoolId: f.schoolId, intakeId: f.campaign.intakeId });
   await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "after-close" })).rejects.toThrow("unavailable");
+  const closedReplacement = await f.staff.mutation(replacementCampaignRef, { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, productId: f.campaign.productId, schemaVersion: "closed-replacement", fields: [], requirements: [], declarationTitle: "Updated", declarationBody: "Updated declaration", declarationPurpose: "Attestation", amountMinor: 500_000, currency: "NGN", refundPolicyKey: "non-refundable", feeDisclosure: "Application processing fee", effectiveFrom: Date.now() - 1 });
+  await f.staff.mutation(approveCampaignPublicationRequirementsRef, closedReplacement);
+  await f.staff.mutation(publishCampaignRef, closedReplacement);
+  expect(await f.t.run((ctx) => ctx.db.get(f.campaign.intakeId))).toMatchObject({ status: "closed" });
+  expect(await f.t.run((ctx) => ctx.db.get(f.campaign.productId))).toMatchObject({ status: "paused" });
+  await expect(f.guardian.mutation(createAttemptRef, { schoolSlug: "admissions-school", productSlug: "application-slot", idempotencyKey: "after-closed-replacement" })).rejects.toThrow("unavailable");
   await expect(f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "close-draft-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true })).resolves.toMatchObject({ revision: 1 });
 });
 
@@ -639,6 +651,21 @@ it("resumes primary contact and bound definitions and enforces every mutable cor
   await expect(f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 1, mutationKey: "outside-core-scope", answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Not allowed" }] })).rejects.toThrow("requested corrections");
   await expect(f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 1, mutationKey: "all-core-scope", requestedEntryLabel: "Primary 2", profile: { firstName: "Kosi", lastName: "Nwosu", dateOfBirth: Date.UTC(2019, 4, 2), preferredName: "K" }, primaryContact: { fullName: "Adaobi Nwosu", relationship: "Mother", email: "adaobi@example.test" }, answers: [] })).resolves.toMatchObject({ draftVersion: 2 });
   expect(await f.guardian.query(getDraftRef, { applicationId: application.applicationId })).toMatchObject({ requestedEntryLabel: "Primary 2", profile: { preferredName: "K" }, primaryContact: { fullName: "Adaobi Nwosu", email: "adaobi@example.test" } });
+});
+
+it("lists active conversion classes independently of archived class history", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "active-conversion-classes");
+  const activeClassId = await f.t.run(async (ctx) => {
+    const now = Date.now();
+    for (let index = 0; index < 120; index += 1) {
+      await ctx.db.insert("classes", { schoolId: f.schoolId, name: `Archived ${index}`, gradeName: `Archived ${index}`, level: "primary", isArchived: true, createdAt: now + index, updatedAt: now + index });
+    }
+    return await ctx.db.insert("classes", { schoolId: f.schoolId, name: "Current Primary", gradeName: "Current Primary", level: "primary", isArchived: false, createdAt: now + 121, updatedAt: now + 121 });
+  });
+  const workflow = await f.staff.query(conversionWorkflowRef, { schoolId: f.schoolId, applicationId: application.applicationId }) as { classes: Array<{ classId: Id<"classes">; name: string }> };
+  expect(workflow.classes).toContainEqual(expect.objectContaining({ classId: activeClassId, name: "Current Primary" }));
+  expect(workflow.classes.some((row) => row.name.startsWith("Archived "))).toBe(false);
 });
 
 it("returns separate immutable basic and audited sensitive staff detail without storage IDs", async () => {

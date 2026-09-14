@@ -188,3 +188,8 @@ export function conditionMatches(conditionJson: string | undefined, answers: Rea
 export function isSensitiveDataClass(value: Doc<"admissionsFormFields">["dataClass"]): boolean {
   return value === "highly_sensitive" || value === "financial_security";
 }
+
+export function isSensitiveDocumentClass(category: string, sensitivity: Doc<"admissionsDocumentRequirements">["sensitivity"]): boolean {
+  const normalizedCategory = category.trim().toLowerCase();
+  return normalizedCategory === "identity" || normalizedCategory === "medical" || isSensitiveDataClass(sensitivity);
+}

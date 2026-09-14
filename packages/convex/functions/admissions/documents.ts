@@ -8,6 +8,7 @@ import { requireContractBoundStorageForUpload } from "../academic/knowledgeUploa
 import type { QuotaReservationResult } from "../academic/metering";
 import { documentAccessResultValidator, documentAccessUpstreamValidator } from "../foundation/contracts";
 import { cleanupUploadIntentRef } from "./refs";
+import { isSensitiveDocumentClass } from "./validation";
 import {
   ADMISSIONS_UPLOAD_OPERATION,
   MAX_ADMISSIONS_DOCUMENT_BYTES,
@@ -77,7 +78,7 @@ export const requestUploadIntent = mutation({
     if (!requirement.acceptedMimeTypes.map(normalizeMimeType).includes(metadata.contentType) || args.size > requirement.maxBytes) throw new ConvexError("Document does not satisfy the published type and size requirement");
     const existingDocuments = await ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id).eq("requirementId", requirement._id)).take(requirement.maxFiles + 1);
     const activeDocuments = existingDocuments.filter((document) => document.state !== "deleted" && document.state !== "superseded");
-    const replacementAllowed = requirement.maxFiles === 1 && activeDocuments.length === 1 && await correctionAllowsRequirement(ctx, application, requirement._id);
+    const replacementAllowed = requirement.maxFiles === 1 && activeDocuments.length === 1 && (application.state === "draft" || await correctionAllowsRequirement(ctx, application, requirement._id));
     if (application.state === "changes_requested" && !await correctionAllowsRequirement(ctx, application, requirement._id)) admissionsError("APPLICATION_LOCKED", "Only requested document corrections may be changed");
     if (activeDocuments.length >= requirement.maxFiles && !replacementAllowed) throw new ConvexError("Document requirement file limit reached");
     await requireContractBoundStorageForUpload(ctx, application.schoolId, args.size);
@@ -176,7 +177,7 @@ export const finalizeUpload = mutation({
     if (!(await storageClaimedOnlyBy(ctx, intent.storageId, { purpose: "admissionsDocumentUploadIntent", ownerId: String(intent._id) }))) throw new ConvexError("Stored document has conflicting ownership");
     const previous = await ctx.db.query("admissionsDocuments").withIndex("by_application_and_requirement", (q) => q.eq("applicationId", application._id).eq("requirementId", requirement._id)).order("desc").take(requirement.maxFiles + 1);
     const active = previous.filter((document) => document.state !== "deleted" && document.state !== "superseded");
-    const replacementAllowed = requirement.maxFiles === 1 && active.length === 1 && await correctionAllowsRequirement(ctx, application, requirement._id);
+    const replacementAllowed = requirement.maxFiles === 1 && active.length === 1 && (application.state === "draft" || await correctionAllowsRequirement(ctx, application, requirement._id));
     if (active.length >= requirement.maxFiles && !replacementAllowed) throw new ConvexError("Document requirement file limit reached");
     const now = Date.now();
     const version = previous.reduce((maximum, document) => Math.max(maximum, document.version), 0) + 1;
@@ -195,7 +196,7 @@ export const finalizeUpload = mutation({
       sha256: intent.expectedSha256,
       version,
       state: "uploaded",
-      sensitivity: requirement.sensitivity,
+      sensitivity: isSensitiveDocumentClass(requirement.category, requirement.sensitivity) ? "highly_sensitive" : requirement.sensitivity,
       uploadedByGuardianId: guardian._id,
       ...(supersedes ? { supersedesDocumentId: supersedes._id } : {}),
       retentionHold: false,
@@ -269,7 +270,7 @@ export const getOwnAccess = mutation({
       return { status: "unavailable" as const };
     }
     const application = await ctx.db.get(document.applicationId);
-    const freshEnough = document.sensitivity !== "highly_sensitive" && document.sensitivity !== "financial_security" ? true : await hasFreshAuthentication(ctx);
+    const freshEnough = isSensitiveDocumentClass(document.category, document.sensitivity) ? await hasFreshAuthentication(ctx) : true;
     const allowed = documentStateAllowsAccess(document, application) && application?.guardianId === guardian._id && freshEnough;
     if (!allowed) {
       await recordDocumentAccessAudit(ctx, { document, actorKind: "guardian", guardianId: guardian._id, action: args.action, outcome: "denied", reason: !freshEnough ? "FRESH_AUTH_REQUIRED" : "ACCESS_STATE_DENIED" });
@@ -291,7 +292,7 @@ export const consumeOwnAccessGrant = internalMutation({
     const document = await ctx.db.get(grant.documentId);
     if (!document) return { status: "unavailable" as const };
     const application = await ctx.db.get(document.applicationId);
-    const freshEnough = document.sensitivity !== "highly_sensitive" && document.sensitivity !== "financial_security" ? true : await hasFreshAuthentication(ctx);
+    const freshEnough = isSensitiveDocumentClass(document.category, document.sensitivity) ? await hasFreshAuthentication(ctx) : true;
     let deniedReason: string | null = null;
     if (grant.actorKind !== "guardian" || grant.audience !== "apply" || grant.guardianId !== guardian._id) deniedReason = "WRONG_ACTOR_OR_AUDIENCE";
     else if (grant.consumedAt !== undefined) deniedReason = "ACCESS_GRANT_REPLAYED";

@@ -15,7 +15,7 @@ import {
   sha256Hex,
 } from "./shared";
 import { getCurrentRetentionPolicy } from "./retention";
-import { conditionMatches, isSensitiveDataClass, validateAnswerForField } from "./validation";
+import { conditionMatches, isSensitiveDataClass, isSensitiveDocumentClass, validateAnswerForField } from "./validation";
 
 type DecisionWorkflowState = "in_evaluation" | "ready_for_decision" | "waitlisted" | "accepted" | "rejected";
 
@@ -173,8 +173,8 @@ async function loadImmutableDetail(ctx: QueryCtx | MutationCtx, schoolId: Id<"sc
     requestedEntryLabel: requestedEntryItem?.serializedValue || null,
     basicAnswers: answers.filter((answer) => !isSensitiveDataClass(answer.dataClass)),
     sensitiveAnswers: answers.filter((answer) => isSensitiveDataClass(answer.dataClass)),
-    basicDocuments: documentMetadata.filter((document) => !isSensitiveDataClass(document.sensitivity)),
-    sensitiveDocuments: documentMetadata.filter((document) => isSensitiveDataClass(document.sensitivity)),
+    basicDocuments: documentMetadata.filter((document) => !isSensitiveDocumentClass(document.category, document.sensitivity)),
+    sensitiveDocuments: documentMetadata.filter((document) => isSensitiveDocumentClass(document.category, document.sensitivity)),
   };
 }
 
@@ -210,13 +210,16 @@ export const getConversionWorkflow = query({
     await requireAdmissionsStaff(ctx, args.schoolId, ["enrollment.intakes.manage", "enrollment.decisions.record"]);
     const application = await ctx.db.get(args.applicationId);
     if (!application || application.schoolId !== args.schoolId) admissionsError("NOT_FOUND_OR_DENIED", "Application not found");
-    const [classes, families, conversion] = await Promise.all([
-      ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(101),
+    const [legacyActiveClasses, activeClasses, families, conversion] = await Promise.all([
+      ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", undefined)).take(501),
+      ctx.db.query("classes").withIndex("by_school_and_archived", (q) => q.eq("schoolId", args.schoolId).eq("isArchived", false)).take(501),
       ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", args.schoolId)).take(101),
       application.conversionId ? ctx.db.get(application.conversionId) : Promise.resolve(null),
     ]);
+    if (legacyActiveClasses.length > 500 || activeClasses.length > 500) throw new ConvexError("Active class catalogue exceeds the supported bound");
+    const classes = [...legacyActiveClasses, ...activeClasses];
     const outbox = conversion ? await ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", conversion._id).eq("eventKey", "portal_parent_linkage")).unique() : null;
-    return { classes: classes.filter((row) => !row.isArchived).map((row) => ({ classId: row._id, name: row.name, level: row.level })), families: families.map((row) => ({ familyId: row._id, name: row.name })), conversion: conversion ? { state: conversion.state, errorCode: conversion.errorCode ?? null, admissionNumber: conversion.admissionNumber ?? null, onboardingState: outbox?.state ?? null, idempotencyKey: conversion.idempotencyKey } : null };
+    return { classes: classes.map((row) => ({ classId: row._id, name: row.name, level: row.level })), families: families.map((row) => ({ familyId: row._id, name: row.name })), conversion: conversion ? { state: conversion.state, errorCode: conversion.errorCode ?? null, admissionNumber: conversion.admissionNumber ?? null, onboardingState: outbox?.state ?? null, idempotencyKey: conversion.idempotencyKey } : null };
   },
 });
 
@@ -556,8 +559,8 @@ export const recordDocumentReview = mutation({
   },
 });
 
-function requiredDocumentAccessCapabilities(document: { sensitivity: string }, action: "view" | "download") {
-  return action === "download" || document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security"
+function requiredDocumentAccessCapabilities(document: { category: string; sensitivity: Doc<"admissionsDocuments">["sensitivity"] }, action: "view" | "download") {
+  return action === "download" || isSensitiveDocumentClass(document.category, document.sensitivity)
     ? ["enrollment.documents.review", "enrollment.applications.view_sensitive"]
     : ["enrollment.documents.review"];
 }
@@ -581,7 +584,7 @@ export const getDocumentAccess = mutation({
       return { status: "unavailable" as const };
     }
     const application = await ctx.db.get(document.applicationId);
-    const freshAuthenticationRequired = document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security";
+    const freshAuthenticationRequired = isSensitiveDocumentClass(document.category, document.sensitivity);
     const freshEnough = !freshAuthenticationRequired || await hasFreshAuthentication(ctx);
     if (!documentStateAllowsAccess(document, application) || !freshEnough) {
       await recordDocumentAccessAudit(ctx, { document, actorKind: "staff", actorUserId: actor.userId, action: args.action, outcome: "denied", reason: !freshEnough ? "FRESH_AUTH_REQUIRED" : "ACCESS_STATE_DENIED" });
@@ -610,7 +613,7 @@ export const consumeDocumentAccessGrant = internalMutation({
       return { status: "unavailable" as const };
     }
     const application = await ctx.db.get(document.applicationId);
-    const freshAuthenticationRequired = document.sensitivity === "highly_sensitive" || document.sensitivity === "financial_security";
+    const freshAuthenticationRequired = isSensitiveDocumentClass(document.category, document.sensitivity);
     const freshEnough = !freshAuthenticationRequired || await hasFreshAuthentication(ctx);
     let deniedReason: string | null = null;
     if (grant.actorKind !== "staff" || grant.audience !== "admin" || grant.actorUserId !== actor.userId) deniedReason = "WRONG_ACTOR_OR_AUDIENCE";
