@@ -1,5 +1,6 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
+import { processRetentionCleanupRef } from "./functions/admissions/refs";
 
 const crons = cronJobs();
 
@@ -8,6 +9,13 @@ crons.interval(
   "expire retained form drafts",
   { hours: 1 },
   internal.functions.academic.drafts.expireFormDrafts,
+  {},
+);
+
+crons.interval(
+  "clean admissions documents",
+  { hours: 6 },
+  processRetentionCleanupRef,
   {},
 );
 

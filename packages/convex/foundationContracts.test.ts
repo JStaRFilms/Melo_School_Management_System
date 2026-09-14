@@ -5,6 +5,7 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { issueCheckedDocumentAccessV1 } from "./functions/foundation/documentAccess";
 import { matchesPaymentDispatchProviderModeV1 } from "./functions/foundation/paymentDispatch";
+import { resolveApplicationCallbackOrigin } from "./functions/foundation/applicationLinks";
 import schema from "./schema";
 
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts"]);
@@ -15,7 +16,7 @@ describe("B0 foundation contracts", () => {
     const now = Date.now();
     await t.run(async (ctx) => {
       const schoolId = await ctx.db.insert("schools", {
-        name: "North Star", slug: "north-star", status: "active", createdAt: now, updatedAt: now,
+        name: "North Star", slug: "north-star", status: "active", features: { billing: true, curriculum: true, knowledgeLibrary: true, admissions: true }, createdAt: now, updatedAt: now,
       });
       const programmeId = await ctx.db.insert("admissionsProgrammes", {
         schoolId, slug: "primary", name: "Primary", status: "published", createdAt: now, updatedAt: now,
@@ -44,6 +45,24 @@ describe("B0 foundation contracts", () => {
     } finally {
       if (priorOrigin === undefined) delete process.env.APPLICATION_ORIGIN;
       else process.env.APPLICATION_ORIGIN = priorOrigin;
+    }
+  });
+
+  test("allows only configured or trusted application callback origins", () => {
+    const priorApplicationOrigin = process.env.APPLICATION_ORIGIN;
+    const priorTrustedOrigins = process.env.TRUSTED_ORIGINS;
+    process.env.APPLICATION_ORIGIN = "https://apply.example.test";
+    process.env.TRUSTED_ORIGINS = "https://admin.example.test,http://localhost:3004";
+    try {
+      expect(resolveApplicationCallbackOrigin()).toBe("https://apply.example.test");
+      expect(resolveApplicationCallbackOrigin("http://localhost:3004")).toBe("http://localhost:3004");
+      expect(() => resolveApplicationCallbackOrigin("https://malicious.example.test")).toThrow("not trusted");
+      expect(() => resolveApplicationCallbackOrigin("http://localhost:3004/account")).toThrow("invalid");
+    } finally {
+      if (priorApplicationOrigin === undefined) delete process.env.APPLICATION_ORIGIN;
+      else process.env.APPLICATION_ORIGIN = priorApplicationOrigin;
+      if (priorTrustedOrigins === undefined) delete process.env.TRUSTED_ORIGINS;
+      else process.env.TRUSTED_ORIGINS = priorTrustedOrigins;
     }
   });
 

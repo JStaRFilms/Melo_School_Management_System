@@ -1,5 +1,7 @@
 # Standardized Login Flow Error Handling
 
+**Status:** Implemented
+
 ## Goal
 
 Make admin and teacher sign-in behave the same way when credentials are wrong, an email is malformed, or a user is blocked from the workspace. The login flow should show a clear, consistent message instead of swallowing auth failures or using different copy in each app.

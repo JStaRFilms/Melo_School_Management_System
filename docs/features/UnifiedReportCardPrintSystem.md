@@ -1,5 +1,7 @@
 # Unified Report Card Print System
 
+**Status:** Implemented
+
 ## Overview
 
 A shared, unified print system for report cards across all surfaces (admin, teacher, and parent/student portal). Ensures consistent A4 preview and print behavior, eliminates duplicate print logic, and maintains a single source of truth for report card rendering.

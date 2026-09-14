@@ -9,6 +9,10 @@ import {
   isWorkspaceBranchScopedRoute,
 } from "../workspace-route-access";
 import { getAccessibleWorkspaceSections, isWorkspaceSectionActive } from "../workspace-navigation";
+import {
+  NEW_SCHOOL_MODULE_DEFAULTS,
+  resolveSchoolModuleFeatures,
+} from "../product-modules";
 
 const ready: Extract<WorkspaceAccessSummary, { state: "ready" }> = {
   state: "ready", branch: { schoolId: "default", name: "School", slug: "school", status: "active" },
@@ -169,9 +173,29 @@ describe("selected branch route adapters", () => {
   });
 });
 
+describe("module defaults", () => {
+  it("preserves legacy access while new schools start with optional modules disabled", () => {
+    expect(resolveSchoolModuleFeatures(undefined)).toEqual({
+      familyPortal: true,
+      billing: true,
+      curriculum: true,
+      knowledgeLibrary: true,
+      admissions: false,
+    });
+    expect(NEW_SCHOOL_MODULE_DEFAULTS).toEqual({
+      familyPortal: false,
+      billing: false,
+      curriculum: false,
+      knowledgeLibrary: false,
+      admissions: false,
+    });
+  });
+});
+
 describe("module navigation and deep links", () => {
   it("uses the same module rules for real Admin and Teacher routes", () => {
     const features = {
+      familyPortal: false,
       billing: false,
       curriculum: false,
       knowledgeLibrary: false,
@@ -188,7 +212,7 @@ describe("module navigation and deep links", () => {
       "/academic/knowledge/templates",
       "/academic/knowledge/assessment-profiles",
       "/academic/knowledge/library",
-      "/students/import",
+      "/admin/admissions",
     ]) {
       expect(adminSections.some((section) => section.href === path)).toBe(false);
       expect(
@@ -207,9 +231,11 @@ describe("module navigation and deep links", () => {
       );
     }
     expect(
-      getWorkspaceModuleDenial("admin", "/academic/students/onboarding", features)
-        ?.state,
-    ).toBe("module_disabled");
+      getWorkspaceModuleDenial("admin", "/academic/students/onboarding", features),
+    ).toBeNull();
+    expect(
+      getWorkspaceModuleDenial("admin", "/academic/students/import", features),
+    ).toBeNull();
     expect(
       getWorkspaceModuleDenial("admin", "/academic/students", features),
     ).toBeNull();
@@ -217,10 +243,13 @@ describe("module navigation and deep links", () => {
   });
   it("keeps Portal family navigation separate from staff capabilities", () => {
     expect(getAccessibleWorkspaceSections("portal", { access: { state: "forbidden", message: "No staff membership" }, userRole: "parent" }).map(section => section.href)).toContain("/billing");
+    expect(getAccessibleWorkspaceSections("portal", { features: { familyPortal: false }, userRole: "parent" })).toEqual([]);
+    expect(getWorkspaceModuleDenial("portal", "/results", { familyPortal: false })?.state).toBe("module_disabled");
     expect(getAccessibleWorkspaceSections("portal", { features: { billing: false }, userRole: "parent" }).map(section => section.href)).not.toContain("/billing");
     expect(getWorkspaceModuleDenial("portal", "/billing/invoice", { billing: false })?.state).toBe("module_disabled");
     expect(getAccessibleWorkspaceSections("portal", { userRole: "parent" }).map(section => section.href)).not.toContain("/learning/topics");
     expect(getAccessibleWorkspaceSections("portal", { userRole: "student" }).map(section => section.href)).toContain("/learning/topics");
+    expect(getAccessibleWorkspaceSections("portal", { features: { knowledgeLibrary: false }, userRole: "student" }).map(section => section.href)).not.toContain("/learning/topics");
   });
   it("matches route segment boundaries, not lookalike prefixes", () => {
     expect(isWorkspaceSectionActive({ href: "/admin", label: "Admin", matchers: ["/admin"] }, "/administrator")).toBe(false);

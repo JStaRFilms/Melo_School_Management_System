@@ -20,6 +20,7 @@
    | Teacher | `http://localhost:3001` | Main teacher |
    | Admin | `http://localhost:3002` | Main admin |
    | Parent/student portal | `http://localhost:3003` | Portal user |
+   | Admissions application | `http://localhost:3004` | Guardian applicant |
    | School website | `http://localhost:3005` | Visitor |
    | Platform administration | `http://localhost:3006` | Platform admin |
 

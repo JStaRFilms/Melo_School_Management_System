@@ -1,5 +1,7 @@
 # Grouped Report Card Term Settings
 
+**Status:** Implemented
+
 ## Goal
 Let admins set shared report-card term values once and reuse them across multiple classes, while still allowing teachers to enter per-student attendance presence values.
 

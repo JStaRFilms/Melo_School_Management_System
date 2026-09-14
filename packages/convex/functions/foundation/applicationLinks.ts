@@ -3,13 +3,49 @@ import { v } from "convex/values";
 import { buildApplicationLinkV1 } from "@school/shared";
 import { applicationLinkV1Validator } from "./contracts";
 
-function configuredApplicationOrigin(): string {
-  const origin = process.env.APPLICATION_ORIGIN?.trim() ?? process.env.APPLY_APP_ORIGIN?.trim();
+export function configuredApplicationOrigin(): string {
+  const origin = process.env.APPLICATION_ORIGIN?.trim() || process.env.APPLY_APP_ORIGIN?.trim();
   if (origin) return origin;
   // Local-only compatibility. Production deployment configuration must set an
   // explicit origin; site content never supplies one.
   if (process.env.NODE_ENV !== "production") return "http://localhost:3004";
   throw new Error("APPLICATION_ORIGIN must be configured in production");
+}
+
+export function resolveApplicationCallbackOrigin(requestedOrigin?: string): string {
+  const canonicalOrigin = new URL(configuredApplicationOrigin()).origin;
+  if (!requestedOrigin) return canonicalOrigin;
+
+  let normalizedOrigin: string;
+  try {
+    const requestedUrl = new URL(requestedOrigin);
+    if (requestedUrl.origin !== requestedOrigin || requestedUrl.pathname !== "/" || requestedUrl.search || requestedUrl.hash) {
+      throw new Error("Origin-only URL required");
+    }
+    normalizedOrigin = requestedUrl.origin;
+  } catch {
+    throw new Error("Application return origin is invalid");
+  }
+
+  const trustedOrigins = new Set([
+    canonicalOrigin,
+    ...(process.env.TRUSTED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+      .map((origin) => {
+        try {
+          return new URL(origin).origin;
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean),
+  ]);
+  if (!trustedOrigins.has(normalizedOrigin)) {
+    throw new Error("Application return origin is not trusted");
+  }
+  return normalizedOrigin;
 }
 
 function resolveAvailability(args: {
@@ -98,7 +134,7 @@ export const getApplicationLink = query({
         .take(1)
       : [];
     const availability = resolveAvailability({
-      schoolActive: school?.status === "active",
+      schoolActive: school?.status === "active" && school.features?.admissions === true,
       intake,
       hasActiveProduct: activeProducts.length > 0,
       now: Date.now(),

@@ -10,6 +10,8 @@ This is not an implementation task by itself. It is a memory aid and prioritizat
 
 ## Alignment Snapshot
 
+**Snapshot as of 2026-09-14.** The implemented list below predates the current `apps/platform` surface. The app now also carries `commercial/` (entitlement and usage-cost controls), `audit/`, `groups/`, and per-school `migration/` views. Re-verify against `apps/platform/app/` before citing this list.
+
 ### What The Current Platform Surface Already Covers
 
 The current `apps/platform` implementation is aligned to the narrow provisioning slice, not the full long-term platform vision.

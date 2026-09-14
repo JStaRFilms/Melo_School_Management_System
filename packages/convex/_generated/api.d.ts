@@ -109,6 +109,20 @@ import type * as functions_academic_tenantPurgeAction from "../functions/academi
 import type * as functions_academic_tenantPurgeManifest from "../functions/academic/tenantPurgeManifest.js";
 import type * as functions_academic_transfers from "../functions/academic/transfers.js";
 import type * as functions_academic_usageEntitlements from "../functions/academic/usageEntitlements.js";
+import type * as functions_admissions_accessHttp from "../functions/admissions/accessHttp.js";
+import type * as functions_admissions_applications from "../functions/admissions/applications.js";
+import type * as functions_admissions_catalogue from "../functions/admissions/catalogue.js";
+import type * as functions_admissions_conversion from "../functions/admissions/conversion.js";
+import type * as functions_admissions_documents from "../functions/admissions/documents.js";
+import type * as functions_admissions_guardian from "../functions/admissions/guardian.js";
+import type * as functions_admissions_paymentTerms from "../functions/admissions/paymentTerms.js";
+import type * as functions_admissions_payments from "../functions/admissions/payments.js";
+import type * as functions_admissions_refs from "../functions/admissions/refs.js";
+import type * as functions_admissions_retention from "../functions/admissions/retention.js";
+import type * as functions_admissions_shared from "../functions/admissions/shared.js";
+import type * as functions_admissions_staff from "../functions/admissions/staff.js";
+import type * as functions_admissions_uploadHttp from "../functions/admissions/uploadHttp.js";
+import type * as functions_admissions_validation from "../functions/admissions/validation.js";
 import type * as functions_auth from "../functions/auth.js";
 import type * as functions_billing from "../functions/billing.js";
 import type * as functions_billingGateway from "../functions/billingGateway.js";
@@ -131,6 +145,7 @@ import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
 import type * as functions_platform_index from "../functions/platform/index.js";
 import type * as functions_platform_provisioningHelpers from "../functions/platform/provisioningHelpers.js";
+import type * as functions_platform_schoolAdminEmailUpdate from "../functions/platform/schoolAdminEmailUpdate.js";
 import type * as functions_portal from "../functions/portal.js";
 import type * as http from "../http.js";
 
@@ -242,6 +257,20 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/tenantPurgeManifest": typeof functions_academic_tenantPurgeManifest;
   "functions/academic/transfers": typeof functions_academic_transfers;
   "functions/academic/usageEntitlements": typeof functions_academic_usageEntitlements;
+  "functions/admissions/accessHttp": typeof functions_admissions_accessHttp;
+  "functions/admissions/applications": typeof functions_admissions_applications;
+  "functions/admissions/catalogue": typeof functions_admissions_catalogue;
+  "functions/admissions/conversion": typeof functions_admissions_conversion;
+  "functions/admissions/documents": typeof functions_admissions_documents;
+  "functions/admissions/guardian": typeof functions_admissions_guardian;
+  "functions/admissions/paymentTerms": typeof functions_admissions_paymentTerms;
+  "functions/admissions/payments": typeof functions_admissions_payments;
+  "functions/admissions/refs": typeof functions_admissions_refs;
+  "functions/admissions/retention": typeof functions_admissions_retention;
+  "functions/admissions/shared": typeof functions_admissions_shared;
+  "functions/admissions/staff": typeof functions_admissions_staff;
+  "functions/admissions/uploadHttp": typeof functions_admissions_uploadHttp;
+  "functions/admissions/validation": typeof functions_admissions_validation;
   "functions/auth": typeof functions_auth;
   "functions/billing": typeof functions_billing;
   "functions/billingGateway": typeof functions_billingGateway;
@@ -264,6 +293,7 @@ declare const fullApi: ApiFromModules<{
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
   "functions/platform/index": typeof functions_platform_index;
   "functions/platform/provisioningHelpers": typeof functions_platform_provisioningHelpers;
+  "functions/platform/schoolAdminEmailUpdate": typeof functions_platform_schoolAdminEmailUpdate;
   "functions/portal": typeof functions_portal;
   http: typeof http;
 }>;
@@ -21466,6 +21496,140 @@ export declare const components: {
           any
         >;
       };
+    };
+  };
+  rateLimiter: {
+    lib: {
+      checkRateLimit: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      clearAll: FunctionReference<
+        "mutation",
+        "internal",
+        { before?: number },
+        null
+      >;
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
+      getValue: FunctionReference<
+        "query",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          key?: string;
+          name: string;
+          sampleShards?: number;
+        },
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          shard: number;
+          ts: number;
+          value: number;
+        }
+      >;
+      rateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config:
+            | {
+                capacity?: number;
+                kind: "token bucket";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: null;
+              }
+            | {
+                capacity?: number;
+                kind: "fixed window";
+                maxReserved?: number;
+                period: number;
+                rate: number;
+                shards?: number;
+                start?: number;
+              };
+          count?: number;
+          key?: string;
+          name: string;
+          reserve?: boolean;
+          throws?: boolean;
+        },
+        { ok: true; retryAfter?: number } | { ok: false; retryAfter: number }
+      >;
+      resetRateLimit: FunctionReference<
+        "mutation",
+        "internal",
+        { key?: string; name: string },
+        null
+      >;
+    };
+    time: {
+      getServerTime: FunctionReference<"mutation", "internal", {}, number>;
     };
   };
 };

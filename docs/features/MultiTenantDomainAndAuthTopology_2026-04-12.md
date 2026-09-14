@@ -1,5 +1,7 @@
 # Multi-Tenant Domain And Auth Topology 2026-04-12
 
+**Status:** Design target. Public school sites are implemented in apps/sites; role-subdomain topology is not implemented.
+
 ## Goal
 
 Define a production-ready hosting, domain, and authentication model for turning the current monorepo into a real multi-tenant SaaS without cloning the repo or running a separate deployment per school.

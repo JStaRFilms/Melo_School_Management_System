@@ -1,5 +1,7 @@
 # ADR-007: OCR Architecture Decision
 
+**Status:** Accepted and implemented (`packages/convex/functions/academic/lessonKnowledgeOcrActions.ts`)
+
 ## Decision
 
 Use Convex-managed OCR job orchestration with OpenRouter PDF processing as the MVP provider path, explicitly configured to use the `mistral-ocr` engine for scanned/image-heavy planning-library PDFs.

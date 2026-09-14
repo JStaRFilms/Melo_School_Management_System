@@ -423,6 +423,144 @@ async function deleteFamilyIfEmpty(ctx: any, familyId: Id<"families">) {
   }
 }
 
+export async function createCanonicalStudentEnrollmentHelper(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    classId: Id<"classes">;
+    firstName?: string;
+    lastName?: string;
+    name: string;
+    admissionNumber: string;
+    gender?: string;
+    dateOfBirth?: number;
+    guardianName?: string;
+    guardianPhone?: string;
+    address?: string;
+    houseName?: string;
+    photo?: {
+      storageId: Id<"_storage">;
+      fileName: string;
+      contentType: string;
+      sourceApplicationId?: Id<"admissionsApplications">;
+      sourceDocumentId?: Id<"admissionsDocuments">;
+    };
+    sourceApplicationId?: Id<"admissionsApplications">;
+    overrideReason?: string;
+    overrideConfirmed?: boolean;
+    overrideCounterDecision?: "keep" | "advance";
+    advanceCounterTo?: number;
+    numberingVersion?: number;
+    numberingFormatVersion?: string;
+    numberingCounterKey?: string;
+    numberingCounterVersion?: number;
+    numberingSessionId?: Id<"academicSessions">;
+    numberingResetPeriod?: string;
+  },
+) {
+  const classDoc = await ctx.db.get(args.classId);
+  if (!classDoc || classDoc.schoolId !== args.schoolId || classDoc.isArchived) {
+    throw new ConvexError("Selected class is not available");
+  }
+  if (args.sourceApplicationId) {
+    const existingOrigin = await ctx.db.query("students")
+      .withIndex("by_source_application", (query) => query.eq("sourceApplicationId", args.sourceApplicationId))
+      .take(2);
+    if (existingOrigin.length) throw new ConvexError("Application is already linked to a student");
+  }
+  let admissionNumber = args.admissionNumber.trim();
+  if (admissionNumber) {
+    const numberingPolicy = await ctx.db.query("admissionNumberPolicies")
+      .withIndex("by_school", (query) => query.eq("schoolId", args.schoolId)).unique();
+    if (numberingPolicy) {
+      await commitManualAdmissionNumberHelper(ctx, {
+        schoolId: args.schoolId,
+        number: admissionNumber,
+        level: classDoc.level,
+        reason: args.overrideReason,
+        confirmed: args.overrideConfirmed,
+        counterDecision: args.overrideCounterDecision,
+        advanceTo: args.advanceCounterTo,
+        expectedVersion: args.numberingVersion,
+        expectedFormatVersion: args.numberingFormatVersion,
+        expectedCounterKey: args.numberingCounterKey,
+        expectedCounterVersion: args.numberingCounterVersion,
+        expectedSessionId: args.numberingSessionId,
+        expectedResetPeriod: args.numberingResetPeriod,
+      });
+    } else {
+      await claimAdmissionNumberHelper(ctx, args.schoolId, admissionNumber);
+    }
+  } else {
+    if (args.numberingVersion === undefined || !args.numberingFormatVersion || !args.numberingCounterKey ||
+        args.numberingCounterVersion === undefined || args.numberingSessionId === undefined || !args.numberingResetPeriod) {
+      throw new ConvexError("Automatic admission numbering requires the complete reviewed policy, counter, session, and reset-period context");
+    }
+    const allocation = await allocateNextAdmissionNumberHelper(ctx, {
+      schoolId: args.schoolId,
+      level: classDoc.level,
+      expectedVersion: args.numberingVersion,
+      expectedFormatVersion: args.numberingFormatVersion,
+      expectedCounterKey: args.numberingCounterKey,
+      expectedCounterVersion: args.numberingCounterVersion,
+      expectedSessionId: args.numberingSessionId,
+      expectedResetPeriod: args.numberingResetPeriod,
+    });
+    admissionNumber = allocation.allocatedNumber;
+  }
+  const duplicates = await ctx.db.query("students")
+    .withIndex("by_school_and_admission_number", (query) => query.eq("schoolId", args.schoolId).eq("admissionNumber", admissionNumber))
+    .take(2);
+  if (duplicates.length) throw new ConvexError(duplicates.some((student) => !student.isArchived) ? "A student with this admission number already exists" : archivedRecordNotice("student"));
+  const authId = toStudentAuthId(String(args.schoolId), admissionNumber);
+  const studentEmail = `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`;
+  const [authDuplicates, emailDuplicates] = await Promise.all([
+    ctx.db.query("users").withIndex("by_auth", (query) => query.eq("authId", authId)).take(2),
+    ctx.db.query("users").withIndex("by_school_and_email", (query) => query.eq("schoolId", args.schoolId).eq("email", studentEmail)).take(2),
+  ]);
+  const userDuplicates = [...authDuplicates, ...emailDuplicates];
+  if (userDuplicates.length) throw new ConvexError(userDuplicates.some((user) => !user.isArchived) ? "A student with this admission number already exists" : archivedRecordNotice("student"));
+  const now = Date.now();
+  const studentUserId = await ctx.db.insert("users", {
+    schoolId: args.schoolId,
+    authId,
+    name: args.name,
+    ...(args.firstName ? { firstName: args.firstName } : {}),
+    ...(args.lastName ? { lastName: args.lastName } : {}),
+    email: studentEmail,
+    role: "student",
+    createdAt: now,
+    updatedAt: now,
+  });
+  const studentId = await ctx.db.insert("students", {
+    schoolId: args.schoolId,
+    classId: args.classId,
+    userId: studentUserId,
+    admissionNumber,
+    ...(args.gender ? { gender: args.gender } : {}),
+    ...(args.dateOfBirth ? { dateOfBirth: args.dateOfBirth } : {}),
+    ...(args.guardianName ? { guardianName: args.guardianName } : {}),
+    ...(args.guardianPhone ? { guardianPhone: args.guardianPhone } : {}),
+    ...(args.address ? { address: args.address } : {}),
+    ...(args.houseName ? { houseName: args.houseName } : {}),
+    ...(args.sourceApplicationId ? { sourceApplicationId: args.sourceApplicationId } : {}),
+    ...(args.photo ? {
+      photoStorageId: args.photo.storageId,
+      photoFileName: args.photo.fileName,
+      photoContentType: args.photo.contentType,
+      photoUpdatedAt: now,
+      ...(args.photo.sourceApplicationId && args.photo.sourceDocumentId ? {
+        photoProvenance: "application_upload" as const,
+        photoSourceDocumentId: args.photo.sourceDocumentId,
+        photoRetentionHold: true,
+      } : { photoProvenance: "school_upload" as const }),
+    } : {}),
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { studentId, studentUserId, admissionNumber };
+}
+
 // ==================== STUDENT ROSTER ====================
 
 export const createStudent = mutation({
@@ -518,7 +656,6 @@ export const createStudent = mutation({
       lastName: args.lastName,
       requiredMessage: "Student name is required",
     });
-    let admissionNumber = args.admissionNumber.trim();
     const gender = normalizeGender(args.gender, { required: true });
     const houseName = normalizeOptionalHouseName(args.houseName);
     const dateOfBirth = args.dateOfBirth ?? undefined;
@@ -526,138 +663,36 @@ export const createStudent = mutation({
     const guardianPhone = normalizeOptionalText(args.guardianPhone);
     const address = normalizeOptionalText(args.address);
     const photoMetadata = await getValidatedPhotoMetadata(ctx, args);
-
-    const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Selected class is not available");
+    if (args.admissionNumber.trim()) {
+      const numberingPolicy = await ctx.db.query("admissionNumberPolicies").withIndex("by_school", (query) => query.eq("schoolId", schoolId)).unique();
+      if (numberingPolicy) await requireCapability(ctx, schoolId, "enrollment.admissions.override_number");
     }
-
-    if (admissionNumber) {
-      const numberingPolicy = await ctx.db
-        .query("admissionNumberPolicies")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .unique();
-      if (numberingPolicy) {
-        await requireCapability(
-          ctx,
-          schoolId,
-          "enrollment.admissions.override_number",
-        );
-        await commitManualAdmissionNumberHelper(ctx, {
-          schoolId,
-          number: admissionNumber,
-          level: classDoc.level,
-          reason: args.overrideReason,
-          confirmed: args.overrideConfirmed,
-          counterDecision: args.overrideCounterDecision,
-          advanceTo: args.advanceCounterTo,
-          expectedVersion: args.numberingVersion,
-          expectedFormatVersion: args.numberingFormatVersion,
-          expectedCounterKey: args.numberingCounterKey,
-          expectedCounterVersion: args.numberingCounterVersion,
-          expectedSessionId: args.numberingSessionId,
-          expectedResetPeriod: args.numberingResetPeriod,
-        });
-      } else {
-        // Until a branch configures governed numbering, retain its existing required
-        // manual-ID creation contract while still claiming identifiers permanently.
-        await claimAdmissionNumberHelper(ctx, schoolId, admissionNumber);
-      }
-    } else {
-      if (
-        args.numberingVersion === undefined ||
-        !args.numberingFormatVersion ||
-        !args.numberingCounterKey ||
-        args.numberingCounterVersion === undefined ||
-        args.numberingSessionId === undefined ||
-        !args.numberingResetPeriod
-      ) throw new ConvexError("Automatic admission numbering requires the complete reviewed policy, counter, session, and reset-period context");
-      const allocation = await allocateNextAdmissionNumberHelper(ctx, {
-        schoolId,
-        level: classDoc.level,
-        expectedVersion: args.numberingVersion,
-        expectedFormatVersion: args.numberingFormatVersion,
-        expectedCounterKey: args.numberingCounterKey,
-        expectedCounterVersion: args.numberingCounterVersion,
-        expectedSessionId: args.numberingSessionId,
-        expectedResetPeriod: args.numberingResetPeriod,
-      });
-      admissionNumber = allocation.allocatedNumber;
-    }
-
-    // Check for duplicate admission number
-    const existingStudents = await findStudentsByAdmissionNumber(
-      ctx,
+    const enrollment = await createCanonicalStudentEnrollmentHelper(ctx, {
       schoolId,
-      admissionNumber,
-    );
-    const activeDuplicate = existingStudents.find(
-      (student: any) => !student.isArchived,
-    );
-    const archivedDuplicate = existingStudents.find(
-      (student: any) => student.isArchived,
-    );
-
-    if (activeDuplicate) {
-      throw new ConvexError(
-        "A student with this admission number already exists",
-      );
-    }
-
-    if (archivedDuplicate) {
-      throw new ConvexError(archivedRecordNotice("student"));
-    }
-
-    const duplicateStudentUser = await findStudentUserByAdmissionNumber(
-      ctx,
-      schoolId,
-      admissionNumber,
-    );
-    if (duplicateStudentUser) {
-      throw new ConvexError(
-        duplicateStudentUser.isArchived
-          ? archivedRecordNotice("student")
-          : "A student with this admission number already exists",
-      );
-    }
-
-    const now = Date.now();
-    const studentUserId = await ctx.db.insert("users", {
-      schoolId,
-      authId: toStudentAuthId(String(schoolId), admissionNumber),
+      classId: args.classId,
       name: studentName.name,
       ...(studentName.firstName ? { firstName: studentName.firstName } : {}),
       ...(studentName.lastName ? { lastName: studentName.lastName } : {}),
-      email: `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`,
-      role: "student",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const studentRecord = {
-      schoolId,
-      classId: args.classId,
-      userId: studentUserId,
-      admissionNumber,
+      admissionNumber: args.admissionNumber,
       gender,
       ...(houseName ? { houseName } : {}),
       ...(dateOfBirth ? { dateOfBirth } : {}),
       ...(guardianName ? { guardianName } : {}),
       ...(guardianPhone ? { guardianPhone } : {}),
       ...(address ? { address } : {}),
-      ...(photoMetadata
-        ? {
-            photoStorageId: args.photoStorageId ?? undefined,
-            photoFileName: photoMetadata.fileName,
-            photoContentType: photoMetadata.contentType,
-            photoUpdatedAt: now,
-          }
-        : {}),
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const studentId = await ctx.db.insert("students", studentRecord);
+      ...(photoMetadata && args.photoStorageId ? { photo: { storageId: args.photoStorageId, fileName: photoMetadata.fileName, contentType: photoMetadata.contentType } } : {}),
+      overrideReason: args.overrideReason,
+      overrideConfirmed: args.overrideConfirmed,
+      overrideCounterDecision: args.overrideCounterDecision,
+      advanceCounterTo: args.advanceCounterTo,
+      numberingVersion: args.numberingVersion,
+      numberingFormatVersion: args.numberingFormatVersion,
+      numberingCounterKey: args.numberingCounterKey,
+      numberingCounterVersion: args.numberingCounterVersion,
+      numberingSessionId: args.numberingSessionId,
+      numberingResetPeriod: args.numberingResetPeriod,
+    });
+    const studentId = enrollment.studentId;
     if (args.requestKey)
       await ctx.db.insert("enrollmentRequests", {
         schoolId,

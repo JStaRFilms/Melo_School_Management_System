@@ -1,5 +1,7 @@
 # Cumulative Term Results and Historical Backfill
 
+**Status:** Implemented
+
 ## Goal
 
 Extend the current per-term assessment and report-card system so schools can produce third-term cumulative results using:

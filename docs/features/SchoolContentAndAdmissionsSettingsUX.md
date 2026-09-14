@@ -1,6 +1,6 @@
 # School Content and Admissions Settings UX
 
-**Status:** Design handoff — D3  
+**Status:** Design handoff — D3; implementation underway (admin admissions workspace and settings pages exist in `apps/admin/app/admin/admissions/` and `apps/admin/app/admin/settings/`)  
 **Source mockup:** [`docs/mockups/admin/school-content-and-admissions-settings.html`](../mockups/admin/school-content-and-admissions-settings.html)  
 **Consumers:** B0 (contracts/permission primitives), B3 (admissions admin), B4 (site core/content loading)  
 **Authority:** This document and its D3 mockup define the admin information architecture, field boundaries, interaction states, and governance controls. They do not approve any school fact, fee, policy, or sensitive collection.

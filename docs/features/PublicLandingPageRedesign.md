@@ -1,5 +1,7 @@
 # Public Landing Page Redesign
 
+**Status:** Implemented
+
 ## Goal
 
 Redesign the SchoolOS marketing homepage in `apps/www` so the first impression feels premium, memorable, and trust-building instead of conventional SaaS.

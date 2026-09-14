@@ -1,5 +1,7 @@
 # Enrollment Matrix Stale Subject Recovery
 
+**Status:** Implemented
+
 ## Goal
 Prevent student enrollment saves from crashing when a class subject offering changes after a student was already checked for the older subject. The system should quietly reconcile stale selections and show normal product-language feedback instead of raw Convex error envelopes.
 

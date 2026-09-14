@@ -1,5 +1,7 @@
 # Class-Activated Subject Aggregation
 
+**Status:** Implemented
+
 ## Goal
 
 Allow a school admin to configure an umbrella subject for specific classes so multiple component subjects can roll up into one reported subject, while teachers still record scores for each component subject separately.

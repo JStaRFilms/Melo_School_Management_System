@@ -79,3 +79,7 @@ mutation({
 - Admin users can only see/manage their school data
 - Platform super-admin role needed for cross-school operations
 - Migration scripts must handle multi-tenant data carefully
+
+## Implementation note 2026-09-14
+
+The real identity resolver is `requireAuthIdentityV1` in `packages/convex/functions/foundation/auth.ts`, backed by membership tables such as `schoolCapabilityGrants`. The `getSchoolMembership` and `ctx.auth.getUser()` calls sketched above are illustrative; they do not exist in the code.

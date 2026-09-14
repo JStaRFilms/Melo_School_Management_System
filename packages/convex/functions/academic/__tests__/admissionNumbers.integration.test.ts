@@ -232,6 +232,15 @@ it("creates atomically, replays the same intent, preserves manual identifiers an
     22,
   );
 });
+
+it("rejects admission numbers that synthesize an existing student email", async () => {
+  const { t, classId } = await fixture();
+  const viewer = t.withIdentity({ subject: "owner", issuer: "test", tokenIdentifier: "test|owner" });
+  const base = { firstName: "Collision", lastName: "Student", gender: "male", classId, overrideConfirmed: true, overrideReason: "Reviewed manual identifier", overrideCounterDecision: "keep" as const };
+  await viewer.mutation(api.functions.academic.studentEnrollment.createStudent, { ...base, admissionNumber: "AB-12", requestKey: "punctuated-admission" });
+  await expect(viewer.mutation(api.functions.academic.studentEnrollment.createStudent, { ...base, admissionNumber: "AB12", requestKey: "normalized-admission" })).rejects.toThrow("already exists");
+});
+
 it("rejects an automatic allocation when the active session changes after preview", async () => {
   const { t, schoolId, sessionId, classId } = await fixture();
   const viewer = t.withIdentity({ subject: "owner", issuer: "test", tokenIdentifier: "test|owner" });

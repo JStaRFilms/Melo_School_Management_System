@@ -1,5 +1,7 @@
 # Convex Codegen Isolation
 
+**Status:** Implemented
+
 ## Goal
 
 Make Convex code generation succeed consistently by isolating Convex server imports from React-bearing exports in `@school/shared`.
