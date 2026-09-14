@@ -604,7 +604,7 @@ export default function BillingPage() {
             <BillingHeader 
               summary={data.summary} 
               currency={data.settings?.defaultCurrency ?? "NGN"} 
-              onOpenArsenal={() => openSidebar("arsenal")}
+              onOpenArsenal={canUseLegacyBillingOperations ? () => openSidebar("arsenal") : undefined}
             />
 
             <div className="flex flex-col gap-6">
@@ -856,7 +856,7 @@ export default function BillingPage() {
         onClose={() => void closeFeeSidebar()}
         title={sidebarTitles[sidebarVariant]}
       >
-        <BillingSidebar 
+        {(canUseLegacyBillingOperations || sidebarVariant === "plan") && <BillingSidebar
           onClose={() => void closeFeeSidebar()}
           variant={sidebarVariant}
           onVariantChange={setSidebarVariant}
@@ -885,7 +885,7 @@ export default function BillingPage() {
           applicationTerms={applicationTerms ?? []}
           feePlans={data.feePlans}
           canManageFeePlans={canManageFeePlans}
-        />
+        />}
       </AdminSheet>
 
       {financePack && selectedFinanceInvoice && (

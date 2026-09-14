@@ -1718,8 +1718,7 @@ export const createFeePlan = mutation({
   args: createFeePlanValidator,
   returns: billingFeePlanValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.fee_plans.manage" });
-    assertAdmin(viewer);
+    const { viewer } = await authorizeFeePlanLifecycle(ctx);
 
     const name = normalizeBillingText(args.name);
     if (!name) {

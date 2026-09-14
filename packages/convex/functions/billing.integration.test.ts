@@ -444,12 +444,20 @@ describe("billing registered functions", () => {
     });
     const accountant = t.withIdentity(accountantIdentity);
 
+    await expect(accountant.mutation(api.functions.billing.createFeePlan, {
+      name: "Delegated new plan",
+      lineItems,
+    })).resolves.toMatchObject({ name: "Delegated new plan", isActive: true });
     await expect(accountant.mutation(api.functions.billing.archiveFeePlan, {
       feePlanId: ids.feePlanId,
     })).resolves.toMatchObject({ status: "archived" });
-    await expect(accountant.query(api.functions.billing.getBillingDashboard, {})).resolves.toMatchObject({
-      feePlans: [expect.objectContaining({ _id: ids.feePlanId, isActive: false })],
-    });
+    const delegatedDashboard = await accountant.query(
+      api.functions.billing.getBillingDashboard,
+      {},
+    );
+    expect(delegatedDashboard.feePlans).toEqual(expect.arrayContaining([
+      expect.objectContaining({ _id: ids.feePlanId, isActive: false }),
+    ]));
     await expect(accountant.mutation(api.functions.billing.restoreFeePlan, {
       feePlanId: ids.feePlanId,
     })).resolves.toMatchObject({ status: "active" });
