@@ -1,5 +1,7 @@
 # Teacher Report Card Comments
 
+**Status:** Implemented
+
 ## Goal
 
 Give teachers a dedicated report-card workbench where they can open a student, review the student's results, adjust that student's subject setup, and write the class-teacher comment in one long scroll. Admins keep the head-teacher and next-term controls in the admin workspace.

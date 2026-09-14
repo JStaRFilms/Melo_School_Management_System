@@ -72,10 +72,11 @@ Codex was used throughout the Build Week implementation to:
 
 - **Marketing website** (`apps/www`, port `3000`) - public product website.
 - **Teacher app** (`apps/teacher`, port `3001`) - lesson planning, assessments, enrollment, and AI-assisted teacher workflows.
-- **Admin app** (`apps/admin`, port `3002`) - school operations, academics, billing, report cards, and administrative controls.
+- **Admin app** (`apps/admin`, port `3002`) - school operations, academics, billing, report cards, admissions campaigns, and administrative controls.
 - **Portal app** (`apps/portal`, port `3003`) - parent/student-facing portal experience.
-- **Platform app** (`apps/platform`, port `3004`) - platform/super-admin school management.
+- **Apply app** (`apps/apply`, port `3004`) - public guardian-facing admissions application by school slug (`app/s/[schoolSlug]`).
 - **Public sites app** (`apps/sites`, port `3005`) - managed public school sites and SEO routes.
+- **Platform app** (`apps/platform`, port `3006`) - platform/super-admin school management.
 - **Convex backend** (`packages/convex`) - schema, functions, auth integration, billing, portal, and HTTP endpoints.
 - **Shared packages** (`packages/auth`, `packages/shared`, `packages/ai`) - shared auth, types/utilities, and AI model helpers.
 
@@ -113,8 +114,9 @@ Then open the app you need:
 | Teacher app | <http://localhost:3001> |
 | Admin app | <http://localhost:3002> |
 | Portal app | <http://localhost:3003> |
-| Platform app | <http://localhost:3004> |
+| Apply app | <http://localhost:3004> |
 | Public sites app | <http://localhost:3005> |
+| Platform app | <http://localhost:3006> |
 
 ## Environment setup
 
@@ -132,6 +134,7 @@ Convex is configured from the monorepo root through `convex.json`, with backend 
    cp apps/teacher/.env.example apps/teacher/.env.local
    cp apps/admin/.env.example apps/admin/.env.local
    cp apps/portal/.env.example apps/portal/.env.local
+   cp apps/apply/.env.example apps/apply/.env.local
    cp apps/platform/.env.example apps/platform/.env.local
    ```
 
@@ -186,6 +189,7 @@ Run one app directly:
 pnpm --filter @school/teacher dev
 pnpm --filter @school/admin dev
 pnpm --filter @school/portal dev
+pnpm --filter @school/apply dev
 pnpm --filter @school/platform dev
 pnpm --filter @school/www dev
 pnpm --filter @school/sites dev
@@ -195,7 +199,8 @@ pnpm --filter @school/sites dev
 
 ```text
 apps/
-  admin/       School admin dashboard
+  admin/       School admin dashboard (includes app/admin/admissions)
+  apply/       Public admissions application (app/s/[schoolSlug])
   platform/    Platform/super-admin app
   portal/      Parent/student portal
   sites/       Public school websites

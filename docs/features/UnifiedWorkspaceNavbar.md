@@ -1,5 +1,8 @@
 # Unified Workspace Navbar
 
+**Status:** Implemented at `3b391e3`
+**Last verified:** 2026-09-14 against `3b391e3`
+
 ## Goal
 
 Create one shared workspace navigation contract for the admin, teacher, and student-facing portal experiences so users see a consistent top navigation, keep the same area-switch entry point, and stop bouncing between mismatched route lists.
@@ -44,6 +47,7 @@ The feature only reorganizes client-side navigation and route metadata.
 - Admin, teacher, and portal routes continue to share one navigation contract.
 - The admin workspace now exposes a billing entry point alongside academic and assessment sections.
 - The shared workspace switcher remains the single route catalog for all app shells.
+- The admin workspace now exposes `/admin/admissions` under People and Operations, gated by `applications.list`, `applications.view_basic`, `enrollment.intakes.manage`, and `enrollment.decisions.record` in `packages/shared/src/workspace-capability-matrix.ts` and `packages/shared/src/workspace-route-access.ts`.
 
 ## Regression Check
 

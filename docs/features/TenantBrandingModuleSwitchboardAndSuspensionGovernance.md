@@ -1,5 +1,7 @@
 # Specification: Tenant Branding, Platform Module Switchboard Governance, and Workspace Suspension
 
+**Status:** Implemented
+
 ## Problem Statement
 
 Educational institutions running on the multi-tenant school management platform need autonomous control over their school branding (logos, brand color palettes, mottos, and contact information), while platform super administrators require granular governance over which modular capabilities (billing, curriculum studios, AI assistants, and admissions) are enabled per school. 

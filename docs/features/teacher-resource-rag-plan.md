@@ -1,5 +1,7 @@
 # Teacher Resource Library RAG Plan
 
+**Status:** Partially implemented. Extraction and OCR are live; vector RAG retrieval is not implemented.
+
 ## Objective
 Build a multi-format Teacher Resource Library that lets staff upload instructional materials, extract usable text from each file type, enrich it with OCR where needed, and retrieve the right passages with RAG.
 

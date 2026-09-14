@@ -1,5 +1,7 @@
 # Student Archive Restore
 
+**Status:** Implemented
+
 ## Goal
 Allow admins to archive students without deleting their records, and restore them later from the archived records page when the student should return to active academic workflows.
 

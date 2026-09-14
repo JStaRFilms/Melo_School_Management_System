@@ -55,3 +55,7 @@ export const auth = betterAuth({
 - Convex functions validate roles via `ctx.auth.getUserRole()`
 - Password reset flows must be implemented
 - Session cookie shared across app subdomains (future consideration)
+
+## Implementation note 2026-09-14
+
+The integration uses `@convex-dev/better-auth` (`packages/convex/betterAuth.ts`), not `@auth/convex-adapter` as sketched above. Role and identity checks go through `requireAuthIdentityV1` in `packages/convex/functions/foundation/auth.ts`; `ctx.auth.getUserRole()` does not exist in the code.

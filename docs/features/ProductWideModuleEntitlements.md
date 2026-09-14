@@ -1,7 +1,8 @@
 # Product-Wide Module Registry and School Entitlements
 
-**Status:** Proposed architecture follow-up
+**Status:** Partially implemented at `3b391e3`
 **Scope:** Optional Melo features that are implemented once product-wide and enabled for selected schools or all schools.
+**Last verified:** 2026-09-14 against `3b391e3`
 
 ## Purpose
 
@@ -146,3 +147,7 @@ The first narrow implementation should:
 - [Tenant Branding, Platform Module Switchboard Governance, and Workspace Suspension](./TenantBrandingModuleSwitchboardAndSuspensionGovernance.md)
 - [ADR-004: Multi-Tenant School-Aware Architecture](../decisions/ADR-004-tenancy-model.md)
 - [Admissions and Site Foundation Contract](./AdmissionsAndSiteFoundationContract.md)
+
+## Implementation status 2026-09-14
+
+Live at `3b391e3`: `packages/shared/src/product-modules.ts`, `packages/shared/src/workspace-capability-matrix.ts`, `packages/shared/src/workspace-route-access.ts`, and `packages/shared/src/workspace-navigation.ts` gate the `/admin/admissions` routes behind `enrollment.intakes.manage`, `enrollment.decisions.record`, `applications.list`, and `applications.view_basic`. The admissions module flag now treats any value other than `true` as disabled. Backend entitlement checks at every optional module entry point and the full disabled-module test matrix above remain open work.

@@ -1,5 +1,7 @@
 # Platform Super Admin Bootstrap Recovery
 
+**Status:** Implemented
+
 ## Goal
 
 Provide a safe, one-time recovery screen for bootstrapping or restoring the first production platform super admin without relying on a dev-only database record.

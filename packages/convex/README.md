@@ -45,11 +45,14 @@ Copy the app env templates:
 ```bash
 cp apps/teacher/.env.example apps/teacher/.env.local
 cp apps/admin/.env.example apps/admin/.env.local
+cp apps/portal/.env.example apps/portal/.env.local
+cp apps/apply/.env.example apps/apply/.env.local
+cp apps/platform/.env.example apps/platform/.env.local
+cp apps/sites/.env.example apps/sites/.env.local
+cp apps/www/.env.example apps/www/.env.local
 ```
 
-Then copy the `CONVEX_URL` value from the repo root `.env.local` into:
-- `apps/teacher/.env.local` as `NEXT_PUBLIC_CONVEX_URL`
-- `apps/admin/.env.local` as `NEXT_PUBLIC_CONVEX_URL`
+Then copy the `CONVEX_URL` value from the repo root `.env.local` into each app `.env.local` as `NEXT_PUBLIC_CONVEX_URL`. At minimum set it for `apps/teacher`, `apps/admin`, `apps/portal`, and `apps/apply`.
 
 Also copy `CONVEX_SITE_URL` from the repo root `.env.local` into `NEXT_PUBLIC_CONVEX_SITE_URL` for each app.
 
@@ -155,7 +158,12 @@ remain cross-platform.
 ```text
 packages/convex/
 |-- _generated/        # Auto-generated Convex types and API
-|-- functions/         # Academic and auth functions
+|-- functions/         # Domain-grouped functions
+|   |-- academic/      # School operations, enrollment, billing support
+|   |-- admissions/    # Applications, catalogue, conversion, documents, payments, retention
+|   |-- foundation/    # Shared contracts: applicationLinks, paymentDispatch, branding
+|   |-- auth.ts        # Auth helpers and guards
+|   `-- billingWebhooks.ts # Provider webhook dispatch (billing and admissions)
 |-- auth.config.ts
 |-- betterAuth.ts
 |-- convex.config.ts
@@ -212,7 +220,7 @@ pnpm convex:codegen
 
 If that fails, confirm the repo root `.env.local` contains `CONVEX_DEPLOYMENT`.
 
-### Live mode is not activating in admin or teacher
+### Live mode is not activating in admin, teacher, portal, apply, platform, or sites
 
 1. Confirm `NEXT_PUBLIC_CONVEX_URL` is set in the app's `.env.local`
 2. Restart the app dev server

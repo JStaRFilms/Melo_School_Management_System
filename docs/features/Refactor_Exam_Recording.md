@@ -1,5 +1,7 @@
 # Refactor: Exam Recording Settings
 
+**Status:** Implemented
+
 ## Goal
 Modernize the `/assessments/setup/exam-recording` route by implementing the **Independent Scroll Workbench** pattern. This refactor aims to:
 1.  **Optimize Spacing**: Move from a card-heavy vertical stack to a high-density, split-bucket layout.

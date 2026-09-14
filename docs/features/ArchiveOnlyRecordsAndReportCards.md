@@ -1,5 +1,7 @@
 # Archive-Only Records And Report Cards
 
+**Status:** Implemented
+
 ## Goal
 
 Add archive-only lifecycle management for academic setup records so sensitive school data is never hard-deleted, expand student editing beyond subject selection, and introduce report-card viewing/export on both the admin and teacher apps with student photos included. This also now covers admin-managed report-card comments per student and a manual next-term start date per term.

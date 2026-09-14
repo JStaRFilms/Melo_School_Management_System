@@ -1,5 +1,7 @@
 # Admin Academic Setup & Enrollment
 
+**Status:** Implemented
+
 ## Goal
 Provide a streamlined, mobile-first workflow for school administrators to configure the academic foundation of their school (teachers, sessions, terms, subjects, and classes) and manage student enrollment and subject selection.
 

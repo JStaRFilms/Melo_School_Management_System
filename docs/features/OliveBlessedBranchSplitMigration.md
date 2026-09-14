@@ -1,5 +1,7 @@
 # Feature: Olive Blessed Academy Multi-Branch Tenant Migration (Fedrah & Ruga Split)
 
+**Status:** Implemented (packages/convex/functions/academic/branchSplitV2.ts)
+
 ## 1. Goal & Context
 
 Split the single pilot tenant **"Olive Blessed Hands Academy"** on the production Convex database into two completely autonomous, isolated school tenants:

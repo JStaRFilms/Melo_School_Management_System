@@ -1,5 +1,7 @@
 # Student Enrollment Profile Capture
 
+**Status:** Implemented
+
 ## Goal
 Allow admins to capture more student profile details at the moment a student is created, so they do not need to immediately reopen the student profile editor just to fill in common onboarding information.
 

@@ -1,5 +1,7 @@
 # Per-School Paystack Merchant Routing
 
+**Status:** Implemented
+
 ## Goal
 
 Upgrade school billing from a single deployment-level Paystack secret to a true per-school merchant model where each school can store and validate its own Paystack credentials, choose an active mode (`test` or `live`), and route payment initialization and webhook verification through the correct merchant context.

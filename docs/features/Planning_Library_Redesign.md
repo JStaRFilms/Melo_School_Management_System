@@ -1,5 +1,7 @@
 # Feature Blueprint: Teacher Planning Library Redesign
 
+**Status:** Implemented
+
 ## Goal
 
 Redesign the Teacher Planning Library (`/planning/library`) to align with the compact, professional aesthetic of the Admin portal. Address issues with spacing, card overuse, and excessive explanatory text.

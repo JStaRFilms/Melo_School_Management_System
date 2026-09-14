@@ -9,11 +9,12 @@
 ## Product Shape
 
 - Public website per school with shared tenant theming and later custom-domain support
-- Four web surfaces: `www`, `admin`, `teacher`, `portal`
+- Seven web surfaces: `www` (`3000`), `teacher` (`3001`), `admin` (`3002`), `portal` (`3003`), `apply` (`3004`), `sites` (`3005`), `platform` (`3006`)
 - One Convex backend with school-aware data boundaries
-- Roles: student, parent, teacher, school admin, platform super admin
+- Roles: student, parent, teacher, school admin, platform super admin, plus guardian applicant and admissions staff grants (see FR-022 below)
 - Academic support for both primary and secondary teaching models
 - School-fee billing with invoices, installments, manual reconciliation, and online payments
+- Admissions application platform with paid slots, immutable submissions, staff review, and conversion (see `docs/features/AdmissionsApplicationPlatformArchitecture.md` and `docs/decisions/ADR-008-admissions-application-surface-and-lifecycle.md`)
 
 ## Terminology
 
@@ -58,6 +59,7 @@
 | FR-009 | Parent and student academic portal | As a parent or student, I want to view results, report cards, and academic notifications online, so that I can track performance without visiting school. | MUS |
 | FR-010 | Teacher workspace | As a teacher, I want a dashboard for lesson planning, class work, results, and assessment tools, so that my daily workflow lives in one place. | MUS |
 | FR-011 | Public website and admissions-ready content | As a prospective family, I want a polished school website with clear information and calls to action, so that I can learn about the school and contact it easily. | MUS |
+| FR-022 | Admissions application lifecycle | As a verified guardian, I want to buy one slot per child, submit an application, track review, and have staff convert an accepted application to a student record, so that admission stays auditable and separate from tuition billing. | MUS (implemented at `3b391e3`; detail in ADR-008) |
 | FR-012 | Email and in-app notifications | As a parent, student, teacher, or admin, I want timely notifications for onboarding, results, and billing events, so that I stay informed. | MUS |
 
 ### Billing and Payments
@@ -94,6 +96,8 @@
 | Parent | Linked student data | -- | -- | -- |
 | Student | Own academic records | -- | -- | -- |
 | Prospective Family | -- | -- | -- | School website and admissions |
+| Verified Guardian | Own slot workspace in `apps/apply` | -- | -- | Published offerings and fee disclosure |
+| Admissions Staff | -- | Scoped queue, review, decision, and conversion in `apps/admin/app/admin/admissions` | -- | -- |
 
 ## Product Language
 

@@ -1,5 +1,7 @@
 # Tenant School Public-Site Engine and Template System
 
+**Status:** Implemented
+
 ## Goal
 
 Provide a dedicated tenant school public-site app in `apps/sites` that resolves school context at request time, loads school branding and content at runtime, and renders a structured template/composition system without repurposing the SchoolOS marketing site.
