@@ -6,6 +6,7 @@ import { answerPayload, availabilityMessage, conditionMatchesAnswers, correction
 
 const authMocks = vi.hoisted(() => ({ signUp: vi.fn(), signIn: vi.fn(), resend: vi.fn(), signOut: vi.fn() }));
 vi.mock("@/lib/auth-client", () => ({ authClient: { useSession: () => ({ data: null, isPending: false }), signUp: { email: authMocks.signUp }, signIn: { email: authMocks.signIn }, sendVerificationEmail: authMocks.resend, signOut: authMocks.signOut } }));
+vi.mock("@/lib/auth-server", () => ({ getToken: vi.fn(async () => "guardian-token") }));
 
 describe("guardian email verification", () => {
   it("does not expose raw Convex errors to guardians", () => { expect(guardianFacingErrorMessage(new Error('[CONVEX M(functions/admissions/guardian:getOrCreateIdentity)] Uncaught ConvexError: {"code":"VERIFICATION_REQUIRED","message":"Verify your email before applying"} Called by client'))).toBe("Verify your email before continuing. Use the link in the verification message, then retry."); expect(guardianFacingErrorMessage(new Error('ConvexError: {"code":"OFFERING_UNAVAILABLE"} Called by client'))).toMatch(/payment is not available/); expect(guardianFacingErrorMessage(new Error("ConvexError: Storage entitlement is not active for this school"))).toMatch(/storage setup/); expect(guardianFacingErrorMessage(new Error('ConvexError: {"code":"APPLICATION_INCOMPLETE","message":"Missing required items: document-1"}'))).not.toMatch(/document-1/); });
@@ -34,4 +35,23 @@ describe("conditional and typed published fields", () => {
 
 describe("secure upload route contract", () => {
   it("rejects missing, invalid, and oversized Content-Length before reading a body", async () => { const { POST } = await import("../app/admissions/document-upload/route"); expect((await POST(new Request("http://localhost/admissions/document-upload", { method: "POST", body: "x" }))).status).toBe(411); expect((await POST(new Request("http://localhost/admissions/document-upload", { method: "POST", headers: { "content-length": String(21 * 1024 * 1024) }, body: "x" }))).status).toBe(413); });
+  it("uses the configured public Convex Site URL when the server-only alias is absent", async () => {
+    const previousFetch = globalThis.fetch;
+    const proxyFetch = vi.fn(async (request: Request) => {
+      void request;
+      return Response.json({ uploaded: true });
+    });
+    globalThis.fetch = proxyFetch as typeof fetch;
+    vi.stubEnv("CONVEX_SITE_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://development.example.test");
+    try {
+      const { POST } = await import("../app/admissions/document-upload/route");
+      const response = await POST(new Request("http://localhost/admissions/document-upload", { method: "POST", headers: { "content-length": "1", "content-type": "application/pdf", "x-admissions-upload-intent": "intent-id", "x-admissions-upload-token": "upload-token" }, body: "x" }));
+      expect(response.status).toBe(200);
+      expect(proxyFetch.mock.calls[0]?.[0].url).toBe("https://development.example.test/admissions/document-upload");
+    } finally {
+      globalThis.fetch = previousFetch;
+      vi.unstubAllEnvs();
+    }
+  });
 });

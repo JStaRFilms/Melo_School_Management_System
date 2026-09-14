@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   const contentLength = Number(contentLengthValue);
   if (!Number.isSafeInteger(contentLength) || contentLength < 1 || contentLength > MAX_UPLOAD_BYTES) return Response.json({ error: "Upload size must be between 1 byte and 20 MiB." }, { status: 413 });
   const token = await getToken();
-  const siteUrl = process.env.CONVEX_SITE_URL;
+  const siteUrl = process.env.CONVEX_SITE_URL || process.env.NEXT_PUBLIC_CONVEX_SITE_URL;
   if (!token || !siteUrl) return Response.json({ error: "Secure upload is unavailable because its server connection is not configured." }, { status: 503 });
   const target = new URL("/admissions/document-upload", siteUrl);
   const contentType = request.headers.get("content-type"), intent = request.headers.get("x-admissions-upload-intent"), uploadToken = request.headers.get("x-admissions-upload-token");
