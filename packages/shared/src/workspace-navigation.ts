@@ -26,6 +26,22 @@ const DEV_ORIGINS: Record<WorkspaceKey, string> = {
   portal: "http://localhost:3003",
 };
 
+const TAILSCALE_DEV_PORTS: Record<WorkspaceKey, number> = {
+  admin: 3402,
+  teacher: 3401,
+  portal: 3403,
+};
+
+function resolveTailscaleWorkspaceOrigin(currentOrigin: string, workspace: WorkspaceKey) {
+  try {
+    const origin = new URL(currentOrigin);
+    if (origin.protocol !== "https:" || !origin.hostname.endsWith(".ts.net")) return null;
+    return `${origin.protocol}//${origin.hostname}:${TAILSCALE_DEV_PORTS[workspace]}`;
+  } catch {
+    return null;
+  }
+}
+
 export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
   admin: {
     key: "admin",
@@ -256,6 +272,11 @@ export function resolveWorkspaceSwitchHref(
   if (currentOrigin) {
     if (isLocalhostOrigin(currentOrigin)) {
       return `${DEV_ORIGINS[workspace]}${definition.switchPath}`;
+    }
+
+    const tailscaleOrigin = resolveTailscaleWorkspaceOrigin(currentOrigin, workspace);
+    if (tailscaleOrigin) {
+      return `${tailscaleOrigin}${definition.switchPath}`;
     }
 
     return `${currentOrigin}${definition.appBasePath}${definition.switchPath}`;
