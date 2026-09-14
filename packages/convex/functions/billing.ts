@@ -2506,11 +2506,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         gatewayEventId: eventId,
         lastCheckedAt: now,
         resolvedAt: now,
-        resolutionMessage:
-          processingMessage ??
-          (args.attemptReconciliationSource === "webhook"
-            ? "Webhook reconciliation completed"
-            : "Payment verified successfully"),
+        resolutionMessage: processingMessage,
       });
     } else if (existingAttempt) {
       const nextAttemptStatus =
