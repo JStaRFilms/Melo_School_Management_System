@@ -202,6 +202,7 @@ const revokeFeePlanInvoicesResultValidator = v.object({
   feePlanId: v.id("feePlans"),
   revokedCount: v.number(),
   hasMore: v.boolean(),
+  continueCursor: v.union(v.string(), v.null()),
 });
 
 const createInvoiceValidator = v.object({
@@ -1010,6 +1011,7 @@ async function createPaymentAndAllocation(args: {
   notes?: string | null;
   recordedBy?: Id<"users"> | null;
   reconciliationStatus?: "unreconciled" | "reconciled" | "flagged";
+  recordAsUnapplied?: boolean;
 }) {
   const existingPayment = await loadPaymentByReference(args.ctx, args.schoolId, args.reference);
   if (existingPayment) {
@@ -1024,7 +1026,7 @@ async function createPaymentAndAllocation(args: {
     };
   }
 
-  if (args.invoice.status === "cancelled") {
+  if (args.invoice.status === "cancelled" && !args.recordAsUnapplied) {
     throw new ConvexError("Cancelled invoices cannot receive payments");
   }
 
@@ -1033,9 +1035,11 @@ async function createPaymentAndAllocation(args: {
     throw new ConvexError("Payment amount must be greater than zero");
   }
 
-  const amountApplied = normalizeBillingAmount(
-    Math.min(amountReceived, Math.max(0, args.invoice.balanceDue))
-  );
+  const amountApplied = args.recordAsUnapplied
+    ? 0
+    : normalizeBillingAmount(
+        Math.min(amountReceived, Math.max(0, args.invoice.balanceDue))
+      );
   const unappliedAmount = normalizeBillingAmount(amountReceived - amountApplied);
   const applicationStatus =
     amountApplied <= 0
@@ -1534,7 +1538,8 @@ export const listStudentInvoicesAndPayments = query({
     payments: v.array(billingPaymentRowValidator),
   }),
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.reports.view");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.reports.view" });
+    assertAdmin(viewer);
 
     const student = await ctx.db.get(args.studentId);
     if (!student || student.schoolId !== viewer.schoolId) {
@@ -1582,7 +1587,8 @@ export const listBillingPaymentAttemptsForInvoice = query({
   },
   returns: v.array(billingPaymentAttemptRowValidator),
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.reports.view");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.reports.view" });
+    assertAdmin(viewer);
 
     const invoice = await ctx.db.get(args.invoiceId);
     if (!invoice || invoice.schoolId !== viewer.schoolId) {
@@ -1632,7 +1638,8 @@ export const upsertBillingSettings = mutation({
   args: billingSettingsUpdateValidator,
   returns: billingSettingsValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.fee_plans.manage");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.fee_plans.manage" });
+    assertAdmin(viewer);
 
     const school = await ctx.db.get(viewer.schoolId);
     if (!school) {
@@ -1688,7 +1695,8 @@ export const listFeePlans = query({
   args: {},
   returns: v.array(billingFeePlanValidator),
   handler: async (ctx) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.fee_plans.manage");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.fee_plans.manage" });
+    assertAdmin(viewer);
 
     const feePlans = await ctx.db
       .query("feePlans")
@@ -1703,7 +1711,8 @@ export const createFeePlan = mutation({
   args: createFeePlanValidator,
   returns: billingFeePlanValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.fee_plans.manage");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.fee_plans.manage" });
+    assertAdmin(viewer);
 
     const name = normalizeBillingText(args.name);
     if (!name) {
@@ -1882,6 +1891,7 @@ export const revokeFeePlanInvoices = mutation({
   args: {
     feePlanId: v.id("feePlans"),
     reason: v.string(),
+    cursor: v.optional(v.union(v.string(), v.null())),
   },
   returns: revokeFeePlanInvoicesResultValidator,
   handler: async (ctx, args) => {
@@ -1899,22 +1909,23 @@ export const revokeFeePlanInvoices = mutation({
       throw new ConvexError("Invoice revocation reason must be 500 characters or fewer");
     }
 
-    const revocableInvoices: Doc<"studentInvoices">[] = [];
-    for await (const invoice of ctx.db
+    const invoicePage = await ctx.db
       .query("studentInvoices")
-      .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))) {
+      .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))
+      .paginate({
+        cursor: args.cursor ?? null,
+        numItems: 25,
+        maximumRowsRead: 25,
+      });
+    const batch = invoicePage.page.filter((invoice) => {
       const paymentBlocked =
         invoice.amountPaid > 0 ||
         invoice.status === "paid" ||
         invoice.status === "partially_paid";
-      if (!paymentBlocked && invoice.status !== "cancelled") {
-        revocableInvoices.push(invoice);
-      }
-      if (revocableInvoices.length === 26) break;
-    }
+      return !paymentBlocked && invoice.status !== "cancelled";
+    });
 
     const now = Date.now();
-    const batch = revocableInvoices.slice(0, 25);
     if (feePlan.isActive) {
       await ctx.db.patch(feePlan._id, {
         isActive: false,
@@ -1931,27 +1942,6 @@ export const revokeFeePlanInvoices = mutation({
         revocationReason: reason,
         updatedAt: now,
       });
-      const attempts = await ctx.db
-        .query("billingPaymentAttempts")
-        .withIndex("by_school_and_invoice", (q) =>
-          q.eq("schoolId", viewer.schoolId).eq("invoiceId", invoice._id)
-        )
-        .take(101);
-      if (attempts.length > 100) {
-        throw new ConvexError("Payment attempts exceed the safe revocation review bound");
-      }
-      for (const attempt of attempts) {
-        if (attempt.status === "link_generated" || attempt.status === "awaiting_payer_return") {
-          await ctx.db.patch(attempt._id, {
-            status: "manual_attention_needed",
-            authorizationUrl: null,
-            accessCode: null,
-            resolvedAt: now,
-            resolutionMessage: "Invoice revoked before payment completion",
-            updatedAt: now,
-          });
-        }
-      }
     }
 
     await recordFeePlanLifecycleAudit(ctx, actor, {
@@ -1963,7 +1953,8 @@ export const revokeFeePlanInvoices = mutation({
     return {
       feePlanId: feePlan._id,
       revokedCount: batch.length,
-      hasMore: revocableInvoices.length > batch.length,
+      hasMore: !invoicePage.isDone,
+      continueCursor: invoicePage.isDone ? null : invoicePage.continueCursor,
     };
   },
 });
@@ -1972,7 +1963,8 @@ export const createInvoiceFromFeePlan = mutation({
   args: createInvoiceValidator,
   returns: billingInvoiceValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.invoices.issue");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.invoices.issue" });
+    assertAdmin(viewer);
 
     const [feePlan, student, classDoc, session, term] = await Promise.all([
       ctx.db.get(args.feePlanId),
@@ -2063,7 +2055,8 @@ export const applyFeePlanToClassStudents = mutation({
   args: applyFeePlanValidator,
   returns: applyFeePlanResultValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.invoices.issue");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.invoices.issue" });
+    assertAdmin(viewer);
 
     const [feePlan, classDoc, session, term, school] = await Promise.all([
       ctx.db.get(args.feePlanId),
@@ -2221,7 +2214,8 @@ export const recordManualPayment = mutation({
     payment: billingPaymentValidator,
   }),
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.payments.record_manual");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.payments.record_manual" });
+    assertAdmin(viewer);
 
     const invoice = await loadInvoiceById(ctx, args.invoiceId);
     if (!invoice || invoice.schoolId !== viewer.schoolId) {
@@ -2366,6 +2360,10 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
       const paymentReference = normalizeBillingReference(
         args.gatewayReference ?? args.reference ?? args.eventId
       );
+      const invoiceWasRevoked = invoiceCandidate.status === "cancelled";
+      const gatewayPaymentMessage = processingMessage ?? (invoiceWasRevoked
+        ? "Payment received after invoice revocation; recorded as unapplied for manual reconciliation"
+        : "Webhook payment applied successfully");
       const result = await createPaymentAndAllocation({
         ctx,
         schoolId,
@@ -2378,15 +2376,16 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         receivedAt: now,
         payerName: args.payerName,
         payerEmail: args.payerEmail,
-        notes: processingMessage,
+        notes: gatewayPaymentMessage,
         recordedBy: null,
-        reconciliationStatus: "reconciled",
+        reconciliationStatus: invoiceWasRevoked ? "flagged" : "reconciled",
+        recordAsUnapplied: invoiceWasRevoked,
       });
       payment = result.payment;
       invoice = result.invoice;
       paymentId = result.payment._id;
       verificationStatus = "verified";
-      processingMessage = processingMessage ?? "Webhook payment applied successfully";
+      processingMessage = gatewayPaymentMessage;
     }
 
     const eventRecord = {
@@ -2453,7 +2452,7 @@ export const recordVerifiedGatewayEventInternal = internalMutation({
         lastCheckedAt: now,
         resolvedAt: now,
         resolutionMessage:
-          args.verificationMessage ??
+          processingMessage ??
           (args.attemptReconciliationSource === "webhook"
             ? "Webhook reconciliation completed"
             : "Payment verified successfully"),
@@ -2950,11 +2949,13 @@ export const toggleInvoiceOptionalLineItem = mutation({
   },
   returns: billingInvoiceValidator,
   handler: async (ctx, args) => {
-    const viewer = await getAuthorizedBillingViewer(ctx, "finance.invoices.issue");
+    const viewer = await getAuthenticatedSchoolMembership(ctx, { capability: "finance.invoices.issue" });
     const invoice = await ctx.db.get(args.invoiceId);
     if (!invoice || invoice.schoolId !== viewer.schoolId) {
       throw new ConvexError("Invoice not found");
     }
+
+    assertAdmin(viewer);
 
     if (invoice.status === "paid" || invoice.status === "cancelled") {
       throw new ConvexError("Cannot modify items on a paid or cancelled invoice");

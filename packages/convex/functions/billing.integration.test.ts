@@ -607,6 +607,15 @@ describe("billing registered functions", () => {
         createdAt: now,
         updatedAt: now,
       };
+      for (let index = 0; index < 25; index += 1) {
+        await ctx.db.insert("studentInvoices", {
+          ...baseInvoice,
+          invoiceNumber: `LIFE-PAID-${index + 1}`,
+          amountPaid: 5000,
+          balanceDue: 0,
+          status: "paid",
+        });
+      }
       const unpaidInvoiceId = await ctx.db.insert("studentInvoices", {
         ...baseInvoice,
         invoiceNumber: "LIFE-UNPAID",
@@ -674,17 +683,49 @@ describe("billing registered functions", () => {
       canDelete: false,
     });
     expect(dashboard.feePlans.find((plan) => plan._id === usedPlan._id)?.usage).toMatchObject({
-      invoiceCount: 2,
+      invoiceCount: 27,
       revocableInvoiceCount: 1,
-      blockedPaidInvoiceCount: 1,
+      blockedPaidInvoiceCount: 26,
       canDelete: false,
     });
 
+    const firstPage = await actor.mutation(api.functions.billing.revokeFeePlanInvoices, {
+      feePlanId: usedPlan._id,
+      reason: "Incorrect fee amount",
+      cursor: null,
+    });
+    expect(firstPage).toMatchObject({ revokedCount: 0, hasMore: true });
     const revoked = await actor.mutation(api.functions.billing.revokeFeePlanInvoices, {
       feePlanId: usedPlan._id,
       reason: "Incorrect fee amount",
+      cursor: firstPage.continueCursor,
     });
-    expect(revoked).toMatchObject({ revokedCount: 1, hasMore: false });
+    expect(revoked).toMatchObject({ revokedCount: 1, hasMore: false, continueCursor: null });
+
+    const latePayment = await t.mutation(internal.functions.billing.recordVerifiedGatewayEventInternal, {
+      schoolId: ids.schoolId,
+      provider: "paystack",
+      providerMode: "test",
+      eventId: "life-late-payment",
+      eventType: "charge.success",
+      reference: "life-pending",
+      invoiceId: invoiceIds.unpaidInvoiceId,
+      gatewayReference: "life-pending",
+      amountReceived: 5000,
+      rawBody: "{}",
+      payload: {},
+      signatureValid: true,
+      attemptReconciliationSource: "webhook",
+    });
+    expect(latePayment.event).toMatchObject({ verificationStatus: "verified" });
+    expect(latePayment.invoice).toMatchObject({ status: "cancelled", amountPaid: 0 });
+    expect(latePayment.payment).toMatchObject({
+      amountApplied: 0,
+      unappliedAmount: 5000,
+      applicationStatus: "unapplied",
+      reconciliationStatus: "flagged",
+    });
+
     const lifecycleState = await t.run(async (ctx) => ({
       plan: await ctx.db.get("feePlans", usedPlan._id as Id<"feePlans">),
       unpaid: await ctx.db.get(invoiceIds.unpaidInvoiceId),
@@ -700,9 +741,9 @@ describe("billing registered functions", () => {
     });
     expect(lifecycleState.paid).toMatchObject({ status: "paid", amountPaid: 5000 });
     expect(lifecycleState.attempt).toMatchObject({
-      status: "manual_attention_needed",
-      authorizationUrl: null,
-      accessCode: null,
+      status: "webhook_reconciled",
+      paymentId: latePayment.payment?._id,
+      resolutionMessage: "Payment received after invoice revocation; recorded as unapplied for manual reconciliation",
     });
     expect(lifecycleState.audit.map((event) => event.action)).toEqual(expect.arrayContaining([
       "fee_plan.archived",

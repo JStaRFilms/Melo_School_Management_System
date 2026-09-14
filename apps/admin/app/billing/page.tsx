@@ -67,6 +67,7 @@ toggleSortDirection
 type FeePlanRevocationResult = {
   revokedCount: number;
   hasMore: boolean;
+  continueCursor: string | null;
 };
 
 type PaymentLinkActionResult = {
@@ -242,7 +243,11 @@ export default function BillingPage() {
   const selectedStudentInvoices = selectedStudentBilling?.invoices ?? [];
   const selectedStudentPayments = selectedStudentBilling?.payments ?? [];
   const selectedInvoiceLatestPaymentAttempt = useMemo(() => {
-    if (!selectedFinanceInvoice || selectedFinanceInvoice.invoice.balanceDue <= 0) {
+    if (
+      !selectedFinanceInvoice ||
+      selectedFinanceInvoice.invoice.status === "cancelled" ||
+      selectedFinanceInvoice.invoice.balanceDue <= 0
+    ) {
       return null;
     }
 
@@ -390,13 +395,12 @@ export default function BillingPage() {
 
   const handleRevokeFeePlanInvoices = (feePlanId: string, reason: string) =>
     actions.runAction(async () => {
+      let cursor: string | null = null;
       let hasMore = true;
       while (hasMore) {
-        const result = await actions.revokeFeePlanInvoices({ feePlanId, reason } as never) as FeePlanRevocationResult;
-        if (result.hasMore && result.revokedCount === 0) {
-          throw new Error("Invoice revocation stopped before all eligible invoices were processed.");
-        }
+        const result = await actions.revokeFeePlanInvoices({ feePlanId, reason, cursor } as never) as FeePlanRevocationResult;
         hasMore = result.hasMore;
+        cursor = result.continueCursor;
       }
     }, "Eligible invoices revoked and fee plan archived", "Invoice revocation did not finish. Refresh the plan details before retrying because earlier batches may have succeeded.");
 

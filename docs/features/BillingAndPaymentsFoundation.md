@@ -131,7 +131,8 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - A fee plan is deletable only if no `feePlanApplications` or `studentInvoices` row references it.
 - Revocation never deletes invoice, payment, allocation, attempt, or gateway history.
 - An invoice with a positive paid amount, or a `paid` or `partially_paid` status, blocks cancellation of that invoice. Other unpaid invoices from the same plan may still be cancelled.
-- New manual or gateway payments cannot be applied to a cancelled invoice.
+- Manual payments cannot be recorded against a cancelled invoice. A verified gateway payment that arrives after revocation is preserved as a successful but unapplied, flagged payment without changing the cancelled invoice balance.
+- Bulk revocation reads bounded invoice pages so plans with long paid or cancelled histories can still make progress without rescanning the same rows.
 - Lifecycle changes write permanent finance audit events with the actor, target plan, result, reason where applicable, and affected invoice count.
 
 ## UX Direction
@@ -146,7 +147,7 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - Fee plans can be created without crossing school boundaries.
 - Unused fee plans can be deleted, while any plan with an application or invoice reference cannot be deleted.
 - Archived fee plans cannot generate direct or bulk invoices and can be restored by an authorized billing manager.
-- Bulk revocation cancels unpaid invoices, preserves paid and partly paid invoices, and blocks new payments against cancelled invoices.
+- Bulk revocation cancels unpaid invoices, preserves paid and partly paid invoices, and records late verified gateway payments as flagged and unapplied.
 - Invoice generation respects the school context and the selected student/class/session/term.
 - Manual payments only update the invoice they are attached to.
 - Gateway webhooks are rejected unless the signature verifies.
