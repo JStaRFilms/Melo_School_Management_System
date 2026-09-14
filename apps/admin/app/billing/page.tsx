@@ -211,8 +211,10 @@ export default function BillingPage() {
     canUseLegacyBillingOperations,
   );
   const selectedFinanceInvoice = useMemo(
-    () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
-    [data?.invoices, financePack?.invoiceId]
+    () => canUseLegacyBillingOperations
+      ? data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null
+      : null,
+    [canUseLegacyBillingOperations, data?.invoices, financePack?.invoiceId]
   );
   const financePackReusableAttempts = useQuery(
     api.functions.billing.listBillingPaymentAttemptsForInvoice,
