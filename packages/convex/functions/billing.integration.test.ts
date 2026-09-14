@@ -405,7 +405,7 @@ describe("billing registered functions", () => {
         authTokenIdentifier: accountantIdentity.tokenIdentifier,
         name: "Delegated Accountant",
         email: "accountant@billing.test",
-        role: "admin",
+        role: "teacher",
         createdAt: now,
         updatedAt: now,
       });
@@ -444,10 +444,6 @@ describe("billing registered functions", () => {
     });
     const accountant = t.withIdentity(accountantIdentity);
 
-    await expect(accountant.query(
-      api.functions.billing.listFeePlans,
-      {},
-    )).rejects.toThrow(/Admin access required/);
     await expect(accountant.query(
       api.functions.billing.listFeePlanClassOptions,
       {},

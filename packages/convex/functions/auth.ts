@@ -114,7 +114,6 @@ export const getViewerContext = query({
       name: appUser.name,
       role: appUser.role,
       isSchoolAdmin: appUser.role === "admin" || appUser.isSchoolAdmin === true,
-      permissionManaged: access.compatibility.permissionManaged === true,
       schoolId: appUser.schoolId,
     };
   },

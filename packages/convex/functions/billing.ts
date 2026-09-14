@@ -276,8 +276,8 @@ const portalPaymentVerificationResultValidator = v.object({
   message: v.string(),
 });
 
-function assertAdmin(user: { isSchoolAdmin: boolean; permissionManaged: boolean }) {
-  if (!user.isSchoolAdmin || user.permissionManaged) {
+function assertAdmin(user: { isSchoolAdmin: boolean }) {
+  if (!user.isSchoolAdmin) {
     throw new ConvexError("Admin access required");
   }
 }
@@ -2696,10 +2696,7 @@ export const verifyOnlinePaymentByReference = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    assertAdmin({
-      isSchoolAdmin: viewer.isSchoolAdmin === true,
-      permissionManaged: viewer.permissionManaged === true,
-    });
+    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
 
     return await verifyPaystackReferenceAndReconcile(ctx, args.reference, {
       expectedSchoolId: viewer.schoolId ?? null,
@@ -2784,10 +2781,7 @@ export const reconcilePendingOnlinePayments = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    assertAdmin({
-      isSchoolAdmin: viewer.isSchoolAdmin === true,
-      permissionManaged: viewer.permissionManaged === true,
-    });
+    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
 
     const pendingAttempts: any[] = await ctx.runQuery(
       (internal as any).functions.billing.listBillingPaymentAttemptsForReconciliationInternal,
@@ -3002,10 +2996,7 @@ export const initializeOnlinePayment = action({
     if (!viewer) {
       throw new ConvexError("Unauthorized");
     }
-    assertAdmin({
-      isSchoolAdmin: viewer.isSchoolAdmin === true,
-      permissionManaged: viewer.permissionManaged === true,
-    });
+    assertAdmin({ isSchoolAdmin: viewer.isSchoolAdmin === true });
 
     if (!viewer.schoolId || String(viewer.schoolId) !== String(args.schoolId)) {
       throw new ConvexError("Cross-school access denied");
