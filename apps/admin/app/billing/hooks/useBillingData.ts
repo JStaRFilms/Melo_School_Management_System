@@ -3,7 +3,12 @@ import { useMemo } from "react";
 import type { BillingDashboardData, DashboardFilters, ClassOption, SessionOption, TermOption, StudentOption } from "../types";
 import { toQueryArgs } from "../utils";
 
-export function useBillingData(filters: DashboardFilters, invoiceDraft: any, feePlanApplicationDraft: any) {
+export function useBillingData(
+  filters: DashboardFilters,
+  invoiceDraft: any,
+  feePlanApplicationDraft: any,
+  canLoadAcademicOptions: boolean,
+) {
   const dashboardArgs = {
     classId: filters.classId ? (filters.classId as never) : (null as never),
     sessionId: filters.sessionId ? (filters.sessionId as never) : (null as never),
@@ -16,13 +21,15 @@ export function useBillingData(filters: DashboardFilters, invoiceDraft: any, fee
     | BillingDashboardData
     | undefined;
 
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as
-    | ClassOption[]
-    | undefined;
+  const classes = useQuery(
+    "functions/academic/academicSetup:listClasses" as never,
+    canLoadAcademicOptions ? ({} as never) : "skip",
+  ) as ClassOption[] | undefined;
 
-  const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as
-    | SessionOption[]
-    | undefined;
+  const sessions = useQuery(
+    "functions/academic/academicSetup:listSessions" as never,
+    canLoadAcademicOptions ? ({} as never) : "skip",
+  ) as SessionOption[] | undefined;
 
   const filterTerms = useQuery(
     "functions/academic/academicSetup:listTermsBySession" as never,

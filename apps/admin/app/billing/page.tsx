@@ -197,7 +197,12 @@ export default function BillingPage() {
     sessions, 
     classNameById, 
     applicationTerms 
-  } = useBillingData(filters, invoiceDraft, feePlanApplicationDraft);
+  } = useBillingData(
+    filters,
+    invoiceDraft,
+    feePlanApplicationDraft,
+    session?.user.role === "admin",
+  );
   const selectedFinanceInvoice = useMemo(
     () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
     [data?.invoices, financePack?.invoiceId]
