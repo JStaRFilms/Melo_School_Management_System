@@ -22,6 +22,7 @@ import {
 import { FreeTrialStorageModal } from "./FreeTrialStorageModal";
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
 import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
+import { StudentCountValue } from "./StudentCountValue";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { useAutoAnimate } from "@school/shared";
 
@@ -33,6 +34,7 @@ interface SchoolItem {
   createdAt: number;
   adminName: string | null;
   adminEmail: string | null;
+  currentStudentCount: number | null;
   features: SchoolFeatureSet;
 }
 
@@ -64,12 +66,13 @@ function SchoolsTable({
 
   return (
     <div className="w-full overflow-x-auto rounded-2xl border border-slate-200/90 bg-white shadow-xs hidden md:block">
-      <table className="w-full text-left border-collapse min-w-[1080px]">
+      <table className="w-full text-left border-collapse min-w-[1160px]">
         <thead>
           <tr className="border-b border-slate-100 bg-slate-50/80">
             <th className="min-w-[240px] px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">School</th>
             <th className="min-w-[130px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Slug</th>
             <th className="min-w-[100px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</th>
+            <th className="min-w-[100px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Students</th>
             <th className="min-w-[200px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Admin Account</th>
             <th className="min-w-[170px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Modules</th>
             <th className="min-w-[100px] px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">Created</th>
@@ -108,6 +111,9 @@ function SchoolsTable({
                       Active
                     </span>
                   )}
+                </td>
+                <td className="px-4 py-4 text-sm whitespace-nowrap">
+                  <StudentCountValue school={school} />
                 </td>
                 <td className="px-4 py-4">
                   {school.adminEmail ? (
@@ -300,6 +306,11 @@ function SchoolsCards({
             {/* Admin Info & Modules Strip */}
             <div className="rounded-xl bg-slate-50/75 p-3.5 border border-slate-100 space-y-2.5 text-xs">
               <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Current students</span>
+                <StudentCountValue school={school} />
+              </div>
+
+              <div className="flex items-center justify-between gap-2 border-t border-slate-200/50 pt-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Admin</span>
                 {school.adminEmail ? (
                   <div className="text-right truncate">

@@ -21,6 +21,12 @@ import {
   FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
   schoolHasExistingStorageClaims,
 } from "../academic/storageEntitlementProvisioning";
+import {
+  initializeSchoolEnrollmentCount,
+  isCurrentEnrollment,
+} from "../academic/studentEnrollmentCounts";
+
+const MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS = 10_000;
 
 function getBetterAuthIssuer(): string {
   const issuer = process.env.CONVEX_SITE_URL?.trim();
@@ -176,6 +182,11 @@ export const listSchools = query({
           .first();
       }
 
+      const enrollmentCount = await ctx.db
+        .query("schoolEnrollmentCounts")
+        .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+        .unique();
+
       result.push({
         _id: school._id,
         name: school.name,
@@ -185,6 +196,7 @@ export const listSchools = query({
         updatedAt: school.updatedAt,
         adminName: adminUser?.name ?? null,
         adminEmail: adminUser?.email ?? null,
+        currentStudentCount: enrollmentCount?.currentStudentCount ?? null,
         features: {
           billing: school.features?.billing ?? true,
           curriculum: school.features?.curriculum ?? true,
@@ -195,6 +207,35 @@ export const listSchools = query({
     }
 
     return result;
+  },
+});
+
+export const recalculateSchoolEnrollmentCount = mutation({
+  args: { schoolId: v.id("schools") },
+  returns: v.object({ currentStudentCount: v.number() }),
+  handler: async (ctx, args) => {
+    await getAuthenticatedPlatformAdmin(ctx);
+
+    const school = await ctx.db.get(args.schoolId);
+    if (!school) throw new ConvexError("School not found");
+
+    const students = await ctx.db
+      .query("students")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .take(MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS + 1);
+    if (students.length > MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS) {
+      throw new ConvexError(
+        "School enrollment exceeds the automatic recalculation limit",
+      );
+    }
+
+    const currentStudentCount = students.filter(isCurrentEnrollment).length;
+    await initializeSchoolEnrollmentCount(
+      ctx,
+      args.schoolId,
+      currentStudentCount,
+    );
+    return { currentStudentCount };
   },
 });
 
@@ -422,6 +463,7 @@ export const createSchool = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await initializeSchoolEnrollmentCount(ctx, schoolId);
 
     return { schoolId, slug };
   },

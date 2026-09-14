@@ -3,6 +3,7 @@ import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
+import { initializeSchoolEnrollmentCount } from "./studentEnrollmentCounts";
 
 type BootstrapIds = {
     schoolId: Id<"schools">;
@@ -110,6 +111,7 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
+      await initializeSchoolEnrollmentCount(ctx, schoolId);
     } else {
       schoolId = school._id;
       const nextSchoolName = normalizeHumanName(args.schoolName);
