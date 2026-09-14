@@ -515,7 +515,9 @@ export function summarizeBillingCollections(args: {
   const amountCollected = args.payments
     .filter((payment) => payment.status === "successful" || payment.status === "reconciled")
     .reduce((sum, payment) => sum + payment.amountApplied, 0);
-  const outstandingBalance = args.invoices.reduce((sum, invoice) => sum + invoice.balanceDue, 0);
+  const outstandingBalance = args.invoices
+    .filter((invoice) => invoice.status !== "cancelled")
+    .reduce((sum, invoice) => sum + invoice.balanceDue, 0);
   const overdueInvoices = args.invoices.filter((invoice) => invoice.status === "overdue").length;
   const paidInvoices = args.invoices.filter((invoice) => invoice.status === "paid").length;
   const unreconciledPayments = args.payments.filter(

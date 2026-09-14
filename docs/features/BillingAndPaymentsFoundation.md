@@ -90,6 +90,10 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - auditable bulk application runs for class-default plans
 - captures school, plan, class, session, term, and created/skipped counts
 
+### `feePlanLifecycleRuns`
+- temporary server-owned continuation state for bounded deletion and revocation scans
+- binds progress to the school, plan, actor, operation, and stable confirmation inputs so clients cannot skip ledger history
+
 ### `studentInvoices`
 - school-scoped invoice records for one student, class, session, and term
 - fee-plan snapshot and totals
@@ -125,14 +129,15 @@ The current implementation now uses a **per-school Paystack merchant** model:
 
 ## Authorization and lifecycle rules
 
-- `finance.fee_plans.manage` authorizes fee-plan archive, restore, and deletion.
+- `finance.fee_plans.manage` authorizes fee-plan creation, private draft recovery, archive, restore, and deletion.
 - Revocation requires both `finance.fee_plans.manage` and `finance.invoices.issue` because it changes invoice state as well as the plan.
 - Convex checks authorization and school ownership on every lifecycle mutation. Hiding UI controls is not an authorization boundary.
 - A fee plan is deletable only if no `feePlanApplications` or `studentInvoices` row references it.
 - Revocation never deletes invoice, payment, allocation, attempt, or gateway history.
 - An invoice with a positive paid amount, or a `paid` or `partially_paid` status, blocks cancellation of that invoice. Other unpaid invoices from the same plan may still be cancelled.
 - Manual payments cannot be recorded against a cancelled invoice. A verified gateway payment that arrives after revocation is preserved as a successful but unapplied, flagged payment without changing the cancelled invoice balance.
-- Bulk revocation reads bounded invoice pages so plans with long paid or cancelled histories can still make progress without rescanning the same rows.
+- Bulk deletion and revocation read bounded invoice pages through server-owned continuation runs, so clients cannot transplant cursors to skip financial history.
+- Cancelled invoice balances remain preserved on the invoice record but are excluded from active school and household outstanding totals.
 - Lifecycle changes write permanent finance audit events with the actor, target plan, result, reason where applicable, and affected invoice count.
 
 ## UX Direction

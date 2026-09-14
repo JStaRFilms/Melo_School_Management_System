@@ -440,7 +440,7 @@ describe("billing registered functions", () => {
         createdBy: userId,
         updatedBy: userId,
       });
-      return { membershipId, feePlanId };
+      return { schoolId, membershipId, feePlanId };
     });
     const accountant = t.withIdentity(accountantIdentity);
 
@@ -448,6 +448,10 @@ describe("billing registered functions", () => {
       api.functions.billing.listFeePlanClassOptions,
       {},
     )).resolves.toEqual([]);
+    await expect(accountant.query(
+      api.functions.academic.drafts.getFormDraft,
+      { schoolId: ids.schoolId, formKey: "fee_plan_builder" },
+    )).resolves.toBeNull();
     await expect(accountant.mutation(api.functions.billing.createFeePlan, {
       name: "Delegated new plan",
       lineItems,
@@ -764,6 +768,11 @@ describe("billing registered functions", () => {
       applicationStatus: "unapplied",
       reconciliationStatus: "flagged",
     });
+    const dashboardAfterRevocation = await actor.query(
+      api.functions.billing.getBillingDashboard,
+      {},
+    );
+    expect(dashboardAfterRevocation.summary.outstandingBalance).toBe(0);
 
     const lifecycleState = await t.run(async (ctx) => ({
       plan: await ctx.db.get("feePlans", usedPlan._id as Id<"feePlans">),
