@@ -478,6 +478,7 @@ async function resumeEvaluation(ctx: MutationCtx, args: { schoolId: Id<"schools"
   if (args.managerOnly && application.conversionId) {
     const conversion = await ctx.db.get(application.conversionId);
     if (conversion?.state === "succeeded") throw new ConvexError("A completed conversion cannot be reopened");
+    if (conversion) throw new ConvexError("Conversion work must be resolved before this decision can be reopened");
   }
   const reasonCode = normalizeRequiredText(args.reasonCode, "Resume reason", 100);
   const appended = await appendDecision(ctx, { schoolId: args.schoolId, applicationId: application._id, snapshotId: application.latestSnapshotId, state: "in_evaluation", actorUserId: actor.userId, reasonCode, rationale: args.rationale });
@@ -647,10 +648,11 @@ export const recordDecision = mutation({
     const guardianMessage = normalizeRequiredText(args.guardianMessage, "Guardian-safe decision message", 1000);
     const current = application.currentDecisionId ? await ctx.db.get(application.currentDecisionId) : null;
     if (current?.state === args.state && current.reasonCode === reasonCode && current.guardianMessage === guardianMessage && current.rationale === args.rationale) return { decisionId: current._id, version: current.version, replayed: true };
+    const expectedApplicationState = current?.state === "ready_for_decision" ? "under_review" : current?.state === "waitlisted" ? "waitlisted" : null;
     const legal = current?.state === "ready_for_decision"
       ? args.state === "waitlisted" || args.state === "accepted" || args.state === "rejected"
       : current?.state === "waitlisted" && (args.state === "accepted" || args.state === "rejected");
-    if (!current || !legal || (current.snapshotId !== undefined && current.snapshotId !== application.latestSnapshotId)) throw new ConvexError("Decision transition is not allowed for the current snapshot");
+    if (!current || application.state !== expectedApplicationState || !legal || (current.snapshotId !== undefined && current.snapshotId !== application.latestSnapshotId)) throw new ConvexError("Decision transition is not allowed for the current snapshot");
     const readiness = await computeDecisionReadiness(ctx, application);
     if (!readiness.ready) throw new ConvexError(`Application is not ready for a decision: ${readiness.blockers.join(", ")}`);
     if (args.state === "accepted" && !readiness.acceptanceReady) throw new ConvexError("Required documents must be accepted before an acceptance decision");

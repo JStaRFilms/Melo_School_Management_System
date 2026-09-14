@@ -748,22 +748,23 @@ export const listCampaigns = query({
     if (programmes.length > 50) throw new ConvexError("Campaign catalogue exceeds the supported bound");
     const result = [];
     for (const programme of programmes) {
-      const intakes = await ctx.db.query("admissionsIntakes").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id)).take(11);
+      const intakeSets = await Promise.all((["draft", "open", "paused", "closed"] as const).map((status) => ctx.db.query("admissionsIntakes").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id).eq("status", status)).take(11)));
+      const intakes = intakeSets.flat();
       if (intakes.length > 10 || intakes.some((row) => row.schoolId !== args.schoolId)) throw new ConvexError("Campaign intake set exceeds the supported bound");
       for (const intake of intakes) {
         const products = await ctx.db.query("admissionsProducts").withIndex("by_school_and_intake", (q) => q.eq("schoolId", args.schoolId).eq("intakeId", intake._id)).take(2);
         if (products.length !== 1) continue;
         const product = products[0];
-        const [forms, declarations, prices] = await Promise.all([
-          ctx.db.query("admissionsFormVersions").withIndex("by_school_and_programme", (q) => q.eq("schoolId", args.schoolId).eq("programmeId", programme._id)).take(21),
-          ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id)).take(21),
-          ctx.db.query("admissionsProductPrices").withIndex("by_product_and_version", (q) => q.eq("productId", product._id)).take(21),
-        ]);
-        if (forms.length > 20 || declarations.length > 20 || prices.length > 20) throw new ConvexError("Campaign version set exceeds the supported bound");
         for (const lifecycle of ["published", "draft"] as const) {
-          const form = forms.filter((row) => row.intakeId === intake._id && row.status === lifecycle).sort((a, b) => b.version - a.version)[0];
-          const declaration = declarations.filter((row) => row.status === lifecycle).sort((a, b) => b.version - a.version)[0];
-          const price = prices.filter((row) => row.status === lifecycle).sort((a, b) => b.version - a.version)[0];
+          const [forms, declarations, prices] = await Promise.all([
+            ctx.db.query("admissionsFormVersions").withIndex("by_intake_and_status", (q) => q.eq("intakeId", intake._id).eq("status", lifecycle)).take(2),
+            ctx.db.query("admissionsDeclarationVersions").withIndex("by_programme_and_status", (q) => q.eq("programmeId", programme._id).eq("status", lifecycle)).take(2),
+            ctx.db.query("admissionsProductPrices").withIndex("by_product_and_status_and_effective_from", (q) => q.eq("productId", product._id).eq("status", lifecycle)).order("desc").take(2),
+          ]);
+          if (forms.length > 1 || declarations.length > 1 || prices.length > 1) throw new ConvexError("Campaign lifecycle has conflicting current versions");
+          const form = forms[0];
+          const declaration = declarations[0];
+          const price = prices[0];
           if (!form || !declaration || !price) continue;
           const [fields, requirements] = await Promise.all([
             ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101),
@@ -789,8 +790,13 @@ export const listPublishedOfferings = query({
     const school = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", normalizeSlug(args.schoolSlug, "School slug"))).unique();
     if (!school || school.status !== "active" || school.features?.admissions !== true) return { available: false as const };
     const theme = await resolveEffectiveTheme(ctx, school);
-    const intakes = await ctx.db.query("admissionsIntakes").withIndex("by_school", (q) => q.eq("schoolId", school._id)).take(51);
-    if (intakes.length > 50) throw new ConvexError("Admissions offering set exceeds the supported bound");
+    const [openIntakes, pausedIntakes, closedIntakes] = await Promise.all([
+      ctx.db.query("admissionsIntakes").withIndex("by_school_and_status_and_opens_at", (q) => q.eq("schoolId", school._id).eq("status", "open")).order("desc").take(50),
+      ctx.db.query("admissionsIntakes").withIndex("by_school_and_status_and_opens_at", (q) => q.eq("schoolId", school._id).eq("status", "paused")).order("desc").take(50),
+      ctx.db.query("admissionsIntakes").withIndex("by_school_and_status_and_opens_at", (q) => q.eq("schoolId", school._id).eq("status", "closed")).order("desc").take(50),
+    ]);
+    const activeIntakes = [...openIntakes, ...pausedIntakes].sort((left, right) => right.opensAt - left.opensAt).slice(0, 50);
+    const intakes = [...activeIntakes, ...closedIntakes.slice(0, 50 - activeIntakes.length)];
     const offerings = [];
     for (const intake of intakes) {
       const availability = intake.status === "paused" ? "paused" as const : intake.status === "closed" || intake.status === "archived" || args.now > intake.closesAt ? "closed" as const : intake.status === "open" && args.now < intake.opensAt ? "upcoming" as const : intake.status === "open" ? "open" as const : "unavailable" as const;

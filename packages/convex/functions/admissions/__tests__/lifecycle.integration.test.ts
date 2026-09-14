@@ -147,6 +147,24 @@ it("serves the restored UI read models without caller-supplied guardian identity
   expect(otherWorkspace.applications).toEqual([]);
 });
 
+it("loads current campaigns and public offerings independently of retained history", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    const now = Date.now();
+    for (let version = 2; version <= 25; version += 1) {
+      await ctx.db.insert("admissionsFormVersions", { schoolId: f.schoolId, programmeId: f.campaign.programmeId, intakeId: f.campaign.intakeId, version, schemaVersion: "1", status: "retired", createdAt: now + version, updatedAt: now + version });
+      await ctx.db.insert("admissionsDeclarationVersions", { schoolId: f.schoolId, programmeId: f.campaign.programmeId, version, title: `Old declaration ${version}`, body: "Retired", bodyDigest: `retired-${version}`, purpose: "attestation", status: "retired", createdAt: now + version, updatedAt: now + version });
+      await ctx.db.insert("admissionsProductPrices", { schoolId: f.schoolId, productId: f.campaign.productId, version, amountMinor: 500_000, currency: "NGN", refundPolicyKey: "non-refundable", feeDisclosure: "Retired", effectiveFrom: now - version, status: "retired", createdAt: now + version, updatedAt: now + version });
+    }
+    for (let index = 0; index < 55; index += 1) {
+      await ctx.db.insert("admissionsIntakes", { schoolId: f.schoolId, programmeId: f.campaign.programmeId, slug: `archived-${index}`, name: `Archived ${index}`, cycleLabel: "Archived", opensAt: now - 100_000 - index, closesAt: now - 50_000 - index, status: "archived", createdAt: now + index, updatedAt: now + index });
+    }
+  });
+
+  await expect(f.staff.query(listCampaignsRef, { schoolId: f.schoolId, now: Date.now() })).resolves.toEqual([expect.objectContaining({ lifecycle: "published", intakeId: f.campaign.intakeId })]);
+  await expect(f.t.query(listPublishedOfferingsRef, { schoolSlug: "admissions-school", now: Date.now() })).resolves.toMatchObject({ available: true, offerings: [expect.objectContaining({ intakeSlug: "2026" })] });
+});
+
 it("keeps admissions unavailable unless the school feature is explicitly enabled", async () => {
   const f = await fixture();
   await f.t.run((ctx) => ctx.db.patch(f.schoolId, { features: undefined }));
@@ -775,6 +793,18 @@ it("versions evaluations and enforces ready, waitlist, resume, and manager reope
   await expect(f.staff.mutation(reopenDecisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, reasonCode: "MANAGER_REVIEW" })).rejects.toThrow("Fresh authentication");
   await expect(f.freshStaff.mutation(reopenDecisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, reasonCode: "MANAGER_REVIEW" })).resolves.toMatchObject({ version: 7 });
   expect(await f.t.run((ctx) => ctx.db.query("admissionsDecisions").withIndex("by_application_and_version", (q) => q.eq("applicationId", application.applicationId)).collect())).toHaveLength(7);
+});
+
+it("blocks final decisions while guardian corrections are outstanding", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "decision-correction-block");
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "decision-correction-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Ada", lastName: "Eze", dateOfBirth: Date.UTC(2019, 1, 1) }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "School fit" }] });
+  await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "decision-correction-submit", signerName: "Parent Eze", signerRelationship: "Parent", declarationAccepted: true });
+  await f.staff.mutation(startReviewRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  await f.staff.mutation(markReadyRef, { schoolId: f.schoolId, applicationId: application.applicationId });
+  await f.staff.mutation(requestChangesRef, { schoolId: f.schoolId, applicationId: application.applicationId, fieldKeys: ["reason"], requirementIds: [], reasonCode: "CLARIFY", guardianMessage: "Please clarify the reason." });
+
+  await expect(f.freshStaff.mutation(decisionRef, { schoolId: f.schoolId, applicationId: application.applicationId, state: "accepted", reasonCode: "ACCEPT", guardianMessage: "Accepted." })).rejects.toThrow("transition");
 });
 
 it("refreshes in-evaluation snapshot binding after a resubmission", async () => {

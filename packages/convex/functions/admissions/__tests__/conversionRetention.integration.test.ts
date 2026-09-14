@@ -80,6 +80,18 @@ function mockOnboardingEmailDelivery() {
   };
 }
 
+it("blocks decision reopening while conversion work is active", async () => {
+  const f = await fixture();
+  await f.t.run(async (ctx) => {
+    const application = await ctx.db.get(f.applicationId);
+    if (!application?.currentDecisionId || !application.latestSnapshotId) throw new Error("Accepted application context missing");
+    const conversionId = await ctx.db.insert("admissionsConversions", { schoolId: f.schoolId, applicationId: f.applicationId, acceptedDecisionId: application.currentDecisionId, snapshotId: application.latestSnapshotId, idempotencyKey: "active-conversion-reopen", state: "requested", attemptCount: 0, classId: f.classId, familyResolutionKind: "create", createdAt: Date.now(), updatedAt: Date.now() });
+    await ctx.db.patch(f.applicationId, { conversionId });
+  });
+
+  await expect(f.staff.mutation(reopenDecisionRef, { schoolId: f.schoolId, applicationId: f.applicationId, reasonCode: "MANAGER_REVIEW" })).rejects.toThrow("Conversion work must be resolved");
+});
+
 it("converts one accepted application transactionally, reuses canonical admission helpers, and queues onboarding after commit", async () => {
   vi.useFakeTimers();
   const restoreEmail = mockOnboardingEmailDelivery();
