@@ -115,6 +115,7 @@ import type * as functions_admissions_catalogue from "../functions/admissions/ca
 import type * as functions_admissions_conversion from "../functions/admissions/conversion.js";
 import type * as functions_admissions_documents from "../functions/admissions/documents.js";
 import type * as functions_admissions_guardian from "../functions/admissions/guardian.js";
+import type * as functions_admissions_paymentTerms from "../functions/admissions/paymentTerms.js";
 import type * as functions_admissions_payments from "../functions/admissions/payments.js";
 import type * as functions_admissions_refs from "../functions/admissions/refs.js";
 import type * as functions_admissions_retention from "../functions/admissions/retention.js";
@@ -144,6 +145,7 @@ import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
 import type * as functions_platform_index from "../functions/platform/index.js";
 import type * as functions_platform_provisioningHelpers from "../functions/platform/provisioningHelpers.js";
+import type * as functions_platform_schoolAdminEmailUpdate from "../functions/platform/schoolAdminEmailUpdate.js";
 import type * as functions_portal from "../functions/portal.js";
 import type * as http from "../http.js";
 
@@ -261,6 +263,7 @@ declare const fullApi: ApiFromModules<{
   "functions/admissions/conversion": typeof functions_admissions_conversion;
   "functions/admissions/documents": typeof functions_admissions_documents;
   "functions/admissions/guardian": typeof functions_admissions_guardian;
+  "functions/admissions/paymentTerms": typeof functions_admissions_paymentTerms;
   "functions/admissions/payments": typeof functions_admissions_payments;
   "functions/admissions/refs": typeof functions_admissions_refs;
   "functions/admissions/retention": typeof functions_admissions_retention;
@@ -290,6 +293,7 @@ declare const fullApi: ApiFromModules<{
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
   "functions/platform/index": typeof functions_platform_index;
   "functions/platform/provisioningHelpers": typeof functions_platform_provisioningHelpers;
+  "functions/platform/schoolAdminEmailUpdate": typeof functions_platform_schoolAdminEmailUpdate;
   "functions/portal": typeof functions_portal;
   http: typeof http;
 }>;
