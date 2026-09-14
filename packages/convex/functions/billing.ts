@@ -198,6 +198,13 @@ const feePlanLifecycleResultValidator = v.object({
   status: v.union(v.literal("active"), v.literal("archived"), v.literal("deleted")),
 });
 
+const deleteUnusedFeePlanResultValidator = v.object({
+  feePlanId: v.id("feePlans"),
+  status: v.union(v.literal("archived"), v.literal("deleted")),
+  hasMore: v.boolean(),
+  continueCursor: v.union(v.string(), v.null()),
+});
+
 const revokeFeePlanInvoicesResultValidator = v.object({
   feePlanId: v.id("feePlans"),
   revokedCount: v.number(),
@@ -1850,8 +1857,9 @@ export const deleteUnusedFeePlan = mutation({
   args: {
     feePlanId: v.id("feePlans"),
     expectedName: v.string(),
+    cursor: v.optional(v.union(v.string(), v.null())),
   },
-  returns: feePlanLifecycleResultValidator,
+  returns: deleteUnusedFeePlanResultValidator,
   handler: async (ctx, args) => {
     const { viewer, actor } = await authorizeFeePlanLifecycle(ctx);
     const feePlan = await ctx.db.get(args.feePlanId);
@@ -1862,18 +1870,59 @@ export const deleteUnusedFeePlan = mutation({
       throw new ConvexError("Fee plan changed; reload before deleting it");
     }
 
-    const [application, invoice] = await Promise.all([
-      ctx.db
-        .query("feePlanApplications")
-        .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))
-        .first(),
-      ctx.db
-        .query("studentInvoices")
-        .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))
-        .first(),
-    ]);
+    const application = await ctx.db
+      .query("feePlanApplications")
+      .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))
+      .first();
+    const invoicePage = application
+      ? null
+      : await ctx.db
+          .query("studentInvoices")
+          .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
+          .paginate({
+            cursor: args.cursor ?? null,
+            numItems: 25,
+            maximumRowsRead: 25,
+          });
+    const invoice = invoicePage?.page.find((row) => row.feePlanId === feePlan._id);
+    const now = Date.now();
+
     if (application || invoice) {
-      throw new ConvexError("Used fee plans cannot be deleted. Archive this plan instead.");
+      if (feePlan.isActive) {
+        await ctx.db.patch(feePlan._id, {
+          isActive: false,
+          updatedAt: now,
+          updatedBy: viewer.userId,
+        });
+        await recordFeePlanLifecycleAudit(ctx, actor, {
+          schoolId: viewer.schoolId,
+          feePlanId: feePlan._id,
+          action: "archived",
+          summary: `Archived used fee plan ${feePlan.name} instead of deleting its financial history.`,
+        });
+      }
+      return {
+        feePlanId: feePlan._id,
+        status: "archived" as const,
+        hasMore: false,
+        continueCursor: null,
+      };
+    }
+
+    if (!invoicePage?.isDone) {
+      if (feePlan.isActive) {
+        await ctx.db.patch(feePlan._id, {
+          isActive: false,
+          updatedAt: now,
+          updatedBy: viewer.userId,
+        });
+      }
+      return {
+        feePlanId: feePlan._id,
+        status: "archived" as const,
+        hasMore: true,
+        continueCursor: invoicePage?.continueCursor ?? null,
+      };
     }
 
     await ctx.db.delete(feePlan._id);
@@ -1883,7 +1932,12 @@ export const deleteUnusedFeePlan = mutation({
       action: "deleted_unused",
       summary: `Permanently deleted unused fee plan ${feePlan.name}; no application or invoice history existed.`,
     });
-    return { feePlanId: feePlan._id, status: "deleted" as const };
+    return {
+      feePlanId: feePlan._id,
+      status: "deleted" as const,
+      hasMore: false,
+      continueCursor: null,
+    };
   },
 });
 
@@ -1911,13 +1965,14 @@ export const revokeFeePlanInvoices = mutation({
 
     const invoicePage = await ctx.db
       .query("studentInvoices")
-      .withIndex("by_fee_plan", (q) => q.eq("feePlanId", feePlan._id))
+      .withIndex("by_school", (q) => q.eq("schoolId", viewer.schoolId))
       .paginate({
         cursor: args.cursor ?? null,
         numItems: 25,
         maximumRowsRead: 25,
       });
     const batch = invoicePage.page.filter((invoice) => {
+      if (invoice.feePlanId !== feePlan._id) return false;
       const paymentBlocked =
         invoice.amountPaid > 0 ||
         invoice.status === "paid" ||

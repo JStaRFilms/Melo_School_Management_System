@@ -2351,8 +2351,7 @@ export default defineSchema({
     .index("by_student", ["studentId"])
     .index("by_status", ["status"])
     .index("by_school_and_number", ["schoolId", "invoiceNumber"])
-    .index("by_school_and_issued_at", ["schoolId", "issuedAt"])
-    .index("by_fee_plan", ["feePlanId"]),
+    .index("by_school_and_issued_at", ["schoolId", "issuedAt"]),
 
   schoolBankAccounts: defineTable({
     schoolId: v.id("schools"),

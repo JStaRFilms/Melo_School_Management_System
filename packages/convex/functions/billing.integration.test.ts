@@ -658,11 +658,27 @@ describe("billing registered functions", () => {
     await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
       feePlanId: applicationOnlyPlan._id,
       expectedName: applicationOnlyPlan.name,
-    })).rejects.toThrow(/Used fee plans cannot be deleted/);
+    })).resolves.toMatchObject({ status: "archived", hasMore: false });
     await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
       feePlanId: usedPlan._id,
       expectedName: usedPlan.name,
-    })).rejects.toThrow(/Used fee plans cannot be deleted/);
+    })).resolves.toMatchObject({ status: "archived", hasMore: false });
+
+    const paginatedUnusedPlan = await actor.mutation(api.functions.billing.createFeePlan, {
+      name: "Paginated unused fees",
+      lineItems,
+    });
+    const firstDeletePage = await actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      cursor: null,
+    });
+    expect(firstDeletePage).toMatchObject({ status: "archived", hasMore: true });
+    await expect(actor.mutation(api.functions.billing.deleteUnusedFeePlan, {
+      feePlanId: paginatedUnusedPlan._id,
+      expectedName: paginatedUnusedPlan.name,
+      cursor: firstDeletePage.continueCursor,
+    })).resolves.toMatchObject({ status: "deleted", hasMore: false });
 
     const dashboard = await actor.query(api.functions.billing.getBillingDashboard, {}) as {
       feePlans: Array<{
