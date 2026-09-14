@@ -1,5 +1,7 @@
 # Full Class Report Card Printing
 
+**Status:** Implemented
+
 ## Goal
 
 Add a clear `Print Full Class` action to the class report-card screen so admins and teachers can print every student report card in the selected class, session, and term in one run.

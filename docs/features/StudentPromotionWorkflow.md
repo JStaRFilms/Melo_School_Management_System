@@ -1,5 +1,7 @@
 # Student Promotion Workflow
 
+**Status:** Implemented
+
 ## Goal
 Allow school admins to stage and execute student promotions across academic sessions without colliding student rosters or modifying historical academic and billing records.
 

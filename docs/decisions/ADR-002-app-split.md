@@ -1,7 +1,7 @@
 # ADR-002: Four-App Surface Architecture
 
 **Date:** 2026-03-14  
-**Status:** Accepted  
+**Status:** Accepted. The four core surfaces shipped; `apps/platform`, `apps/sites`, and `apps/apply` were added by later work (see ADR-008 and ADR-009).  
 **Deciders:** Architect  
 
 ## Context
@@ -48,3 +48,7 @@ Each app:
 - Common navigation/UI patterns via shared packages
 - Convex functions must be aware of role context
 - Four separate builds/deployments to manage
+
+## Implementation note 2026-09-14
+
+The four apps above all shipped. Three more surfaces were added since: `apps/platform` (school provisioning), `apps/sites` (managed public school sites), and `apps/apply` (public admissions). See ADR-008 and ADR-009.

@@ -224,4 +224,4 @@ This ADR is accepted only when the integration owner and product/security/privac
 
 ## Implementation note 2026-09-14
 
-Accepted and built at `3b391e3`. The B0 contract, `apps/apply` routes, and the payment to conversion flow exist. The unresolved business approvals above still need owner sign off before production launch. They no longer block code review.
+Accepted and built at `3b391e3`. The B0 contract, `apps/apply` routes, and the payment to conversion flow exist. The unresolved business approvals above still need owner sign off before production launch. They no longer block code review. One naming correction: the schema index is `by_school_and_admission_number` (`packages/convex/schema.ts`), not `by_school_id_and_admission_number` as named in section 5.

@@ -1,5 +1,7 @@
 # Redesign Proposal: Teacher Subject Selection
 
+**Status:** Implemented
+
 The current Teacher Subject Selection page suffers from low information density, excessive instructional text, and redundant UI containers (cards within cards). This redesign aims to align the page with the high-density, tool-oriented aesthetic of the Admin dashboard.
 
 ## Goals

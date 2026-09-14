@@ -1,5 +1,7 @@
 # Teacher Exam Selector Normalization
 
+**Status:** Implemented
+
 ## Goal
 
 Restore the teacher exam-entry selector flow so teachers can reliably see assigned classes and subjects in live Convex mode, including schools that assign a teacher as the class form teacher before subject-level teacher mapping is completed.

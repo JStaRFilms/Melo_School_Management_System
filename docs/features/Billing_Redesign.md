@@ -1,5 +1,7 @@
 # Feature Blueprint: Billing Page Redesign
 
+**Status:** Implemented (final component names differ from blueprint)
+
 ## Goal
 Overhaul the `/billing` page to improve spacing, reduce card overuse, simplify typography, and align with the established Admin UI patterns. The current implementation is a 2800+ line "God Component" that needs to be decomposed.
 

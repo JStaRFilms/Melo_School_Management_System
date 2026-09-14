@@ -1,5 +1,7 @@
 # Billing and Payments Foundation
 
+**Status:** Implemented
+
 ## Goal
 
 Give the school admin workspace real school-fee billing data structures, invoice generation, manual payment capture, school-scoped Paystack setup, gateway webhook handling, and collections visibility so finance screens can be built on top of stable backend contracts.

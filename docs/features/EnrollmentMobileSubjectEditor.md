@@ -1,5 +1,7 @@
 # Enrollment Mobile Subject Editor
 
+**Status:** Implemented
+
 ## Goal
 Make subject selection genuinely usable on small phones for both admin and teacher routes by replacing the cramped horizontal matrix with a mobile-first student card flow, while preserving the current desktop matrix for larger screens.
 

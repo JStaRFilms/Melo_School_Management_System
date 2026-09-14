@@ -1,5 +1,7 @@
 # Billing Reference Resolution Hardening
 
+**Status:** Implemented
+
 ## Goal
 
 Fix two billing reconciliation bugs that can leave real payments unresolved or duplicated in production:

@@ -1,5 +1,7 @@
 # Archived Record Restore Flow
 
+**Status:** Implemented
+
 ## Goal
 
 Make archive behave like reversible delete for academic setup records.

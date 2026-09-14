@@ -53,3 +53,7 @@ convex/
 - Convex deployment becomes critical path for all apps
 - Rate limiting must be configured carefully for multi-app load
 - Monitoring and logs centralized (simpler debugging)
+
+## Implementation note 2026-09-14
+
+The backend lives at `packages/convex` with `betterAuth.ts` and `functions/{academic, admissions, foundation, platform}` plus flat billing files (`billing.ts`, `billingGateway.ts`, `billingProviders.ts`, `billingWebhooks.ts`). The root `convex/` layout sketched above predates the monorepo move.

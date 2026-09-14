@@ -1,5 +1,7 @@
 # Managed School-Site Delivery And Editing Boundaries
 
+**Status:** Policy. No runtime implementation.
+
 ## Goal
 
 Define how the platform delivers a school public website during onboarding, how editing responsibility is split between the platform team and school admins, and how a school can start on an external website and later move to a platform-built managed site without turning the product into a full no-code builder.

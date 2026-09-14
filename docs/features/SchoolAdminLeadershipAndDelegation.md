@@ -1,5 +1,7 @@
 # School Admin Leadership And Delegation
 
+**Status:** Implemented
+
 ## Goal
 
 Give each school a single "supreme" or lead admin who can create sub-admins, transfer that leadership to one of those sub-admins when staff changes happen, and optionally upgrade existing teachers without removing their teaching role.

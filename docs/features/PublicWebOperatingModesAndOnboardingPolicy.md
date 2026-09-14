@@ -1,5 +1,7 @@
 # Public Web Operating Modes And Onboarding Policy
 
+**Status:** Policy. Not enforced in runtime code.
+
 ## Goal
 
 Define the supported public-web operating modes so school onboarding is not blocked by a single website assumption and the platform keeps its marketing site separate from tenant school websites.
