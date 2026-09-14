@@ -11,7 +11,7 @@ import { AdminHeader } from "@/components/ui/AdminHeader";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
-  approveCampaignPriceTermsRef, closeCampaignRef, createCampaignDraftRef, createReplacementDraftRef, editCampaignDraftRef, listCampaignsRef, listQueuePageRef, publishCampaignRef,
+  approveCampaignPriceTermsRef, approveCampaignPublicationRequirementsRef, closeCampaignRef, createCampaignDraftRef, createReplacementDraftRef, editCampaignDraftRef, listCampaignsRef, listQueuePageRef, publishCampaignRef,
   type CampaignBundle, type CampaignFieldInput, type CampaignInput, type CampaignRequirementInput,
 } from "@school/convex/functions/admissions/refs";
 import { createCampaignEditorValues, parseDefinitions, slugifyCampaignValue, validateCampaign, type CampaignEditorValues } from "./admissions-model";
@@ -56,6 +56,26 @@ function queueBadge(state: string) {
   }
 }
 
+function applicationLinkForAdmin(canonicalHref: string) {
+  const configuredOrigin = process.env.NEXT_PUBLIC_APPLY_ORIGIN?.trim();
+  if (!configuredOrigin) return canonicalHref;
+  try {
+    const canonical = new URL(canonicalHref);
+    return new URL(`${canonical.pathname}${canonical.search}${canonical.hash}`, configuredOrigin).toString();
+  } catch {
+    return canonicalHref;
+  }
+}
+
+function publicationApprovalNeeds(campaign: CampaignBundle) {
+  const sensitive = (value: string) => value === "highly_sensitive" || value === "financial_security";
+  return {
+    price: !campaign.priceApprovalEvidenceId,
+    fields: campaign.fields.some((field) => sensitive(field.dataClass) && !field.approvalEvidenceId),
+    documents: campaign.requirements.some((requirement) => (requirement.requiredMode !== "optional" || sensitive(requirement.sensitivity)) && !requirement.approvalEvidenceId),
+  };
+}
+
 export function AdmissionsDashboard() {
   const { workspaceAccess } = useAuth();
   const ready = workspaceAccess?.state === "ready" ? workspaceAccess : null;
@@ -63,12 +83,14 @@ export function AdmissionsDashboard() {
   const canManage = hasEffectiveCapability(workspaceAccess, "enrollment.intakes.manage");
   const canList = hasEffectiveCapability(workspaceAccess, "enrollment.applications.list");
   const canApproveFinance = hasEffectiveCapability(workspaceAccess, "finance.fee_plans.manage");
+  const canApproveDocuments = hasEffectiveCapability(workspaceAccess, "enrollment.documents.review");
+  const canApproveSensitiveFields = hasEffectiveCapability(workspaceAccess, "enrollment.applications.view_sensitive");
   const offeringNow = useOfferingNow();
   const campaigns = useQuery(listCampaignsRef, schoolId && canManage ? { schoolId, now: offeringNow } : "skip");
   const [queueState, setQueueState] = useState<"submitted" | "under_review" | "changes_requested" | "waitlisted" | "accepted" | "rejected">("submitted");
   const [cursor, setCursor] = useState<string | null>(null);
   const queue = useQuery(listQueuePageRef, schoolId && canList ? { schoolId, state: queueState, paginationOpts: { numItems: 20, cursor } } : "skip");
-  const createCampaign = useMutation(createCampaignDraftRef), editCampaign = useMutation(editCampaignDraftRef), replaceCampaign = useMutation(createReplacementDraftRef), approvePriceTerms = useMutation(approveCampaignPriceTermsRef), publishCampaign = useMutation(publishCampaignRef), closeCampaign = useMutation(closeCampaignRef);
+  const createCampaign = useMutation(createCampaignDraftRef), editCampaign = useMutation(editCampaignDraftRef), replaceCampaign = useMutation(createReplacementDraftRef), approvePriceTerms = useMutation(approveCampaignPriceTermsRef), approvePublicationRequirements = useMutation(approveCampaignPublicationRequirementsRef), publishCampaign = useMutation(publishCampaignRef), closeCampaign = useMutation(closeCampaignRef);
   const [values, setValues] = useState<CampaignEditorValues>(() => createCampaignEditorValues());
   const [customSlugs, setCustomSlugs] = useState({ programme: false, intake: false, product: false });
   const [openDraftId, setOpenDraftId] = useState<string | "new" | null>(null);
@@ -154,15 +176,25 @@ export function AdmissionsDashboard() {
       setBusy(false);
     }
   }
+  function requiresPublicationApproval(item: CampaignBundle) {
+    return Object.values(publicationApprovalNeeds(item)).some(Boolean);
+  }
+  function canApproveForPublication(item: CampaignBundle) {
+    const needs = publicationApprovalNeeds(item);
+    return (!needs.price || canApproveFinance) && (!needs.documents || canApproveDocuments) && (!needs.fields || canApproveSensitiveFields);
+  }
   async function confirmedAction() {
     if (!confirm || !schoolId) return;
     const item = confirm.campaign; setBusy(true);
     try {
       if (confirm.action === "publish") {
-        if (!item.priceApprovalEvidenceId) {
-          if (!canApproveFinance) throw new Error("A staff member with fee-plan authority must approve the fee terms before publishing.");
-          await approvePriceTerms({ schoolId, priceId: item.priceId, expectedSubjectKey: item.priceApprovalSubjectKey });
+        const approvalNeeds = publicationApprovalNeeds(item);
+        if (approvalNeeds.price || approvalNeeds.documents || approvalNeeds.fields) {
+          if ((approvalNeeds.price && !canApproveFinance) || (approvalNeeds.documents && !canApproveDocuments) || (approvalNeeds.fields && !canApproveSensitiveFields)) {
+            throw new Error("You do not have all permissions required to approve this campaign for publication.");
+          }
         }
+        await approvePublicationRequirements({ programmeId: item.programmeId, intakeId: item.intakeId, formVersionId: item.formVersionId, declarationVersionId: item.declarationVersionId, productId: item.productId, priceId: item.priceId, draftRevision: item.draftRevision });
         await publishCampaign({ programmeId: item.programmeId, intakeId: item.intakeId, formVersionId: item.formVersionId, declarationVersionId: item.declarationVersionId, productId: item.productId, priceId: item.priceId, draftRevision: item.draftRevision });
         setFeedback("Campaign version published. Public pages now use this version.");
         appToast.success("Campaign published");
@@ -202,13 +234,13 @@ export function AdmissionsDashboard() {
               {item.lifecycle === "draft" ? (
                 <>
                   <button className={buttonClass} onClick={() => begin(item)}>Edit</button>
-                  <button className={secondaryButtonClass} disabled={!item.priceApprovalEvidenceId && !canApproveFinance} title={!item.priceApprovalEvidenceId && !canApproveFinance ? "Finance approval is required" : undefined} onClick={() => setConfirm({ action: "publish", campaign: item })}>{item.priceApprovalEvidenceId ? "Publish" : canApproveFinance ? "Approve & publish" : "Finance approval required"}</button>
+                  <button className={secondaryButtonClass} disabled={!canApproveForPublication(item)} title={!canApproveForPublication(item) ? "Additional approval permissions are required" : undefined} onClick={() => setConfirm({ action: "publish", campaign: item })}>{requiresPublicationApproval(item) ? canApproveForPublication(item) ? "Approve requirements & publish" : "Approval permissions required" : "Publish"}</button>
                 </>
               ) : (
                 <>
                   <button className={buttonClass} onClick={() => begin(item, true)}>New version</button>
-                  <button className={secondaryButtonClass} onClick={() => void navigator.clipboard.writeText(item.applicationLink.href).then(() => setFeedback("Apply link copied."), () => setFeedback("The Apply link could not be copied. Open it and copy from the address bar."))}>Copy Apply link</button>
-                  <a className={secondaryButtonClass} href={item.applicationLink.href} target="_blank" rel="noreferrer">Open Apply link</a>
+                  <button className={secondaryButtonClass} onClick={() => void navigator.clipboard.writeText(applicationLinkForAdmin(item.applicationLink.href)).then(() => setFeedback("Apply link copied."), () => setFeedback("The Apply link could not be copied. Open it and copy from the address bar."))}>Copy Apply link</button>
+                  <a className={secondaryButtonClass} href={applicationLinkForAdmin(item.applicationLink.href)} target="_blank" rel="noreferrer">Open Apply link</a>
                   <button className={dangerButtonClass} onClick={() => setConfirm({ action: "close", campaign: item })}>Close</button>
                 </>
               )}
@@ -278,7 +310,7 @@ export function AdmissionsDashboard() {
       </div>
       {queue && !queue.isDone ? <button className={secondaryButtonClass} onClick={() => setCursor(queue.continueCursor)}>Next page</button> : null}
     </AdminSurface> : null}
-    <ConfirmDialog open={Boolean(confirm)} title={confirm?.action === "publish" ? confirm.campaign.priceApprovalEvidenceId ? "Publish campaign version?" : "Approve fee terms and publish?" : "Close campaign?"} description={confirm?.action === "publish" ? confirm.campaign.priceApprovalEvidenceId ? "The public application route will begin using this immutable version when it is currently effective." : "This records your finance approval for the saved fee and refund terms, then publishes the campaign." : "New purchases will stop. Existing owned applications remain available."} confirmLabel={confirm?.action === "publish" ? confirm.campaign.priceApprovalEvidenceId ? "Publish" : "Approve & publish" : "Close"} onConfirm={() => void confirmedAction()} onCancel={() => setConfirm(null)} />
+    <ConfirmDialog open={Boolean(confirm)} title={confirm?.action === "publish" ? requiresPublicationApproval(confirm.campaign) ? "Approve requirements and publish?" : "Publish campaign version?" : "Close campaign?"} description={confirm?.action === "publish" ? requiresPublicationApproval(confirm.campaign) ? "This records your approval for the saved fee terms and controlled application requirements, then publishes the campaign." : "The public application route will begin using this immutable version when it is currently effective." : "New purchases will stop. Existing owned applications remain available."} confirmLabel={confirm?.action === "publish" ? requiresPublicationApproval(confirm.campaign) ? "Approve & publish" : "Publish" : "Close"} onConfirm={() => void confirmedAction()} onCancel={() => setConfirm(null)} />
   </main>;
 }
 

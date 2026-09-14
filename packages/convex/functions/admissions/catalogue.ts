@@ -463,6 +463,108 @@ export const approveCampaignPriceTerms = mutation({
   },
 });
 
+export const approveCampaignPublicationRequirements = mutation({
+  args: { ...campaignIdsValidator.fields, draftRevision: v.string() },
+  returns: v.object({ approvedCount: v.number(), replayedCount: v.number() }),
+  handler: async (ctx, args) => {
+    const [programme, intake, form, declaration, product, price] = await Promise.all([
+      ctx.db.get(args.programmeId),
+      ctx.db.get(args.intakeId),
+      ctx.db.get(args.formVersionId),
+      ctx.db.get(args.declarationVersionId),
+      ctx.db.get(args.productId),
+      ctx.db.get(args.priceId),
+    ]);
+    if (!programme || !intake || !form || !declaration || !product || !price ||
+        [intake, form, declaration, product, price].some((row) => row.schoolId !== programme.schoolId) ||
+        intake.programmeId !== programme._id || form.programmeId !== programme._id || form.intakeId !== intake._id ||
+        declaration.programmeId !== programme._id || product.intakeId !== intake._id || price.productId !== product._id ||
+        form.status !== "draft" || declaration.status !== "draft" || price.status !== "draft") {
+      throw new ConvexError("Campaign draft is incomplete");
+    }
+    if (args.draftRevision !== draftRevision(form._id, form.draftRevision)) {
+      throw new ConvexError("CAMPAIGN_DRAFT_CONFLICT: Reload the campaign before approving it.");
+    }
+    const [fields, requirements] = await Promise.all([
+      ctx.db.query("admissionsFormFields").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(101),
+      ctx.db.query("admissionsDocumentRequirements").withIndex("by_form_version_and_order", (q) => q.eq("formVersionId", form._id)).take(31),
+    ]);
+    if (fields.length > 100 || requirements.length > 30) throw new ConvexError("Campaign draft exceeds approval bounds");
+    const sensitiveFields = fields.filter((field) => isSensitiveDataClass(field.dataClass));
+    const controlledRequirements = requirements.filter((requirement) => requirement.requiredMode !== "optional" || isSensitiveDataClass(requirement.sensitivity));
+    const now = Date.now();
+    const approvalIsCurrent = async (
+      evidenceId: Id<"schoolApprovalEvidence"> | undefined,
+      subjectType: "admissions_form_field" | "admissions_document_requirement" | "admissions_product_price",
+      subjectKey: string,
+      approvalClass: "privacy" | "finance",
+    ) => {
+      const evidence = evidenceId ? await ctx.db.get(evidenceId) : null;
+      return Boolean(evidence && evidence.schoolId === programme.schoolId && evidence.approvalClass === approvalClass && evidence.subjectType === subjectType && evidence.subjectKey === subjectKey && evidence.revokedAt === undefined && evidence.approvedAt <= now && (evidence.expiresAt === undefined || evidence.expiresAt > now));
+    };
+    const priceSubjectKey = await priceApprovalSubjectKey(price);
+    let sensitiveFieldsNeedApproval = false;
+    for (const field of sensitiveFields) {
+      if (!(await approvalIsCurrent(field.approvalEvidenceId, "admissions_form_field", `${String(form._id)}:${field.fieldKey}`, "privacy"))) sensitiveFieldsNeedApproval = true;
+    }
+    let requirementsNeedApproval = false;
+    for (const requirement of controlledRequirements) {
+      if (!(await approvalIsCurrent(requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, "privacy"))) requirementsNeedApproval = true;
+    }
+    const priceNeedsApproval = !(await approvalIsCurrent(price.approvalEvidenceId, "admissions_product_price", priceSubjectKey, "finance"));
+    const capabilities = ["enrollment.intakes.manage"];
+    if (priceNeedsApproval) capabilities.push("finance.fee_plans.manage");
+    if (sensitiveFieldsNeedApproval) capabilities.push("enrollment.applications.view_sensitive");
+    if (requirementsNeedApproval) capabilities.push("enrollment.documents.review");
+    const actor = await requireAdmissionsStaff(ctx, programme.schoolId, capabilities);
+    let approvedCount = 0;
+    let replayedCount = 0;
+
+    const ensureApproval = async (
+      evidenceId: Id<"schoolApprovalEvidence"> | undefined,
+      subjectType: "admissions_form_field" | "admissions_document_requirement" | "admissions_product_price",
+      subjectKey: string,
+      approvalClass: "privacy" | "finance",
+    ) => {
+      if (evidenceId && await approvalIsCurrent(evidenceId, subjectType, subjectKey, approvalClass)) {
+        replayedCount += 1;
+        return evidenceId;
+      }
+      approvedCount += 1;
+      return await ctx.db.insert("schoolApprovalEvidence", {
+        schoolId: programme.schoolId,
+        approvalClass,
+        subjectType,
+        subjectKey,
+        evidenceReference: `Admissions publication approved in Admin by ${String(actor.userId)}`,
+        approvedByUserId: actor.userId,
+        approvedAt: now,
+        createdAt: now,
+      });
+    };
+
+    for (const field of sensitiveFields) {
+      const approvalEvidenceId = await ensureApproval(field.approvalEvidenceId, "admissions_form_field", `${String(form._id)}:${field.fieldKey}`, "privacy");
+      if (approvalEvidenceId !== field.approvalEvidenceId) await ctx.db.patch(field._id, { approvalEvidenceId, updatedAt: now });
+    }
+    for (const requirement of controlledRequirements) {
+      const approvalEvidenceId = await ensureApproval(requirement.approvalEvidenceId, "admissions_document_requirement", `${String(form._id)}:${requirement.requirementKey}`, "privacy");
+      if (approvalEvidenceId !== requirement.approvalEvidenceId) await ctx.db.patch(requirement._id, { approvalEvidenceId, updatedAt: now });
+    }
+    const priceEvidenceId = await ensureApproval(price.approvalEvidenceId, "admissions_product_price", priceSubjectKey, "finance");
+    if (priceEvidenceId !== price.approvalEvidenceId) await ctx.db.patch(price._id, { approvalEvidenceId: priceEvidenceId, updatedAt: now });
+    await recordAdmissionsAudit(ctx, {
+      schoolId: programme.schoolId,
+      actorKind: "staff",
+      actorUserId: actor.userId,
+      action: "campaign.approve_publication_requirements",
+      entityType: "admissionsFormVersion",
+      entityId: form._id,
+    });
+    return { approvedCount, replayedCount };
+  },
+});
+
 export const createReplacementDraft = mutation({
   args: {
     schoolId: v.id("schools"), programmeId: v.id("admissionsProgrammes"), intakeId: v.id("admissionsIntakes"), productId: v.id("admissionsProducts"),

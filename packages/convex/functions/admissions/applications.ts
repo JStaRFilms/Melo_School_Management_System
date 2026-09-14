@@ -293,9 +293,9 @@ export const submit = mutation({
       const value = parsedAnswers.get(key);
       return typeof value === "string" ? value.trim().length > 0 : Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null;
     };
-    const missingFields = fields.filter((field) => field.status === "active" && (field.requiredMode === "required" || (field.requiredMode === "conditional" && conditionMatches(field.conditionalRuleJson, parsedAnswers))) && !hasValue(field.fieldKey)).map((field) => field.fieldKey);
+    const missingFields = fields.filter((field) => field.status === "active" && (field.requiredMode === "required" || (field.requiredMode === "conditional" && conditionMatches(field.conditionalRuleJson, parsedAnswers))) && !hasValue(field.fieldKey)).map((field) => field.label);
     const activeDocuments = documents.filter((document) => !["deleted", "superseded", "archived"].includes(document.state));
-    const missingRequirements = requirements.filter((requirement) => (requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatches(requirement.conditionJson, parsedAnswers))) && !activeDocuments.some((document) => document.requirementId === requirement._id && (document.state === "uploaded" || document.state === "accepted"))).map((requirement) => requirement.requirementKey);
+    const missingRequirements = requirements.filter((requirement) => (requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatches(requirement.conditionJson, parsedAnswers))) && !activeDocuments.some((document) => document.requirementId === requirement._id && (document.state === "uploaded" || document.state === "accepted"))).map((requirement) => requirement.label);
     const correctionSnapshotId = application.latestSnapshotId;
     if (application.state === "changes_requested" && correctionSnapshotId) {
       const [events, snapshotItems] = await Promise.all([
@@ -307,9 +307,9 @@ export const submit = mutation({
       if (!scope) admissionsError("APPLICATION_LOCKED", "Application correction scope is unavailable");
       const priorVersions = submittedDocumentVersions(snapshotItems);
       const missingReplacements = scope.requirementIds.filter((requirementId) => !activeDocuments.some((document) => String(document.requirementId) === requirementId && (document.state === "uploaded" || document.state === "accepted") && document.version > (priorVersions.get(requirementId) ?? 0)));
-      if (missingReplacements.length) missingRequirements.push(...requirements.filter((requirement) => missingReplacements.includes(String(requirement._id))).map((requirement) => requirement.requirementKey));
+      if (missingReplacements.length) missingRequirements.push(...requirements.filter((requirement) => missingReplacements.includes(String(requirement._id))).map((requirement) => requirement.label));
     }
-    if (missingFields.length || missingRequirements.length) admissionsError("APPLICATION_INCOMPLETE", `Missing required items: ${[...missingFields, ...new Set(missingRequirements)].join(", ")}`);
+    if (missingFields.length || missingRequirements.length) admissionsError("APPLICATION_INCOMPLETE", `Complete required items: ${[...missingFields, ...new Set(missingRequirements)].join(", ")}`);
     if (!entitlement || entitlement.guardianId !== guardian._id || (application.currentRevision === 0 && entitlement.state !== "reserved") || (application.currentRevision > 0 && entitlement.state !== "consumed")) throw new ConvexError("Application entitlement cannot be consumed");
     const revision = application.currentRevision + 1;
     const documentManifest = activeDocuments.map((document) => ({ documentKey: document.documentKey, requirementId: document.requirementId ? String(document.requirementId) : null, category: document.category, mimeType: document.mimeType, byteSize: document.byteSize, sha256: document.sha256, version: document.version, state: document.state })).sort((a, b) => a.documentKey.localeCompare(b.documentKey));

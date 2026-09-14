@@ -573,8 +573,8 @@ export const validateSchoolPaystackGatewayConfig = action({
 
     try {
       await gateway.createPaymentLink({
-        amount: 1,
-        email: `billing-validation+${String(viewer.schoolId)}@example.com`,
+        amount: 100,
+        email: "billing-validation@example.com",
         schoolId: String(viewer.schoolId),
         schoolSlug: "billing-validation",
         invoiceId: String(viewer.schoolId),

@@ -12,6 +12,42 @@ export function configuredApplicationOrigin(): string {
   throw new Error("APPLICATION_ORIGIN must be configured in production");
 }
 
+export function resolveApplicationCallbackOrigin(requestedOrigin?: string): string {
+  const canonicalOrigin = new URL(configuredApplicationOrigin()).origin;
+  if (!requestedOrigin) return canonicalOrigin;
+
+  let normalizedOrigin: string;
+  try {
+    const requestedUrl = new URL(requestedOrigin);
+    if (requestedUrl.origin !== requestedOrigin || requestedUrl.pathname !== "/" || requestedUrl.search || requestedUrl.hash) {
+      throw new Error("Origin-only URL required");
+    }
+    normalizedOrigin = requestedUrl.origin;
+  } catch {
+    throw new Error("Application return origin is invalid");
+  }
+
+  const trustedOrigins = new Set([
+    canonicalOrigin,
+    ...(process.env.TRUSTED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+      .map((origin) => {
+        try {
+          return new URL(origin).origin;
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean),
+  ]);
+  if (!trustedOrigins.has(normalizedOrigin)) {
+    throw new Error("Application return origin is not trusted");
+  }
+  return normalizedOrigin;
+}
+
 function resolveAvailability(args: {
   schoolActive: boolean;
   intake: { status: string; opensAt: number; closesAt: number } | null;

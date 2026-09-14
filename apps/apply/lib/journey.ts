@@ -82,3 +82,42 @@ export function validateSubmissionInput(input: { signerName: string; signerRelat
   if (!input.declarationAccepted) return "Accept the published declaration before submitting.";
   return null;
 }
+
+export function documentSelectionError(input: {
+  file: { size: number; type: string };
+  acceptedMimeTypes: string[];
+  maxBytes: number;
+  maxFiles: number;
+  activeFileCount: number;
+  replacementAllowed: boolean;
+}) {
+  if (input.file.size < 1) return "Choose a non-empty file.";
+  if (!input.acceptedMimeTypes.includes(input.file.type)) return "Choose one of the accepted file types shown above.";
+  if (input.file.size > input.maxBytes) return `This file is too large. The maximum size is ${formatFileSize(input.maxBytes)}.`;
+  if (input.activeFileCount >= input.maxFiles && !input.replacementAllowed) return `You can upload at most ${input.maxFiles} file${input.maxFiles === 1 ? "" : "s"} for this requirement.`;
+  return null;
+}
+
+export function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes % (1024 * 1024) === 0 ? 0 : 1)} MiB`;
+  if (bytes >= 1024) return `${Math.ceil(bytes / 1024)} KiB`;
+  return `${bytes} bytes`;
+}
+
+export function missingRequiredItemLabels(input: {
+  fields: Array<{ fieldKey: string; label: string; requiredMode: string; conditionalRuleJson: string | null }>;
+  requirements: Array<{ requirementId: string; label: string; requiredMode: string; conditionJson: string | null }>;
+  answers: Record<string, string>;
+  fieldKinds: ReadonlyMap<string, string>;
+  documents: Array<{ requirementId: string | null; state: string }>;
+}) {
+  const requiredFields = input.fields
+    .filter((field) => field.requiredMode === "required" || (field.requiredMode === "conditional" && conditionMatchesAnswers(field.conditionalRuleJson, input.answers, input.fieldKinds)))
+    .filter((field) => !input.answers[field.fieldKey]?.trim())
+    .map((field) => field.label);
+  const requiredDocuments = input.requirements
+    .filter((requirement) => requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatchesAnswers(requirement.conditionJson, input.answers, input.fieldKinds)))
+    .filter((requirement) => !input.documents.some((document) => document.requirementId === requirement.requirementId && (document.state === "uploaded" || document.state === "accepted")))
+    .map((requirement) => requirement.label);
+  return [...requiredFields, ...requiredDocuments];
+}
