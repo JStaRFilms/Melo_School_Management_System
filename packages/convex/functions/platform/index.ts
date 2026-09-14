@@ -21,6 +21,7 @@ import {
   FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
   schoolHasExistingStorageClaims,
 } from "../academic/storageEntitlementProvisioning";
+import { recordAuditEventHelper } from "../academic/audit";
 
 function getBetterAuthIssuer(): string {
   const issuer = process.env.CONVEX_SITE_URL?.trim();
@@ -30,6 +31,20 @@ function getBetterAuthIssuer(): string {
 
 function getBetterAuthTokenIdentifier(authId: string): string {
   return `${getBetterAuthIssuer()}|${authId}`;
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function maskEmail(email: string): string {
+  const [localPart, domain] = email.split("@");
+  if (!localPart || !domain) return "[redacted email]";
+  return `${localPart.slice(0, 1)}***@${domain}`;
 }
 
 async function ensureVerifiedSchoolAdminIdentity(
@@ -183,6 +198,7 @@ export const listSchools = query({
         status: school.status ?? "active",
         createdAt: school.createdAt,
         updatedAt: school.updatedAt,
+        adminUserId: adminUser?._id ?? null,
         adminName: adminUser?.name ?? null,
         adminEmail: adminUser?.email ?? null,
         features: {
@@ -794,6 +810,152 @@ export const reconcileSchoolAdminIdentity = action({
       },
     );
     return { personId };
+  },
+});
+
+export const updateSchoolAdminEmailInternal = internalMutation({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    expectedEmail: v.string(),
+    newEmail: v.string(),
+    actorEmail: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (
+      !user ||
+      user.schoolId !== args.schoolId ||
+      user.isArchived ||
+      (user.role !== "admin" && user.isSchoolAdmin !== true) ||
+      normalizeEmail(user.email) !== normalizeEmail(args.expectedEmail)
+    ) {
+      throw new ConvexError("Administrator identity changed during the update");
+    }
+
+    const conflictingUsers = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+      .take(2);
+    if (conflictingUsers.some((candidate) => candidate._id !== user._id)) {
+      throw new ConvexError("An account with this email already exists");
+    }
+    const conflictingPlatformAdmin = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+      .first();
+    const conflictingPerson = await ctx.db
+      .query("persons")
+      .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+      .first();
+    if (
+      conflictingPlatformAdmin ||
+      (conflictingPerson && conflictingPerson._id !== user.personId)
+    ) {
+      throw new ConvexError("An account with this email already exists");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, { email: args.newEmail, updatedAt: now });
+    if (user.personId) {
+      const person = await ctx.db.get(user.personId);
+      if (!person) throw new ConvexError("Administrator identity requires manual review");
+      await ctx.db.patch(person._id, { email: args.newEmail, updatedAt: now });
+    }
+    await recordAuditEventHelper(ctx, {
+      schoolId: args.schoolId,
+      actorKind: "platform_admin",
+      actorEmailSnapshot: args.actorEmail,
+      module: "auth",
+      action: "school_admin_email_changed",
+      targetType: "user",
+      targetId: String(user._id),
+      outcome: "success",
+      safeSummary: "A platform administrator changed a school administrator email address.",
+      beforeSummary: maskEmail(args.expectedEmail),
+      afterSummary: maskEmail(args.newEmail),
+      alertTier: "tier2_warn",
+    });
+    return null;
+  },
+});
+
+export const updateSchoolAdminEmail = action({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    newEmail: v.string(),
+  },
+  returns: v.object({ success: v.literal(true), requiresEmailVerification: v.literal(true) }),
+  handler: async (ctx, args): Promise<{ success: true; requiresEmailVerification: true }> => {
+    const operator = await ctx.runQuery(
+      internal.functions.platform.auth.requirePlatformAdminInternal,
+      {},
+    );
+    const admin = await ctx.runQuery(
+      internal.functions.platform.index.inspectSchoolAdminIdentityInternal,
+      { schoolId: args.schoolId, userId: args.userId },
+    );
+    const newEmail = normalizeEmail(args.newEmail);
+    const currentEmail = normalizeEmail(admin.email);
+    if (!isValidEmail(newEmail)) {
+      throw new ConvexError("Enter a valid email address");
+    }
+    if (newEmail === currentEmail) return { success: true, requiresEmailVerification: true };
+
+    const auth = createAuth(ctx);
+    const authContext = await auth.$context;
+    const currentAuth = (await authContext.internalAdapter.findUserByEmail(
+      currentEmail,
+      { includeAccounts: false },
+    )) as { user: { id: string; emailVerified?: boolean } } | null;
+    if (!currentAuth?.user || currentAuth.user.id !== admin.authId) {
+      throw new ConvexError("Administrator authentication account requires manual review");
+    }
+    const conflictingAuth = (await authContext.internalAdapter.findUserByEmail(
+      newEmail,
+      { includeAccounts: false },
+    )) as { user: { id: string } } | null;
+    if (conflictingAuth?.user && conflictingAuth.user.id !== admin.authId) {
+      throw new ConvexError("An account with this email already exists");
+    }
+
+    try {
+      await authContext.internalAdapter.updateUser(admin.authId, {
+        email: newEmail,
+        emailVerified: false,
+      });
+
+      // Let Better Auth create the verification token through its configured sender.
+      await auth.api.sendVerificationEmail({
+        body: { email: newEmail, callbackURL: "/sign-in" },
+      });
+
+      await ctx.runMutation(
+        internal.functions.platform.index.updateSchoolAdminEmailInternal,
+        {
+          schoolId: args.schoolId,
+          userId: args.userId,
+          expectedEmail: currentEmail,
+          newEmail,
+          actorEmail: operator.email,
+        },
+      );
+    } catch (error) {
+      try {
+        await authContext.internalAdapter.updateUser(admin.authId, {
+          email: currentEmail,
+          emailVerified: currentAuth.user.emailVerified === true,
+        });
+      } catch {
+        throw new ConvexError("The email change could not be completed and requires manual review");
+      }
+      if (error instanceof ConvexError) throw error;
+      throw new ConvexError("The email change could not be completed");
+    }
+    await authContext.internalAdapter.deleteSessions(admin.authId);
+    return { success: true, requiresEmailVerification: true };
   },
 });
 
