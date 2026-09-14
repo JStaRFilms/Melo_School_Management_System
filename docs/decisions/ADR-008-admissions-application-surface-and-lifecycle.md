@@ -1,10 +1,13 @@
 # ADR-008: Admissions Application Surface and Lifecycle
 
-- **Status:** Proposed — Genesis review required
+- **Status:** Accepted and implemented through `recovery/admissions-workflow` at `3b391e3`
 - **Date:** 2026-07-22
+- **Last verified:** 2026-09-14 against `3b391e3`
 - **Session:** `orch-20260722-114501` / G1
 - **Decision owners:** Integration owner, product owner, security/privacy reviewer
 - **Related architecture:** [`AdmissionsApplicationPlatformArchitecture.md`](../features/AdmissionsApplicationPlatformArchitecture.md)
+
+> This decision is done. The `apps/apply` surface, the `ApplicationLinkV1` contract in `packages/convex/functions/foundation/applicationLinks.ts`, and the entitlement to conversion lifecycle now run in code. The text below records the agreed intent. It no longer blocks review.
 
 ## Context
 
@@ -218,3 +221,7 @@ Design typed draft/publish/retire settings for programmes, intakes, products/pri
 ## Review gate
 
 This ADR is accepted only when the integration owner and product/security/privacy reviewers approve the decision and record the unresolved business approvals. B0 must land before the admissions worktree begins runtime implementation.
+
+## Implementation note 2026-09-14
+
+Accepted and built at `3b391e3`. The B0 contract, `apps/apply` routes, and the payment to conversion flow exist. The unresolved business approvals above still need owner sign off before production launch. They no longer block code review.

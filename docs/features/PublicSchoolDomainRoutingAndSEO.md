@@ -1,5 +1,8 @@
 # Public School Domain Routing and SEO
 
+**Status:** Implemented at `3b391e3`
+**Last verified:** 2026-09-14 against `3b391e3`
+
 ## Goal
 
 Support school public websites on both platform-managed subdomains and school-owned custom public domains, with safe domain-mapping records, verification readiness state, canonical routing, and school/domain-aware SEO output.
