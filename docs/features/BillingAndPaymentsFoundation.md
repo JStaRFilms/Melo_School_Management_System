@@ -93,7 +93,7 @@ The current implementation now uses a **per-school Paystack merchant** model:
 ### `feePlanLifecycleRuns`
 - temporary server-owned continuation state for bounded deletion and revocation scans
 - binds progress to the school, plan, actor, operation, and stable confirmation inputs so clients cannot skip ledger history
-- indexed by school and included in tenant and demo-school cleanup
+- indexed by school and included in tenant, demo-school, and branch-split cleanup
 
 ### `studentInvoices`
 - school-scoped invoice records for one student, class, session, and term

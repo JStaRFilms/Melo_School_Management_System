@@ -218,6 +218,7 @@ export const SCHOOL_PURGE_TABLES = [
   "schoolBillingSettings",
   "demoSeedStorageCleanup",
   "demoSeedRuns",
+  "feePlanLifecycleRuns",
   "feePlanApplications",
   "studentInvoices",
   "paymentGatewayEvents",
