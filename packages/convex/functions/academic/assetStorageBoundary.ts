@@ -40,11 +40,15 @@ type StorageClaimPurpose =
   | "studentPhoto"
   | "knowledgeMaterial"
   | "knowledgeMaterialUploadIntent"
+  | "knowledgeOcrJobReference"
   | "assetUploadIntent"
   | "schoolAsset"
   | "schoolAssetRollback"
   | "pdfCompressionCandidate"
   | "demoSeedCleanup"
+  | "demoSeedRunLogoReference"
+  | "demoSeedRunPortraitReference"
+  | "importWorkspaceSource"
   | "issuedReportLogoReference"
   | "issuedReportPhotoReference";
 
@@ -53,54 +57,79 @@ export type ExpectedStorageClaim = {
   ownerId: string;
 };
 
-type CollectedStorageClaim = ExpectedStorageClaim & {
+export type CollectedStorageClaim = ExpectedStorageClaim & {
+  schoolId: Id<"schools">;
   linkedOwnerId?: string;
 };
 
+const PRIMARY_CLAIM_LIMIT = 2;
+const REFERENCE_CLAIM_LIMIT = 100;
+const UNINDEXED_CLAIM_SCAN_LIMIT = 1000;
+
 /** Every durable owner or historical reference must block destructive reuse. */
-async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
-  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
-    ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_storage_id", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(101),
-    ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(2),
-    ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("assetUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolAssets").withIndex("by_rollback_storage", q => q.eq("rollbackStorageId", storageId)).take(2),
-    ctx.db.query("pdfCompressionCandidates").withIndex("by_candidate_storage", q => q.eq("candidateStorageId", storageId)).take(2),
-    ctx.db.query("demoSeedStorageCleanup").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("issuedReportCards").withIndex("by_school_logo_storage", q => q.eq("schoolLogoStorageId", storageId)).take(2),
-    ctx.db.query("issuedReportCards").withIndex("by_student_photo_storage", q => q.eq("studentPhotoStorageId", storageId)).take(2),
+export async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
+  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, ocrJobs, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos, demoRuns, importWorkspaces] = await Promise.all([
+    ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_storage_id", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
+    ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("knowledgeOcrJobs").withIndex("by_storage", q => q.eq("storageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
+    ctx.db.query("assetUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schoolAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schoolAssets").withIndex("by_rollback_storage", q => q.eq("rollbackStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("pdfCompressionCandidates").withIndex("by_candidate_storage", q => q.eq("candidateStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("demoSeedStorageCleanup").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("issuedReportCards").withIndex("by_school_logo_storage", q => q.eq("schoolLogoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
+    ctx.db.query("issuedReportCards").withIndex("by_student_photo_storage", q => q.eq("studentPhotoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
+    ctx.db.query("demoSeedRuns").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
+    ctx.db.query("importWorkspaces").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
   ]);
+  const primaryClaimSets = [admissions, admissionsUploadIntents, siteAssets, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup];
+  const referenceClaimSets = [schools, ocrJobs, reportLogos, reportPhotos];
+  if (primaryClaimSets.some((rows) => rows.length > PRIMARY_CLAIM_LIMIT) || referenceClaimSets.some((rows) => rows.length > REFERENCE_CLAIM_LIMIT) || demoRuns.length > UNINDEXED_CLAIM_SCAN_LIMIT || importWorkspaces.length > UNINDEXED_CLAIM_SCAN_LIMIT) {
+    throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
+  }
+  const matchingDemoRuns = demoRuns.filter((row) => row.logoStorageId === storageId || row.portraitStorageIds.includes(storageId));
+  const matchingImportSources = importWorkspaces.flatMap((workspace) => workspace.sourceFiles.map((source, index) => ({ workspace, source, index }))).filter(({ source }) => source.storageId === storageId);
   return [
-    ...admissions.map(row => ({ purpose: "admissionsDocument" as const, ownerId: String(row._id) })),
+    ...admissions.map(row => ({ purpose: "admissionsDocument" as const, ownerId: String(row._id), schoolId: row.schoolId })),
     ...admissionsUploadIntents.map(row => ({
       purpose: "admissionsDocumentUploadIntent" as const,
       ownerId: String(row._id),
+      schoolId: row.schoolId,
       ...(row.status === "completed" && row.documentId ? { linkedOwnerId: String(row.documentId) } : {}),
     })),
-    ...siteAssets.map(row => ({ purpose: "schoolSiteAsset" as const, ownerId: String(row._id) })),
-    ...schools.map(row => ({ purpose: "schoolLogo" as const, ownerId: String(row._id) })),
-    ...students.map(row => ({ purpose: "studentPhoto" as const, ownerId: String(row._id) })),
-    ...materials.map(row => ({ purpose: "knowledgeMaterial" as const, ownerId: String(row._id) })),
+    ...siteAssets.map(row => ({ purpose: "schoolSiteAsset" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...schools.map(row => ({ purpose: "schoolLogo" as const, ownerId: String(row._id), schoolId: row._id })),
+    ...students.map(row => ({ purpose: "studentPhoto" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...materials.map(row => ({ purpose: "knowledgeMaterial" as const, ownerId: String(row._id), schoolId: row.schoolId })),
     ...knowledgeUploadIntents.map(row => ({
       purpose: "knowledgeMaterialUploadIntent" as const,
       ownerId: String(row._id),
+      schoolId: row.schoolId,
+      ...(row.status === "completed" && row.materialId ? { linkedOwnerId: String(row.materialId) } : {}),
     })),
+    ...ocrJobs.map(row => ({ purpose: "knowledgeOcrJobReference" as const, ownerId: String(row._id), schoolId: row.schoolId, linkedOwnerId: String(row.materialId) })),
     ...intents.map(row => ({
       purpose: "assetUploadIntent" as const,
       ownerId: String(row._id),
+      schoolId: row.schoolId,
       ...(row.status === "finalized" && row.assetId ? { linkedOwnerId: String(row.assetId) } : {}),
     })),
-    ...assets.map(row => ({ purpose: "schoolAsset" as const, ownerId: String(row._id) })),
-    ...rollbacks.map(row => ({ purpose: "schoolAssetRollback" as const, ownerId: String(row._id) })),
-    ...candidates.map(row => ({ purpose: "pdfCompressionCandidate" as const, ownerId: String(row._id) })),
-    ...cleanup.map(row => ({ purpose: "demoSeedCleanup" as const, ownerId: String(row._id) })),
-    ...reportLogos.map(row => ({ purpose: "issuedReportLogoReference" as const, ownerId: String(row._id) })),
-    ...reportPhotos.map(row => ({ purpose: "issuedReportPhotoReference" as const, ownerId: String(row._id) })),
+    ...assets.map(row => ({ purpose: "schoolAsset" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...rollbacks.map(row => ({ purpose: "schoolAssetRollback" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...candidates.map(row => ({ purpose: "pdfCompressionCandidate" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...cleanup.map(row => ({ purpose: "demoSeedCleanup" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...matchingDemoRuns.flatMap(row => [
+      ...(row.logoStorageId === storageId ? [{ purpose: "demoSeedRunLogoReference" as const, ownerId: String(row._id), schoolId: row.schoolId }] : []),
+      ...(row.portraitStorageIds.includes(storageId) ? [{ purpose: "demoSeedRunPortraitReference" as const, ownerId: String(row._id), schoolId: row.schoolId }] : []),
+    ]),
+    ...matchingImportSources.map(({ workspace, index }) => ({ purpose: "importWorkspaceSource" as const, ownerId: `${String(workspace._id)}:${index}`, schoolId: workspace.schoolId })),
+    ...reportLogos.map(row => ({ purpose: "issuedReportLogoReference" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...reportPhotos.map(row => ({ purpose: "issuedReportPhotoReference" as const, ownerId: String(row._id), schoolId: row.schoolId })),
   ];
 }
 

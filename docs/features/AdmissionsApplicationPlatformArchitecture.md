@@ -41,7 +41,7 @@ Personal data about minors, identity documents, photographs, and medical data ar
 4. Every application, document, review, decision, payment, conversion, and audit row that belongs to a school carries `schoolId`, and every object lookup rechecks it.
 5. A submitted revision is immutable. Requested changes create a later snapshot revision; they never update a prior snapshot.
 6. `admissionsConversions.applicationId` is unique. A successful replay returns the recorded canonical IDs.
-7. Redirect success is not payment success. Only a provider-verified transaction can create an entitlement. Payment callbacks are derived from the configured canonical Apply origin and persisted school/reference; the browser cannot supply them.
+7. Redirect success is not payment success. Only a provider-verified transaction can create an entitlement. Payment callbacks default to the canonical Apply origin. A local or alternate Apply client may request an exact origin already present in the server-controlled trusted-origin list; arbitrary origins are rejected.
 8. Signed storage URLs are generated only after authorization and are never stored as durable application data. Highly-sensitive and financial-security documents require fresh authentication for both view and download actions.
 9. Caller-provided user IDs are never used for authorization. Identity is derived server-side.
 10. Cross-school duplicate detection is forbidden. Matching and warnings are scoped to one school.
@@ -444,6 +444,7 @@ Every high-risk field has an explicit purpose or remains unavailable. The histor
 7. Quarantined files are not retrievable by ordinary guardians/reviewers.
 8. Clean unbound uploads after a short approved window. Delete stored objects only after checking snapshot manifests, accepted photo provenance, legal holds, and other references.
 9. Security headers prevent indexing/caching of application/document pages; logs and error telemetry redact names, emails, references, storage IDs, and answers.
+10. An existing school with unmetered files cannot receive a zero-byte storage baseline. A Platform operator first reviews a bounded inventory that measures unique storage objects, rejects missing, conflicting, cross-school, temporary, or unsupported claims, and confirms the displayed object/reference/byte totals. Reconciliation creates the contract, cycle, and meter in one mutation with the measured active, trash, and temporary byte baseline. It never changes or deletes files.
 
 ## 14. Accepted conversion algorithm
 

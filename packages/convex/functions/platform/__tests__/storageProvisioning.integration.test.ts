@@ -225,25 +225,106 @@ it("requires review instead of creating a zeroed meter for existing storage", as
     tokenIdentifier: "test|storage-review-operator",
   });
 
-  await expect(
-    platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, {
-      schoolId,
-    }),
-  ).resolves.toMatchObject({ recordState: "requires_review" });
+  const review = await platform.query(
+    api.functions.platform.index.getSchoolStorageProvisioningState,
+    { schoolId },
+  );
+  expect(review).toMatchObject({
+    recordState: "requires_review",
+    reconciliation: {
+      status: "ready",
+      objectCount: 1,
+      referenceCount: 1,
+      activeBytes: 19,
+      blockers: [],
+      confirmationPhrase: "RECONCILE EXISTING STORAGE",
+    },
+  });
   await expect(
     platform.mutation(api.functions.platform.index.provisionSchoolFreeTrialStorage, {
       schoolId,
       confirmation: "PROVISION FREE TRIAL STORAGE",
     }),
   ).resolves.toEqual({ status: "requires_review" });
-  expect(
-    await t.run((ctx) =>
-      ctx.db
-        .query("usageMeterAllocations")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .collect(),
-    ),
-  ).toHaveLength(0);
+  await expect(
+    platform.mutation(api.functions.platform.index.reconcileSchoolFreeTrialStorage, {
+      schoolId,
+      confirmation: "RECONCILE STORAGE",
+      expected: { objectCount: 1, referenceCount: 1, activeBytes: 19, trashBytes: 0, tempBytes: 0 },
+    }),
+  ).rejects.toThrow("RECONCILE EXISTING STORAGE");
+  await expect(
+    platform.mutation(api.functions.platform.index.reconcileSchoolFreeTrialStorage, {
+      schoolId,
+      confirmation: "RECONCILE EXISTING STORAGE",
+      expected: { objectCount: 1, referenceCount: 1, activeBytes: 18, trashBytes: 0, tempBytes: 0 },
+    }),
+  ).rejects.toThrow("Storage inventory changed");
+  await expect(
+    platform.mutation(api.functions.platform.index.reconcileSchoolFreeTrialStorage, {
+      schoolId,
+      confirmation: "RECONCILE EXISTING STORAGE",
+      expected: { objectCount: 1, referenceCount: 1, activeBytes: 19, trashBytes: 0, tempBytes: 0 },
+    }),
+  ).resolves.toEqual({ status: "created" });
+
+  const reconciled = await t.run(async (ctx) => ({
+    meter: await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", (q) => q.eq("schoolId", schoolId).eq("meterType", "storage_bytes")).unique(),
+    asset: await ctx.db.query("schoolAssets").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).unique(),
+    audit: await ctx.db.query("auditEvents").withIndex("by_school_and_timestamp", (q) => q.eq("schoolId", schoolId)).unique(),
+  }));
+  expect(reconciled.meter).toMatchObject({ consumedUnits: 19, activeStorageBytes: 19, trashStorageBytes: 0, tempStorageBytes: 0 });
+  expect(reconciled.asset?.storageAccountingInitializedAt).toEqual(expect.any(Number));
+  expect(reconciled.audit).toMatchObject({ action: "usage.free_trial_storage_reconciled", outcome: "success" });
+});
+
+it("blocks reconciliation when one storage object is claimed by another school", async () => {
+  const t = convexTest(schema, modules);
+  const schoolId = await t.run(async (ctx) => {
+    const now = Date.now();
+    const operatorId = await ctx.db.insert("platformAdmins", {
+      authId: "ownership-review-operator",
+      email: "ownership-review@example.test",
+      name: "Ownership Review Operator",
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const storageId = await ctx.storage.store(new Blob(["shared logo"]));
+    const first = await ctx.db.insert("schools", { name: "First School", slug: "first-school", status: "active", logoStorageId: storageId, createdAt: now, updatedAt: now });
+    const second = await ctx.db.insert("schools", { name: "Second School", slug: "second-school", status: "active", createdAt: now, updatedAt: now });
+    await ctx.db.insert("importWorkspaces", { schoolId: second, name: "Conflicting import", mode: "super_admin", status: "draft", totalRecords: 0, validRecords: 0, warningRecords: 0, errorRecords: 0, sourceFiles: [{ storageId, fileName: "students.csv", fileSize: 11, uploadedAt: now }], createdAt: now, updatedAt: now, createdBy: operatorId });
+    return first;
+  });
+  const platform = t.withIdentity({ subject: "ownership-review-operator", tokenIdentifier: "test|ownership-review-operator" });
+  const state = await platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, { schoolId });
+  expect(state).toMatchObject({ recordState: "requires_review", reconciliation: { status: "blocked", conflictingObjectCount: 1 } });
+  expect(state.reconciliation?.blockers).toContain("One or more storage objects have conflicting ownership.");
+});
+
+it("blocks incomplete demo storage and unresolved upload intents", async () => {
+  const t = convexTest(schema, modules);
+  const schoolIds = await t.run(async (ctx) => {
+    const now = Date.now();
+    await ctx.db.insert("platformAdmins", { authId: "temporary-review-operator", email: "temporary-review@example.test", name: "Temporary Review Operator", isActive: true, createdAt: now, updatedAt: now });
+    const demoSchoolId = await ctx.db.insert("schools", { name: "Partial Demo", slug: "partial-demo", status: "active", createdAt: now, updatedAt: now });
+    const demoLogo = await ctx.storage.store(new Blob(["partial logo"]));
+    const demoPortrait = await ctx.storage.store(new Blob(["partial portrait"]));
+    await ctx.db.insert("demoSeedRuns", { schoolId: demoSchoolId, status: "failed", phase: "students", studentCursor: 1, assessmentCursor: 0, billingCursor: 0, adminAuthId: "admin", teacherAuthId: "teacher", portalAuthId: "portal", logoStorageId: demoLogo, portraitStorageIds: [demoPortrait], errorMessage: "Interrupted", createdAt: now, updatedAt: now });
+
+    const assetSchoolId = await ctx.db.insert("schools", { name: "Pending Asset", slug: "pending-asset", status: "active", createdAt: now, updatedAt: now });
+    const storageId = await ctx.storage.store(new Blob(["asset"]));
+    await ctx.db.insert("schoolAssets", { schoolId: assetSchoolId, storageId, fileName: "asset.pdf", mimeType: "application/pdf", byteSize: 5, sha256: "asset-sha", category: "document", scanStatus: "clean", isTrashed: false, createdAt: now, updatedAt: now });
+    await ctx.db.insert("assetUploadIntents", { schoolId: assetSchoolId, storageId, status: "pending", createdAt: now, updatedAt: now });
+    return { demoSchoolId, assetSchoolId };
+  });
+  const platform = t.withIdentity({ subject: "temporary-review-operator", tokenIdentifier: "test|temporary-review-operator" });
+  const demo = await platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, { schoolId: schoolIds.demoSchoolId });
+  const asset = await platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, { schoolId: schoolIds.assetSchoolId });
+  expect(demo).toMatchObject({ reconciliation: { status: "blocked" } });
+  expect(asset).toMatchObject({ reconciliation: { status: "blocked" } });
+  expect(demo.reconciliation?.blockers).toContain("In-progress or cleanup storage objects must settle before reconciliation.");
+  expect(asset.reconciliation?.blockers).toContain("In-progress or cleanup storage objects must settle before reconciliation.");
 });
 
 it("requires review when a migration workspace retains source files", async () => {
@@ -294,11 +375,18 @@ it("requires review when a migration workspace retains source files", async () =
     tokenIdentifier: "test|migration-storage-review-operator",
   });
 
-  await expect(
-    platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, {
-      schoolId,
-    }),
-  ).resolves.toMatchObject({ recordState: "requires_review" });
+  const state = await platform.query(
+    api.functions.platform.index.getSchoolStorageProvisioningState,
+    { schoolId },
+  );
+  expect(state).toMatchObject({
+    recordState: "requires_review",
+    reconciliation: {
+      status: "blocked",
+      unsupportedReferenceCount: 1,
+      blockers: [expect.stringMatching(/Migration source files/)],
+    },
+  });
   await expect(
     platform.mutation(api.functions.platform.index.provisionSchoolFreeTrialStorage, {
       schoolId,

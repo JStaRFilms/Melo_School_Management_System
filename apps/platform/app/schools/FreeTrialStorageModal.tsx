@@ -56,7 +56,11 @@ export function FreeTrialStorageModal({
   const provision = useMutation(
     api.functions.platform.index.provisionSchoolFreeTrialStorage,
   );
+  const reconcile = useMutation(
+    api.functions.platform.index.reconcileSchoolFreeTrialStorage,
+  );
   const [confirmation, setConfirmation] = useState("");
+  const [confirmedInventoryKey, setConfirmedInventoryKey] = useState("");
   const [result, setResult] = useState<ProvisioningResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,9 +69,17 @@ export function FreeTrialStorageModal({
   const proposedEnd = storage
     ? proposedStart + storage.proposal.durationDays * DAY
     : proposedStart;
+  const reconciliation = storage?.reconciliation ?? null;
+  const isReconciliation = storage?.recordState === "requires_review" && reconciliation !== null;
+  const confirmationPhrase = isReconciliation ? reconciliation.confirmationPhrase : CONFIRMATION_PHRASE;
+  const inventoryKey = isReconciliation
+    ? [reconciliation.status, reconciliation.objectCount, reconciliation.referenceCount, reconciliation.activeBytes, reconciliation.trashBytes, reconciliation.tempBytes, ...reconciliation.blockers].join(":")
+    : "new-storage";
   const canSubmit =
     storage?.school.status === "active" &&
-    confirmation === CONFIRMATION_PHRASE &&
+    (!isReconciliation || reconciliation.status === "ready") &&
+    confirmation === confirmationPhrase &&
+    confirmedInventoryKey === inventoryKey &&
     !isSubmitting;
 
   const handleSubmit = async () => {
@@ -76,7 +88,19 @@ export function FreeTrialStorageModal({
     setError(null);
     setResult(null);
     try {
-      const response = await provision({ schoolId, confirmation });
+      const response = isReconciliation
+        ? await reconcile({
+            schoolId,
+            confirmation,
+            expected: {
+              objectCount: reconciliation.objectCount,
+              referenceCount: reconciliation.referenceCount,
+              activeBytes: reconciliation.activeBytes,
+              trashBytes: reconciliation.trashBytes,
+              tempBytes: reconciliation.tempBytes,
+            },
+          })
+        : await provision({ schoolId, confirmation });
       setResult(response.status);
     } catch (caught) {
       setError(getErrorMessage(caught, "Storage provisioning failed."));
@@ -139,11 +163,11 @@ export function FreeTrialStorageModal({
                 <dd className="text-right font-semibold capitalize text-slate-800">{storage.school.status}</dd>
                 <dt className="text-slate-500">Contract</dt>
                 <dd className="text-right font-semibold text-slate-800">
-                  {storage.contract ? `${storage.contract.code} v${storage.contract.version}` : "None"}
+                  {storage.contract ? storage.contract.code.replaceAll("_", " ") : "None"}
                 </dd>
                 <dt className="text-slate-500">Cycle</dt>
                 <dd className="text-right font-semibold text-slate-800">
-                  {storage.cycle ? `${storage.cycle.code} (${storage.cycle.status})` : "None"}
+                  {storage.cycle ? `${storage.cycle.code.replaceAll("_", " ")} (${storage.cycle.status})` : "None"}
                 </dd>
                 <dt className="text-slate-500">Meter</dt>
                 <dd className="text-right font-semibold text-slate-800">
@@ -158,6 +182,32 @@ export function FreeTrialStorageModal({
                 </p>
               ) : null}
             </section>
+
+            {isReconciliation ? (
+              <section aria-label="Existing storage review" className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-amber-800">Existing storage review</h3>
+                    <p className="mt-1 text-xs text-amber-900">
+                      Melo found {reconciliation.objectCount} existing storage object{reconciliation.objectCount === 1 ? "" : "s"} across {reconciliation.referenceCount} reference{reconciliation.referenceCount === 1 ? "" : "s"}. Reconciliation records their measured bytes without changing or deleting files.
+                    </p>
+                  </div>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <dt className="text-amber-800">Active files</dt><dd className="text-right font-semibold text-amber-950">{formatMiB(reconciliation.activeBytes)}</dd>
+                  <dt className="text-amber-800">Trash</dt><dd className="text-right font-semibold text-amber-950">{formatMiB(reconciliation.trashBytes)}</dd>
+                  <dt className="text-amber-800">Temporary files</dt><dd className="text-right font-semibold text-amber-950">{formatMiB(reconciliation.tempBytes)}</dd>
+                </dl>
+                {reconciliation.blockers.length ? (
+                  <ul role="alert" className="mt-3 list-disc space-y-1 pl-5 text-xs text-rose-800">
+                    {reconciliation.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-xs font-semibold text-emerald-800">Inventory checks passed. Review the totals, then confirm below.</p>
+                )}
+              </section>
+            ) : null}
 
             <section aria-label="Proposed storage allocation" className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-700">Proposed allocation</h3>
@@ -178,12 +228,15 @@ export function FreeTrialStorageModal({
 
             <div>
               <label htmlFor="storage-confirmation" className="block text-xs font-bold text-slate-700">
-                Type {CONFIRMATION_PHRASE} to confirm
+                Type {confirmationPhrase} to confirm
               </label>
               <input
                 id="storage-confirmation"
                 value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
+                onChange={(event) => {
+                  setConfirmation(event.target.value);
+                  setConfirmedInventoryKey(inventoryKey);
+                }}
                 autoComplete="off"
                 className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 font-mono text-xs text-slate-900 focus:border-indigo-600 focus:outline-none"
               />
@@ -196,7 +249,9 @@ export function FreeTrialStorageModal({
                 ) : (
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                 )}
-                {resultMessages[result]}
+                {isReconciliation && result === "created"
+                  ? "Existing files were measured and the 100 MiB free-trial storage entitlement is active."
+                  : resultMessages[result]}
               </p>
             ) : null}
             {error ? (
@@ -221,7 +276,7 @@ export function FreeTrialStorageModal({
                 className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HardDrive className="h-3.5 w-3.5" />}
-                {isSubmitting ? "Provisioning..." : "Provision storage"}
+                {isSubmitting ? "Saving..." : isReconciliation ? "Reconcile and provision" : "Provision storage"}
               </button>
             </div>
           </div>

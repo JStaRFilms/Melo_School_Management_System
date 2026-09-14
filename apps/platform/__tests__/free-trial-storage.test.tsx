@@ -28,6 +28,19 @@ type StorageFixture = {
     reservedUnits: number;
     availableUnits: number;
   };
+  reconciliation: null | {
+    status: "not_needed" | "ready" | "blocked";
+    objectCount: number;
+    referenceCount: number;
+    activeBytes: number;
+    trashBytes: number;
+    tempBytes: number;
+    missingObjectCount: number;
+    conflictingObjectCount: number;
+    unsupportedReferenceCount: number;
+    blockers: string[];
+    confirmationPhrase: string;
+  };
 };
 
 const mocks = vi.hoisted(() => ({
@@ -47,6 +60,7 @@ const emptyStorage: StorageFixture = {
   contract: null,
   cycle: null,
   meter: null,
+  reconciliation: null,
 };
 
 const configuredStorage: StorageFixture = {
@@ -120,9 +134,74 @@ it("requires the exact confirmation and shows refreshed contract, cycle, and met
       onClose={vi.fn()}
     />,
   );
-  expect(screen.getByRole("dialog")).toHaveTextContent("free_trial v2");
-  expect(screen.getByRole("dialog")).toHaveTextContent("free_trial_storage (active)");
+  expect(screen.getByRole("dialog")).toHaveTextContent("free trial");
+  expect(screen.getByRole("dialog")).toHaveTextContent("free trial storage (active)");
   expect(screen.getByRole("dialog")).toHaveTextContent("100.0 MiB available of 100.0 MiB");
+});
+
+it("reconciles reviewed existing files only after exact confirmation", async () => {
+  mocks.storage = {
+    ...emptyStorage,
+    recordState: "requires_review",
+    reconciliation: {
+      status: "ready",
+      objectCount: 3,
+      referenceCount: 3,
+      activeBytes: 24_000,
+      trashBytes: 0,
+      tempBytes: 0,
+      missingObjectCount: 0,
+      conflictingObjectCount: 0,
+      unsupportedReferenceCount: 0,
+      blockers: [],
+      confirmationPhrase: "RECONCILE EXISTING STORAGE",
+    },
+  };
+  mocks.provision.mockResolvedValue({ status: "created" });
+  const { rerender } = render(<FreeTrialStorageModal school={{ _id: "school-1", name: "Reviewed School" }} onClose={vi.fn()} />);
+
+  expect(screen.getByRole("dialog")).toHaveTextContent("3 existing storage objects");
+  expect(screen.getByText(/Inventory checks passed/)).toBeInTheDocument();
+  const submit = screen.getByRole("button", { name: "Reconcile and provision" });
+  expect(submit).toBeDisabled();
+  const confirmation = screen.getByLabelText("Type RECONCILE EXISTING STORAGE to confirm");
+  fireEvent.change(confirmation, { target: { value: "RECONCILE EXISTING STORAGE" } });
+  mocks.storage = { ...mocks.storage, reconciliation: { ...mocks.storage.reconciliation!, activeBytes: 25_000 } };
+  rerender(<FreeTrialStorageModal school={{ _id: "school-1", name: "Reviewed School" }} onClose={vi.fn()} />);
+  expect(submit).toBeDisabled();
+  fireEvent.change(confirmation, { target: { value: "" } });
+  fireEvent.change(confirmation, { target: { value: "RECONCILE EXISTING STORAGE" } });
+  fireEvent.click(submit);
+
+  await waitFor(() => expect(mocks.provision).toHaveBeenCalledWith({
+    schoolId: "school-1",
+    confirmation: "RECONCILE EXISTING STORAGE",
+    expected: { objectCount: 3, referenceCount: 3, activeBytes: 25_000, trashBytes: 0, tempBytes: 0 },
+  }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Existing files were measured");
+});
+
+it("blocks reconciliation when the inventory has unresolved ownership", () => {
+  mocks.storage = {
+    ...emptyStorage,
+    recordState: "requires_review",
+    reconciliation: {
+      status: "blocked",
+      objectCount: 1,
+      referenceCount: 2,
+      activeBytes: 0,
+      trashBytes: 0,
+      tempBytes: 0,
+      missingObjectCount: 0,
+      conflictingObjectCount: 1,
+      unsupportedReferenceCount: 0,
+      blockers: ["One or more storage objects have conflicting ownership."],
+      confirmationPhrase: "RECONCILE EXISTING STORAGE",
+    },
+  };
+  render(<FreeTrialStorageModal school={{ _id: "school-1", name: "Reviewed School" }} onClose={vi.fn()} />);
+  expect(screen.getByRole("alert")).toHaveTextContent("conflicting ownership");
+  expect(screen.getByRole("button", { name: "Reconcile and provision" })).toBeDisabled();
 });
 
 it("displays an exhausted-pool result without claiming success", async () => {

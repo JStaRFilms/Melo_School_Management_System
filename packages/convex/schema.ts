@@ -2903,6 +2903,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
+    .index("by_storage", ["storageId"])
     .index("by_school_and_material", ["schoolId", "materialId"])
     .index("by_school_and_status", ["schoolId", "status"])
     .index("by_material_and_status", ["materialId", "status"]),

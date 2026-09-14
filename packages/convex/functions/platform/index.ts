@@ -19,7 +19,10 @@ import {
   ensureSchoolFreeTrialStorageHelper,
   FREE_TRIAL_DURATION_DAYS,
   FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
+  inspectSchoolStorageForReconciliation,
+  reconcileSchoolFreeTrialStorageHelper,
   schoolHasExistingStorageClaims,
+  STORAGE_RECONCILIATION_CONFIRMATION,
 } from "../academic/storageEntitlementProvisioning";
 import {
   NEW_SCHOOL_MODULE_DEFAULTS,
@@ -268,6 +271,22 @@ const storageProvisioningStateValidator = v.object({
     }),
     v.null(),
   ),
+  reconciliation: v.union(
+    v.object({
+      status: v.union(v.literal("not_needed"), v.literal("ready"), v.literal("blocked")),
+      objectCount: v.number(),
+      referenceCount: v.number(),
+      activeBytes: v.number(),
+      trashBytes: v.number(),
+      tempBytes: v.number(),
+      missingObjectCount: v.number(),
+      conflictingObjectCount: v.number(),
+      unsupportedReferenceCount: v.number(),
+      blockers: v.array(v.string()),
+      confirmationPhrase: v.string(),
+    }),
+    v.null(),
+  ),
 });
 
 export const getSchoolStorageProvisioningState = query({
@@ -315,6 +334,9 @@ export const getSchoolStorageProvisioningState = query({
           : hasOneLinkedRecordSet
             ? "configured"
             : "requires_review";
+    const inventory = hasUnmeteredStorage
+      ? await inspectSchoolStorageForReconciliation(ctx, args.schoolId)
+      : null;
 
     return {
       school: {
@@ -358,6 +380,21 @@ export const getSchoolStorageProvisioningState = query({
             ),
           }
         : null,
+      reconciliation: inventory
+        ? {
+            status: inventory.status,
+            objectCount: inventory.objectCount,
+            referenceCount: inventory.referenceCount,
+            activeBytes: inventory.activeBytes,
+            trashBytes: inventory.trashBytes,
+            tempBytes: inventory.tempBytes,
+            missingObjectCount: inventory.missingObjectCount,
+            conflictingObjectCount: inventory.conflictingObjectCount,
+            unsupportedReferenceCount: inventory.unsupportedReferenceCount,
+            blockers: inventory.blockers,
+            confirmationPhrase: STORAGE_RECONCILIATION_CONFIRMATION,
+          }
+        : null,
     };
   },
 });
@@ -387,6 +424,37 @@ export const provisionSchoolFreeTrialStorage = mutation({
       schoolId: args.schoolId,
       actorEmail: platformAdmin.email,
       auditSummary: `Provisioned the reviewed ${FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL}-byte free-trial storage entitlement for an existing school through Platform; no invoice or payment created`,
+    });
+    return { status: result.status };
+  },
+});
+
+export const reconcileSchoolFreeTrialStorage = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    confirmation: v.string(),
+    expected: v.object({
+      objectCount: v.number(),
+      referenceCount: v.number(),
+      activeBytes: v.number(),
+      trashBytes: v.number(),
+      tempBytes: v.number(),
+    }),
+  },
+  returns: v.object({
+    status: v.union(v.literal("created"), v.literal("already_configured"), v.literal("pool_exhausted"), v.literal("requires_review")),
+  }),
+  handler: async (ctx, args) => {
+    const platformAdmin = await getAuthenticatedPlatformAdmin(ctx);
+    const result = await reconcileSchoolFreeTrialStorageHelper(ctx, {
+      schoolId: args.schoolId,
+      actorEmail: platformAdmin.email,
+      confirmation: args.confirmation,
+      expectedObjectCount: args.expected.objectCount,
+      expectedReferenceCount: args.expected.referenceCount,
+      expectedActiveBytes: args.expected.activeBytes,
+      expectedTrashBytes: args.expected.trashBytes,
+      expectedTempBytes: args.expected.tempBytes,
     });
     return { status: result.status };
   },
