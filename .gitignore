@@ -66,4 +66,4 @@ deliverables/sponsorship-profiles-*/
 .codex-temp/
 .kilocode/
 .windsurf/
-.agents/
+# .agents/
