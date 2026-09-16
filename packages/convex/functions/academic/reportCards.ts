@@ -44,6 +44,7 @@ import {
   deriveEffectiveSubjectSelectionIds,
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
+import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 
 const DEFAULT_CA_MAX = 20;
 const DEFAULT_EXAM_MAX = 40;
@@ -333,39 +334,64 @@ async function getStudentsForClassReportCardBatch(
     termId: Id<"academicTerms">;
   }
 ) {
-  const [sessionDoc, currentStudents, selectionDocs, sessionRecords] = await Promise.all([
-    ctx.db.get(args.sessionId),
-    ctx.db
-      .query("students")
-      .withIndex("by_school_and_class", (q: any) =>
-        q.eq("schoolId", args.schoolId).eq("classId", args.classId)
-      )
-      .collect(),
-    ctx.db
-      .query("studentSubjectSelections")
-      .withIndex("by_class_and_session", (q: any) =>
-        q.eq("classId", args.classId).eq("sessionId", args.sessionId)
-      )
-      .collect(),
-    ctx.db
-      .query("assessmentRecords")
-      .withIndex("by_sheet", (q: any) =>
-        q.eq("schoolId", args.schoolId).eq("sessionId", args.sessionId).eq("termId", args.termId).eq("classId", args.classId)
-      )
-      .collect(),
-  ]);
+  const [sessionDoc, currentStudents, promotedIntoClass, selectionDocs, sessionRecords] =
+    await Promise.all([
+      ctx.db.get(args.sessionId),
+      ctx.db
+        .query("students")
+        .withIndex("by_school_and_class", (q: any) =>
+          q.eq("schoolId", args.schoolId).eq("classId", args.classId)
+        )
+        .collect(),
+      ctx.db
+        .query("studentPromotions")
+        .withIndex("by_to_class_and_to_session", (q: any) =>
+          q.eq("toClassId", args.classId).eq("toSessionId", args.sessionId)
+        )
+        .collect(),
+      ctx.db
+        .query("studentSubjectSelections")
+        .withIndex("by_class_and_session", (q: any) =>
+          q.eq("classId", args.classId).eq("sessionId", args.sessionId)
+        )
+        .collect(),
+      ctx.db
+        .query("assessmentRecords")
+        .withIndex("by_sheet", (q: any) =>
+          q.eq("schoolId", args.schoolId).eq("sessionId", args.sessionId).eq("termId", args.termId).eq("classId", args.classId)
+        )
+        .collect(),
+    ]);
 
   const studentIds = new Set<string>();
   if (sessionDoc?.isActive) {
     for (const student of currentStudents) {
-      studentIds.add(String(student._id));
+      if (
+        await isStudentEnrolledInClassForSession(ctx, {
+          student,
+          schoolId: args.schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+        })
+      ) {
+        studentIds.add(String(student._id));
+      }
+    }
+  }
+  for (const promotion of promotedIntoClass) {
+    if (promotion.schoolId === args.schoolId) {
+      studentIds.add(String(promotion.studentId));
     }
   }
   for (const selection of selectionDocs) {
-    studentIds.add(String(selection.studentId));
+    if (!sessionDoc?.isActive || studentIds.has(String(selection.studentId))) {
+      studentIds.add(String(selection.studentId));
+    }
   }
   for (const record of sessionRecords) {
-    studentIds.add(String(record.studentId));
+    if (!sessionDoc?.isActive || studentIds.has(String(record.studentId))) {
+      studentIds.add(String(record.studentId));
+    }
   }
 
   const students = (
@@ -484,6 +510,14 @@ export async function buildStudentReportCard(
   ];
 
   const preferredClassId = args.preferredClassId;
+  const studentIsInPreferredClass = preferredClassId
+    ? await isStudentEnrolledInClassForSession(ctx, {
+        student,
+        schoolId: args.schoolId,
+        classId: preferredClassId,
+        sessionId: args.sessionId,
+      })
+    : false;
   const recordsForPreferredClass = preferredClassId
     ? termRecords.filter((record: any) => String(record.classId) === String(preferredClassId))
     : [];
@@ -493,7 +527,7 @@ export async function buildStudentReportCard(
   if (
     !issued &&
     preferredClassId &&
-    (!session.isActive || String(student.classId) !== String(preferredClassId)) &&
+    !studentIsInPreferredClass &&
     recordsForPreferredClass.length === 0 &&
     selectionsForPreferredClass.length === 0
   ) {
