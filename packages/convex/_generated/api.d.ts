@@ -98,6 +98,7 @@ import type * as functions_academic_seedRunner from "../functions/academic/seedR
 import type * as functions_academic_seedRunnerSecurity from "../functions/academic/seedRunnerSecurity.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_storageEntitlementProvisioning from "../functions/academic/storageEntitlementProvisioning.js";
+import type * as functions_academic_studentClassMembership from "../functions/academic/studentClassMembership.js";
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
 import type * as functions_academic_subjectAggregationHelpers from "../functions/academic/subjectAggregationHelpers.js";
@@ -246,6 +247,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/seedRunnerSecurity": typeof functions_academic_seedRunnerSecurity;
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/storageEntitlementProvisioning": typeof functions_academic_storageEntitlementProvisioning;
+  "functions/academic/studentClassMembership": typeof functions_academic_studentClassMembership;
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;
   "functions/academic/subjectAggregationHelpers": typeof functions_academic_subjectAggregationHelpers;
