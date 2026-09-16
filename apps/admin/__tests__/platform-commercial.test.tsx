@@ -80,6 +80,8 @@ it("publishes only a confirmed explicit version and retains values after failure
   expect(
     screen.getByRole("button", { name: /Purchase/ }).hasAttribute("disabled"),
   ).toBe(true);
+  // Commercial sections are tabbed; publishing lives under Prices.
+  fireEvent.click(screen.getByRole("tab", { name: "Prices" }));
   fireEvent.change(screen.getAllByLabelText("Effective UTC date")[1], {
     target: { value: "2030-01-01" },
   });

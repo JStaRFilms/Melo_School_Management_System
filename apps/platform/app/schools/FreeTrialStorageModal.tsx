@@ -4,8 +4,14 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
-import { AlertTriangle, CheckCircle2, HardDrive, Loader2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, HardDrive, Loader2 } from "lucide-react";
 import { getErrorMessage } from "@school/shared/toast";
+import {
+  PlatformSheet,
+  SheetFooterButtons,
+  sheetPrimaryButton,
+  sheetSecondaryButton,
+} from "./PlatformSheet";
 
 const CONFIRMATION_PHRASE = "PROVISION FREE TRIAL STORAGE";
 const DAY = 86_400_000;
@@ -110,35 +116,43 @@ export function FreeTrialStorageModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-xs">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="free-trial-storage-title"
-        className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-              <HardDrive className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 id="free-trial-storage-title" className="text-base font-bold text-slate-950">
-                Free-trial storage
-              </h2>
-              <p className="text-xs font-medium text-slate-500">{school.name}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            aria-label="Close storage provisioning"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X className="h-4 w-4" />
-          </button>
+    <PlatformSheet
+      labelledBy="free-trial-storage-title"
+      title="Free-trial storage"
+      subtitle={school.name}
+      closeLabel="Close storage provisioning"
+      dismissDisabled={isSubmitting}
+      onClose={onClose}
+      maxWidth="lg"
+      icon={
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+          <HardDrive className="h-5 w-5" />
         </div>
+      }
+      footer={
+        storage === undefined ? null : (
+          <SheetFooterButtons>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className={sheetSecondaryButton}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              className={`${sheetPrimaryButton} bg-indigo-600 hover:bg-indigo-700`}
+            >
+              {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HardDrive className="h-3.5 w-3.5" />}
+              {isSubmitting ? "Saving..." : isReconciliation ? "Reconcile and provision" : "Provision storage"}
+            </button>
+          </SheetFooterButtons>
+        )
+      }
+    >
 
         {storage === undefined ? (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
@@ -146,7 +160,7 @@ export function FreeTrialStorageModal({
             Loading storage state...
           </div>
         ) : (
-          <div className="mt-5 space-y-5">
+          <div className="space-y-5">
             <section aria-label="Current storage state" className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Current state</h3>
@@ -259,29 +273,8 @@ export function FreeTrialStorageModal({
                 {error}
               </p>
             ) : null}
-
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HardDrive className="h-3.5 w-3.5" />}
-                {isSubmitting ? "Saving..." : isReconciliation ? "Reconcile and provision" : "Provision storage"}
-              </button>
-            </div>
           </div>
         )}
-      </div>
-    </div>
+    </PlatformSheet>
   );
 }

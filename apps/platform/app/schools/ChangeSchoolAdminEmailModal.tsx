@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useAction } from "convex/react";
-import { Mail, X, Loader2 } from "lucide-react";
+import { Loader2, Mail } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import {
+  PlatformSheet,
+  SheetFooterButtons,
+  sheetPrimaryButton,
+  sheetSecondaryButton,
+} from "./PlatformSheet";
 
 export interface ChangeSchoolAdminEmailModalProps {
   isOpen: boolean;
@@ -66,33 +72,35 @@ export function ChangeSchoolAdminEmailModal({ isOpen, onClose, school }: ChangeS
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
-      <button type="button" aria-label="Close email change dialog" className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={isSubmitting ? undefined : onClose} />
-      <div role="dialog" aria-modal="true" aria-labelledby="change-admin-email-title" className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-2 text-indigo-600"><Mail className="h-4 w-4" /></div>
-            <div><h2 id="change-admin-email-title" className="text-base font-bold text-slate-900">Change administrator email</h2><p className="text-xs text-slate-500">{school.name}</p></div>
+    <PlatformSheet
+      labelledBy="change-admin-email-title"
+      title="Change administrator email"
+      subtitle={school.name}
+      closeLabel="Close email change dialog"
+      dismissDisabled={isSubmitting}
+      onClose={onClose}
+      icon={
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-2.5 text-indigo-600"><Mail className="h-5 w-5" /></div>
+      }
+      footer={
+        <SheetFooterButtons>
+          <button type="button" onClick={onClose} disabled={isSubmitting} className={sheetSecondaryButton}>Cancel</button>
+          <button type="submit" form="change-admin-email-form" disabled={isSubmitting} className={`${sheetPrimaryButton} bg-indigo-600 hover:bg-indigo-700`}>{isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{isSubmitting ? "Updating…" : "Change email"}</button>
+        </SheetFooterButtons>
+      }
+    >
+      <form id="change-admin-email-form" onSubmit={handleSubmit}>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Target administrator</div>
+            <div className="text-sm font-bold text-slate-900">{school.adminName || "Assigned Administrator"}</div>
+            <div className="font-mono text-xs text-slate-500">{school.adminEmail || "No email on file"}</div>
           </div>
-          <button type="button" onClick={onClose} disabled={isSubmitting} aria-label="Close email change dialog" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" /></button>
+          <p className="text-xs leading-relaxed text-slate-600">The administrator will be signed out of all devices and must use the new email to sign in. A verification message will be sent to the new address.</p>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">New email<input required type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} disabled={isSubmitting} autoComplete="off" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 sm:py-2.5 sm:text-sm" /></label>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">Confirm new email<input required type="email" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} disabled={isSubmitting} autoComplete="off" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-base text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 sm:py-2.5 sm:text-sm" /></label>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4 p-6">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Target administrator</div>
-              <div className="text-sm font-bold text-slate-900">{school.adminName || "Assigned Administrator"}</div>
-              <div className="font-mono text-xs text-slate-500">{school.adminEmail || "No email on file"}</div>
-            </div>
-            <p className="text-xs leading-relaxed text-slate-600">The administrator will be signed out of all devices and must use the new email to sign in. A verification message will be sent to the new address.</p>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">New email<input required type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} disabled={isSubmitting} autoComplete="off" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" /></label>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">Confirm new email<input required type="email" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} disabled={isSubmitting} autoComplete="off" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" /></label>
-          </div>
-          <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="rounded-xl px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
-            <button type="submit" disabled={isSubmitting} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50">{isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{isSubmitting ? "Updating…" : "Change email"}</button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </PlatformSheet>
   );
 }

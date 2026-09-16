@@ -14,9 +14,14 @@ import {
   Sparkles,
   UserPlus,
   UsersRound,
-  X,
 } from "lucide-react";
 import { appToast, getErrorMessage } from "@school/shared/toast";
+import {
+  PlatformSheet,
+  SheetFooterButtons,
+  sheetPrimaryButton,
+  sheetSecondaryButton,
+} from "./PlatformSheet";
 import {
   PLATFORM_CORE_AREAS,
   PLATFORM_MODULE_DEFINITIONS,
@@ -145,15 +150,6 @@ export function ManageFeaturesModal({
     setInitialFeatures(resolved);
   }, [school]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isSaving) onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isSaving, onClose]);
-
   const changedKeys = PLATFORM_MODULE_DEFINITIONS
     .map((module) => module.key)
     .filter((key) => features[key] !== initialFeatures[key]);
@@ -186,41 +182,46 @@ export function ManageFeaturesModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
-      <button
-        type="button"
-        aria-label="Close module settings"
-        className="fixed inset-0 cursor-default bg-slate-950/45 backdrop-blur-sm"
-        onClick={isSaving ? undefined : onClose}
-      />
-
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="module-settings-title"
-        className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-      >
-        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div>
-            <h2 id="module-settings-title" className="text-base font-bold text-slate-950">
-              Module access
-            </h2>
-            <p className="mt-1 text-xs leading-5 text-slate-500">
-              Choose the optional products available to <span className="font-semibold text-slate-700">{school.name}</span>. Staff permissions still control what each person can do.
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            disabled={isSaving}
-            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"
-          >
-            <X aria-hidden="true" className="h-4 w-4" />
-          </button>
-        </header>
-
-        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+    <PlatformSheet
+      labelledBy="module-settings-title"
+      title="Module access"
+      subtitle={school.name}
+      closeLabel="Close module settings"
+      dismissDisabled={isSaving}
+      onClose={onClose}
+      maxWidth="xl"
+      footer={
+        <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <p className="text-center text-[11px] text-slate-500 sm:text-left" role="status">
+            {changedKeys.length === 0
+              ? "No unsaved changes"
+              : `${changedKeys.length} module ${changedKeys.length === 1 ? "change" : "changes"} ready to save`}
+          </p>
+          <SheetFooterButtons>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className={sheetSecondaryButton}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving || changedKeys.length === 0}
+              className={`${sheetPrimaryButton} bg-slate-900 hover:bg-slate-800`}
+            >
+              {isSaving ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Check aria-hidden="true" className="h-3.5 w-3.5" />}
+              {isSaving ? "Saving…" : "Save access"}
+            </button>
+          </SheetFooterButtons>
+        </div>
+      }
+    >
+      <p className="mb-4 text-xs leading-5 text-slate-500">
+        Choose the optional products available to <span className="font-semibold text-slate-700">{school.name}</span>. Staff permissions still control what each person can do.
+      </p>
           <section aria-labelledby="included-title" className="rounded-xl border border-slate-200 bg-slate-50">
             <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
               <div className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600">
@@ -343,35 +344,6 @@ export function ManageFeaturesModal({
               })}
             </div>
           </section>
-        </div>
-
-        <footer className="flex items-center justify-between gap-4 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
-          <p className="text-[11px] text-slate-500" role="status">
-            {changedKeys.length === 0
-              ? "No unsaved changes"
-              : `${changedKeys.length} module ${changedKeys.length === 1 ? "change" : "changes"} ready to save`}
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="rounded-lg px-3.5 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving || changedKeys.length === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {isSaving ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Check aria-hidden="true" className="h-3.5 w-3.5" />}
-              {isSaving ? "Saving…" : "Save access"}
-            </button>
-          </div>
-        </footer>
-      </div>
-    </div>
+    </PlatformSheet>
   );
 }

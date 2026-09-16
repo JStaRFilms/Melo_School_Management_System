@@ -22,6 +22,12 @@ import {
 } from "lucide-react";
 import { FreeTrialStorageModal } from "./FreeTrialStorageModal";
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
+import {
+  PlatformSheet,
+  SheetFooterButtons,
+  sheetPrimaryButton,
+  sheetSecondaryButton,
+} from "./PlatformSheet";
 import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
 import { ChangeSchoolAdminEmailModal } from "./ChangeSchoolAdminEmailModal";
 import { appToast, getErrorMessage } from "@school/shared/toast";
@@ -519,36 +525,29 @@ function StatusConfirmModal({
   const isSuspending = school.status === "active";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              isSuspending ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
-            }`}
-          >
-            {isSuspending ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-950">
-              {isSuspending ? "Suspend School Tenant?" : "Reactivate School Tenant?"}
-            </h3>
-            <p className="text-xs text-slate-500 font-medium">{school.name}</p>
-          </div>
+    <PlatformSheet
+      labelledBy="school-status-title"
+      title={isSuspending ? "Suspend School Tenant?" : "Reactivate School Tenant?"}
+      subtitle={school.name}
+      closeLabel="Close school status dialog"
+      dismissDisabled={isProcessing}
+      onClose={onClose}
+      icon={
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+            isSuspending ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+          }`}
+        >
+          {isSuspending ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
         </div>
-
-        <p className="text-xs text-slate-600 leading-relaxed">
-          {isSuspending
-            ? "Suspending this school will immediately block all administrators, teachers, parents, and students from accessing their dashboards and data."
-            : "Reactivating this school will immediately restore full workspace access for all associated staff, students, and parents."}
-        </p>
-
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+      }
+      footer={
+        <SheetFooterButtons>
           <button
             type="button"
             onClick={onClose}
             disabled={isProcessing}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            className={sheetSecondaryButton}
           >
             Cancel
           </button>
@@ -556,7 +555,7 @@ function StatusConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={isProcessing}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white transition-colors shadow-xs ${
+            className={`${sheetPrimaryButton} ${
               isSuspending
                 ? "bg-rose-600 hover:bg-rose-700"
                 : "bg-emerald-600 hover:bg-emerald-700"
@@ -573,9 +572,15 @@ function StatusConfirmModal({
               "Confirm Reactivation"
             )}
           </button>
-        </div>
-      </div>
-    </div>
+        </SheetFooterButtons>
+      }
+    >
+      <p className="text-sm leading-relaxed text-slate-600">
+        {isSuspending
+          ? "Suspending this school will immediately block all administrators, teachers, parents, and students from accessing their dashboards and data."
+          : "Reactivating this school will immediately restore full workspace access for all associated staff, students, and parents."}
+      </p>
+    </PlatformSheet>
   );
 }
 
