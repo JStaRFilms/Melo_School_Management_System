@@ -26,6 +26,7 @@ import {
   type ReportCardExtraSystemKey,
 } from "./reportCardExtrasModel";
 import { getReadableUserName } from "./studentNameCompat";
+import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 
 const scaleTemplateValidator = v.object({
   _id: v.id("reportCardExtraScaleTemplates"),
@@ -97,6 +98,7 @@ async function getExtrasWorkspaceAccess(
     role: string;
     isSchoolAdmin: boolean;
     classId: Id<"classes">;
+    sessionId?: Id<"academicSessions">;
   }
 ) {
   if (args.isSchoolAdmin || args.role === "admin") {
@@ -116,9 +118,6 @@ async function getExtrasWorkspaceAccess(
   if (!classDoc || classDoc.schoolId !== args.schoolId || classDoc.isArchived) {
     throw new ConvexError("Class not found");
   }
-  if (!hasClassAccess) {
-    throw new ConvexError("Not assigned to this class");
-  }
 
   const activeSession = await ctx.db
     .query("academicSessions")
@@ -127,7 +126,7 @@ async function getExtrasWorkspaceAccess(
     )
     .first();
 
-  const targetSessionId = (args as any).sessionId ?? activeSession?._id;
+  const targetSessionId = args.sessionId ?? activeSession?._id;
 
   const sessionFormAssignment = targetSessionId
     ? await ctx.db
@@ -146,6 +145,9 @@ async function getExtrasWorkspaceAccess(
   const isLinkedFormTeacher = Boolean(
     viewer?.email && formTeacher?.email && viewer.email.toLowerCase() === formTeacher.email.toLowerCase()
   );
+  if (!hasClassAccess && !isExactFormTeacher && !isLinkedFormTeacher) {
+    throw new ConvexError("Not assigned to this class");
+  }
 
   return { canEdit: isExactFormTeacher || isLinkedFormTeacher, isAdmin: false };
 }
@@ -562,6 +564,7 @@ export const getStudentReportCardExtrasEntry = query({
       role,
       isSchoolAdmin,
       classId: args.classId,
+      sessionId: args.sessionId,
     });
 
     const [student, session, term] = await Promise.all([
@@ -570,9 +573,14 @@ export const getStudentReportCardExtrasEntry = query({
       ctx.db.get(args.termId),
     ]);
     if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
-    if (student.classId !== args.classId) throw new ConvexError("Student is not enrolled in this class");
     if (!session || session.schoolId !== schoolId || session.isArchived) throw new ConvexError("Session not found");
     if (!term || term.schoolId !== schoolId || term.sessionId !== args.sessionId) throw new ConvexError("Term not found");
+    if (!(await isStudentEnrolledInClassForSession(ctx, {
+      student,
+      schoolId,
+      classId: args.classId,
+      sessionId: args.sessionId,
+    }))) throw new ConvexError("Student is not enrolled in this class");
 
     const studentUser = await ctx.db.get(student.userId);
     const passportUrl = student.photoStorageId
@@ -627,6 +635,7 @@ export const saveStudentReportCardExtrasEntry = mutation({
       role,
       isSchoolAdmin,
       classId: args.classId,
+      sessionId: args.sessionId,
     });
     if (!access.canEdit) {
       throw new ConvexError("Form teacher access required");
@@ -651,10 +660,15 @@ export const saveStudentReportCardExtrasEntry = mutation({
         .collect(),
     ]);
     if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
-    if (student.classId !== args.classId) throw new ConvexError("Student is not enrolled in this class");
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) throw new ConvexError("Class not found");
     if (!session || session.schoolId !== schoolId || session.isArchived) throw new ConvexError("Session not found");
     if (!term || term.schoolId !== schoolId || term.sessionId !== args.sessionId) throw new ConvexError("Term not found");
+    if (!(await isStudentEnrolledInClassForSession(ctx, {
+      student,
+      schoolId,
+      classId: args.classId,
+      sessionId: args.sessionId,
+    }))) throw new ConvexError("Student is not enrolled in this class");
 
     const existingClassAttendance =
       existingClassAttendanceDocs.find(
