@@ -184,6 +184,7 @@ export function StudentProfileEditor({
     lastName !== (studentProfile.lastName ?? "") ||
     admissionChanged(admissionNumber, studentProfile.admissionNumber) ||
     classId !== studentProfile.classId ||
+    confirmClassAssignment ||
     houseName !== (studentProfile.houseName ?? "") ||
     gender !== (studentProfile.gender ?? "") ||
     dateOfBirth !== toDateInput(studentProfile.dateOfBirth) ||

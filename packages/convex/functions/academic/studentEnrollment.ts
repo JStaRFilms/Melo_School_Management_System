@@ -40,6 +40,7 @@ import {
   listClassAggregationOptOuts,
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
+import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -2544,16 +2545,13 @@ export const getClassStudentSubjectMatrix = query({
             }
           }
 
-          // If student was promoted to a different class for this session, exclude them from this class baseline
-          const promoForSession = await ctx.db
-            .query("studentPromotions")
-            .withIndex("by_student_and_to_session", (q) =>
-              q.eq("studentId", student._id).eq("toSessionId", args.sessionId),
-            )
-            .first();
           if (
-            promoForSession &&
-            String(promoForSession.toClassId) !== String(args.classId)
+            !(await isStudentEnrolledInClassForSession(ctx, {
+              student,
+              schoolId,
+              classId: args.classId,
+              sessionId: args.sessionId,
+            }))
           ) {
             continue;
           }
@@ -2579,7 +2577,18 @@ export const getClassStudentSubjectMatrix = query({
     ]);
 
     for (const promo of promotedIntoClass) {
-      studentIdSet.add(String(promo.studentId));
+      const student = await ctx.db.get(promo.studentId);
+      if (
+        student &&
+        (await isStudentEnrolledInClassForSession(ctx, {
+          student,
+          schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+        }))
+      ) {
+        studentIdSet.add(String(promo.studentId));
+      }
     }
 
     const graduationMap = new Map<
