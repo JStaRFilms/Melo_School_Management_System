@@ -60,7 +60,7 @@ export function BranchSwitcher({
           aria-label="Active branch"
           value={currentBranch.schoolId}
           disabled={pending}
-          className="h-8 max-w-[210px] truncate rounded-lg border border-slate-200 bg-slate-50 pl-7 pr-7 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none shadow-2xs"
+          className="h-10 max-w-[132px] truncate rounded-xl border border-slate-200 bg-slate-50 pl-7 pr-7 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer appearance-none shadow-2xs sm:h-8 sm:max-w-[210px] sm:rounded-lg"
           onChange={event => {
             const target = branches.find(branch => branch.schoolId === event.target.value);
             if (!target || target.schoolId === currentBranch.schoolId || !onSelectBranch) return;

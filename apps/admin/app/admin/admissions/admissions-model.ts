@@ -63,6 +63,24 @@ export const EMPTY_CAMPAIGN = createCampaignEditorValues();
 
 function isObject(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 
+export function fieldChoiceOptions(field: CampaignFieldInput): string[] {
+  try {
+    const parsed: unknown = JSON.parse(field.validationJson);
+    if (typeof parsed === "object" && parsed !== null && "options" in parsed && Array.isArray(parsed.options)) {
+      return parsed.options.filter((option): option is string => typeof option === "string");
+    }
+  } catch {
+    return [];
+  }
+  return [];
+}
+
+export function withCleanChoiceOptions(field: CampaignFieldInput): CampaignFieldInput {
+  if (field.kind !== "select" && field.kind !== "multi_select") return field;
+  const options = fieldChoiceOptions(field).map((option) => option.trim()).filter(Boolean);
+  return { ...field, validationJson: JSON.stringify({ options }) };
+}
+
 export function parseDefinitions(values: CampaignEditorValues): { fields: CampaignFieldInput[]; requirements: CampaignRequirementInput[] } {
   const fields: unknown = JSON.parse(values.fieldsJson);
   const requirements: unknown = JSON.parse(values.requirementsJson);
@@ -85,7 +103,12 @@ export function validateCampaign(values: CampaignEditorValues): string[] {
   const amount = Number(values.amount);
   if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) <= 0) errors.push("Application fee must be greater than zero.");
   if (!/^[A-Z]{3}$/.test(values.currency)) errors.push("Currency must be a three-letter uppercase code.");
-  try { parseDefinitions(values); } catch (error) { errors.push(error instanceof Error ? error.message : "Form definitions are invalid."); }
+  try {
+    const parsed = parseDefinitions(values);
+    if (parsed.fields.some((field) => (field.kind === "select" || field.kind === "multi_select") && fieldChoiceOptions(field).filter((option) => option.trim()).length < 2)) {
+      errors.push("Each choice question needs at least two options.");
+    }
+  } catch (error) { errors.push(error instanceof Error ? error.message : "Form definitions are invalid."); }
   return [...new Set(errors)];
 }
 
