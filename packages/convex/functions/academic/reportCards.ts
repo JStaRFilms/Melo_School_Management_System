@@ -518,6 +518,20 @@ export async function buildStudentReportCard(
         sessionId: args.sessionId,
       })
     : false;
+  const preferredClassPromotion = preferredClassId
+    ? await ctx.db
+        .query("studentPromotions")
+        .withIndex("by_student_and_to_session", (q: any) =>
+          q.eq("studentId", args.studentId).eq("toSessionId", args.sessionId)
+        )
+        .first()
+    : null;
+  const preferredClassHasSessionEvidence = session.isActive
+    ? studentIsInPreferredClass
+    : Boolean(
+        preferredClassPromotion?.schoolId === args.schoolId &&
+        preferredClassPromotion.toClassId === preferredClassId
+      );
   const recordsForPreferredClass = preferredClassId
     ? termRecords.filter((record: any) => String(record.classId) === String(preferredClassId))
     : [];
@@ -527,7 +541,7 @@ export async function buildStudentReportCard(
   if (
     !issued &&
     preferredClassId &&
-    !studentIsInPreferredClass &&
+    !preferredClassHasSessionEvidence &&
     recordsForPreferredClass.length === 0 &&
     selectionsForPreferredClass.length === 0
   ) {
