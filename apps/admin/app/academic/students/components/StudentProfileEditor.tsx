@@ -342,6 +342,7 @@ export function StudentProfileEditor({
         guardianPhone: guardianPhone || null,
         address: address || null,
       } as never);
+      setConfirmClassAssignment(false);
 
       let photoUploadError: string | null = null;
       if (photoFile) {
