@@ -108,7 +108,7 @@ export function StudentProfileEditor({
     useState<AdmissionCounterDecision>("");
   const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [classId, setClassId] = useState("");
-  const [classAssignmentTouched, setClassAssignmentTouched] = useState(false);
+  const [confirmClassAssignment, setConfirmClassAssignment] = useState(false);
   const [houseName, setHouseName] = useState("");
   const [gender, setGender] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -154,7 +154,7 @@ export function StudentProfileEditor({
     setOverrideCounterDecision("");
     setAdvanceCounterTo("");
     setClassId(profile.classId);
-    setClassAssignmentTouched(false);
+    setConfirmClassAssignment(false);
     setHouseName(profile.houseName ?? "");
     setGender(profile.gender ?? "");
     setDateOfBirth(toDateInput(profile.dateOfBirth));
@@ -333,7 +333,7 @@ export function StudentProfileEditor({
             ? numbering?.resetPeriod ?? undefined
             : undefined,
         classId,
-        confirmClassAssignment: classAssignmentTouched || undefined,
+        confirmClassAssignment: confirmClassAssignment || undefined,
         houseName: houseName || null,
         gender: gender || null,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
@@ -503,7 +503,7 @@ export function StudentProfileEditor({
               onAdmissionNumberChange={setAdmissionNumber}
               onClassIdChange={(nextClassId) => {
                 setClassId(nextClassId);
-                setClassAssignmentTouched(true);
+                setConfirmClassAssignment(true);
               }}
               onHouseNameChange={setHouseName}
               onGenderChange={setGender}
@@ -512,6 +512,23 @@ export function StudentProfileEditor({
               onGuardianPhoneChange={setGuardianPhone}
               onAddressChange={setAddress}
             />
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={confirmClassAssignment}
+                onChange={(event) => setConfirmClassAssignment(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                <span className="block font-semibold text-slate-900">
+                  Confirm class assignment
+                </span>
+                <span className="mt-1 block text-xs text-slate-600">
+                  Use the selected class for the active session and replace any existing promotion assignment.
+                </span>
+              </span>
+            </label>
 
             {admissionNumberChanged && (
               <AdmissionNumberGovernanceFields
