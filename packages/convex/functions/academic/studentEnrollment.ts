@@ -858,17 +858,19 @@ async function retireSupersededActiveSessionPromotions(
   }
 
   for (const session of activeSessions) {
-    const promotion = await ctx.db
+    const promotions = await ctx.db
       .query("studentPromotions")
       .withIndex("by_student_and_to_session", (q) =>
         q.eq("studentId", args.studentId).eq("toSessionId", session._id),
       )
-      .first();
-    if (
-      promotion?.schoolId === args.schoolId &&
-      promotion.toClassId !== args.targetClassId
-    ) {
-      await ctx.db.delete(promotion._id);
+      .collect();
+    for (const promotion of promotions) {
+      if (
+        promotion.schoolId === args.schoolId &&
+        promotion.toClassId !== args.targetClassId
+      ) {
+        await ctx.db.delete(promotion._id);
+      }
     }
   }
 }
