@@ -108,6 +108,7 @@ export function StudentProfileEditor({
     useState<AdmissionCounterDecision>("");
   const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [classId, setClassId] = useState("");
+  const [classAssignmentTouched, setClassAssignmentTouched] = useState(false);
   const [houseName, setHouseName] = useState("");
   const [gender, setGender] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -153,6 +154,7 @@ export function StudentProfileEditor({
     setOverrideCounterDecision("");
     setAdvanceCounterTo("");
     setClassId(profile.classId);
+    setClassAssignmentTouched(false);
     setHouseName(profile.houseName ?? "");
     setGender(profile.gender ?? "");
     setDateOfBirth(toDateInput(profile.dateOfBirth));
@@ -331,6 +333,7 @@ export function StudentProfileEditor({
             ? numbering?.resetPeriod ?? undefined
             : undefined,
         classId,
+        confirmClassAssignment: classAssignmentTouched || undefined,
         houseName: houseName || null,
         gender: gender || null,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
@@ -498,7 +501,10 @@ export function StudentProfileEditor({
               onFirstNameChange={setFirstName}
               onLastNameChange={setLastName}
               onAdmissionNumberChange={setAdmissionNumber}
-              onClassIdChange={setClassId}
+              onClassIdChange={(nextClassId) => {
+                setClassId(nextClassId);
+                setClassAssignmentTouched(true);
+              }}
               onHouseNameChange={setHouseName}
               onGenderChange={setGender}
               onDateOfBirthChange={setDateOfBirth}

@@ -895,6 +895,7 @@ export const updateStudent = mutation({
     lastName: v.optional(v.union(v.string(), v.null())),
     admissionNumber: v.optional(v.string()),
     classId: v.optional(v.id("classes")),
+    confirmClassAssignment: v.optional(v.boolean()),
     houseName: v.optional(v.union(v.string(), v.null())),
     gender: v.optional(v.union(v.string(), v.null())),
     dateOfBirth: v.optional(v.union(v.number(), v.null())),
@@ -1038,7 +1039,10 @@ export const updateStudent = mutation({
         .toLowerCase()}@students.local`;
     }
     const uploadedPhotoMetadata = await getValidatedPhotoMetadata(ctx, args);
-    if (args.classId && args.classId !== student.classId) {
+    if (
+      args.classId &&
+      (args.classId !== student.classId || args.confirmClassAssignment)
+    ) {
       await retireSupersededActiveSessionPromotions(ctx, {
         schoolId,
         studentId: student._id,

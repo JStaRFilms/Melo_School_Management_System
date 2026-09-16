@@ -69,14 +69,6 @@ describe("student enrollment registered functions", () => {
         createdAt: now,
         updatedAt: now,
       });
-      const reassignedClassId = await ctx.db.insert("classes", {
-        schoolId,
-        name: "Primary 6 Blue",
-        gradeName: "Primary 6",
-        level: "Primary",
-        createdAt: now,
-        updatedAt: now,
-      });
       const currentSessionId = await ctx.db.insert("academicSessions", {
         schoolId,
         name: "2025/2026",
@@ -125,7 +117,6 @@ describe("student enrollment registered functions", () => {
         adminId,
         sourceClassId,
         targetClassId,
-        reassignedClassId,
         currentSessionId,
         futureSessionId,
         futureTermId,
@@ -207,9 +198,10 @@ describe("student enrollment registered functions", () => {
 
     await admin.mutation(api.functions.academic.studentEnrollment.updateStudent, {
       studentId: ids.studentId,
-      classId: ids.reassignedClassId,
+      classId: ids.sourceClassId,
+      confirmClassAssignment: true,
     });
-    const [oldTargetAfterReassignment, reassignedAfterReassignment] = await Promise.all([
+    const [targetAfterRestoration, sourceAfterRestoration] = await Promise.all([
       admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, {
         sessionId: ids.futureSessionId,
         termId: ids.futureTermId,
@@ -219,12 +211,12 @@ describe("student enrollment registered functions", () => {
       admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, {
         sessionId: ids.futureSessionId,
         termId: ids.futureTermId,
-        classId: ids.reassignedClassId,
+        classId: ids.sourceClassId,
         subjectId: ids.subjectId,
       }),
     ]);
-    expect(oldTargetAfterReassignment.roster.map((student) => student.studentId)).not.toContain(ids.studentId);
-    expect(reassignedAfterReassignment.roster.map((student) => student.studentId)).toContain(ids.studentId);
+    expect(targetAfterRestoration.roster.map((student) => student.studentId)).not.toContain(ids.studentId);
+    expect(sourceAfterRestoration.roster.map((student) => student.studentId)).toContain(ids.studentId);
   });
 
   it("rejects same-session, backwards, and equal-start-date promotion targets", async () => {
