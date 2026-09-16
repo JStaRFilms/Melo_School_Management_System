@@ -12,6 +12,7 @@ export type BillingTab = "overview" | "invoices" | "payments" | "plans" | "setti
 interface BillingTabsProps {
   activeTab: BillingTab;
   onTabChange: (tab: BillingTab) => void;
+  showSettings?: boolean;
 }
 
 const tabs: { id: BillingTab; label: string; icon: React.ReactNode }[] = [
@@ -22,10 +23,10 @@ const tabs: { id: BillingTab; label: string; icon: React.ReactNode }[] = [
   { id: "settings", label: "Config", icon: <Settings2 className="h-4 w-4" /> },
 ];
 
-export function BillingTabs({ activeTab, onTabChange }: BillingTabsProps) {
+export function BillingTabs({ activeTab, onTabChange, showSettings = true }: BillingTabsProps) {
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-0.5">
-      {tabs.map((tab) => (
+      {tabs.filter((tab) => showSettings || tab.id !== "settings").map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}

@@ -87,8 +87,12 @@ export function PaymentTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-950/5">
-          {payments.map((row) => (
-            <tr key={row.payment._id} className="hover:bg-slate-50/50 transition-colors group">
+          {payments.map((row) => {
+            const requiresReconciliation =
+              row.payment.unappliedAmount > 0 ||
+              row.payment.applicationStatus === "unapplied" ||
+              row.payment.reconciliationStatus === "flagged";
+            return <tr key={row.payment._id} className="hover:bg-slate-50/50 transition-colors group">
               <td className="px-6 py-4 whitespace-nowrap">
                 <span className="font-mono text-[10px] font-bold text-slate-950 bg-slate-100 px-2 py-1 rounded-md ring-1 ring-slate-950/5">
                   {row.payment.reference}
@@ -104,18 +108,20 @@ export function PaymentTable({
                 <div className="text-[10px] text-slate-400 font-medium truncate max-w-[150px]">{row.payment.payerEmail || "Manual Record"}</div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <div className="font-bold text-emerald-600">
+                <div className={requiresReconciliation ? "font-bold text-amber-700" : "font-bold text-emerald-600"}>
                   {formatMoney(row.payment.amountReceived, "NGN")}
                 </div>
-                <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-widest text-emerald-500`}>
-                  Confirmed
+                <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-widest ${
+                  requiresReconciliation ? "text-amber-700" : "text-emerald-500"
+                }`}>
+                  {requiresReconciliation ? "Unapplied — review" : "Confirmed"}
                 </span>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right text-slate-500 font-bold text-[10px] uppercase tracking-wider">
                 {formatDateTime(row.payment.receivedAt)}
               </td>
-            </tr>
-          ))}
+            </tr>;
+          })}
           {payments.length === 0 && (
             <tr>
               <td colSpan={5} className="px-6 py-20 text-center">

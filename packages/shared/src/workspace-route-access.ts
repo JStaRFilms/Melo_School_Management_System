@@ -39,6 +39,32 @@ function within(path: string, prefix: string) {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
+const PERMISSION_MANAGED_DEFAULT_SCHOOL_ROUTES = {
+  admin: ["/billing"],
+  teacher: [],
+} as const;
+
+/** Capability-reviewed exceptions to the legacy role gate for default-school routes. */
+export function getDefaultSchoolWorkspaceAccess(
+  workspace: "admin" | "teacher",
+  path: string,
+  access: WorkspaceAccessSummary | undefined,
+): WorkspaceRouteDecision {
+  const legacyDecision = getLegacyWorkspaceAccess(workspace, access);
+  if (
+    legacyDecision.state !== "forbidden" ||
+    !access ||
+    access.state !== "ready" ||
+    access.compatibility.mode === "platform" ||
+    access.compatibility.permissionManaged !== true ||
+    !PERMISSION_MANAGED_DEFAULT_SCHOOL_ROUTES[workspace].some((prefix) => within(path, prefix))
+  ) {
+    return legacyDecision;
+  }
+
+  return getWorkspaceCapabilityDenial(workspace, path, access) ?? { state: "allowed" };
+}
+
 const TEACHER_ASSIGNMENT_REQUIRED_ROUTES = [
   "/assessments/exams",
   "/assessments/report-card-workbench",

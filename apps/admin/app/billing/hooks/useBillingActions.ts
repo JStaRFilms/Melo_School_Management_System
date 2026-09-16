@@ -7,6 +7,10 @@ export function useBillingActions() {
   const saveSchoolPaystackGatewayConfig = useMutation("functions/billingProviders:saveSchoolPaystackGatewayConfig" as never);
   const validateSchoolPaystackGatewayConfig = useAction("functions/billingProviders:validateSchoolPaystackGatewayConfig" as never);
   const createFeePlan = useMutation("functions/billing:createFeePlan" as never);
+  const archiveFeePlan = useMutation("functions/billing:archiveFeePlan" as never);
+  const restoreFeePlan = useMutation("functions/billing:restoreFeePlan" as never);
+  const deleteUnusedFeePlan = useMutation("functions/billing:deleteUnusedFeePlan" as never);
+  const revokeFeePlanInvoices = useMutation("functions/billing:revokeFeePlanInvoices" as never);
   const createInvoice = useMutation("functions/billing:createInvoiceFromFeePlan" as never);
   const applyFeePlanToClassStudents = useMutation("functions/billing:applyFeePlanToClassStudents" as never);
   const recordPayment = useMutation("functions/billing:recordManualPayment" as never);
@@ -35,6 +39,10 @@ export function useBillingActions() {
     saveSchoolPaystackGatewayConfig,
     validateSchoolPaystackGatewayConfig,
     createFeePlan,
+    archiveFeePlan,
+    restoreFeePlan,
+    deleteUnusedFeePlan,
+    revokeFeePlanInvoices,
     createInvoice,
     applyFeePlanToClassStudents,
     recordPayment,

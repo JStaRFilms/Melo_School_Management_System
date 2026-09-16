@@ -38,7 +38,7 @@ const DEMO_SCHOOL_TABLES = [
   "assetQuarantineLogs", "assetRetentionHolds", "assetStorageReconciliationIssues", "assetPurgeReceipts", "pdfCompressionCandidates", "assetUploadIntents", "schoolAssets", "assetPolicies",
   "settlementLegs", "settlementLedgers", "subscriptionInvoices", "commercialContracts", "paymentMandates", "schoolSubscriptions",
   "usageProviderCosts", "usageEvents", "usageQuotaReservations", "usageMeterAllocations",
-  "paymentAllocations", "billingPaymentAttempts", "paymentGatewayEvents", "billingPayments", "studentInvoices", "feePlanApplications", "feePlans", "schoolPaymentProviderSecrets", "schoolPaymentProviders", "schoolBillingSettings",
+  "paymentAllocations", "billingPaymentAttempts", "paymentGatewayEvents", "billingPayments", "studentInvoices", "feePlanLifecycleRuns", "feePlanApplications", "feePlans", "schoolPaymentProviderSecrets", "schoolPaymentProviders", "schoolBillingSettings",
   "issuedReportCards", "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
   "studentSubjectAggregationOptOuts", "studentSubjectSelections", "studentPromotions", "classSubjectAggregationComponents", "classSubjectAggregations", "teacherAssignments", "classSubjects",

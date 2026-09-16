@@ -16,15 +16,15 @@ export function BillingHeader({ summary, currency, onOpenArsenal }: BillingHeade
       <AdminHeader
         title="Billing ledger"
         description="Monitor school-wide collections and outstanding balances."
-        actions={
-          <button 
+        actions={onOpenArsenal ? (
+          <button
             onClick={onOpenArsenal}
             className="lg:hidden flex items-center gap-2 px-4 h-11 rounded-2xl bg-slate-950 text-white font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all"
           >
             <LayoutGrid className="h-4 w-4" />
             Financial Hub
           </button>
-        }
+        ) : undefined}
       />
       <StatGroup
         stats={[

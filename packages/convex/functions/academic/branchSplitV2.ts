@@ -114,6 +114,7 @@ export const KNOWLEDGE_AI_TABLES = [
 
 export const LEGACY_BILLING_TABLES = [
   "studentInvoices",
+  "feePlanLifecycleRuns",
   "feePlans",
   "feePlanApplications",
   "billingPayments",
@@ -223,6 +224,7 @@ export const SCHOOL_PURGE_TABLES = [
   "schoolBillingSettings",
   "demoSeedStorageCleanup",
   "demoSeedRuns",
+  "feePlanLifecycleRuns",
   "feePlanApplications",
   "studentInvoices",
   "paymentGatewayEvents",

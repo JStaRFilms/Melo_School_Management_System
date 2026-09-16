@@ -7,7 +7,6 @@ Filter,
 Link2,
 Plus,
 Search,
-X,
 } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
@@ -65,6 +64,18 @@ sortPaymentRows,
 toggleSortDirection
 } from "./utils";
 
+type FeePlanDeletionResult = {
+  status: "archived" | "deleted";
+  hasMore: boolean;
+  continueRunId: string | null;
+};
+
+type FeePlanRevocationResult = {
+  revokedCount: number;
+  hasMore: boolean;
+  continueRunId: string | null;
+};
+
 type PaymentLinkActionResult = {
   provider?: string;
   reference?: string;
@@ -96,10 +107,23 @@ export default function BillingPage() {
   const [emptyFeePlanSignature] = useState(() => feePlanSignature(initialFeePlanDraft()));
   const feePlanDirty = feePlanSignature(feePlanDraft) !== emptyFeePlanSignature;
   const { session, workspaceAccess } = useAuth();
+  const canUseLegacyBillingOperations = session?.user.role === "admin" &&
+    workspaceAccess?.state === "ready" &&
+    workspaceAccess.compatibility.permissionManaged === false;
   const canManageFeePlans = workspaceAccess?.state === "ready" &&
     workspaceAccess.effectiveCapabilities.includes("finance.fee_plans.manage");
+  const canIssueInvoices = workspaceAccess?.state === "ready" &&
+    workspaceAccess.effectiveCapabilities.includes("finance.invoices.issue");
+  const canRevokeFeePlanInvoices = canManageFeePlans && canIssueInvoices;
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const draftConnection = useDraftConnection();
+  useEffect(() => {
+    if (canManageFeePlans || sidebarVariant !== "plan") return;
+    setSidebarVariant("payment");
+    setSidebarOpen(false);
+    setFeePlanDraft(initialFeePlanDraft());
+    setFeePlanDraftInstanceKey((key) => key + 1);
+  }, [canManageFeePlans, sidebarVariant]);
   const feePlanDraftData = useMemo<DraftPayload<"fee_plan_builder">>(() => ({
     bankAccountId: feePlanDraft.bankAccountId ?? "",
     name: feePlanDraft.name,
@@ -117,8 +141,8 @@ export default function BillingPage() {
   }), [feePlanDraft]);
   const persistentFeePlanDraft = usePersistentFormDraft({
     formKey: "fee_plan_builder",
-    schoolId,
-    accountId: session?.user.id,
+    schoolId: canManageFeePlans ? schoolId : undefined,
+    accountId: canManageFeePlans ? session?.user.id : undefined,
     connection: draftConnection,
     currentData: feePlanDraftData,
     isDirty: feePlanDirty,
@@ -189,10 +213,18 @@ export default function BillingPage() {
     sessions, 
     classNameById, 
     applicationTerms 
-  } = useBillingData(filters, invoiceDraft, feePlanApplicationDraft);
+  } = useBillingData(
+    filters,
+    invoiceDraft,
+    feePlanApplicationDraft,
+    canUseLegacyBillingOperations,
+    canManageFeePlans,
+  );
   const selectedFinanceInvoice = useMemo(
-    () => data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null,
-    [data?.invoices, financePack?.invoiceId]
+    () => canUseLegacyBillingOperations
+      ? data?.invoices.find((row) => row.invoice._id === financePack?.invoiceId) ?? null
+      : null,
+    [canUseLegacyBillingOperations, data?.invoices, financePack?.invoiceId]
   );
   const financePackReusableAttempts = useQuery(
     api.functions.billing.listBillingPaymentAttemptsForInvoice,
@@ -219,7 +251,9 @@ export default function BillingPage() {
     [data?.feePlans, sortPreferences.plans]
   );
   const overviewInvoices = useMemo(
-    () => sortInvoiceRows(data?.invoices ?? [], { key: "date", direction: "desc" }).filter((invoiceRow) => invoiceRow.invoice.status !== "paid").slice(0, 5),
+    () => sortInvoiceRows(data?.invoices ?? [], { key: "date", direction: "desc" })
+      .filter((invoiceRow) => !["paid", "waived", "cancelled"].includes(invoiceRow.invoice.status))
+      .slice(0, 5),
     [data?.invoices]
   );
   const overviewPayments = useMemo(
@@ -235,7 +269,11 @@ export default function BillingPage() {
   const selectedStudentInvoices = selectedStudentBilling?.invoices ?? [];
   const selectedStudentPayments = selectedStudentBilling?.payments ?? [];
   const selectedInvoiceLatestPaymentAttempt = useMemo(() => {
-    if (!selectedFinanceInvoice || selectedFinanceInvoice.invoice.balanceDue <= 0) {
+    if (
+      !selectedFinanceInvoice ||
+      selectedFinanceInvoice.invoice.status === "cancelled" ||
+      selectedFinanceInvoice.invoice.balanceDue <= 0
+    ) {
       return null;
     }
 
@@ -359,6 +397,49 @@ export default function BillingPage() {
       setFeePlanSubmitting(false);
     }
   };
+
+  const handleArchiveFeePlan = (feePlanId: string) =>
+    actions.runAction(
+      () => actions.archiveFeePlan({ feePlanId } as never),
+      "Fee plan archived",
+      "Unable to archive this fee plan.",
+    );
+
+  const handleRestoreFeePlan = (feePlanId: string) =>
+    actions.runAction(
+      () => actions.restoreFeePlan({ feePlanId } as never),
+      "Fee plan restored",
+      "Unable to restore this fee plan.",
+    );
+
+  const handleDeleteFeePlan = (feePlanId: string, expectedName: string) =>
+    actions.runAction(async () => {
+      let runId: string | null = null;
+      let hasMore = true;
+      while (hasMore) {
+        const result = await actions.deleteUnusedFeePlan({
+          feePlanId,
+          expectedName,
+          runId,
+        } as never) as FeePlanDeletionResult;
+        if (result.status === "archived" && !result.hasMore) {
+          throw new Error("Used fee plans cannot be deleted. The plan was archived instead.");
+        }
+        hasMore = result.hasMore;
+        runId = result.continueRunId;
+      }
+    }, "Unused fee plan deleted", "Unable to delete this fee plan.");
+
+  const handleRevokeFeePlanInvoices = (feePlanId: string, reason: string) =>
+    actions.runAction(async () => {
+      let runId: string | null = null;
+      let hasMore = true;
+      while (hasMore) {
+        const result = await actions.revokeFeePlanInvoices({ feePlanId, reason, runId } as never) as FeePlanRevocationResult;
+        hasMore = result.hasMore;
+        runId = result.continueRunId;
+      }
+    }, "Eligible invoices revoked and fee plan archived", "Invoice revocation did not finish. Refresh the plan details before retrying because earlier batches may have succeeded.");
 
   const handleApplyFeePlan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -517,17 +598,19 @@ export default function BillingPage() {
 
   return (
     <main className="h-full min-h-0 w-full overflow-hidden bg-slate-50/50 flex flex-col">
-      <PersistentFormDraftControls
-            draft={persistentFeePlanDraft}
-            formTitle="fee plan"
-            isDirty={feePlanDirty}
-            excludedFieldsNotice="The private draft stores fee-plan configuration and an optional bank-account record ID only. It never stores bank details, payment secrets, provider payloads, credentials, or raw documents."
-            onDiscard={async () => {
-              await persistentFeePlanDraft.handleDiscardDraft();
-              setFeePlanDraft(initialFeePlanDraft());
-              setFeePlanDraftInstanceKey((key) => key + 1);
-            }}
-          />
+      {canManageFeePlans && (
+        <PersistentFormDraftControls
+          draft={persistentFeePlanDraft}
+          formTitle="fee plan"
+          isDirty={feePlanDirty}
+          excludedFieldsNotice="The private draft stores fee-plan configuration and an optional bank-account record ID only. It never stores bank details, payment secrets, provider payloads, credentials, or raw documents."
+          onDiscard={async () => {
+            await persistentFeePlanDraft.handleDiscardDraft();
+            setFeePlanDraft(initialFeePlanDraft());
+            setFeePlanDraftInstanceKey((key) => key + 1);
+          }}
+        />
+      )}
       <div className="flex-1 flex lg:overflow-hidden min-h-0">
         {/* Main Content Area */}
         <section className="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scrollbar">
@@ -537,13 +620,17 @@ export default function BillingPage() {
             <BillingHeader 
               summary={data.summary} 
               currency={data.settings?.defaultCurrency ?? "NGN"} 
-              onOpenArsenal={() => openSidebar("arsenal")}
+              onOpenArsenal={canUseLegacyBillingOperations ? () => openSidebar("arsenal") : undefined}
             />
 
             <div className="flex flex-col gap-6">
               {/* Tab Navigation & Search */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-950/5 pb-2 sticky top-0 bg-slate-50/50 backdrop-blur-md z-10">
-                <BillingTabs activeTab={activeTab} onTabChange={setActiveTab} />
+                <BillingTabs
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                  showSettings={canUseLegacyBillingOperations}
+                />
                 
                 <div className="flex items-center gap-2">
                   <div className="relative group">
@@ -589,8 +676,8 @@ export default function BillingPage() {
                            sortKey="date"
                            sortDirection="desc"
                            sortable={false}
-                           onViewInvoice={(invoiceId) => handleOpenFinancePack("invoice", invoiceId)}
-                           onViewStatement={(invoiceId) => handleOpenFinancePack("statement", invoiceId)}
+                           onViewInvoice={canUseLegacyBillingOperations ? (invoiceId) => handleOpenFinancePack("invoice", invoiceId) : undefined}
+                           onViewStatement={canUseLegacyBillingOperations ? (invoiceId) => handleOpenFinancePack("statement", invoiceId) : undefined}
                          />
                       </AdminSurface>
                    </div>
@@ -603,8 +690,8 @@ export default function BillingPage() {
                       sortKey={sortPreferences.invoices.key}
                       sortDirection={sortPreferences.invoices.direction}
                       onSortChange={handleInvoiceSortChange}
-                      onViewInvoice={(invoiceId) => handleOpenFinancePack("invoice", invoiceId)}
-                      onViewStatement={(invoiceId) => handleOpenFinancePack("statement", invoiceId)}
+                      onViewInvoice={canUseLegacyBillingOperations ? (invoiceId) => handleOpenFinancePack("invoice", invoiceId) : undefined}
+                      onViewStatement={canUseLegacyBillingOperations ? (invoiceId) => handleOpenFinancePack("statement", invoiceId) : undefined}
                     />
                   </AdminSurface>
                 )}
@@ -628,17 +715,21 @@ export default function BillingPage() {
                      sortDirection={sortPreferences.plans.direction}
                      onSortChange={handleFeePlanSortChange}
                      onNewPlan={canManageFeePlans ? () => openSidebar("plan") : undefined}
-                     onApplyPlan={(planId) => {
+                     onApplyPlan={canUseLegacyBillingOperations && canIssueInvoices ? (planId) => {
                        setFeePlanApplicationDraft((current) => ({
                          ...current,
-                         feePlanId: planId as any,
+                         feePlanId: planId as Id<"feePlans">,
                        }));
                        openSidebar("application");
-                     }}
+                     } : undefined}
+                     onArchivePlan={canManageFeePlans ? handleArchiveFeePlan : undefined}
+                     onRestorePlan={canManageFeePlans ? handleRestoreFeePlan : undefined}
+                     onDeletePlan={canManageFeePlans ? handleDeleteFeePlan : undefined}
+                     onRevokePlan={canRevokeFeePlanInvoices ? handleRevokeFeePlanInvoices : undefined}
                    />
                 )}
 
-                {activeTab === "settings" && (
+                {activeTab === "settings" && canUseLegacyBillingOperations && data.paymentGateway && (
                    <SettingsPanel 
                      settingsDraft={billingSettingsDraft}
                      onSettingsChange={setBillingSettingsDraft}
@@ -679,42 +770,42 @@ export default function BillingPage() {
                           : "Action Hub"}
                 </span>
               </div>
+              {canUseLegacyBillingOperations && <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSidebarVariant("payment")}
+                  className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                    sidebarVariant === "payment"
+                      ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-emerald-500/30"
+                      : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
+                  }`}
+                >
+                  <div className={`p-2 rounded-xl transition-transform ${
+                    sidebarVariant === "payment" ? "bg-emerald-500/20 text-emerald-300 scale-105" : "bg-emerald-50 text-emerald-600"
+                  }`}>
+                    <Plus className="h-4 w-4" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Receipt</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSidebarVariant("link")}
+                  className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                    sidebarVariant === "link"
+                      ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-orange-500/30"
+                      : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
+                  }`}
+                >
+                  <div className={`p-2 rounded-xl transition-transform ${
+                    sidebarVariant === "link" ? "bg-orange-500/20 text-orange-300 scale-105" : "bg-orange-50 text-orange-600"
+                  }`}>
+                    <Link2 className="h-4 w-4" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Handoff</span>
+                </button>
+              </div>}
               <div className="grid grid-cols-2 gap-2.5">
-                 <button 
-                   type="button"
-                   onClick={() => setSidebarVariant("payment")}
-                   className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                     sidebarVariant === "payment"
-                       ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-emerald-500/30"
-                       : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
-                   }`}
-                 >
-                    <div className={`p-2 rounded-xl transition-transform ${
-                      sidebarVariant === "payment" ? "bg-emerald-500/20 text-emerald-300 scale-105" : "bg-emerald-50 text-emerald-600"
-                    }`}>
-                       <Plus className="h-4 w-4" />
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Receipt</span>
-                 </button>
-                 <button 
-                    type="button"
-                    onClick={() => setSidebarVariant("link")}
-                    className={`flex flex-col items-center justify-center gap-2 p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                      sidebarVariant === "link"
-                        ? "bg-slate-950 text-white border-slate-950 shadow-md ring-2 ring-orange-500/30"
-                        : "bg-white border-slate-200 text-slate-950 shadow-2xs hover:border-slate-400 hover:bg-slate-50"
-                    }`}
-                 >
-                    <div className={`p-2 rounded-xl transition-transform ${
-                      sidebarVariant === "link" ? "bg-orange-500/20 text-orange-300 scale-105" : "bg-orange-50 text-orange-600"
-                    }`}>
-                       <Link2 className="h-4 w-4" />
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Handoff</span>
-                 </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <button 
+                {canUseLegacyBillingOperations && <button
                   type="button"
                   onClick={() => setSidebarVariant("application")}
                   className={`w-full flex items-center justify-center gap-1.5 h-10 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-2xs transition-all cursor-pointer ${
@@ -724,7 +815,7 @@ export default function BillingPage() {
                   }`}
                 >
                   Bulk Invoicing
-                </button>
+                </button>}
                 {canManageFeePlans && <button
                   type="button"
                   onClick={() => setSidebarVariant("plan")}
@@ -741,7 +832,7 @@ export default function BillingPage() {
 
             <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
               <div className="absolute inset-0 bg-white/40 pointer-events-none" />
-              <BillingSidebar 
+              {(canUseLegacyBillingOperations || (canManageFeePlans && sidebarVariant === "plan")) && <BillingSidebar
                 onClose={() => void closeFeeSidebar()}
                 variant={sidebarVariant}
                 onVariantChange={(v) => {
@@ -773,7 +864,7 @@ export default function BillingPage() {
                 applicationTerms={applicationTerms ?? []}
                 feePlans={data.feePlans}
                 canManageFeePlans={canManageFeePlans}
-              />
+              />}
             </div>
           </div>
         </aside>
@@ -785,7 +876,7 @@ export default function BillingPage() {
         onClose={() => void closeFeeSidebar()}
         title={sidebarTitles[sidebarVariant]}
       >
-        <BillingSidebar 
+        {(canUseLegacyBillingOperations || (canManageFeePlans && sidebarVariant === "plan")) && <BillingSidebar
           onClose={() => void closeFeeSidebar()}
           variant={sidebarVariant}
           onVariantChange={setSidebarVariant}
@@ -814,7 +905,7 @@ export default function BillingPage() {
           applicationTerms={applicationTerms ?? []}
           feePlans={data.feePlans}
           canManageFeePlans={canManageFeePlans}
-        />
+        />}
       </AdminSheet>
 
       {financePack && selectedFinanceInvoice && (
