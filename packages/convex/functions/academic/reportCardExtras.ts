@@ -118,9 +118,6 @@ async function getExtrasWorkspaceAccess(
   if (!classDoc || classDoc.schoolId !== args.schoolId || classDoc.isArchived) {
     throw new ConvexError("Class not found");
   }
-  if (!hasClassAccess) {
-    throw new ConvexError("Not assigned to this class");
-  }
 
   const activeSession = await ctx.db
     .query("academicSessions")
@@ -148,6 +145,9 @@ async function getExtrasWorkspaceAccess(
   const isLinkedFormTeacher = Boolean(
     viewer?.email && formTeacher?.email && viewer.email.toLowerCase() === formTeacher.email.toLowerCase()
   );
+  if (!hasClassAccess && !isExactFormTeacher && !isLinkedFormTeacher) {
+    throw new ConvexError("Not assigned to this class");
+  }
 
   return { canEdit: isExactFormTeacher || isLinkedFormTeacher, isAdmin: false };
 }

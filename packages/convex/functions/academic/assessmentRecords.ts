@@ -215,7 +215,16 @@ export const getExamEntrySheet = query({
       )
       .collect();
     for (const promo of promotedIntoClass) {
-      if (promo.schoolId === schoolId) {
+      const student = await ctx.db.get(promo.studentId);
+      if (
+        student &&
+        (await isStudentEnrolledInClassForSession(ctx, {
+          student,
+          schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+        }))
+      ) {
         studentIdSet.add(String(promo.studentId));
       }
     }

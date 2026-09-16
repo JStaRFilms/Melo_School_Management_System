@@ -379,7 +379,16 @@ async function getStudentsForClassReportCardBatch(
     }
   }
   for (const promotion of promotedIntoClass) {
-    if (promotion.schoolId === args.schoolId) {
+    const student = await ctx.db.get(promotion.studentId);
+    if (
+      student &&
+      (await isStudentEnrolledInClassForSession(ctx, {
+        student,
+        schoolId: args.schoolId,
+        classId: args.classId,
+        sessionId: args.sessionId,
+      }))
+    ) {
       studentIds.add(String(promotion.studentId));
     }
   }
@@ -518,14 +527,21 @@ export async function buildStudentReportCard(
         sessionId: args.sessionId,
       })
     : false;
-  const preferredClassPromotion = preferredClassId
+  const preferredClassPromotions = preferredClassId
     ? await ctx.db
         .query("studentPromotions")
         .withIndex("by_student_and_to_session", (q: any) =>
           q.eq("studentId", args.studentId).eq("toSessionId", args.sessionId)
         )
-        .first()
-    : null;
+        .collect()
+    : [];
+  const preferredClassPromotion = preferredClassPromotions
+    .filter((promotion: any) => promotion.schoolId === args.schoolId)
+    .sort(
+      (left: any, right: any) =>
+        right.createdAt - left.createdAt ||
+        right._creationTime - left._creationTime
+    )[0];
   const preferredClassHasSessionEvidence = session.isActive
     ? studentIsInPreferredClass
     : Boolean(

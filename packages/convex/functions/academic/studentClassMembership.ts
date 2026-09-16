@@ -14,14 +14,21 @@ export async function isStudentEnrolledInClassForSession(
     return false;
   }
 
-  const promotion = await ctx.db
+  const promotions = await ctx.db
     .query("studentPromotions")
     .withIndex("by_student_and_to_session", (q) =>
       q.eq("studentId", args.student._id).eq("toSessionId", args.sessionId),
     )
-    .first();
+    .collect();
+  const promotion = promotions
+    .filter((entry) => entry.schoolId === args.schoolId)
+    .sort(
+      (left, right) =>
+        right.createdAt - left.createdAt ||
+        right._creationTime - left._creationTime,
+    )[0];
 
-  if (promotion?.schoolId === args.schoolId) {
+  if (promotion) {
     return promotion.toClassId === args.classId;
   }
 
