@@ -23,6 +23,7 @@ import {
   getAssessmentEditingState,
 } from "./assessmentEditingPolicyHelpers";
 import { resolveEffectiveAcademicPolicy } from "./settings";
+import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 
 function withoutImportPolicySnapshots(record: NonNullable<Doc<"assessmentRecords">>) {
   const result = { ...record };
@@ -194,7 +195,14 @@ export const getExamEntrySheet = query({
         )
         .collect();
       for (const student of baselineStudents) {
-        if (!student.isArchived) {
+        if (
+          await isStudentEnrolledInClassForSession(ctx, {
+            student,
+            schoolId,
+            classId: args.classId,
+            sessionId: args.sessionId,
+          })
+        ) {
           studentIdSet.add(String(student._id));
         }
       }
@@ -207,7 +215,18 @@ export const getExamEntrySheet = query({
       )
       .collect();
     for (const promo of promotedIntoClass) {
-      studentIdSet.add(String(promo.studentId));
+      const student = await ctx.db.get(promo.studentId);
+      if (
+        student &&
+        (await isStudentEnrolledInClassForSession(ctx, {
+          student,
+          schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+        }))
+      ) {
+        studentIdSet.add(String(promo.studentId));
+      }
     }
 
     const classSelections = await ctx.db
@@ -217,7 +236,9 @@ export const getExamEntrySheet = query({
       )
       .collect();
     for (const sel of classSelections) {
-      studentIdSet.add(String(sel.studentId));
+      if (!sessionDoc.isActive || studentIdSet.has(String(sel.studentId))) {
+        studentIdSet.add(String(sel.studentId));
+      }
     }
 
     // Bulk-fetch existing assessment records for this sheet
@@ -234,7 +255,9 @@ export const getExamEntrySheet = query({
       .collect();
 
     for (const record of existingRecords) {
-      studentIdSet.add(String(record.studentId));
+      if (!sessionDoc.isActive || studentIdSet.has(String(record.studentId))) {
+        studentIdSet.add(String(record.studentId));
+      }
     }
 
     const studentDocs = (
@@ -427,9 +450,12 @@ export const upsertAssessmentRecordsBulk = mutation({
       const studentDoc = await ctx.db.get(record.studentId);
       if (
         !studentDoc ||
-        studentDoc.schoolId !== schoolId ||
-        studentDoc.classId !== args.classId ||
-        studentDoc.isArchived
+        !(await isStudentEnrolledInClassForSession(ctx, {
+          student: studentDoc,
+          schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+        }))
       ) {
         errors.push({
           studentId: record.studentId,

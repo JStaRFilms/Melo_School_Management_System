@@ -40,6 +40,7 @@ import {
   listClassAggregationOptOuts,
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
+import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -839,6 +840,42 @@ async function reconcileActiveSessionSubjectSelections(
   }
 }
 
+async function retireSupersededActiveSessionPromotions(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    studentId: Id<"students">;
+    targetClassId: Id<"classes">;
+  },
+) {
+  const activeSessions = await ctx.db
+    .query("academicSessions")
+    .withIndex("by_school_active", (q) =>
+      q.eq("schoolId", args.schoolId).eq("isActive", true),
+    )
+    .take(11);
+  if (activeSessions.length > 10) {
+    throw new ConvexError("Active academic session configuration requires review");
+  }
+
+  for (const session of activeSessions) {
+    const promotions = await ctx.db
+      .query("studentPromotions")
+      .withIndex("by_student_and_to_session", (q) =>
+        q.eq("studentId", args.studentId).eq("toSessionId", session._id),
+      )
+      .collect();
+    for (const promotion of promotions) {
+      if (
+        promotion.schoolId === args.schoolId &&
+        promotion.toClassId !== args.targetClassId
+      ) {
+        await ctx.db.delete(promotion._id);
+      }
+    }
+  }
+}
+
 export const updateStudent = mutation({
   args: {
     overrideReason: v.optional(v.string()),
@@ -859,6 +896,7 @@ export const updateStudent = mutation({
     lastName: v.optional(v.union(v.string(), v.null())),
     admissionNumber: v.optional(v.string()),
     classId: v.optional(v.id("classes")),
+    confirmClassAssignment: v.optional(v.boolean()),
     houseName: v.optional(v.union(v.string(), v.null())),
     gender: v.optional(v.union(v.string(), v.null())),
     dateOfBirth: v.optional(v.union(v.number(), v.null())),
@@ -1002,6 +1040,16 @@ export const updateStudent = mutation({
         .toLowerCase()}@students.local`;
     }
     const uploadedPhotoMetadata = await getValidatedPhotoMetadata(ctx, args);
+    if (
+      args.classId &&
+      (args.classId !== student.classId || args.confirmClassAssignment)
+    ) {
+      await retireSupersededActiveSessionPromotions(ctx, {
+        schoolId,
+        studentId: student._id,
+        targetClassId: nextClass._id,
+      });
+    }
     await reconcileActiveSessionSubjectSelections(ctx, {
       schoolId,
       studentId: student._id,
@@ -2497,16 +2545,13 @@ export const getClassStudentSubjectMatrix = query({
             }
           }
 
-          // If student was promoted to a different class for this session, exclude them from this class baseline
-          const promoForSession = await ctx.db
-            .query("studentPromotions")
-            .withIndex("by_student_and_to_session", (q) =>
-              q.eq("studentId", student._id).eq("toSessionId", args.sessionId),
-            )
-            .first();
           if (
-            promoForSession &&
-            String(promoForSession.toClassId) !== String(args.classId)
+            !(await isStudentEnrolledInClassForSession(ctx, {
+              student,
+              schoolId,
+              classId: args.classId,
+              sessionId: args.sessionId,
+            }))
           ) {
             continue;
           }
@@ -2532,7 +2577,18 @@ export const getClassStudentSubjectMatrix = query({
     ]);
 
     for (const promo of promotedIntoClass) {
-      studentIdSet.add(String(promo.studentId));
+      const student = await ctx.db.get(promo.studentId);
+      if (
+        student &&
+        (await isStudentEnrolledInClassForSession(ctx, {
+          student,
+          schoolId,
+          classId: args.classId,
+          sessionId: args.sessionId,
+        }))
+      ) {
+        studentIdSet.add(String(promo.studentId));
+      }
     }
 
     const graduationMap = new Map<
