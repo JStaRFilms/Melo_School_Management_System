@@ -563,6 +563,10 @@ export async function createCanonicalStudentEnrollmentHelper(
     createdAt: now,
     updatedAt: now,
   });
+  // Canonical creation path: every caller (manual enrollment, admissions
+  // conversion) counts the new student here. adjust is a no-op until the
+  // platform backfill initializes the school's counter row.
+  await adjustSchoolEnrollmentCount(ctx, args.schoolId, 1);
   return { studentId, studentUserId, admissionNumber };
 }
 
@@ -698,7 +702,6 @@ export const createStudent = mutation({
       numberingResetPeriod: args.numberingResetPeriod,
     });
     const studentId = enrollment.studentId;
-    await adjustSchoolEnrollmentCount(ctx, schoolId, 1);
     if (args.requestKey)
       await ctx.db.insert("enrollmentRequests", {
         schoolId,
