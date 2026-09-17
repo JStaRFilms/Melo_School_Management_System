@@ -25,11 +25,17 @@ import {
   STORAGE_RECONCILIATION_CONFIRMATION,
 } from "../academic/storageEntitlementProvisioning";
 import {
+  initializeSchoolEnrollmentCount,
+  isCurrentEnrollment,
+} from "../academic/studentEnrollmentCounts";
+import {
   NEW_SCHOOL_MODULE_DEFAULTS,
   resolveSchoolModuleFeatures,
 } from "@school/shared/product-modules";
 import { recordAuditEventHelper } from "../academic/audit";
 import { applySchoolAdminEmailUpdate } from "./schoolAdminEmailUpdate";
+
+const MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS = 10_000;
 
 function getBetterAuthIssuer(): string {
   const issuer = process.env.CONVEX_SITE_URL?.trim();
@@ -199,6 +205,11 @@ export const listSchools = query({
           .first();
       }
 
+      const enrollmentCount = await ctx.db
+        .query("schoolEnrollmentCounts")
+        .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+        .unique();
+
       result.push({
         _id: school._id,
         name: school.name,
@@ -209,11 +220,41 @@ export const listSchools = query({
         adminUserId: adminUser?._id ?? null,
         adminName: adminUser?.name ?? null,
         adminEmail: adminUser?.email ?? null,
+        currentStudentCount: enrollmentCount?.currentStudentCount ?? null,
         features: resolveSchoolModuleFeatures(school.features),
       });
     }
 
     return result;
+  },
+});
+
+export const recalculateSchoolEnrollmentCount = mutation({
+  args: { schoolId: v.id("schools") },
+  returns: v.object({ currentStudentCount: v.number() }),
+  handler: async (ctx, args) => {
+    await getAuthenticatedPlatformAdmin(ctx);
+
+    const school = await ctx.db.get(args.schoolId);
+    if (!school) throw new ConvexError("School not found");
+
+    const students = await ctx.db
+      .query("students")
+      .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+      .take(MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS + 1);
+    if (students.length > MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS) {
+      throw new ConvexError(
+        "School enrollment exceeds the automatic recalculation limit",
+      );
+    }
+
+    const currentStudentCount = students.filter(isCurrentEnrollment).length;
+    await initializeSchoolEnrollmentCount(
+      ctx,
+      args.schoolId,
+      currentStudentCount,
+    );
+    return { currentStudentCount };
   },
 });
 
@@ -507,6 +548,7 @@ export const createSchool = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await initializeSchoolEnrollmentCount(ctx, schoolId);
 
     return { schoolId, slug };
   },
