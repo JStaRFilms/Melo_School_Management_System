@@ -202,6 +202,7 @@ export const SCHOOL_PURGE_TABLES = [
   "studentSubjectSelections",
   "studentPromotions",
   "studentGraduations",
+  "schoolEnrollmentCounts",
   "classSubjectAggregationComponents",
   "classSubjectAggregations",
   "teacherAssignments",

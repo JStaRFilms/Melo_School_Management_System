@@ -1072,6 +1072,20 @@ export const updateStudent = mutation({
       admissionNumber: nextAdmissionNumber,
       createdAt: student.createdAt,
       updatedAt: Date.now(),
+      // Lifecycle state is not editable here: preserve it so profile edits
+      // cannot resurrect graduated students or desync the enrollment counter.
+      ...(student.enrollmentStatus !== undefined
+        ? { enrollmentStatus: student.enrollmentStatus }
+        : {}),
+      ...(student.graduatedAt !== undefined
+        ? { graduatedAt: student.graduatedAt }
+        : {}),
+      ...(student.graduatingSessionId !== undefined
+        ? { graduatingSessionId: student.graduatingSessionId }
+        : {}),
+      ...(student.graduatingClassId !== undefined
+        ? { graduatingClassId: student.graduatingClassId }
+        : {}),
     };
 
     const nextGender =
