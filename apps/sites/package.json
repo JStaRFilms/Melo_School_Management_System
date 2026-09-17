@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack --port 3005",
+    "dev": "next dev --webpack --port 3105",
     "build": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build --webpack",
-    "start": "next start --port 3005",
+    "start": "next start --port 3105",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
