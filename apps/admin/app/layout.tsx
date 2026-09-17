@@ -31,7 +31,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="bg-slate-50 min-h-screen" suppressHydrationWarning>
+      <body className="bg-slate-50 min-h-screen supports-[height:100dvh]:min-h-[100dvh]" suppressHydrationWarning>
         <ConvexClientProvider initialToken={initialToken}>
           <AuthProvider>
             <DepartureGuardProvider>

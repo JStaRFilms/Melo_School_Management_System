@@ -1,8 +1,13 @@
 # Admissions Experience Design
 
-**Status:** Design specification for D1 review  
-**Scope:** Guardian public admissions surface (`B2`) and tenant-scoped staff operations (`B3`)  
+**Status:** Implemented through `recovery/admissions-workflow` at `3b391e3`
+**Scope:** Guardian public admissions surface (`B2`) and tenant-scoped staff operations (`B3`)
+**Last verified:** 2026-09-14 against `3b391e3`
 **Architecture source of truth:** [Admissions Application Platform Architecture](AdmissionsApplicationPlatformArchitecture.md) and [ADR: Admissions Application Surface and Lifecycle](../decisions/ADR-008-admissions-application-surface-and-lifecycle.md)
+
+## Implementation status
+
+The B2 and B3 screens described below now run in code. The design rules still apply. The live paths are `apps/apply/components/AdmissionsApply.tsx` with `apps/apply/lib/journey.ts` for guardians, and `apps/admin/app/admin/admissions/` for staff. Behaviour checks live in `apps/apply/tests/admissions-journey.test.ts`, `apps/admin/__tests__/admissions-ui.test.ts`, and `packages/convex/functions/admissions/__tests__/lifecycle.integration.test.ts`.
 
 ## 1. Design intent and guardrails
 
@@ -459,3 +464,10 @@ Build the staff mockup at `docs/mockups/admissions/staff-review-journeys.html` a
 - Admission-number/class/family-resolution operating process, onboarding content, retention notice, and privacy/legal review.
 
 No OBHIS price, document rule, school claim, contact, declaration/legal statement, or imagery is approved by this design artifact.
+
+## Changelog
+
+### 2026-09-14: Mark implemented at 3b391e3
+- **Problem:** The header still asked for D1 review after B2 and B3 shipped in the recovery branch.
+- **Solution:** Promoted the status to implemented and linked the live components and tests. Design rules are unchanged.
+

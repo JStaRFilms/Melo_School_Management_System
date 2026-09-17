@@ -1,5 +1,7 @@
 # Billing and Payments Foundation
 
+**Status:** Implemented
+
 ## Goal
 
 Give the school admin workspace real school-fee billing data structures, invoice generation, manual payment capture, school-scoped Paystack setup, gateway webhook handling, and collections visibility so finance screens can be built on top of stable backend contracts.
@@ -61,6 +63,9 @@ The current implementation now uses a **per-school Paystack merchant** model:
 13. Admins can filter collections by class, term, invoice status, or search text.
 14. Admins can open a selected invoice in a printable finance pack, generate or reuse a Paystack-first payment URL, and print the invoice with the URL and QR code.
 15. Admins can open a printable student statement from an invoice row showing charge lines, payment date/times, invoice references, and calculated charge/payment/balance totals.
+16. A billing manager can permanently delete a fee plan only when it has no application run and no generated invoice.
+17. A billing manager can archive an active fee plan or restore an archived plan. Archived plans remain visible in the archive view but cannot issue invoices.
+18. A billing manager who can also issue invoices can revoke invoices from a fee plan. The operation archives the plan, cancels only unpaid invoices, leaves paid and partly paid invoices unchanged, records a reason on each cancelled invoice, and writes an append-only finance audit event.
 
 ## Database Schema
 
@@ -80,15 +85,23 @@ The current implementation now uses a **per-school Paystack merchant** model:
 - installment policy snapshot
 - class-targeting mode for class defaults vs manual extras
 - target class ids for class-default plans
+- active or archived lifecycle state; archived plans retain historical invoice links and can be restored
+- derived usage counts in the billing read contract so the client does not guess whether deletion or revocation is safe
 
 ### `feePlanApplications`
 - auditable bulk application runs for class-default plans
 - captures school, plan, class, session, term, and created/skipped counts
 
+### `feePlanLifecycleRuns`
+- temporary server-owned continuation state for bounded deletion and revocation scans
+- binds progress to the school, plan lifecycle version, actor, operation, and stable confirmation inputs so clients cannot skip ledger history or resume after an intervening restore/archive transition
+- indexed by school and included in tenant, demo-school, and branch-split cleanup
+
 ### `studentInvoices`
 - school-scoped invoice records for one student, class, session, and term
 - fee-plan snapshot and totals
 - balance, waiver, discount, and payment tracking fields
+- optional revocation timestamp, actor, and reason on invoices cancelled through fee-plan revocation
 
 ### `billingPayments`
 - captures manual and gateway-backed payments
@@ -117,6 +130,19 @@ The current implementation now uses a **per-school Paystack merchant** model:
 +- encrypted secret storage for school-scoped provider credentials
 +- keeps secret material separate from normal UI-facing provider metadata
 
+## Authorization and lifecycle rules
+
+- `finance.fee_plans.manage` authorizes fee-plan creation, private draft recovery, archive, restore, and deletion.
+- Revocation requires both `finance.fee_plans.manage` and `finance.invoices.issue` because it changes invoice state as well as the plan.
+- Convex checks authorization and school ownership on every lifecycle mutation. Hiding UI controls is not an authorization boundary.
+- A fee plan is deletable only if no `feePlanApplications` or `studentInvoices` row references it.
+- Revocation never deletes invoice, payment, allocation, attempt, or gateway history.
+- An invoice with a positive paid amount, or a `paid`, `partially_paid`, or `waived` status, blocks cancellation of that invoice. Other unpaid invoices from the same plan may still be cancelled.
+- Manual payments cannot be recorded against a cancelled invoice. A verified gateway payment that arrives after revocation is preserved as a successful but unapplied, flagged payment without changing the cancelled invoice balance.
+- Bulk deletion and revocation read bounded invoice pages through server-owned continuation runs, so clients cannot transplant cursors to skip financial history.
+- Cancelled invoice balances remain preserved on the invoice record but are excluded from active school and household outstanding totals.
+- Lifecycle changes write permanent finance audit events with canonical actor links where available and a resolved email snapshot for legacy actors, plus the target plan, result, reason where applicable, and affected invoice count; empty scan pages do not create audit noise.
+
 ## UX Direction
 
 - Keep billing tasks compact and mobile-friendly for bursary staff.
@@ -127,6 +153,9 @@ The current implementation now uses a **per-school Paystack merchant** model:
 ## Regression Checks
 
 - Fee plans can be created without crossing school boundaries.
+- Unused fee plans can be deleted, while any plan with an application or invoice reference cannot be deleted.
+- Archived fee plans cannot generate direct or bulk invoices and can be restored by an authorized billing manager.
+- Bulk revocation cancels unpaid invoices, preserves paid and partly paid invoices, and records late verified gateway payments as flagged and unapplied.
 - Invoice generation respects the school context and the selected student/class/session/term.
 - Manual payments only update the invoice they are attached to.
 - Gateway webhooks are rejected unless the signature verifies.

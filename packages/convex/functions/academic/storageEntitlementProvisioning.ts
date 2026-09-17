@@ -8,6 +8,10 @@ import {
 import { recordAuditEventHelper } from "./audit";
 import { validateEntitlement } from "../foundation/usageContract";
 import { validateRate } from "../foundation/commercialContract";
+import {
+  collectStorageClaimInventory,
+  STORAGE_CLAIM_INVENTORY_LIMIT,
+} from "./assetStorageBoundary";
 
 const DAY = 86_400_000;
 const FREE_TRIAL_RATE_CODE = "free_trial";
@@ -18,6 +22,9 @@ export const FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL = 100 * 1024 * 1024;
 export const FREE_TRIAL_STORAGE_POOL_BYTES = 750 * 1024 * 1024;
 const REVIEWED_EXISTING_SCHOOL_LIMIT = 5;
 const FINGERPRINT_BACKFILL_COMPLETE = "backfill:complete:v1";
+const STORAGE_RECONCILIATION_ROW_LIMIT = 100;
+const STORAGE_RECONCILIATION_OBJECT_LIMIT = STORAGE_CLAIM_INVENTORY_LIMIT;
+export const STORAGE_RECONCILIATION_CONFIRMATION = "RECONCILE EXISTING STORAGE";
 
 type ProvisioningStatus =
   | "created"
@@ -184,6 +191,11 @@ export async function schoolHasExistingStorageClaims(
       .withIndex("by_school", (q) => q.eq("schoolId", school._id))
       .first(),
     ctx.db
+      .query("admissionsDocumentUploadIntents")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
       .query("schoolSiteAssets")
       .withIndex("by_school", (q) => q.eq("schoolId", school._id))
       .first(),
@@ -201,6 +213,14 @@ export async function schoolHasExistingStorageClaims(
       .query("knowledgeMaterialUploadIntents")
       .withIndex("by_school", (q) => q.eq("schoolId", school._id))
       .filter((q) => q.neq(q.field("storageId"), undefined))
+      .first(),
+    ctx.db
+      .query("knowledgeOcrJobs")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
+      .first(),
+    ctx.db
+      .query("demoSeedRuns")
+      .withIndex("by_school", (q) => q.eq("schoolId", school._id))
       .first(),
     ctx.db
       .query("schoolAssets")
@@ -238,6 +258,165 @@ export async function schoolHasExistingStorageClaims(
   return storageOwners.some((owner) => owner !== null);
 }
 
+type ReconciledStorageBucket = "active" | "trash" | "temp";
+
+type StorageReconciliationObject = {
+  storageId: Id<"_storage">;
+  bucket: ReconciledStorageBucket;
+  size: number;
+};
+
+export type StorageReconciliationSummary = {
+  status: "not_needed" | "ready" | "blocked";
+  objectCount: number;
+  referenceCount: number;
+  activeBytes: number;
+  trashBytes: number;
+  tempBytes: number;
+  missingObjectCount: number;
+  conflictingObjectCount: number;
+  unsupportedReferenceCount: number;
+  blockers: string[];
+};
+
+type StorageReconciliationInventory = StorageReconciliationSummary & {
+  objects: StorageReconciliationObject[];
+};
+
+function storageBucketRank(bucket: ReconciledStorageBucket): number {
+  return bucket === "active" ? 3 : bucket === "trash" ? 2 : 1;
+}
+
+export async function inspectSchoolStorageForReconciliation(
+  ctx: MutationCtx | QueryCtx,
+  schoolId: Id<"schools">,
+): Promise<StorageReconciliationInventory> {
+  const school = await ctx.db.get(schoolId);
+  if (!school) throw new ConvexError("School not found");
+
+  const [admissions, admissionsIntents, siteAssets, students, materials, knowledgeIntents, ocrJobs, assets, assetIntents, compressionCandidates, cleanup, reports, demoRuns, imports] = await Promise.all([
+    ctx.db.query("admissionsDocuments").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("schoolSiteAssets").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("knowledgeMaterials").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("knowledgeOcrJobs").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("schoolAssets").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("assetUploadIntents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("pdfCompressionCandidates").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("demoSeedStorageCleanup").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("issuedReportCards").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("demoSeedRuns").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+    ctx.db.query("importWorkspaces").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).take(STORAGE_RECONCILIATION_ROW_LIMIT + 1),
+  ]);
+  const boundedRows = [admissions, admissionsIntents, siteAssets, students, materials, knowledgeIntents, ocrJobs, assets, assetIntents, compressionCandidates, cleanup, reports, demoRuns, imports];
+  const blockers: string[] = [];
+  if (boundedRows.some((rows) => rows.length > STORAGE_RECONCILIATION_ROW_LIMIT)) {
+    blockers.push("Storage history is too large for the reviewed reconciliation workflow.");
+  }
+
+  const candidatesById = new Map<string, { storageId: Id<"_storage">; bucket: ReconciledStorageBucket; sources: Set<string> }>();
+  let referenceCount = 0;
+  const add = (storageId: Id<"_storage"> | undefined, bucket: ReconciledStorageBucket, source: string) => {
+    if (!storageId) return;
+    referenceCount += 1;
+    const key = String(storageId);
+    const existing = candidatesById.get(key);
+    if (!existing) {
+      candidatesById.set(key, { storageId, bucket, sources: new Set([source]) });
+    } else {
+      existing.sources.add(source);
+      if (storageBucketRank(bucket) > storageBucketRank(existing.bucket)) existing.bucket = bucket;
+    }
+  };
+
+  add(school.logoStorageId, "active", "school_logo");
+  for (const row of admissions.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, ["deleted", "superseded", "archived"].includes(row.state) ? "trash" : "active", "admissions_document");
+  for (const row of admissionsIntents.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, "temp", "admissions_upload_intent");
+  for (const row of siteAssets.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, "active", "site_asset");
+  for (const row of students.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.photoStorageId, "active", "student_photo");
+  for (const row of materials.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, "active", "knowledge_material");
+  for (const row of knowledgeIntents.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, "temp", "knowledge_upload_intent");
+  for (const row of ocrJobs.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, "active", "knowledge_ocr_reference");
+  for (const row of assets.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) {
+    add(row.storageId, row.isTrashed ? "trash" : "active", "school_asset");
+    add(row.rollbackStorageId, "temp", "school_asset_rollback");
+  }
+  for (const row of assetIntents.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, "temp", "asset_upload_intent");
+  for (const row of compressionCandidates.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.candidateStorageId, "temp", "pdf_candidate");
+  for (const row of cleanup.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) add(row.storageId, "temp", "seed_cleanup");
+  for (const row of reports.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) {
+    add(row.schoolLogoStorageId, "active", "issued_report_logo");
+    add(row.studentPhotoStorageId, "active", "issued_report_photo");
+  }
+  for (const row of demoRuns.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) {
+    const bucket = row.status === "succeeded" ? "active" : "temp";
+    add(row.logoStorageId, bucket, row.status === "succeeded" ? "demo_seed_reference" : "demo_seed_incomplete");
+    for (const storageId of row.portraitStorageIds) add(storageId, bucket, row.status === "succeeded" ? "demo_seed_reference" : "demo_seed_incomplete");
+  }
+  let unsupportedReferenceCount = 0;
+  for (const workspace of imports.slice(0, STORAGE_RECONCILIATION_ROW_LIMIT)) {
+    for (const source of workspace.sourceFiles ?? []) {
+      add(source.storageId, "active", "import_source");
+      unsupportedReferenceCount += 1;
+    }
+  }
+  if (unsupportedReferenceCount) {
+    blockers.push("Migration source files require a separate retention review before storage reconciliation.");
+  }
+  if (candidatesById.size > STORAGE_RECONCILIATION_OBJECT_LIMIT) {
+    blockers.push("Storage history contains too many objects for one reviewed reconciliation.");
+  }
+
+  const candidates = [...candidatesById.values()].slice(0, STORAGE_RECONCILIATION_OBJECT_LIMIT);
+  const [claimInventory, metadata] = await Promise.all([
+    collectStorageClaimInventory(ctx, candidates.map((candidate) => candidate.storageId)),
+    Promise.all(candidates.map((candidate) => ctx.db.system.get("_storage", candidate.storageId))),
+  ]);
+  const inspected = candidates.map((candidate, index) => {
+    const claims = claimInventory.get(String(candidate.storageId)) ?? [];
+    const crossSchool = claims.some((claim) => claim.schoolId !== schoolId);
+    const primaryClaims = claims.filter((claim) => !["admissionsDocumentUploadIntent", "knowledgeMaterialUploadIntent", "knowledgeOcrJobReference", "assetUploadIntent", "demoSeedRunLogoReference", "demoSeedRunPortraitReference", "issuedReportLogoReference", "issuedReportPhotoReference"].includes(claim.purpose));
+    const conflicting = crossSchool || new Set(primaryClaims.map((claim) => `${claim.purpose}:${claim.ownerId}`)).size > 1;
+    const unresolvedUploadIntent = claims.some((claim) => {
+      if (!["admissionsDocumentUploadIntent", "knowledgeMaterialUploadIntent", "assetUploadIntent"].includes(claim.purpose)) return false;
+      return !claim.linkedOwnerId || !claims.some((owner) => owner.ownerId === claim.linkedOwnerId);
+    });
+    const historicalReferenceWithoutOwner = primaryClaims.length === 0 && claims.some((claim) => ["knowledgeOcrJobReference", "demoSeedRunLogoReference", "demoSeedRunPortraitReference", "issuedReportLogoReference", "issuedReportPhotoReference"].includes(claim.purpose));
+    const unresolvedTemporary = unresolvedUploadIntent || historicalReferenceWithoutOwner || candidate.sources.has("pdf_candidate") || candidate.sources.has("seed_cleanup") || candidate.sources.has("demo_seed_incomplete");
+    return { candidate, metadata: metadata[index] ?? null, conflicting, unresolvedTemporary };
+  });
+  const missingObjectCount = inspected.filter((item) => !item.metadata).length;
+  const conflictingObjectCount = inspected.filter((item) => item.conflicting).length;
+  const temporaryObjectCount = inspected.filter((item) => item.unresolvedTemporary).length;
+  if (missingObjectCount) blockers.push("One or more referenced storage objects are missing.");
+  if (conflictingObjectCount) blockers.push("One or more storage objects have conflicting ownership.");
+  if (temporaryObjectCount) blockers.push("In-progress or cleanup storage objects must settle before reconciliation.");
+
+  const objects = inspected.flatMap((item) => item.metadata && !item.conflicting ? [{ storageId: item.candidate.storageId, bucket: item.candidate.bucket, size: item.metadata.size }] : []);
+  const activeBytes = objects.filter((item) => item.bucket === "active").reduce((sum, item) => sum + item.size, 0);
+  const trashBytes = objects.filter((item) => item.bucket === "trash").reduce((sum, item) => sum + item.size, 0);
+  const tempBytes = objects.filter((item) => item.bucket === "temp").reduce((sum, item) => sum + item.size, 0);
+  if (activeBytes + trashBytes + tempBytes > FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL) {
+    blockers.push("Existing storage exceeds the reviewed free-trial allowance.");
+  }
+
+  return {
+    status: blockers.length ? "blocked" : candidatesById.size === 0 ? "not_needed" : "ready",
+    objectCount: candidatesById.size,
+    referenceCount,
+    activeBytes,
+    trashBytes,
+    tempBytes,
+    missingObjectCount,
+    conflictingObjectCount,
+    unsupportedReferenceCount,
+    blockers: [...new Set(blockers)],
+    objects,
+  };
+}
+
 async function provisionSchoolStorage(
   ctx: MutationCtx,
   args: {
@@ -247,6 +426,12 @@ async function provisionSchoolStorage(
     actorKind: "platform_admin" | "system";
     actorEmail: string;
     auditSummary: string;
+    auditAction?: "usage.free_trial_storage_provisioned" | "usage.free_trial_storage_reconciled";
+    reviewedExistingStorage?: {
+      activeBytes: number;
+      trashBytes: number;
+      tempBytes: number;
+    };
   },
 ): Promise<{ status: ProvisioningStatus; cycleId?: Id<"usageCycles"> }> {
   const [school, contracts, cycles, storageMeters] = await Promise.all([
@@ -334,8 +519,23 @@ async function provisionSchoolStorage(
     return { status: isValidExistingStorage ? "already_configured" : "requires_review" };
   }
   if (contracts.length || cycles.length) return { status: "requires_review" };
-  if (await schoolHasExistingStorageClaims(ctx, school)) {
+  const hasExistingStorageClaims = await schoolHasExistingStorageClaims(ctx, school);
+  if (hasExistingStorageClaims && !args.reviewedExistingStorage) {
     return { status: "requires_review" };
+  }
+  const reviewedExistingStorage = args.reviewedExistingStorage ?? {
+    activeBytes: 0,
+    trashBytes: 0,
+    tempBytes: 0,
+  };
+  const reviewedConsumedUnits = reviewedExistingStorage.activeBytes + reviewedExistingStorage.trashBytes + reviewedExistingStorage.tempBytes;
+  if (
+    !isSafeNonnegativeInteger(reviewedExistingStorage.activeBytes) ||
+    !isSafeNonnegativeInteger(reviewedExistingStorage.trashBytes) ||
+    !isSafeNonnegativeInteger(reviewedExistingStorage.tempBytes) ||
+    reviewedConsumedUnits > FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL
+  ) {
+    throw new ConvexError("Reviewed existing storage baseline is invalid");
   }
 
   const allocationRows = await ctx.db.query("usageMeterAllocations").take(1001);
@@ -393,10 +593,10 @@ async function provisionSchoolStorage(
     topUpUnits: 0,
     exceptionUnits: 0,
     poolUnits: 0,
-    consumedUnits: 0,
-    activeStorageBytes: 0,
-    trashStorageBytes: 0,
-    tempStorageBytes: 0,
+    consumedUnits: reviewedConsumedUnits,
+    activeStorageBytes: reviewedExistingStorage.activeBytes,
+    trashStorageBytes: reviewedExistingStorage.trashBytes,
+    tempStorageBytes: reviewedExistingStorage.tempBytes,
     reservedUnits: 0,
     warningThresholdPercent: 75,
     criticalThresholdPercent: 90,
@@ -434,7 +634,7 @@ async function provisionSchoolStorage(
     actorKind: args.actorKind,
     actorEmailSnapshot: args.actorEmail,
     module: "commercial",
-    action: "usage.free_trial_storage_provisioned",
+    action: args.auditAction ?? "usage.free_trial_storage_provisioned",
     targetType: "usage_cycle",
     targetId: cycleId,
     outcome: "success",
@@ -443,6 +643,88 @@ async function provisionSchoolStorage(
     alertTier: "tier2_warn",
   });
   return { status: "created", cycleId };
+}
+
+export async function reconcileSchoolFreeTrialStorageHelper(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    actorEmail: string;
+    confirmation: string;
+    expectedObjectCount: number;
+    expectedReferenceCount: number;
+    expectedActiveBytes: number;
+    expectedTrashBytes: number;
+    expectedTempBytes: number;
+  },
+): Promise<{ status: ProvisioningStatus; summary: StorageReconciliationSummary }> {
+  if (args.confirmation !== STORAGE_RECONCILIATION_CONFIRMATION) {
+    throw new ConvexError(`Type ${STORAGE_RECONCILIATION_CONFIRMATION} after reviewing the storage inventory`);
+  }
+  const inventory = await inspectSchoolStorageForReconciliation(ctx, args.schoolId);
+  const summary: StorageReconciliationSummary = {
+    status: inventory.status,
+    objectCount: inventory.objectCount,
+    referenceCount: inventory.referenceCount,
+    activeBytes: inventory.activeBytes,
+    trashBytes: inventory.trashBytes,
+    tempBytes: inventory.tempBytes,
+    missingObjectCount: inventory.missingObjectCount,
+    conflictingObjectCount: inventory.conflictingObjectCount,
+    unsupportedReferenceCount: inventory.unsupportedReferenceCount,
+    blockers: inventory.blockers,
+  };
+  if (inventory.status !== "ready") return { status: "requires_review", summary };
+  if (
+    inventory.objectCount !== args.expectedObjectCount ||
+    inventory.referenceCount !== args.expectedReferenceCount ||
+    inventory.activeBytes !== args.expectedActiveBytes ||
+    inventory.trashBytes !== args.expectedTrashBytes ||
+    inventory.tempBytes !== args.expectedTempBytes
+  ) {
+    throw new ConvexError("Storage inventory changed. Review the latest totals before confirming again");
+  }
+
+  const actorEmail = args.actorEmail.trim().toLowerCase();
+  if (!actorEmail || actorEmail.length > 240) throw new ConvexError("A bounded Platform operator email is required");
+  const startAt = utcMidnight(Date.now());
+  const result = await provisionSchoolStorage(ctx, {
+    schoolId: args.schoolId,
+    startAt,
+    endAt: startAt + FREE_TRIAL_DURATION_DAYS * DAY,
+    actorKind: "platform_admin",
+    actorEmail,
+    auditAction: "usage.free_trial_storage_reconciled",
+    auditSummary: `Reconciled ${inventory.objectCount} existing storage objects totaling ${inventory.activeBytes + inventory.trashBytes + inventory.tempBytes} bytes into the reviewed free-trial storage entitlement; no files were changed or deleted`,
+    reviewedExistingStorage: {
+      activeBytes: inventory.activeBytes,
+      trashBytes: inventory.trashBytes,
+      tempBytes: inventory.tempBytes,
+    },
+  });
+  if (result.status !== "created") return { status: result.status, summary };
+
+  const assets = await ctx.db
+    .query("schoolAssets")
+    .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
+    .take(STORAGE_RECONCILIATION_ROW_LIMIT + 1);
+  if (assets.length > STORAGE_RECONCILIATION_ROW_LIMIT) {
+    throw new ConvexError("Storage inventory changed during reconciliation");
+  }
+  const now = Date.now();
+  for (const asset of assets) {
+    const metadata = await ctx.db.system.get("_storage", asset.storageId);
+    if (!metadata) throw new ConvexError("Storage inventory changed during reconciliation");
+    await ctx.db.patch(asset._id, {
+      byteSize: metadata.size,
+      mimeType: metadata.contentType ?? asset.mimeType,
+      sha256: metadata.sha256,
+      storageAccountingInitializedAt: now,
+      storageReconciliationState: undefined,
+      updatedAt: now,
+    });
+  }
+  return { status: result.status, summary };
 }
 
 export async function ensureSchoolFreeTrialStorageHelper(

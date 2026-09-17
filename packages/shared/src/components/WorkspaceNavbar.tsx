@@ -56,6 +56,7 @@ interface LinkRenderProps {
 }
 
 export interface WorkspaceSchoolFeatures {
+  familyPortal?: boolean;
   billing?: boolean;
   curriculum?: boolean;
   knowledgeLibrary?: boolean;
@@ -252,50 +253,33 @@ export function WorkspaceNavbar({
               label: "People & Operations",
               icon: <Users className="h-4 w-4" />,
               links: sections.filter((s) =>
-                ["/academic/students", "/academic/teachers", "/academic/events"].includes(s.href)
+                ["/academic/students", "/admin/admissions", "/academic/teachers", "/academic/events"].includes(s.href)
               ),
             },
             academics: {
               label: "Academic & Grading",
               icon: <GraduationCap className="h-4 w-4" />,
-              links: sections.filter((s) => {
-                if (
-                  [
-                    "/assessments/results/entry",
-                    "/assessments/report-cards",
-                    "/assessments/report-card-extras",
-                    "/assessments/setup/exam-recording",
-                    "/assessments/setup/grading-bands",
-                    "/assessments/setup/report-card-bundles",
-                    "/assessments/report-cards/manual-adjustments",
-                  ].includes(s.href)
-                ) {
-                  return true;
-                }
-                if (
-                  s.href === "/academic/knowledge/curriculum-import" ||
-                  s.href === "/academic/knowledge/curriculum-readiness"
-                ) {
-                  return schoolBranding?.features?.curriculum !== false;
-                }
-                if (s.href === "/academic/knowledge/library") {
-                  return schoolBranding?.features?.knowledgeLibrary !== false;
-                }
-                if (
-                  s.href === "/academic/knowledge/templates" ||
-                  s.href === "/academic/knowledge/assessment-profiles"
-                ) {
-                  return true;
-                }
-                return false;
-              }),
+              links: sections.filter((s) =>
+                [
+                  "/assessments/results/entry",
+                  "/assessments/report-cards",
+                  "/assessments/report-card-extras",
+                  "/assessments/setup/exam-recording",
+                  "/assessments/setup/grading-bands",
+                  "/assessments/setup/report-card-bundles",
+                  "/assessments/report-cards/manual-adjustments",
+                  "/academic/knowledge/curriculum-import",
+                  "/academic/knowledge/curriculum-readiness",
+                  "/academic/knowledge/library",
+                  "/academic/knowledge/templates",
+                  "/academic/knowledge/assessment-profiles",
+                ].includes(s.href)
+              ),
             },
             finance: {
               label: "Finance & Invoicing",
               icon: <Landmark className="h-4 w-4" />,
-              links: schoolBranding?.features?.billing !== false
-                ? sections.filter((s) => s.href === "/billing")
-                : [],
+              links: sections.filter((s) => s.href === "/billing"),
             },
             governance: {
               label: "Governance",
@@ -462,7 +446,7 @@ export function WorkspaceNavbar({
           else window.location.assign(anchor.href);
         });
       }}
-      className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans"
+      className="flex h-screen w-full overflow-hidden overscroll-none bg-slate-50 font-sans supports-[height:100dvh]:h-[100dvh]"
       style={{
         ...themeTokens,
       } as React.CSSProperties}
@@ -637,10 +621,10 @@ export function WorkspaceNavbar({
       {/* ═══ RIGHT SIDE (Header + Main) ════════════════════════ */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
         
-        {/* ── TOP HEADER (Pinned) ── */}
-        <header className="rc-no-print sticky top-0 z-40 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+        {/* ── TOP HEADER (Pinned — flex sibling of the scroll area, never scrolls away) ── */}
+        <header className="rc-no-print sticky top-0 z-40 flex h-14 w-full shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-3 backdrop-blur-md sm:h-16 sm:gap-4 sm:px-6 lg:px-8">
           
-          <div className="flex items-center gap-4 min-w-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
             <div className="xl:hidden">
               <SchoolBrandMark
                 name={schoolName ?? def.label}
@@ -702,7 +686,7 @@ export function WorkspaceNavbar({
                 aria-label="Account menu"
                 aria-expanded={profileOpen}
                 onClick={() => setProfileOpen(!profileOpen)}
-                className="group flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2.5 transition-all hover:border-slate-300 hover:shadow-sm"
+                className="group flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-2 transition-all hover:border-slate-300 hover:shadow-sm sm:gap-2.5 sm:pr-2.5"
               >
                 <div
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold text-[color:var(--school-primary-contrast)] transition-colors"
@@ -753,7 +737,7 @@ export function WorkspaceNavbar({
               aria-label="Open navigation"
               aria-expanded={open}
               onClick={() => setOpen(!open)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 xl:hidden"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 active:scale-95 xl:hidden"
             >
               <Menu className="h-5 w-5" />
             </button>
@@ -764,12 +748,12 @@ export function WorkspaceNavbar({
         {leadershipAlerts && <div className="rc-no-print shrink-0 px-4 py-2 sm:px-6">{leadershipAlerts}</div>}
         {departureError && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{departureError}</p>}
 
-        {/* ── MAIN SCROLL AREA ── */}
+        {/* ── MAIN SCROLL AREA (the only scroller — header stays pinned above it) ── */}
         <main
-          className={`flex-1 min-h-0 w-full relative custom-scrollbar scrollbar-hide ${
+          className={`relative min-h-0 w-full flex-1 overscroll-contain custom-scrollbar scrollbar-hide [overflow-anchor:none] ${
             fullBleed
-              ? "overflow-y-auto lg:overflow-hidden h-full"
-              : "overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8"
+              ? "h-full overflow-y-auto lg:overflow-hidden"
+              : "overflow-y-auto overflow-x-hidden px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 sm:p-6 lg:p-8"
           }`}
         >
           <div className={fullBleed ? "w-full min-h-full lg:h-full lg:min-h-0" : "mx-auto max-w-[1600px]"}>
@@ -781,7 +765,7 @@ export function WorkspaceNavbar({
         {open && (
           <div className="fixed inset-0 z-[100] flex flex-col bg-white xl:hidden transition-all duration-300 animate-in fade-in slide-in-from-right-5">
             <div className="flex h-16 shrink-0 items-center justify-between px-4 border-b border-slate-100">
-               <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
                   <SchoolBrandMark
                     name={schoolName ?? def.label}
                     logoUrl={schoolBranding?.logoUrl ?? null}
@@ -1062,6 +1046,8 @@ function getSectionIcon(href: string) {
       return <UserCheck className="h-4 w-4 shrink-0" />;
     case "/academic/events":
       return <Calendar className="h-4 w-4 shrink-0" />;
+    case "/admin/admissions":
+      return <ClipboardCheck className="h-4 w-4 shrink-0" />;
     case "/assessments/results/entry":
     case "/assessments/exams/entry":
       return <ClipboardPenLine className="h-4 w-4 shrink-0" />;

@@ -1,5 +1,7 @@
 # Teacher Profile Role Update Safety
 
+**Status:** Implemented
+
 ## Goal
 
 Allow school admins to edit a teacher's display name and login email without touching the teacher's role in Better Auth.

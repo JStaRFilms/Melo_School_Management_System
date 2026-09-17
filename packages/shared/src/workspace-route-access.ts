@@ -2,13 +2,12 @@ import type { WorkspaceAccessSummary } from "./workspace-access";
 import type { WorkspaceKey } from "./workspace-navigation";
 import { normalizeCapability } from "./capability-contract";
 import { WORKSPACE_CAPABILITY_MATRIX } from "./workspace-capability-matrix";
+import {
+  getDisabledProductModule,
+  type SchoolModuleFeatures,
+} from "./product-modules";
 
-export interface WorkspaceFeatures {
-  billing?: boolean;
-  curriculum?: boolean;
-  knowledgeLibrary?: boolean;
-  admissions?: boolean;
-}
+export type WorkspaceFeatures = SchoolModuleFeatures;
 
 export type WorkspaceRouteDecision =
   | { state: "allowed" }
@@ -40,6 +39,32 @@ function within(path: string, prefix: string) {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
+const PERMISSION_MANAGED_DEFAULT_SCHOOL_ROUTES = {
+  admin: ["/billing"],
+  teacher: [],
+} as const;
+
+/** Capability-reviewed exceptions to the legacy role gate for default-school routes. */
+export function getDefaultSchoolWorkspaceAccess(
+  workspace: "admin" | "teacher",
+  path: string,
+  access: WorkspaceAccessSummary | undefined,
+): WorkspaceRouteDecision {
+  const legacyDecision = getLegacyWorkspaceAccess(workspace, access);
+  if (
+    legacyDecision.state !== "forbidden" ||
+    !access ||
+    access.state !== "ready" ||
+    access.compatibility.mode === "platform" ||
+    access.compatibility.permissionManaged !== true ||
+    !PERMISSION_MANAGED_DEFAULT_SCHOOL_ROUTES[workspace].some((prefix) => within(path, prefix))
+  ) {
+    return legacyDecision;
+  }
+
+  return getWorkspaceCapabilityDenial(workspace, path, access) ?? { state: "allowed" };
+}
+
 const TEACHER_ASSIGNMENT_REQUIRED_ROUTES = [
   "/assessments/exams",
   "/assessments/report-card-workbench",
@@ -55,6 +80,7 @@ export function isTeacherAssignmentRequiredRoute(path: string) {
 const BRANCH_SCOPED_ROUTES = {
   admin: [
     "/admin/audit",
+    "/admin/admissions",
     "/admin/permissions",
     "/admin/assets",
     "/admin/settings/admission-numbering",
@@ -130,45 +156,11 @@ export function getWorkspaceModuleDenial(
   path: string,
   features?: WorkspaceFeatures | null,
 ): WorkspaceRouteDecision | null {
-  const billingDisabled =
-    (workspace === "admin" || workspace === "portal") &&
-    within(path, "/billing") &&
-    features?.billing === false;
-  const curriculumDisabled =
-    features?.curriculum === false &&
-    ((workspace === "admin" &&
-      [
-        "/academic/knowledge/curriculum-import",
-        "/academic/knowledge/curriculum-readiness",
-        "/academic/knowledge/templates",
-        "/academic/knowledge/assessment-profiles",
-      ].some((prefix) => within(path, prefix))) ||
-      (workspace === "teacher" &&
-        (path === "/planning" || within(path, "/planning/lesson-plans"))));
-  const knowledgeLibraryDisabled =
-    features?.knowledgeLibrary === false &&
-    ((workspace === "admin" && within(path, "/academic/knowledge/library")) ||
-      (workspace === "teacher" &&
-        ["/planning/library", "/planning/question-bank", "/planning/videos"].some(
-          (prefix) => within(path, prefix),
-        )));
-  const admissionsDisabled =
-    workspace === "admin" &&
-    features?.admissions === false &&
-    [
-      "/academic/students/onboarding",
-      "/academic/students/import",
-      "/students/import",
-    ].some((prefix) => within(path, prefix));
-
-  return billingDisabled ||
-    curriculumDisabled ||
-    knowledgeLibraryDisabled ||
-    admissionsDisabled
+  const disabledModule = getDisabledProductModule(workspace, path, features);
+  return disabledModule
     ? {
         state: "module_disabled",
-        message:
-          "This module is disabled in your school's workspace configuration. Contact your platform manager to request activation.",
+        message: `${disabledModule.title} is not enabled for this school. Contact your platform manager to request access.`,
       }
     : null;
 }

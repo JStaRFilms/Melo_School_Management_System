@@ -1,5 +1,7 @@
 # Production Report Card Extras Random Backfill
 
+**Status:** One-time production runbook. No automated backfill exists in the repo.
+
 ## Goal
 Populate production report-card extras for every active student in every class currently assigned the `Primary Conduct` bundle.
 

@@ -820,7 +820,9 @@ export const getBillingData = query({
       invoiceCount: entries.length,
       totalInvoiced: entries.reduce((sum, invoice) => sum + invoice.totalAmount, 0),
       totalPaid: entries.reduce((sum, invoice) => sum + invoice.amountPaid, 0),
-      outstandingBalance: entries.reduce((sum, invoice) => sum + invoice.balanceDue, 0),
+      outstandingBalance: entries
+        .filter((invoice) => invoice.status !== "cancelled")
+        .reduce((sum, invoice) => sum + invoice.balanceDue, 0),
     });
 
     return {

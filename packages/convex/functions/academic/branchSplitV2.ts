@@ -119,6 +119,7 @@ export const KNOWLEDGE_AI_TABLES = [
 
 export const LEGACY_BILLING_TABLES = [
   "studentInvoices",
+  "feePlanLifecycleRuns",
   "feePlans",
   "feePlanApplications",
   "billingPayments",
@@ -142,7 +143,9 @@ export const SCHOOL_PURGE_TABLES = [
   "admissionsEvaluations",
   "admissionsReviewAssignments",
   "admissionsDocumentReviews",
+  "admissionsDocumentAccessGrants",
   "admissionsDocumentAccessAudits",
+  "admissionsDocumentUploadIntents",
   "admissionsDocuments",
   "admissionsAuditEvents",
   "admissionsApplicationAnswers",
@@ -156,6 +159,7 @@ export const SCHOOL_PURGE_TABLES = [
   "admissionsApplications",
   "admissionsEntitlements",
   "admissionsPaymentEvents",
+  "admissionsPurchaseGuards",
   "admissionsPurchaseAttempts",
   "admissionsProductPrices",
   "admissionsProducts",
@@ -165,6 +169,8 @@ export const SCHOOL_PURGE_TABLES = [
   "admissionsDeclarationVersions",
   "admissionsIntakes",
   "admissionsProgrammes",
+  "admissionsRetentionPolicies",
+  "schoolAdminEmailUpdateReservations",
   "schoolCapabilityGrants",
   "schoolSiteAuditEvents",
   "schoolSiteRevisions",
@@ -223,6 +229,7 @@ export const SCHOOL_PURGE_TABLES = [
   "schoolBillingSettings",
   "demoSeedStorageCleanup",
   "demoSeedRuns",
+  "feePlanLifecycleRuns",
   "feePlanApplications",
   "studentInvoices",
   "paymentGatewayEvents",
@@ -1250,6 +1257,7 @@ const STORAGE_REFERENCE_TABLES = [
   "students",
   "schoolSiteAssets",
   "admissionsDocuments",
+  "admissionsDocumentUploadIntents",
   "knowledgeMaterials",
   "knowledgeMaterialUploadIntents",
   "knowledgeOcrJobs",
@@ -1351,12 +1359,14 @@ export const isAuthIdRetainedInternal = internalQuery({
   },
 });
 
-const ADMISSIONS_GUARDIAN_REFERENCE_TABLES = [
+export const ADMISSIONS_GUARDIAN_REFERENCE_TABLES = [
+  "admissionsPurchaseGuards",
   "admissionsPurchaseAttempts",
   "admissionsEntitlements",
   "admissionsApplications",
   "admissionsSubmissionSnapshots",
   "admissionsDocuments",
+  "admissionsDocumentAccessGrants",
   "admissionsDocumentAccessAudits",
   "admissionsReviewEvents",
   "admissionsCommunicationOutbox",

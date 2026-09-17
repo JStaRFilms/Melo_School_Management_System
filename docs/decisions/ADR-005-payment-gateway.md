@@ -74,3 +74,7 @@ interface PaymentLinkInput {
 - Currency handling (NGN primary; architecture supports others)
 - Transaction fees must be considered in fee planning
 - Platform SaaS billing must remain a separate concern from school-collected fees
+
+## Implementation note 2026-09-14
+
+The shipped `PaymentGateway` interface (`packages/convex/functions/billingGateway.ts`) has `createPaymentLink` and `verifyPayment` only. Webhook handling lives in `packages/convex/functions/billingWebhooks.ts` at the `/webhooks/payment` route in `http.ts`, not in a `handleWebhook` method on the adapter.

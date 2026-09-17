@@ -1,6 +1,6 @@
 # ADR-009: Shared Core with Code-Controlled Bespoke School Sites
 
-- **Status:** Accepted for Genesis handoff
+- **Status:** Accepted. B0 schema foundation is implemented (site tables in `packages/convex/schema.ts`); the renderer core (B4) and `obhis-v1` (B5) are pending.
 - **Date:** 2026-07-22
 - **Decision owners:** Integration owner / public-site architecture
 - **Related:** `docs/features/SharedCoreBespokeSchoolWebsiteArchitecture.md`, `docs/features/OBHISPublicWebsiteBrief.md`

@@ -1,5 +1,7 @@
 # Blueprint: Template Studio Redesign
 
+**Status:** Implemented
+
 ## Goal
 
 Redesign the `/academic/knowledge/templates` route to improve information density, reduce card-bloat, and remove redundant explanations, aligning with the high-end admin dashboard aesthetic.

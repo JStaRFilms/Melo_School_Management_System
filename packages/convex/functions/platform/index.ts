@@ -19,12 +19,21 @@ import {
   ensureSchoolFreeTrialStorageHelper,
   FREE_TRIAL_DURATION_DAYS,
   FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL,
+  inspectSchoolStorageForReconciliation,
+  reconcileSchoolFreeTrialStorageHelper,
   schoolHasExistingStorageClaims,
+  STORAGE_RECONCILIATION_CONFIRMATION,
 } from "../academic/storageEntitlementProvisioning";
 import {
   initializeSchoolEnrollmentCount,
   isCurrentEnrollment,
 } from "../academic/studentEnrollmentCounts";
+import {
+  NEW_SCHOOL_MODULE_DEFAULTS,
+  resolveSchoolModuleFeatures,
+} from "@school/shared/product-modules";
+import { recordAuditEventHelper } from "../academic/audit";
+import { applySchoolAdminEmailUpdate } from "./schoolAdminEmailUpdate";
 
 const MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS = 10_000;
 
@@ -36,6 +45,20 @@ function getBetterAuthIssuer(): string {
 
 function getBetterAuthTokenIdentifier(authId: string): string {
   return `${getBetterAuthIssuer()}|${authId}`;
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function maskEmail(email: string): string {
+  const [localPart, domain] = email.split("@");
+  if (!localPart || !domain) return "[redacted email]";
+  return `${localPart.slice(0, 1)}***@${domain}`;
 }
 
 async function ensureVerifiedSchoolAdminIdentity(
@@ -194,15 +217,11 @@ export const listSchools = query({
         status: school.status ?? "active",
         createdAt: school.createdAt,
         updatedAt: school.updatedAt,
+        adminUserId: adminUser?._id ?? null,
         adminName: adminUser?.name ?? null,
         adminEmail: adminUser?.email ?? null,
         currentStudentCount: enrollmentCount?.currentStudentCount ?? null,
-        features: {
-          billing: school.features?.billing ?? true,
-          curriculum: school.features?.curriculum ?? true,
-          knowledgeLibrary: school.features?.knowledgeLibrary ?? true,
-          admissions: school.features?.admissions ?? false,
-        },
+        features: resolveSchoolModuleFeatures(school.features),
       });
     }
 
@@ -294,6 +313,22 @@ const storageProvisioningStateValidator = v.object({
     }),
     v.null(),
   ),
+  reconciliation: v.union(
+    v.object({
+      status: v.union(v.literal("not_needed"), v.literal("ready"), v.literal("blocked")),
+      objectCount: v.number(),
+      referenceCount: v.number(),
+      activeBytes: v.number(),
+      trashBytes: v.number(),
+      tempBytes: v.number(),
+      missingObjectCount: v.number(),
+      conflictingObjectCount: v.number(),
+      unsupportedReferenceCount: v.number(),
+      blockers: v.array(v.string()),
+      confirmationPhrase: v.string(),
+    }),
+    v.null(),
+  ),
 });
 
 export const getSchoolStorageProvisioningState = query({
@@ -341,6 +376,9 @@ export const getSchoolStorageProvisioningState = query({
           : hasOneLinkedRecordSet
             ? "configured"
             : "requires_review";
+    const inventory = hasUnmeteredStorage
+      ? await inspectSchoolStorageForReconciliation(ctx, args.schoolId)
+      : null;
 
     return {
       school: {
@@ -384,6 +422,21 @@ export const getSchoolStorageProvisioningState = query({
             ),
           }
         : null,
+      reconciliation: inventory
+        ? {
+            status: inventory.status,
+            objectCount: inventory.objectCount,
+            referenceCount: inventory.referenceCount,
+            activeBytes: inventory.activeBytes,
+            trashBytes: inventory.trashBytes,
+            tempBytes: inventory.tempBytes,
+            missingObjectCount: inventory.missingObjectCount,
+            conflictingObjectCount: inventory.conflictingObjectCount,
+            unsupportedReferenceCount: inventory.unsupportedReferenceCount,
+            blockers: inventory.blockers,
+            confirmationPhrase: STORAGE_RECONCILIATION_CONFIRMATION,
+          }
+        : null,
     };
   },
 });
@@ -413,6 +466,37 @@ export const provisionSchoolFreeTrialStorage = mutation({
       schoolId: args.schoolId,
       actorEmail: platformAdmin.email,
       auditSummary: `Provisioned the reviewed ${FREE_TRIAL_STORAGE_BYTES_PER_SCHOOL}-byte free-trial storage entitlement for an existing school through Platform; no invoice or payment created`,
+    });
+    return { status: result.status };
+  },
+});
+
+export const reconcileSchoolFreeTrialStorage = mutation({
+  args: {
+    schoolId: v.id("schools"),
+    confirmation: v.string(),
+    expected: v.object({
+      objectCount: v.number(),
+      referenceCount: v.number(),
+      activeBytes: v.number(),
+      trashBytes: v.number(),
+      tempBytes: v.number(),
+    }),
+  },
+  returns: v.object({
+    status: v.union(v.literal("created"), v.literal("already_configured"), v.literal("pool_exhausted"), v.literal("requires_review")),
+  }),
+  handler: async (ctx, args) => {
+    const platformAdmin = await getAuthenticatedPlatformAdmin(ctx);
+    const result = await reconcileSchoolFreeTrialStorageHelper(ctx, {
+      schoolId: args.schoolId,
+      actorEmail: platformAdmin.email,
+      confirmation: args.confirmation,
+      expectedObjectCount: args.expected.objectCount,
+      expectedReferenceCount: args.expected.referenceCount,
+      expectedActiveBytes: args.expected.activeBytes,
+      expectedTrashBytes: args.expected.trashBytes,
+      expectedTempBytes: args.expected.tempBytes,
     });
     return { status: result.status };
   },
@@ -460,6 +544,7 @@ export const createSchool = mutation({
       name,
       slug,
       status: "pending",
+      features: NEW_SCHOOL_MODULE_DEFAULTS,
       createdAt: now,
       updatedAt: now,
     });
@@ -736,6 +821,7 @@ export const updateSchoolFeatures = mutation({
   args: {
     schoolId: v.id("schools"),
     features: v.object({
+      familyPortal: v.boolean(),
       billing: v.boolean(),
       curriculum: v.boolean(),
       knowledgeLibrary: v.boolean(),
@@ -836,6 +922,248 @@ export const reconcileSchoolAdminIdentity = action({
       },
     );
     return { personId };
+  },
+});
+
+async function validateSchoolAdminEmailUpdate(
+  ctx: MutationCtx,
+  args: {
+    schoolId: Id<"schools">;
+    userId: Id<"users">;
+    expectedEmail: string;
+    newEmail: string;
+  },
+): Promise<Doc<"users">> {
+  const user = await ctx.db.get(args.userId);
+  if (
+    !user ||
+    user.schoolId !== args.schoolId ||
+    user.isArchived ||
+    (user.role !== "admin" && user.isSchoolAdmin !== true) ||
+    normalizeEmail(user.email) !== normalizeEmail(args.expectedEmail)
+  ) {
+    throw new ConvexError("Administrator identity changed during the update");
+  }
+
+  const conflictingUsers = await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+    .take(2);
+  if (conflictingUsers.some((candidate) => candidate._id !== user._id)) {
+    throw new ConvexError("An account with this email already exists");
+  }
+  const conflictingPlatformAdmin = await ctx.db
+    .query("platformAdmins")
+    .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+    .first();
+  const conflictingPerson = await ctx.db
+    .query("persons")
+    .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+    .first();
+  if (
+    conflictingPlatformAdmin ||
+    (conflictingPerson && conflictingPerson._id !== user.personId)
+  ) {
+    throw new ConvexError("An account with this email already exists");
+  }
+  return user;
+}
+
+export const reserveSchoolAdminEmailUpdateInternal = internalMutation({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    expectedEmail: v.string(),
+    newEmail: v.string(),
+    actorEmail: v.string(),
+  },
+  returns: v.id("schoolAdminEmailUpdateReservations"),
+  handler: async (ctx, args) => {
+    const user = await validateSchoolAdminEmailUpdate(ctx, args);
+    const existing = await ctx.db
+      .query("schoolAdminEmailUpdateReservations")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .unique();
+    if (existing?.status === "manual_review") {
+      throw new ConvexError("Administrator email update requires manual review");
+    }
+    if (existing) {
+      throw new ConvexError("Administrator email update is already in progress");
+    }
+
+    const now = Date.now();
+    return await ctx.db.insert("schoolAdminEmailUpdateReservations", {
+      schoolId: args.schoolId,
+      userId: user._id,
+      authId: user.authId,
+      expectedEmail: normalizeEmail(args.expectedEmail),
+      newEmail: normalizeEmail(args.newEmail),
+      actorEmail: normalizeEmail(args.actorEmail),
+      status: "reserved",
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const finalizeSchoolAdminEmailUpdateInternal = internalMutation({
+  args: { reservationId: v.id("schoolAdminEmailUpdateReservations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.status !== "reserved") {
+      throw new ConvexError("Administrator email update reservation is no longer valid");
+    }
+    const user = await validateSchoolAdminEmailUpdate(ctx, reservation);
+    if (user.authId !== reservation.authId) {
+      throw new ConvexError("Administrator identity changed during the update");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(user._id, { email: reservation.newEmail, updatedAt: now });
+    if (user.personId) {
+      const person = await ctx.db.get(user.personId);
+      if (!person) throw new ConvexError("Administrator identity requires manual review");
+      await ctx.db.patch(person._id, { email: reservation.newEmail, updatedAt: now });
+    }
+    await recordAuditEventHelper(ctx, {
+      schoolId: reservation.schoolId,
+      actorKind: "platform_admin",
+      actorEmailSnapshot: reservation.actorEmail,
+      module: "auth",
+      action: "school_admin_email_changed",
+      targetType: "user",
+      targetId: String(user._id),
+      outcome: "success",
+      safeSummary: "A platform administrator changed a school administrator email address.",
+      beforeSummary: maskEmail(reservation.expectedEmail),
+      afterSummary: maskEmail(reservation.newEmail),
+      alertTier: "tier2_warn",
+    });
+    await ctx.db.delete(args.reservationId);
+    return null;
+  },
+});
+
+export const releaseSchoolAdminEmailUpdateInternal = internalMutation({
+  args: { reservationId: v.id("schoolAdminEmailUpdateReservations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation || reservation.status !== "reserved") {
+      throw new ConvexError("Administrator email update reservation is no longer valid");
+    }
+    await ctx.db.delete(args.reservationId);
+    return null;
+  },
+});
+
+export const markSchoolAdminEmailUpdateForManualReviewInternal = internalMutation({
+  args: { reservationId: v.id("schoolAdminEmailUpdateReservations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const reservation = await ctx.db.get(args.reservationId);
+    if (!reservation) return null;
+    await ctx.db.patch(args.reservationId, {
+      status: "manual_review",
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const updateSchoolAdminEmail = action({
+  args: {
+    schoolId: v.id("schools"),
+    userId: v.id("users"),
+    newEmail: v.string(),
+  },
+  returns: v.object({ success: v.literal(true), requiresEmailVerification: v.literal(true) }),
+  handler: async (ctx, args): Promise<{ success: true; requiresEmailVerification: true }> => {
+    const operator = await ctx.runQuery(
+      internal.functions.platform.auth.requirePlatformAdminInternal,
+      {},
+    );
+    const admin = await ctx.runQuery(
+      internal.functions.platform.index.inspectSchoolAdminIdentityInternal,
+      { schoolId: args.schoolId, userId: args.userId },
+    );
+    const newEmail = normalizeEmail(args.newEmail);
+    const currentEmail = normalizeEmail(admin.email);
+    if (!isValidEmail(newEmail)) {
+      throw new ConvexError("Enter a valid email address");
+    }
+    if (newEmail === currentEmail) return { success: true, requiresEmailVerification: true };
+
+    const auth = createAuth(ctx);
+    const authContext = await auth.$context;
+    const currentAuth = (await authContext.internalAdapter.findUserByEmail(
+      currentEmail,
+      { includeAccounts: false },
+    )) as { user: { id: string; emailVerified?: boolean } } | null;
+    if (!currentAuth?.user || currentAuth.user.id !== admin.authId) {
+      throw new ConvexError("Administrator authentication account requires manual review");
+    }
+    const conflictingAuth = (await authContext.internalAdapter.findUserByEmail(
+      newEmail,
+      { includeAccounts: false },
+    )) as { user: { id: string } } | null;
+    if (conflictingAuth?.user && conflictingAuth.user.id !== admin.authId) {
+      throw new ConvexError("An account with this email already exists");
+    }
+
+    await applySchoolAdminEmailUpdate(
+      currentEmail,
+      currentAuth.user.emailVerified === true,
+      newEmail,
+      {
+        acquireReservation: async () =>
+          await ctx.runMutation(
+            internal.functions.platform.index.reserveSchoolAdminEmailUpdateInternal,
+            {
+              schoolId: args.schoolId,
+              userId: args.userId,
+              expectedEmail: currentEmail,
+              newEmail,
+              actorEmail: operator.email,
+            },
+          ),
+        updateAuthEmail: async (email, emailVerified) => {
+          await authContext.internalAdapter.updateUser(admin.authId, {
+            email,
+            emailVerified,
+          });
+        },
+        // Let Better Auth create the verification token through its configured sender.
+        sendVerificationEmail: async () => {
+          await auth.api.sendVerificationEmail({
+            body: { email: newEmail, callbackURL: "/sign-in" },
+          });
+        },
+        revokeSessions: async () => {
+          await authContext.internalAdapter.deleteSessions(admin.authId);
+        },
+        synchronizeCanonicalRecords: async (reservationId) => {
+          await ctx.runMutation(
+            internal.functions.platform.index.finalizeSchoolAdminEmailUpdateInternal,
+            { reservationId },
+          );
+        },
+        releaseReservation: async (reservationId) => {
+          await ctx.runMutation(
+            internal.functions.platform.index.releaseSchoolAdminEmailUpdateInternal,
+            { reservationId },
+          );
+        },
+        markReservationForManualReview: async (reservationId) => {
+          await ctx.runMutation(
+            internal.functions.platform.index.markSchoolAdminEmailUpdateForManualReviewInternal,
+            { reservationId },
+          );
+        },
+      },
+    );
+    return { success: true, requiresEmailVerification: true };
   },
 });
 

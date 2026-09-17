@@ -26,6 +26,22 @@ const DEV_ORIGINS: Record<WorkspaceKey, string> = {
   portal: "http://localhost:3003",
 };
 
+const TAILSCALE_DEV_PORTS: Record<WorkspaceKey, number> = {
+  admin: 3402,
+  teacher: 3401,
+  portal: 3403,
+};
+
+function resolveTailscaleWorkspaceOrigin(currentOrigin: string, workspace: WorkspaceKey) {
+  try {
+    const origin = new URL(currentOrigin);
+    if (origin.protocol !== "https:" || !origin.hostname.endsWith(".ts.net")) return null;
+    return `${origin.protocol}//${origin.hostname}:${TAILSCALE_DEV_PORTS[workspace]}`;
+  } catch {
+    return null;
+  }
+}
+
 export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
   admin: {
     key: "admin",
@@ -41,6 +57,7 @@ export const workspaceDefinitions: Record<WorkspaceKey, WorkspaceDefinition> = {
 
       // 2. People & Operations
       { href: "/academic/students", label: "Students", matchers: ["/academic/students$"] },
+      { href: "/admin/admissions", label: "Admissions", matchers: ["/admin/admissions"] },
       { href: "/academic/teachers", label: "Teachers", matchers: ["/academic/teachers"] },
       { href: "/academic/events", label: "Events & Calendar", matchers: ["/academic/events"] },
 
@@ -257,6 +274,11 @@ export function resolveWorkspaceSwitchHref(
       return `${DEV_ORIGINS[workspace]}${definition.switchPath}`;
     }
 
+    const tailscaleOrigin = resolveTailscaleWorkspaceOrigin(currentOrigin, workspace);
+    if (tailscaleOrigin) {
+      return `${tailscaleOrigin}${definition.switchPath}`;
+    }
+
     return `${currentOrigin}${definition.appBasePath}${definition.switchPath}`;
   }
 
@@ -286,74 +308,3 @@ export function getWorkspaceDefaultHref(workspace: WorkspaceKey) {
   const definition = workspaceDefinitions[workspace];
   return definition.sections.length > 0 ? definition.sections[0].href : "/";
 }
-
-export interface ControlledRoute {
-  label: string;
-  path: string;
-  workspace: "Admin" | "Teacher" | "Portal" | "Public";
-}
-
-export interface PlatformModuleDefinition {
-  key: "billing" | "curriculum" | "knowledgeLibrary" | "admissions";
-  title: string;
-  description: string;
-  badge: string;
-  iconName: "Landmark" | "BookOpenText" | "Sparkles" | "UserPlus";
-  controlledRoutes: ControlledRoute[];
-}
-
-export const PLATFORM_MODULE_DEFINITIONS: PlatformModuleDefinition[] = [
-  {
-    key: "billing",
-    title: "Finance & Fee Billing",
-    description: "School billing, bank instructions, subscription usage, settlements, and the family fee ledger.",
-    badge: "Finance",
-    iconName: "Landmark",
-    controlledRoutes: [
-      { label: "Billing & Invoices", path: "/billing", workspace: "Admin" },
-      { label: "Bank Accounts", path: "/billing/bank-accounts", workspace: "Admin" },
-      { label: "Subscription & Usage", path: "/billing/subscription", workspace: "Admin" },
-      { label: "Settlements", path: "/billing/settlements", workspace: "Admin" },
-      { label: "Family Billing", path: "/billing", workspace: "Portal" },
-    ],
-  },
-  {
-    key: "curriculum",
-    title: "Curriculum & Lesson Planning",
-    description: "Curriculum imports, readiness checks, lesson templates, assessment profiles, and teacher lesson plans.",
-    badge: "Academic",
-    iconName: "BookOpenText",
-    controlledRoutes: [
-      { label: "Curriculum Import", path: "/academic/knowledge/curriculum-import", workspace: "Admin" },
-      { label: "Curriculum Readiness", path: "/academic/knowledge/curriculum-readiness", workspace: "Admin" },
-      { label: "Lesson Templates", path: "/academic/knowledge/templates", workspace: "Admin" },
-      { label: "Assessment Profiles", path: "/academic/knowledge/assessment-profiles", workspace: "Admin" },
-      { label: "Lesson Planning", path: "/planning", workspace: "Teacher" },
-      { label: "Lesson Plans", path: "/planning/lesson-plans", workspace: "Teacher" },
-    ],
-  },
-  {
-    key: "knowledgeLibrary",
-    title: "Knowledge & Learning Library",
-    description: "The school knowledge library and teacher-facing materials, question bank, and video resources.",
-    badge: "Knowledge",
-    iconName: "Sparkles",
-    controlledRoutes: [
-      { label: "Knowledge Library", path: "/academic/knowledge/library", workspace: "Admin" },
-      { label: "Planning Library", path: "/planning/library", workspace: "Teacher" },
-      { label: "Question Bank", path: "/planning/question-bank", workspace: "Teacher" },
-      { label: "Video Library", path: "/planning/videos", workspace: "Teacher" },
-    ],
-  },
-  {
-    key: "admissions",
-    title: "Admissions & Student Intake",
-    description: "New-student onboarding and reviewed student imports. Existing student records remain available when intake is disabled.",
-    badge: "Admissions",
-    iconName: "UserPlus",
-    controlledRoutes: [
-      { label: "Student Onboarding", path: "/academic/students/onboarding", workspace: "Admin" },
-      { label: "Student Import", path: "/academic/students/import", workspace: "Admin" },
-    ],
-  },
-];

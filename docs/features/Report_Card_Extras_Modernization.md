@@ -1,5 +1,7 @@
 # Implementation Plan: Report Card Extras Modernization
 
+**Status:** Implemented
+
 ## Goal
 
 Transform the `/assessments/report-card-extras` interface from a verbose, card-heavy layout into a professional, high-density "Independent Scroll Workbench."

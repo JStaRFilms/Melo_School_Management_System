@@ -5,6 +5,11 @@ import {
   knowledgeMaterialUploadOptions,
   uploadKnowledgeMaterial,
 } from "./functions/academic/lessonKnowledgeUploadHttp";
+import {
+  admissionsDocumentUploadOptions,
+  uploadAdmissionsDocument,
+} from "./functions/admissions/uploadHttp";
+import { streamAdmissionsDocument } from "./functions/admissions/accessHttp";
 
 const http = httpRouter();
 
@@ -23,6 +28,21 @@ http.route({
   path: "/academic/knowledge-material-upload",
   method: "POST",
   handler: uploadKnowledgeMaterial,
+});
+http.route({
+  path: "/admissions/document-upload",
+  method: "OPTIONS",
+  handler: admissionsDocumentUploadOptions,
+});
+http.route({
+  path: "/admissions/document-upload",
+  method: "POST",
+  handler: uploadAdmissionsDocument,
+});
+http.route({
+  path: "/admissions/document-access",
+  method: "POST",
+  handler: streamAdmissionsDocument,
 });
 
 export default http;

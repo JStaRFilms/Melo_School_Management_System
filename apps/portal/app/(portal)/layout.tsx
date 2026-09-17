@@ -62,6 +62,7 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
     address?: string;
     theme: { primaryColor: string; accentColor: string };
     features: {
+      familyPortal: boolean;
       billing: boolean;
       curriculum: boolean;
       knowledgeLibrary: boolean;

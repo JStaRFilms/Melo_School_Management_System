@@ -47,6 +47,7 @@ interface SchoolBrandingData {
   contactPhone?: string;
   address?: string;
   features: {
+    familyPortal: boolean;
     billing: boolean;
     curriculum: boolean;
     knowledgeLibrary: boolean;

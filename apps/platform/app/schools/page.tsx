@@ -18,11 +18,19 @@ import {
   AlertTriangle,
   Loader2,
   HardDrive,
+  Mail,
 } from "lucide-react";
 import { FreeTrialStorageModal } from "./FreeTrialStorageModal";
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
+import {
+  PlatformSheet,
+  SheetFooterButtons,
+  sheetPrimaryButton,
+  sheetSecondaryButton,
+} from "./PlatformSheet";
 import { ResetSchoolAdminPasswordModal } from "./ResetSchoolAdminPasswordModal";
 import { StudentCountValue } from "./StudentCountValue";
+import { ChangeSchoolAdminEmailModal } from "./ChangeSchoolAdminEmailModal";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { useAutoAnimate } from "@school/shared";
 
@@ -32,6 +40,7 @@ interface SchoolItem {
   slug: string;
   status: string;
   createdAt: number;
+  adminUserId: string | null;
   adminName: string | null;
   adminEmail: string | null;
   currentStudentCount: number | null;
@@ -50,12 +59,14 @@ function SchoolsTable({
   schools,
   onManageFeatures,
   onResetPassword,
+  onChangeEmail,
   onManageStorage,
   onToggleStatus,
 }: {
   schools: SchoolItem[];
   onManageFeatures: (school: SchoolItem) => void;
   onResetPassword: (school: SchoolItem) => void;
+  onChangeEmail: (school: SchoolItem) => void;
   onManageStorage: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
@@ -127,23 +138,28 @@ function SchoolsTable({
                 </td>
                 <td className="px-4 py-4">
                   <div className="flex items-center gap-1 flex-wrap">
-                    {school.features?.billing !== false && (
-                      <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200 whitespace-nowrap">
-                        Billing
+                    {school.features.familyPortal && (
+                      <span className="inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 whitespace-nowrap">
+                        Family Portal
                       </span>
                     )}
-                    {school.features?.curriculum !== false && (
-                      <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200 whitespace-nowrap">
-                        Curriculum
+                    {school.features.billing && (
+                      <span className="inline-block rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 whitespace-nowrap">
+                        Finance
                       </span>
                     )}
-                    {school.features?.knowledgeLibrary !== false && (
-                      <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200 whitespace-nowrap">
-                        AI Library
+                    {school.features.curriculum && (
+                      <span className="inline-block rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 whitespace-nowrap">
+                        Teaching Tools
                       </span>
                     )}
-                    {school.features?.admissions === true && (
-                      <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200 whitespace-nowrap">
+                    {school.features.knowledgeLibrary && (
+                      <span className="inline-block rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 whitespace-nowrap">
+                        Knowledge
+                      </span>
+                    )}
+                    {school.features.admissions && (
+                      <span className="inline-block rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 whitespace-nowrap">
                         Admissions
                       </span>
                     )}
@@ -173,6 +189,15 @@ function SchoolsTable({
                       </Link>
                     ) : (
                       <>
+                        <button
+                          type="button"
+                          onClick={() => onChangeEmail(school)}
+                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+                          title="Change Admin Email"
+                        >
+                          <Mail className="h-3.5 w-3.5" />
+                          Email
+                        </button>
                         <button
                           type="button"
                           onClick={() => onResetPassword(school)}
@@ -232,12 +257,14 @@ function SchoolsCards({
   schools,
   onManageFeatures,
   onResetPassword,
+  onChangeEmail,
   onManageStorage,
   onToggleStatus,
 }: {
   schools: SchoolItem[];
   onManageFeatures: (school: SchoolItem) => void;
   onResetPassword: (school: SchoolItem) => void;
+  onChangeEmail: (school: SchoolItem) => void;
   onManageStorage: (school: SchoolItem) => void;
   onToggleStatus: (school: SchoolItem) => void;
 }) {
@@ -325,23 +352,28 @@ function SchoolsCards({
               <div className="flex items-center justify-between pt-2 border-t border-slate-200/50 gap-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Modules</span>
                 <div className="flex items-center gap-1 flex-wrap justify-end">
-                  {school.features?.billing !== false && (
-                    <span className="inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                      Billing
+                  {school.features.familyPortal && (
+                    <span className="inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">
+                      Family Portal
                     </span>
                   )}
-                  {school.features?.curriculum !== false && (
-                    <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
-                      Curriculum
+                  {school.features.billing && (
+                    <span className="inline-block rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                      Finance
                     </span>
                   )}
-                  {school.features?.knowledgeLibrary !== false && (
-                    <span className="inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
-                      AI Library
+                  {school.features.curriculum && (
+                    <span className="inline-block rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                      Teaching Tools
                     </span>
                   )}
-                  {school.features?.admissions === true && (
-                    <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
+                  {school.features.knowledgeLibrary && (
+                    <span className="inline-block rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                      Knowledge
+                    </span>
+                  )}
+                  {school.features.admissions && (
+                    <span className="inline-block rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
                       Admissions
                     </span>
                   )}
@@ -368,6 +400,14 @@ function SchoolsCards({
                     >
                       <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
                       Features
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onChangeEmail(school)}
+                      className="inline-flex items-center justify-center gap-1 py-2 px-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+                    >
+                      <Mail className="h-3.5 w-3.5 text-indigo-500" />
+                      Email
                     </button>
                     <button
                       type="button"
@@ -496,36 +536,29 @@ function StatusConfirmModal({
   const isSuspending = school.status === "active";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-xs p-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              isSuspending ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
-            }`}
-          >
-            {isSuspending ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-950">
-              {isSuspending ? "Suspend School Tenant?" : "Reactivate School Tenant?"}
-            </h3>
-            <p className="text-xs text-slate-500 font-medium">{school.name}</p>
-          </div>
+    <PlatformSheet
+      labelledBy="school-status-title"
+      title={isSuspending ? "Suspend School Tenant?" : "Reactivate School Tenant?"}
+      subtitle={school.name}
+      closeLabel="Close school status dialog"
+      dismissDisabled={isProcessing}
+      onClose={onClose}
+      icon={
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+            isSuspending ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
+          }`}
+        >
+          {isSuspending ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
         </div>
-
-        <p className="text-xs text-slate-600 leading-relaxed">
-          {isSuspending
-            ? "Suspending this school will immediately block all administrators, teachers, parents, and students from accessing their dashboards and data."
-            : "Reactivating this school will immediately restore full workspace access for all associated staff, students, and parents."}
-        </p>
-
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+      }
+      footer={
+        <SheetFooterButtons>
           <button
             type="button"
             onClick={onClose}
             disabled={isProcessing}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            className={sheetSecondaryButton}
           >
             Cancel
           </button>
@@ -533,7 +566,7 @@ function StatusConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={isProcessing}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white transition-colors shadow-xs ${
+            className={`${sheetPrimaryButton} ${
               isSuspending
                 ? "bg-rose-600 hover:bg-rose-700"
                 : "bg-emerald-600 hover:bg-emerald-700"
@@ -550,15 +583,22 @@ function StatusConfirmModal({
               "Confirm Reactivation"
             )}
           </button>
-        </div>
-      </div>
-    </div>
+        </SheetFooterButtons>
+      }
+    >
+      <p className="text-sm leading-relaxed text-slate-600">
+        {isSuspending
+          ? "Suspending this school will immediately block all administrators, teachers, parents, and students from accessing their dashboards and data."
+          : "Reactivating this school will immediately restore full workspace access for all associated staff, students, and parents."}
+      </p>
+    </PlatformSheet>
   );
 }
 
 function SchoolsListPageWithConvex() {
   const [featureModalSchool, setFeatureModalSchool] = useState<SchoolItem | null>(null);
   const [resetPasswordSchool, setResetPasswordSchool] = useState<SchoolItem | null>(null);
+  const [changeEmailSchool, setChangeEmailSchool] = useState<SchoolItem | null>(null);
   const [storageModalSchool, setStorageModalSchool] = useState<SchoolItem | null>(null);
   const [statusModalSchool, setStatusModalSchool] = useState<SchoolItem | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -707,6 +747,7 @@ function SchoolsListPageWithConvex() {
             schools={filteredSchools}
             onManageFeatures={(school) => setFeatureModalSchool(school)}
             onResetPassword={(school) => setResetPasswordSchool(school)}
+            onChangeEmail={(school) => setChangeEmailSchool(school)}
             onManageStorage={(school) => setStorageModalSchool(school)}
             onToggleStatus={(school) => setStatusModalSchool(school)}
           />
@@ -714,6 +755,7 @@ function SchoolsListPageWithConvex() {
             schools={filteredSchools}
             onManageFeatures={(school) => setFeatureModalSchool(school)}
             onResetPassword={(school) => setResetPasswordSchool(school)}
+            onChangeEmail={(school) => setChangeEmailSchool(school)}
             onManageStorage={(school) => setStorageModalSchool(school)}
             onToggleStatus={(school) => setStatusModalSchool(school)}
           />
@@ -725,6 +767,12 @@ function SchoolsListPageWithConvex() {
         isOpen={Boolean(featureModalSchool)}
         onClose={() => setFeatureModalSchool(null)}
         school={featureModalSchool}
+      />
+
+      <ChangeSchoolAdminEmailModal
+        isOpen={Boolean(changeEmailSchool)}
+        onClose={() => setChangeEmailSchool(null)}
+        school={changeEmailSchool}
       />
 
       <ResetSchoolAdminPasswordModal

@@ -34,16 +34,21 @@ export function assertSecureUploadTransportAvailable(): void {
 
 type StorageClaimPurpose =
   | "admissionsDocument"
+  | "admissionsDocumentUploadIntent"
   | "schoolSiteAsset"
   | "schoolLogo"
   | "studentPhoto"
   | "knowledgeMaterial"
   | "knowledgeMaterialUploadIntent"
+  | "knowledgeOcrJobReference"
   | "assetUploadIntent"
   | "schoolAsset"
   | "schoolAssetRollback"
   | "pdfCompressionCandidate"
   | "demoSeedCleanup"
+  | "demoSeedRunLogoReference"
+  | "demoSeedRunPortraitReference"
+  | "importWorkspaceSource"
   | "issuedReportLogoReference"
   | "issuedReportPhotoReference";
 
@@ -52,49 +57,133 @@ export type ExpectedStorageClaim = {
   ownerId: string;
 };
 
-type CollectedStorageClaim = ExpectedStorageClaim & {
+export type CollectedStorageClaim = ExpectedStorageClaim & {
+  schoolId: Id<"schools">;
   linkedOwnerId?: string;
 };
 
-/** Every durable owner or historical reference must block destructive reuse. */
-async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
-  const [admissions, siteAssets, schools, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
-    ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(101),
-    ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(2),
-    ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("assetUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("schoolAssets").withIndex("by_rollback_storage", q => q.eq("rollbackStorageId", storageId)).take(2),
-    ctx.db.query("pdfCompressionCandidates").withIndex("by_candidate_storage", q => q.eq("candidateStorageId", storageId)).take(2),
-    ctx.db.query("demoSeedStorageCleanup").withIndex("by_storage", q => q.eq("storageId", storageId)).take(2),
-    ctx.db.query("issuedReportCards").withIndex("by_school_logo_storage", q => q.eq("schoolLogoStorageId", storageId)).take(2),
-    ctx.db.query("issuedReportCards").withIndex("by_student_photo_storage", q => q.eq("studentPhotoStorageId", storageId)).take(2),
+const PRIMARY_CLAIM_LIMIT = 2;
+const REFERENCE_CLAIM_LIMIT = 100;
+const UNINDEXED_CLAIM_SCAN_LIMIT = 1000;
+export const STORAGE_CLAIM_INVENTORY_LIMIT = 50;
+
+async function collectIndexedStorageClaims(
+  ctx: Context,
+  storageId: Id<"_storage">,
+): Promise<CollectedStorageClaim[]> {
+  const [admissions, admissionsUploadIntents, siteAssets, schools, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup, reportLogos, reportPhotos] = await Promise.all([
+    ctx.db.query("admissionsDocuments").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("admissionsDocumentUploadIntents").withIndex("by_storage_id", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schools").withIndex("by_logo_storage", q => q.eq("logoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
+    ctx.db.query("students").withIndex("by_photo_storage", q => q.eq("photoStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("knowledgeMaterials").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("knowledgeMaterialUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("assetUploadIntents").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schoolAssets").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("schoolAssets").withIndex("by_rollback_storage", q => q.eq("rollbackStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("pdfCompressionCandidates").withIndex("by_candidate_storage", q => q.eq("candidateStorageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("demoSeedStorageCleanup").withIndex("by_storage", q => q.eq("storageId", storageId)).take(PRIMARY_CLAIM_LIMIT + 1),
+    ctx.db.query("issuedReportCards").withIndex("by_school_logo_storage", q => q.eq("schoolLogoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
+    ctx.db.query("issuedReportCards").withIndex("by_student_photo_storage", q => q.eq("studentPhotoStorageId", storageId)).take(REFERENCE_CLAIM_LIMIT + 1),
   ]);
+  const primaryClaimSets = [admissions, admissionsUploadIntents, siteAssets, students, materials, knowledgeUploadIntents, intents, assets, rollbacks, candidates, cleanup];
+  const referenceClaimSets = [schools, reportLogos, reportPhotos];
+  if (primaryClaimSets.some((rows) => rows.length > PRIMARY_CLAIM_LIMIT) || referenceClaimSets.some((rows) => rows.length > REFERENCE_CLAIM_LIMIT)) {
+    throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
+  }
   return [
-    ...admissions.map(row => ({ purpose: "admissionsDocument" as const, ownerId: String(row._id) })),
-    ...siteAssets.map(row => ({ purpose: "schoolSiteAsset" as const, ownerId: String(row._id) })),
-    ...schools.map(row => ({ purpose: "schoolLogo" as const, ownerId: String(row._id) })),
-    ...students.map(row => ({ purpose: "studentPhoto" as const, ownerId: String(row._id) })),
-    ...materials.map(row => ({ purpose: "knowledgeMaterial" as const, ownerId: String(row._id) })),
+    ...admissions.map(row => ({ purpose: "admissionsDocument" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...admissionsUploadIntents.map(row => ({
+      purpose: "admissionsDocumentUploadIntent" as const,
+      ownerId: String(row._id),
+      schoolId: row.schoolId,
+      ...(row.status === "completed" && row.documentId ? { linkedOwnerId: String(row.documentId) } : {}),
+    })),
+    ...siteAssets.map(row => ({ purpose: "schoolSiteAsset" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...schools.map(row => ({ purpose: "schoolLogo" as const, ownerId: String(row._id), schoolId: row._id })),
+    ...students.map(row => ({ purpose: "studentPhoto" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...materials.map(row => ({ purpose: "knowledgeMaterial" as const, ownerId: String(row._id), schoolId: row.schoolId })),
     ...knowledgeUploadIntents.map(row => ({
       purpose: "knowledgeMaterialUploadIntent" as const,
       ownerId: String(row._id),
+      schoolId: row.schoolId,
+      ...(row.status === "completed" && row.materialId ? { linkedOwnerId: String(row.materialId) } : {}),
     })),
     ...intents.map(row => ({
       purpose: "assetUploadIntent" as const,
       ownerId: String(row._id),
+      schoolId: row.schoolId,
       ...(row.status === "finalized" && row.assetId ? { linkedOwnerId: String(row.assetId) } : {}),
     })),
-    ...assets.map(row => ({ purpose: "schoolAsset" as const, ownerId: String(row._id) })),
-    ...rollbacks.map(row => ({ purpose: "schoolAssetRollback" as const, ownerId: String(row._id) })),
-    ...candidates.map(row => ({ purpose: "pdfCompressionCandidate" as const, ownerId: String(row._id) })),
-    ...cleanup.map(row => ({ purpose: "demoSeedCleanup" as const, ownerId: String(row._id) })),
-    ...reportLogos.map(row => ({ purpose: "issuedReportLogoReference" as const, ownerId: String(row._id) })),
-    ...reportPhotos.map(row => ({ purpose: "issuedReportPhotoReference" as const, ownerId: String(row._id) })),
+    ...assets.map(row => ({ purpose: "schoolAsset" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...rollbacks.map(row => ({ purpose: "schoolAssetRollback" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...candidates.map(row => ({ purpose: "pdfCompressionCandidate" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...cleanup.map(row => ({ purpose: "demoSeedCleanup" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...reportLogos.map(row => ({ purpose: "issuedReportLogoReference" as const, ownerId: String(row._id), schoolId: row.schoolId })),
+    ...reportPhotos.map(row => ({ purpose: "issuedReportPhotoReference" as const, ownerId: String(row._id), schoolId: row.schoolId })),
   ];
+}
+
+/** Builds one bounded inventory and scans legacy, unindexed reference tables once. */
+export async function collectStorageClaimInventory(
+  ctx: Context,
+  storageIds: Id<"_storage">[],
+): Promise<ReadonlyMap<string, readonly CollectedStorageClaim[]>> {
+  const uniqueStorageIds = [...new Map(storageIds.map((storageId) => [String(storageId), storageId])).values()];
+  if (uniqueStorageIds.length > STORAGE_CLAIM_INVENTORY_LIMIT) {
+    throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
+  }
+  if (uniqueStorageIds.length === 0) return new Map();
+
+  const [indexedClaims, demoRuns, importWorkspaces, ocrJobs] = await Promise.all([
+    Promise.all(uniqueStorageIds.map((storageId) => collectIndexedStorageClaims(ctx, storageId))),
+    ctx.db.query("demoSeedRuns").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
+    ctx.db.query("importWorkspaces").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
+    ctx.db.query("knowledgeOcrJobs").take(UNINDEXED_CLAIM_SCAN_LIMIT + 1),
+  ]);
+  if (demoRuns.length > UNINDEXED_CLAIM_SCAN_LIMIT || importWorkspaces.length > UNINDEXED_CLAIM_SCAN_LIMIT || ocrJobs.length > UNINDEXED_CLAIM_SCAN_LIMIT) {
+    throw new ConvexError("Storage ownership inventory exceeds the reviewed bound");
+  }
+
+  const inventory = new Map<string, CollectedStorageClaim[]>();
+  uniqueStorageIds.forEach((storageId, index) => inventory.set(String(storageId), indexedClaims[index] ?? []));
+  for (const row of demoRuns) {
+    const logoClaims = inventory.get(String(row.logoStorageId));
+    if (logoClaims) {
+      logoClaims.push({ purpose: "demoSeedRunLogoReference", ownerId: String(row._id), schoolId: row.schoolId });
+    }
+    for (const storageId of new Set(row.portraitStorageIds)) {
+      const portraitClaims = inventory.get(String(storageId));
+      if (portraitClaims) {
+        portraitClaims.push({ purpose: "demoSeedRunPortraitReference", ownerId: String(row._id), schoolId: row.schoolId });
+      }
+    }
+  }
+  for (const workspace of importWorkspaces) {
+    workspace.sourceFiles.forEach((source, index) => {
+      inventory.get(String(source.storageId))?.push({
+        purpose: "importWorkspaceSource",
+        ownerId: `${String(workspace._id)}:${index}`,
+        schoolId: workspace.schoolId,
+      });
+    });
+  }
+  for (const job of ocrJobs) {
+    inventory.get(String(job.storageId))?.push({
+      purpose: "knowledgeOcrJobReference",
+      ownerId: String(job._id),
+      schoolId: job.schoolId,
+      linkedOwnerId: String(job.materialId),
+    });
+  }
+  return inventory;
+}
+
+/** Every durable owner or historical reference must block destructive reuse. */
+export async function collectStorageClaims(ctx: Context, storageId: Id<"_storage">): Promise<CollectedStorageClaim[]> {
+  const inventory = await collectStorageClaimInventory(ctx, [storageId]);
+  return [...(inventory.get(String(storageId)) ?? [])];
 }
 
 /** A new claim is allowed only when no owning record exists anywhere. */
@@ -116,6 +205,7 @@ export async function storageClaimedOnlyBy(
   );
   const allowedClaims = claims.filter(claim =>
     (claim.purpose === expected.purpose && claim.ownerId === expected.ownerId) ||
+    (expected.purpose === "admissionsDocument" && claim.purpose === "admissionsDocumentUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
     ((expected.purpose === "schoolAsset" || expected.purpose === "schoolAssetRollback") && claim.purpose === "assetUploadIntent" && claim.linkedOwnerId === expected.ownerId) ||
     (expected.purpose === "demoSeedCleanup" && claim.purpose === "demoSeedCleanup")
   );

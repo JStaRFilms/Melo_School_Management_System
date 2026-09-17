@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, it } from "vitest";
 import { internal } from "../../../_generated/api";
 import schema from "../../../schema";
+import { inspectSchoolStorageForReconciliation } from "../storageEntitlementProvisioning";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(
@@ -280,4 +281,78 @@ it("rejects operator-selected storage allowances outside the reviewed preset", a
       confirmation: "PROVISION FREE TRIAL STORAGE",
     },
   )).rejects.toThrow("reviewed 100 MiB allowance");
+});
+
+it("fails closed when sparse storage references exceed the school-row scan bound", async () => {
+  const t = convexTest(schema, modules);
+  const schoolId = await t.run(async (ctx) => {
+    const id = await ctx.db.insert("schools", {
+      name: "Sparse History School",
+      slug: "sparse-history-school",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    for (let index = 0; index < 101; index += 1) {
+      await ctx.db.insert("assetUploadIntents", {
+        schoolId: id,
+        status: "pending",
+        createdAt: index,
+        updatedAt: index,
+      });
+    }
+    return id;
+  });
+
+  const inventory = await t.run((ctx) => inspectSchoolStorageForReconciliation(ctx, schoolId));
+  expect(inventory).toMatchObject({
+    status: "blocked",
+    objectCount: 0,
+    referenceCount: 0,
+    blockers: ["Storage history is too large for the reviewed reconciliation workflow."],
+  });
+});
+
+it("fails closed at the bounded reconciliation row limit", async () => {
+  const t = convexTest(schema, modules);
+  const schoolId = await t.run(async (ctx) => {
+    const id = await ctx.db.insert("schools", {
+      name: "Bounded History School",
+      slug: "bounded-history-school",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const storageId = await ctx.storage.store(new Blob(["logo"], { type: "image/png" }));
+    await ctx.db.patch(id, { logoStorageId: storageId });
+    for (let index = 0; index < 101; index += 1) {
+      await ctx.db.insert("demoSeedRuns", {
+        schoolId: id,
+        status: "succeeded",
+        phase: "complete",
+        studentCursor: 0,
+        assessmentCursor: 0,
+        billingCursor: 0,
+        adminAuthId: `admin-${index}`,
+        teacherAuthId: `teacher-${index}`,
+        portalAuthId: `portal-${index}`,
+        logoStorageId: storageId,
+        portraitStorageIds: [],
+        createdAt: index,
+        updatedAt: index,
+      });
+    }
+    return id;
+  });
+
+  const inventory = await t.run((ctx) => inspectSchoolStorageForReconciliation(ctx, schoolId));
+  expect(inventory).toMatchObject({
+    status: "blocked",
+    objectCount: 1,
+    referenceCount: 101,
+    missingObjectCount: 0,
+    conflictingObjectCount: 0,
+    unsupportedReferenceCount: 0,
+    blockers: ["Storage history is too large for the reviewed reconciliation workflow."],
+  });
 });

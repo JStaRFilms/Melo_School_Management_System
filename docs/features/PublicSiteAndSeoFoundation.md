@@ -1,5 +1,7 @@
 # Public Site and SEO Foundation
 
+**Status:** Implemented. Current pages: /features, /pricing, /contact, /result-week.
+
 ## Goal
 
 Provide a polished public marketing site for SchoolOS in `apps/www` that explains the product, stays mobile-first, and leaves school public websites for the later T20-T23 public-web work.

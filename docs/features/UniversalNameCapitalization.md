@@ -1,5 +1,7 @@
 # Universal Name Capitalization
 
+**Status:** Implemented
+
 ## Goal
 
 Ensure every human-entered name in the app is normalized to title case, so names look consistent across forms, lists, selectors, rosters, report-style views, and backend records.

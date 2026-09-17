@@ -2,15 +2,14 @@
 
 ## Stack-Specific Instructions
 
-- This is a `pnpm` + `Turborepo` monorepo with four Next.js apps and one shared Convex backend.
+- This is a `pnpm` + `Turborepo` monorepo with seven Next.js apps (`www`, `teacher`, `admin`, `portal`, `apply`, `sites`, `platform`) and one shared Convex backend.
 - Treat `docs/Project_Requirements.md` and `docs/issues/FR-XXX.md` as the product source of truth.
 - Respect tenant boundaries, role routing, and mobile-first layouts.
 - Exclude `context7` from any spawned task unless the user explicitly overrides that rule later.
 
 ## Mandatory Mockup-Driven Implementation
 
-The `/docs/mockups/admin` folder is the source of truth for all front-end UI and UX.
-Before implementing any page, open the corresponding mockup and replicate its structure, states, typography, and responsive behavior.
+The `/docs/mockups/admin` folder is a historical reference from March 2026, not the current source of truth. The live UI has moved past these mockups; check the actual app routes under `apps/*/app/` first.
 Key Mockups for Academic Setup:
 - `admin-academic-config.html` (Sessions, Terms, Subjects)
 - `admin-teacher-management.html` (Staff listing/creation)

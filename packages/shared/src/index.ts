@@ -3,6 +3,7 @@
 export * from "./name-format";
 export * from "./errors";
 export * from "./workspace-navigation";
+export * from "./product-modules";
 export * from "./workspace-access";
 export * from "./workspace-route-access";
 export * from "./audit-export";

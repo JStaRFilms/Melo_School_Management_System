@@ -1,5 +1,7 @@
 # Platform Super Admin and School Provisioning
 
+**Status:** Implemented
+
 ## Goal
 
 Enable a platform-level operator (product owner) to provision new schools and assign school admins, establishing the multi-tenant foundation for the School Management System.
@@ -159,6 +161,12 @@ After assignment:
 - An admin can only be assigned to one school at a time (for v1)
 - If the email already exists and is already linked to a school or platform admin, the flow fails with a clear error
 - If the email only exists as an orphaned Better Auth record from an earlier partial attempt, the system cleans up that orphan and retries automatically
+
+### Change School Admin Email
+
+A platform operator's email change acquires one durable `schoolAdminEmailUpdateReservations` row keyed by the target `userId` before Better Auth is mutated. The reservation stores the expected canonical email, target email, Better Auth ID, and operator snapshot. A concurrent or stale operation fails before making an external auth change.
+
+The action updates Better Auth, sends verification, and revokes existing sessions before one Convex mutation updates `users` and `persons`, records the audit event, and deletes the reservation. A controlled failure restores the prior Better Auth email while the reservation is still held, then releases it so an identical retry starts from the same canonical state. Failed compensation retains the reservation in `manual_review` state and blocks automated retries.
 
 ---
 

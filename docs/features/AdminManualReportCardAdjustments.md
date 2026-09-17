@@ -1,5 +1,7 @@
 # Admin Manual Report-Card Adjustments
 
+**Status:** Implemented
+
 ## Goal
 
 Give school administrators a controlled exception workflow for cumulative annual results when the standard three-term average is not appropriate, without changing the original CA/exam records.

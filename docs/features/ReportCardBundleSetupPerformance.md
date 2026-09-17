@@ -1,5 +1,7 @@
 # Report Card Bundle Setup Performance
 
+**Status:** Implemented
+
 ## Goal
 Reduce interaction latency and browser instability on the admin report-card bundle setup page, especially when editing bundle fields, switching field types, selecting reusable scales, and managing class assignments.
 
