@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import { resolveTokenFirstTrustedLegacyRow } from "./identityResolver";
+import { assertBoundedRows } from "../foundation/boundedRead";
 
 export type PortalMembership = {
   user: Doc<"users">;
@@ -72,18 +73,21 @@ export async function resolvePortalMemberships(
         "Identity reconciliation required",
       );
     }
-    const rows = await ctx.db
-      .query("branchMemberships")
-      .withIndex("by_person_and_status", (q) =>
-        q.eq("personId", person._id).eq("status", "active"),
-      )
-      .take(101);
-    if (rows.length > 100) {
-      throw identityError(
-        "RECONCILIATION_REQUIRED",
-        "Portal branch memberships exceed supported bounds",
-      );
-    }
+    const rows = assertBoundedRows(
+      await ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_status", (q) =>
+          q.eq("personId", person._id).eq("status", "active"),
+        )
+        .take(101),
+      100,
+      () => {
+        throw identityError(
+          "RECONCILIATION_REQUIRED",
+          "Portal branch memberships exceed supported bounds",
+        );
+      },
+    );
 
     const memberships: PortalMembership[] = [];
     for (const membership of rows) {
@@ -177,20 +181,23 @@ export async function getPortalStudentAccess(
   const accessible: PortalStudentAccess[] = [];
   for (const membership of portalAuth.memberships) {
     if (membership.role === "student") {
-      const students = await ctx.db
-        .query("students")
-        .withIndex("by_school_and_user", (q) =>
-          q
-            .eq("schoolId", membership.user.schoolId)
-            .eq("userId", membership.user._id),
-        )
-        .take(101);
-      if (students.length > 100) {
-        throw identityError(
-          "RECONCILIATION_REQUIRED",
-          "Student enrollment history exceeds supported bounds",
-        );
-      }
+      const students = assertBoundedRows(
+        await ctx.db
+          .query("students")
+          .withIndex("by_school_and_user", (q) =>
+            q
+              .eq("schoolId", membership.user.schoolId)
+              .eq("userId", membership.user._id),
+          )
+          .take(101),
+        100,
+        () => {
+          throw identityError(
+            "RECONCILIATION_REQUIRED",
+            "Student enrollment history exceeds supported bounds",
+          );
+        },
+      );
       for (const student of students) {
         if (!student.isArchived) {
           accessible.push({
@@ -203,30 +210,36 @@ export async function getPortalStudentAccess(
       continue;
     }
 
-    const familyLinks = await ctx.db
-      .query("familyMembers")
-      .withIndex("by_parent_user", (q) =>
-        q.eq("parentUserId", membership.user._id),
-      )
-      .take(101);
-    if (familyLinks.length > 100) {
-      throw identityError(
-        "RECONCILIATION_REQUIRED",
-        "Parent family links exceed supported bounds",
-      );
-    }
-    for (const familyLink of familyLinks) {
-      if (familyLink.schoolId !== membership.user.schoolId) continue;
-      const familyStudents = await ctx.db
-        .query("students")
-        .withIndex("by_family", (q) => q.eq("familyId", familyLink.familyId))
-        .take(101);
-      if (familyStudents.length > 100) {
+    const familyLinks = assertBoundedRows(
+      await ctx.db
+        .query("familyMembers")
+        .withIndex("by_parent_user", (q) =>
+          q.eq("parentUserId", membership.user._id),
+        )
+        .take(101),
+      100,
+      () => {
         throw identityError(
           "RECONCILIATION_REQUIRED",
-          "Family student list exceeds supported bounds",
+          "Parent family links exceed supported bounds",
         );
-      }
+      },
+    );
+    for (const familyLink of familyLinks) {
+      if (familyLink.schoolId !== membership.user.schoolId) continue;
+      const familyStudents = assertBoundedRows(
+        await ctx.db
+          .query("students")
+          .withIndex("by_family", (q) => q.eq("familyId", familyLink.familyId))
+          .take(101),
+        100,
+        () => {
+          throw identityError(
+            "RECONCILIATION_REQUIRED",
+            "Family student list exceeds supported bounds",
+          );
+        },
+      );
       for (const student of familyStudents) {
         if (
           student.schoolId === membership.user.schoolId &&
