@@ -210,19 +210,31 @@ it("rejects duplicate admission numbers and cross-tenant family resolution witho
 it("blocks manual-number conversion on override gate negatives without canonical writes", async () => {
   const cases = [
     { name: "unconfirmed", extra: {} },
-    { name: "short-reason", extra: { overrideConfirmed: true, overrideReason: "too short", overrideCounterDecision: "keep" as const } },
+    { name: "short-reason", extra: { overrideConfirmed: true, overrideReason: "short", overrideCounterDecision: "keep" as const } },
     { name: "no-decision", extra: { overrideConfirmed: true, overrideReason: "A sufficiently long override reason for review" } },
   ];
   for (const { name, extra } of cases) {
     const f = await fixture();
     await f.t.run((ctx) => ctx.db.insert("admissionNumberPolicies", { schoolId: f.schoolId, pattern: "{SEQ}", schoolCode: "ADM", campusCode: "MAIN", currentSequence: 0, createdAt: Date.now(), updatedAt: Date.now() }));
     const requested = await f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: `gate-negative-${name}`, classId: f.classId, admissionNumber: "GATE/001", familyResolution: { kind: "create" as const }, ...extra });
-    await f.t.mutation(processConversionRef, { conversionId: requested.conversionId });
+    // Authenticated worker: failures must come from the override gates,
+    // not from missing scheduler auth.
+    await f.staff.mutation(processConversionRef, { conversionId: requested.conversionId });
     expect(await f.t.run((ctx) => ctx.db.get(requested.conversionId))).toMatchObject({ state: "failed_retryable", errorCode: "CONVERSION_RETRY_REQUIRED" });
     expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(0);
     expect(await f.t.run((ctx) => ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).collect())).toHaveLength(0);
     expect(await f.t.run((ctx) => ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", f.schoolId).eq("number", "GATE/001")).unique())).toBeNull();
   }
+});
+
+it("completes a governed manual-number conversion through the scheduler path", async () => {
+  const f = await fixture();
+  await f.t.run((ctx) => ctx.db.insert("admissionNumberPolicies", { schoolId: f.schoolId, pattern: "{SEQ}", schoolCode: "ADM", campusCode: "MAIN", currentSequence: 0, createdAt: Date.now(), updatedAt: Date.now() }));
+  const requested = await f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "governed-keep", classId: f.classId, admissionNumber: "GOV/001", familyResolution: { kind: "create" as const }, overrideConfirmed: true, overrideReason: "Board-approved legacy number", overrideCounterDecision: "keep" });
+  await f.staff.mutation(processConversionRef, { conversionId: requested.conversionId });
+  expect(await f.t.run((ctx) => ctx.db.get(requested.conversionId))).toMatchObject({ state: "succeeded", admissionNumber: "GOV/001" });
+  expect(await f.t.run((ctx) => ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", f.schoolId).eq("number", "GOV/001")).unique())).not.toBeNull();
+  expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(1);
 });
 
 it("rejects a second claim on an already-claimed number without canonical writes", async () => {
