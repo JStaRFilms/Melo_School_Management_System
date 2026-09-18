@@ -2,9 +2,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   MISSING_PAYSTACK_REFERENCE_MESSAGE,
-  usePaystackReturnVerification,
   type PaystackReturnSummary,
 } from "@school/shared/paystackReturn";
+import { usePaystackReturnVerification } from "@school/shared/paystackReturn/client";
 
 function summary(overrides: Partial<PaystackReturnSummary> = {}): PaystackReturnSummary {
   return {

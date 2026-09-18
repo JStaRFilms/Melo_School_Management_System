@@ -3,10 +3,8 @@
 import Link from "next/link";
 import { useAction } from "convex/react";
 import { CheckCircle2, LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
-import {
-  usePaystackReturnVerification,
-  type PaystackReturnSummary,
-} from "@school/shared/paystackReturn";
+import { type PaystackReturnSummary } from "@school/shared/paystackReturn";
+import { usePaystackReturnVerification } from "@school/shared/paystackReturn/client";
 
 export function PaystackReturnClient({
   reference,

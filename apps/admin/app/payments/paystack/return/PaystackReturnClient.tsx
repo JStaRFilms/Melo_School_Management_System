@@ -5,9 +5,9 @@ import { useAction } from "convex/react";
 import { CheckCircle2, LoaderCircle, RefreshCw, ShieldAlert, Printer, ArrowLeft } from "lucide-react";
 import {
   mapAdminPaystackVerification,
-  usePaystackReturnVerification,
   type AdminPaystackVerificationResponse,
 } from "@school/shared/paystackReturn";
+import { usePaystackReturnVerification } from "@school/shared/paystackReturn/client";
 
 function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat("en-NG", {
@@ -36,6 +36,10 @@ export function PaystackReturnClient({ reference }: { reference: string }) {
       mapResult: mapAdminPaystackVerification,
     });
   const [receiptGeneratedAt, setReceiptGeneratedAt] = useState<string>("");
+
+  useEffect(() => {
+    setReceiptGeneratedAt(new Date().toLocaleString());
+  }, []);
 
   const statusConfig = {
     verifying: {
