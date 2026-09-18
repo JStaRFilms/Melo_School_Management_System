@@ -349,6 +349,21 @@ export async function requireAdmissionsStaff(
 }
 
 /**
+ * Metadata keys that always hold PII/secrets: redact the whole value without
+ * probing (a bare guardian email has no key=value pattern for the generic
+ * rules to catch). Numeric NIN/account values are covered here too.
+ */
+const ADMISSIONS_AUDIT_PII_KEY =
+  /(password|passwd|secret|token|bearer|apikey|api_key|auth|nin|national|account|nuban|phone|mobile|email|passport|medical|health|safeguard|guardian|bank)/i;
+/**
+ * Opaque correlation identifiers (Paystack providerEventId, Convex snapshot
+ * ids): digit-masking them breaks payment-event correlation, so masking-only
+ * changes are discarded and the exact value is kept. Secret markers still
+ * drop the value.
+ */
+const ADMISSIONS_AUDIT_ID_KEY = /(Id|Key|Reference|_id|_key)$/;
+
+/**
  * Shared PII redaction for admissions audit writes (consolidation P1).
  * The admissions audit table stays split from the canonical auditEvents table
  * (different outcome enum with "blocked", per-application indexing, its own
@@ -363,25 +378,32 @@ export function sanitizeAdmissionsAuditFields(args: {
 }): { entityId: string; reasonCode?: string; metadataJson?: string } {
   // Sanitize each metadata VALUE before JSON.stringify: redacting the
   // serialized string can drop quotes or replace the whole payload with a
-  // bare marker, producing metadataJson that no longer parses. Probe with
-  // key context so bare secrets (password: "hunter2") still trigger the
-  // key=value redaction rules; any redaction replaces the stored value.
-  const sanitizeMetadataValue = (key: string, value: string): string => {
+  // bare marker, producing metadataJson that no longer parses.
+  const sanitizeMetadataValue = (
+    key: string,
+    value: string | number | boolean | null,
+  ): string | number | boolean | null => {
+    if (typeof value !== "string") {
+      return ADMISSIONS_AUDIT_PII_KEY.test(key) ? "[REDACTED_SECRET]" : value;
+    }
+    if (ADMISSIONS_AUDIT_PII_KEY.test(key)) return "[REDACTED_SECRET]";
     const probe = sanitizeAuditSummary(`${key}=${value}`);
     if (probe === `${key}=${value}`) return value;
     // A secret marker means the whole value is secret-bearing (multiword
     // secrets redact word-by-word, leaving the tail exposed), so drop it
-    // entirely. Pure masking (***-****-1234) keeps the triage-safe remainder.
+    // entirely. Pure digit-masking keeps the triage-safe remainder, except
+    // under identifier keys where the exact value is the correlation key.
     if (probe.includes("[REDACTED_SECRET]")) return "[REDACTED_SECRET]";
-    return probe.startsWith(`${key}=`)
-      ? probe.slice(key.length + 1)
-      : "[REDACTED_SECRET]";
+    if (!probe.startsWith(`${key}=`)) return "[REDACTED_SECRET]";
+    return ADMISSIONS_AUDIT_ID_KEY.test(key)
+      ? value
+      : probe.slice(key.length + 1);
   };
   const sanitizedMetadata = args.metadata
     ? Object.fromEntries(
         Object.entries(args.metadata).map(([key, value]) => [
           key,
-          typeof value === "string" ? sanitizeMetadataValue(key, value) : value,
+          sanitizeMetadataValue(key, value),
         ]),
       )
     : undefined;

@@ -35,16 +35,30 @@ describe("sanitizeAdmissionsAuditFields (consolidation P1)", () => {
         phone: "08031234567",
         account: "0123456789",
         nin: "12345678901",
+        ninNumeric: 12345678901,
       },
     });
     expect(metadataJson).toBeDefined();
     expect(metadataJson).not.toContain("super-secret-value");
+    expect(metadataJson).not.toContain("parent@example.com");
+    expect(metadataJson).not.toContain("08031234567");
     expect(metadataJson).not.toContain("0123456789");
     expect(metadataJson).not.toContain("12345678901");
-    // masked tail form is preserved for support triage
-    expect(metadataJson).toContain("***-****-6789");
+    const parsed = JSON.parse(metadataJson as string);
+    expect(parsed.guardianEmail).toBe("[REDACTED_SECRET]");
+    expect(parsed.ninNumeric).toBe("[REDACTED_SECRET]");
     // valid JSON survives redaction
     expect(() => JSON.parse(metadataJson as string)).not.toThrow();
+  });
+
+  it("keeps opaque provider event ids exact for payment correlation", () => {
+    const { metadataJson } = sanitizeAdmissionsAuditFields({
+      entityId: "attempt-1",
+      metadata: { providerEventId: "4099269727", revision: 3 },
+    });
+    const parsed = JSON.parse(metadataJson as string);
+    expect(parsed.providerEventId).toBe("4099269727");
+    expect(parsed.revision).toBe(3);
   });
 
   it("redacts secret-bearing document keys in entityId", () => {
