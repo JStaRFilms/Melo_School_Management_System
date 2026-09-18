@@ -1,6 +1,7 @@
 // Exam Recording Domain - Shared Module
 
 // Types
+export { EXAM_INPUT_MODES } from "./types";
 export type {
   ExamInputMode,
   SchoolAssessmentSettings,
@@ -26,7 +27,13 @@ export {
 } from "./calculations";
 
 // Validation functions
-export { validateScoreRanges, validateGradingBands } from "./validation";
+export {
+  MAX_GRADING_BANDS,
+  checkGradingBandSet,
+  validateScoreRanges,
+  validateGradingBands,
+} from "./validation";
+export type { BandSetInput, BandSetIssue, BandSetIssueCode } from "./validation";
 
 // Editing policy helpers
 export { resolveAssessmentEditingState } from "./editing-policy";
