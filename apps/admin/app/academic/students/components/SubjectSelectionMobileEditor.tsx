@@ -3,6 +3,7 @@ import { BookOpen, GraduationCap, UserCog, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { humanNameFinalStrict } from "@/human-name";
+import { getInitials } from "@school/shared";
 
 import type { EnrollmentMatrix } from "./types";
 
@@ -225,10 +226,5 @@ export function SubjectSelectionMobileEditor({
 }
 
 function studentInitials(name: string) {
-  const parts = humanNameFinalStrict(name).split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "ST";
-  return parts
-    .slice(0, 2)
-    .map((part: string) => part[0]?.toUpperCase() ?? "")
-    .join("");
+  return getInitials(humanNameFinalStrict(name));
 }

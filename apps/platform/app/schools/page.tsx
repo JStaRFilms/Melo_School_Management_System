@@ -21,6 +21,7 @@ import {
   Mail,
 } from "lucide-react";
 import { FreeTrialStorageModal } from "./FreeTrialStorageModal";
+import { Avatar } from "@school/shared";
 import { ManageFeaturesModal, type SchoolFeatureSet } from "./ManageFeaturesModal";
 import {
   PlatformSheet,
@@ -272,13 +273,6 @@ function SchoolsCards({
       {schools.map((school) => {
         const isPending = school.status === "pending";
         const isSuspended = school.status === "suspended";
-        const initials = school.name
-          .split(" ")
-          .map((n) => n[0])
-          .filter(Boolean)
-          .slice(0, 2)
-          .join("")
-          .toUpperCase() || "SC";
 
         return (
           <div
@@ -288,9 +282,12 @@ function SchoolsCards({
             {/* Header: Avatar, Name & Status */}
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3 min-w-0 flex-1">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200/70 shadow-2xs">
-                  {initials}
-                </div>
+                <Avatar
+                  name={school.name}
+                  density="md"
+                  fallback="SC"
+                  className="shrink-0 bg-slate-100 text-slate-700 font-bold border border-slate-200/70 shadow-2xs"
+                />
                 <div className="min-w-0 flex-1">
                   <h3 className="font-bold text-slate-900 text-sm leading-snug">{school.name}</h3>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
