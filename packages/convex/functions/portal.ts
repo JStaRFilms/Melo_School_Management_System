@@ -1,6 +1,7 @@
 import { getUnboundStorageUrl } from "./academic/assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
 import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
+import { isOnlineCheckoutOffered } from "./foundation/billingGate";
 import type { Doc, Id } from "../_generated/dataModel";
 import { api } from "../_generated/api";
 import { query, type QueryCtx } from "../_generated/server";
@@ -815,12 +816,10 @@ export const getBillingData = query({
         dueDate: invoice.dueDate,
         issuedAt: invoice.issuedAt,
         status: invoice.status,
-        canPayOnline:
-          Boolean(settingsRecord?.allowOnlinePayments) &&
-          invoice.balanceDue > 0 &&
-          invoice.status !== "paid" &&
-          invoice.status !== "waived" &&
-          invoice.status !== "cancelled",
+        canPayOnline: isOnlineCheckoutOffered({
+          allowOnlinePayments: Boolean(settingsRecord?.allowOnlinePayments),
+          invoice: { balanceDue: invoice.balanceDue, status: invoice.status },
+        }),
         lineItems: invoice.lineItems,
         notes: invoice.notes ?? null,
       }));
