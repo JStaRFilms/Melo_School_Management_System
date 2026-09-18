@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
 import { Save, Loader2 } from "lucide-react";
-import { appToast, getErrorMessage } from "@school/shared/toast";
+import { useSaveAction } from "@school/shared/examSelection/client";
 
 interface SaveActionBarProps {
   hasUnsavedChanges: boolean;
@@ -25,33 +24,16 @@ export function SaveActionBar({
   isEditingLocked = false,
   lockMessage,
 }: SaveActionBarProps) {
-  const [isSaving, setIsSaving] = useState(false);
-  const isHandledSaveError = (error: unknown): error is { toastHandled: true } =>
-    typeof error === "object" &&
-    error !== null &&
-    (error as { toastHandled?: unknown }).toastHandled === true;
-
-  const handleSave = useCallback(async () => {
-    if (isEditingLocked || !hasUnsavedChanges || isSaving) return;
-
-    setIsSaving(true);
-    try {
-      await onSave();
-      appToast.success("Results saved", {
-        id: "teacher-exam-entry-save-result",
-        description: `${dirtyCount} student record${dirtyCount === 1 ? "" : "s"} saved successfully.`,
-      });
-    } catch (err) {
-      if (!isHandledSaveError(err)) {
-        appToast.error("Unable to save exam results", {
-          id: "teacher-exam-entry-save-result",
-          description: getErrorMessage(err, "Save failed."),
-        });
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  }, [dirtyCount, hasUnsavedChanges, isEditingLocked, isSaving, onSave]);
+  const { isSaving, handleSave } = useSaveAction({
+    hasUnsavedChanges,
+    isEditingLocked,
+    dirtyCount,
+    onSave,
+    messages: {
+      toastId: "teacher-exam-entry-save-result",
+      errorTitle: "Unable to save exam results",
+    },
+  });
 
   const isDisabled = isEditingLocked || !hasUnsavedChanges || isSaving;
 
