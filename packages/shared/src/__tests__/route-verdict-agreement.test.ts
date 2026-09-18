@@ -67,10 +67,11 @@ function clientAllows(workspace: Workspace, path: string, caps: readonly string[
 }
 
 /**
- * Documented server rule (B11): endpoint enforcement needs SOME capability
- * from the operation set, while the client needs EVERY required plus SOME of
- * requiredAny. This model is test-only scaffolding for the flip decision; it
- * is not product code and must not be imported by any UI.
+ * Documented server rule for pure single-capability routes (B11): the endpoint
+ * enforces its one operation capability. This model is test-only scaffolding
+ * for the flip decision; it is not product code and must not be imported by
+ * any UI. Routes with conjunctive or mixed endpoint checks are modeled
+ * concretely below, never flattened into `some`.
  */
 function serverAllows(
   required: readonly PermissionCapability[],
@@ -79,6 +80,36 @@ function serverAllows(
 ): boolean {
   if (required.length === 0 && (requiredAny ?? []).length === 0) return true;
   return [...required, ...(requiredAny ?? [])].some((cap) => caps.includes(cap));
+}
+
+const TRASH_CAPABILITIES = [
+  "assets.trash.manage",
+  "assets.restore",
+  "assets.holds.apply",
+  "assets.holds.remove",
+  "assets.permanent_delete",
+];
+
+/**
+ * Concrete server models per route, derived from the real endpoint checks
+ * (assetWorkspace.listAssets conjunctions; retention policy vs manual
+ * endpoints). Any endpoint change here must update this model first.
+ */
+function concreteServerAllows(workspace: Workspace, path: string, caps: readonly string[]): boolean | null {
+  const has = (cap: string) => caps.includes(cap);
+  const some = (list: readonly string[]) => list.some(has);
+  if (workspace === "admin" && path === "/admin/assets/archive") {
+    return has("assets.library.view") && has("assets.archive.manage");
+  }
+  if (workspace === "admin" && path === "/admin/assets/trash") {
+    return has("assets.library.view") && some(TRASH_CAPABILITIES);
+  }
+  if (workspace === "admin" && path === "/admin/admissions/retention") {
+    // Policy endpoints need intakes.manage only; manual endpoints need both.
+    // The route gate demands both, so it is stricter than the policy path.
+    return has("enrollment.intakes.manage");
+  }
+  return null;
 }
 
 describe("client-vs-server route verdicts (consolidation P11, test only)", () => {
@@ -148,18 +179,29 @@ describe("client-vs-server route verdicts (consolidation P11, test only)", () =>
       "admin /admin/assets/archive",
       "admin /admin/assets/trash",
     ]);
-    for (const rule of divergent) {
-      const partials: readonly string[][] = [
-        ...(rule.required.length > 0 ? [[rule.required[0]]] : []),
-        ...((rule.requiredAny ?? []).length > 0 ? [[(rule.requiredAny ?? [])[0]]] : []),
+    // Asset workspaces agree concretely: the endpoints conjoin the same sets.
+    for (const path of ["/admin/assets/archive", "/admin/assets/trash"]) {
+      const probes: readonly string[][] = [
+        [],
+        ["assets.library.view"],
+        ["assets.archive.manage"],
+        ["assets.trash.manage"],
+        ["assets.library.view", "assets.archive.manage"],
+        ["assets.library.view", "assets.trash.manage"],
       ];
-      expect(partials.length).toBeGreaterThan(0);
-      for (const partial of partials) {
-        // Client denies partial holders...
-        expect(clientAllows(rule.workspace, rule.path, partial)).toBe(false);
-        // ...while the server SOME rule would allow them. Flip later, not here.
-        expect(serverAllows(rule.required, rule.requiredAny, partial)).toBe(true);
+      for (const caps of probes) {
+        expect(clientAllows("admin", path, caps), `client ${path} [${caps}]`).toBe(
+          concreteServerAllows("admin", path, caps),
+        );
       }
     }
+    // Retention is the real divergence: the route gate demands both
+    // capabilities while the policy endpoints need intakes.manage only.
+    expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage"])).toBe(false);
+    expect(concreteServerAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage"])).toBe(true);
+    expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.decisions.record"])).toBe(false);
+    expect(concreteServerAllows("admin", "/admin/admissions/retention", ["enrollment.decisions.record"])).toBe(false);
+    expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage", "enrollment.decisions.record"])).toBe(true);
+    expect(clientAllows("admin", "/admin/admissions/retention", [])).toBe(false);
   });
 });
