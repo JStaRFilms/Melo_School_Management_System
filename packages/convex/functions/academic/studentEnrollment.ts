@@ -44,6 +44,7 @@ import {
 } from "./subjectAggregationSelectionHelpers";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 import { assertBranchDoc } from "../foundation/tenantScope";
+import { isEmailAddress } from "../foundation/normalize";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -190,7 +191,7 @@ function normalizeOptionalEmail(value: string | null | undefined) {
     return undefined;
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+  if (!isEmailAddress(trimmed)) {
     throw new ConvexError("Enter a valid email address");
   }
 
@@ -2972,7 +2973,7 @@ export const getParentEmailReview = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const trimmed = (args.email ?? "").trim().toLowerCase();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    if (!trimmed || !isEmailAddress(trimmed)) {
       return {
         email: trimmed,
         matches: [],

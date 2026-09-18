@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { isEmailAddress } from "../foundation/normalize";
 import { mutation, query } from "../../_generated/server";
 import type { Doc } from "../../_generated/dataModel";
 import {
@@ -228,7 +229,7 @@ export const saveDraft = mutation({
       const fullName = normalizeRequiredText(args.primaryContact.fullName, "Primary contact name", 160);
       const relationship = normalizeRequiredText(args.primaryContact.relationship, "Primary contact relationship", 80);
       const email = args.primaryContact.email?.trim().toLowerCase() || undefined;
-      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ConvexError("Primary contact email is invalid");
+      if (email && !isEmailAddress(email)) throw new ConvexError("Primary contact email is invalid");
       const existingContact = await ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q) => q.eq("applicationId", application._id).eq("contactKey", "primary")).unique();
       const contact = { fullName, relationship, email, phone: args.primaryContact.phone?.trim().slice(0, 40) || undefined, address: args.primaryContact.address?.trim().slice(0, 500) || undefined, updatedAt: now };
       if (existingContact) await ctx.db.patch(existingContact._id, contact);

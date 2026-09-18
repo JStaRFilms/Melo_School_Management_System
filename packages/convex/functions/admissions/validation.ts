@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { isEmailAddress } from "../foundation/normalize";
 import type { Doc } from "../../_generated/dataModel";
 
 export const ADMISSIONS_FIELD_KINDS = [
@@ -164,7 +165,7 @@ export function validateAnswerForField(
     if (rules.minLength !== undefined && value.length < rules.minLength) throw new ConvexError("Draft answer is shorter than the published minimum");
     if (rules.maxLength !== undefined && value.length > rules.maxLength) throw new ConvexError("Draft answer exceeds the published maximum");
     if (rules.pattern && !new RegExp(rules.pattern, "u").test(value)) throw new ConvexError("Draft answer does not match the published format");
-    if (kind === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new ConvexError("Draft answer must be a valid email");
+    if (kind === "email" && value && !isEmailAddress(value)) throw new ConvexError("Draft answer must be a valid email");
     if (rules.options && !rules.options.includes(value)) throw new ConvexError("Draft answer is not a published option");
   }
   if (typeof value === "number") {

@@ -8,6 +8,7 @@ import {
   normalizeCapability,
 } from "../academic/rbac";
 import { resolveActiveMembership } from "../academic/auth";
+import { normalizeEmailCase, isEmailAddress } from "../foundation/normalize";
 import { sanitizeAuditSummary } from "../academic/audit";
 
 export type AdmissionsContext = QueryCtx | MutationCtx;
@@ -118,8 +119,8 @@ export function normalizeSlug(value: string, label = "Slug"): string {
 }
 
 export function normalizeEmail(value: string): string {
-  const email = value.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 240) {
+  const email = normalizeEmailCase(value);
+  if (!isEmailAddress(email) || email.length > 240) {
     throw new ConvexError("A valid email address is required");
   }
   return email;
