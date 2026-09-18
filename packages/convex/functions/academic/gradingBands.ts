@@ -16,6 +16,7 @@ import { requireGroupOwner } from "./groupSettings";
 import { recordAuditEventHelper } from "./audit";
 import {
   FACTORY_DEFAULT_GRADING_BANDS,
+  checkGradingBandSet,
   isGradeHex,
   gradeDisplayColor,
 } from "@school/shared/exam-recording";
@@ -54,32 +55,28 @@ export function calculateContrastAgainstWhite(hex: string): number {
 export function validateContiguousScoreRanges(
   bands: Array<{ minScore: number; maxScore: number; gradeLetter: string }>,
 ): void {
-  if (!bands.length || bands.length > 100)
-    throw new ConvexError("Use 1–100 grading bands");
-  const labels = new Set<string>();
-  for (const band of bands) {
-    const label = band.gradeLetter.trim().toUpperCase();
-    if (!label || labels.has(label))
+  const [first] = checkGradingBandSet(bands);
+  if (!first) {
+    return;
+  }
+  switch (first.code) {
+    case "empty":
+    case "too_many":
+      throw new ConvexError("Use 1–100 grading bands");
+    case "blank_label":
+    case "duplicate_label":
       throw new ConvexError("Grade labels must be nonempty and unique");
-    labels.add(label);
-    if (
-      !Number.isInteger(band.minScore) ||
-      !Number.isInteger(band.maxScore) ||
-      band.minScore < 0 ||
-      band.maxScore > 100 ||
-      band.minScore > band.maxScore
-    )
+    case "non_integer":
+    case "out_of_range":
+    case "inverted_range":
       throw new ConvexError(
         "Score ranges must be whole numbers within 0 to 100",
       );
-  }
-  const sorted = [...bands].sort((a, b) => a.minScore - b.minScore);
-  if (sorted[0].minScore !== 0 || sorted[sorted.length - 1].maxScore !== 100)
-    throw new ConvexError("Grading bands must span 0 to 100");
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].minScore <= sorted[i - 1].maxScore)
+    case "bad_span":
+      throw new ConvexError("Grading bands must span 0 to 100");
+    case "overlap":
       throw new ConvexError("Overlapping score range");
-    if (sorted[i].minScore !== sorted[i - 1].maxScore + 1)
+    case "gap":
       throw new ConvexError("Gap detected in score range");
   }
 }

@@ -8,6 +8,7 @@ import {
 import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { requireCapability } from "./rbac";
+import { getActiveSession as getActiveSessionScope } from "./sessionScope";
 import { recordAuditEventHelper } from "./audit";
 import { requireGroupOwner } from "./groupSettings";
 
@@ -91,13 +92,7 @@ function periodFor(
 }
 
 async function getActiveSession(ctx: Context, schoolId: Id<"schools">) {
-  const sessions = await ctx.db
-    .query("academicSessions")
-    .withIndex("by_school_active", (q) =>
-      q.eq("schoolId", schoolId).eq("isActive", true),
-    )
-    .take(2);
-  return sessions.length === 1 && !sessions[0].isArchived ? sessions[0] : null;
+  return getActiveSessionScope(ctx, schoolId);
 }
 
 async function resolveEffectiveFormat(

@@ -5,6 +5,7 @@ import {
   examScaledScore as computeExamScaled,
   total as computeTotal,
   deriveGradeAndRemark,
+  validateScoreRanges,
 } from "../../../packages/shared/src/exam-recording";
 import type {
   DraftScores,
@@ -102,7 +103,9 @@ export function computeDerivedValues(
 }
 
 /**
- * Validate a single field value
+ * Validate a single field value (consolidation P20 adapter). Delegates to the
+ * shared range predicate so messages stay identical; returns the first
+ * message for the requested field, or null when valid.
  */
 export function validateField(
   field: ScoreField,
@@ -111,25 +114,18 @@ export function validateField(
 ): string | null {
   if (value === null) return null;
 
-  if (field === "ca1" || field === "ca2" || field === "ca3") {
-    if (value < 0 || value > 20) {
-      return `${field.toUpperCase()} must be between 0 and 20`;
-    }
-  }
-
-  if (field === "examRawScore") {
-    if (examInputMode === "raw40") {
-      if (value < 0 || value > 40) {
-        return "Exam score must be between 0 and 40";
-      }
-    } else {
-      if (value < 0 || value > 60) {
-        return "Exam score must be between 0 and 60";
-      }
-    }
-  }
-
-  return null;
+  const probe =
+    field === "examRawScore"
+      ? { ca1: 0, ca2: 0, ca3: 0, examRawScore: value }
+      : { ca1: 0, ca2: 0, ca3: 0, examRawScore: 0, [field]: value };
+  const errors = validateScoreRanges(
+    probe.ca1,
+    probe.ca2,
+    probe.ca3,
+    probe.examRawScore,
+    examInputMode
+  );
+  return errors.find((error) => error.field === field)?.message ?? null;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   type InstructionTemplateScope,
   type SupportedInstructionTemplateOutputType,
 } from "./lessonKnowledgeTemplatesHelpers";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
 const MAX_PROMPT_CHUNKS_PER_SOURCE = 3;
@@ -1838,10 +1839,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
     let existingDocumentId: Id<"instructionArtifactDocuments"> | null = null;
 
     if (existingArtifact) {
-      if (existingArtifact.schoolId !== schoolId) {
-        throw new ConvexError("Cross-school access denied");
-      }
-
+      assertBranchDoc(existingArtifact, schoolId);
       if (existingArtifact.ownerUserId !== userId && !isSchoolAdmin && role !== "admin") {
         throw new ConvexError("You cannot edit this draft");
       }

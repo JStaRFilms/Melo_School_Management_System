@@ -10,6 +10,7 @@ import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { getAuthenticatedPlatformAdmin } from "./auth";
+import { isEmailAddress } from "../foundation/normalize";
 import {
   cleanupProvisionedSchoolAdminAuthUser,
   provisionSchoolAdminAuthUser,
@@ -46,7 +47,7 @@ function normalizeEmail(email: string): string {
 }
 
 function isValidEmail(email: string): boolean {
-  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return email.length <= 254 && isEmailAddress(email);
 }
 
 function maskEmail(email: string): string {

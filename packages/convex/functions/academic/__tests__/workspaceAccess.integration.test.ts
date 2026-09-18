@@ -4,7 +4,8 @@ import schema from "../../../schema";
 // Load the Better Auth module graph during collection, outside the transaction test budget.
 import "../../auth";
 import { api } from "../../../_generated/api";
-import { assertAdminForSchool, assertTeacherAssignment, getAuthenticatedSchoolMembership } from "../auth";
+import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "../auth";
+import { assertTeacherAssignment } from "../teacherAccess";
 
 const convexRoot = new URL("../../../", import.meta.url).pathname;
 const rawModules = import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"]);

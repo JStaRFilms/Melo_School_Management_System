@@ -1,5 +1,6 @@
 // Exam Recording Domain Types
-export type ExamInputMode = "raw40" | "raw60_scaled_to_40";
+export const EXAM_INPUT_MODES = ["raw40", "raw60_scaled_to_40"] as const;
+export type ExamInputMode = (typeof EXAM_INPUT_MODES)[number];
 
 export interface SchoolAssessmentSettings {
   schoolId: string;

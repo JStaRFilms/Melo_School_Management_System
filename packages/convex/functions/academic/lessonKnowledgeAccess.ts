@@ -1,7 +1,9 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
-import { getTeacherAssignableSubjectIds } from "./auth";
+import {
+  getTeacherAssignableSubjectIds,
+} from "./teacherAccess";
 
 export type KnowledgeActorRole = "student" | "teacher" | "admin";
 
