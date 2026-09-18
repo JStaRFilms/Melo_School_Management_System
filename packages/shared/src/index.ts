@@ -27,6 +27,8 @@ export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintSt
 export { MeloLoader } from "./components/MeloLoader";
 export { ConfirmModal, ConfirmDialog } from "./components/ConfirmModal";
 export type { ConfirmModalProps, ConfirmDialogProps } from "./components/ConfirmModal";
+export { SheetBase } from "./components/SheetBase";
+export type { SheetBaseProps } from "./components/SheetBase";
 export {
   KnowledgeMaterialUploadForm,
   MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,

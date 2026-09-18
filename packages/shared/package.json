@@ -17,6 +17,7 @@
     "./exam-recording": "./src/exam-recording/index.ts",
     "./paystackReturn": "./src/paystackReturn/index.ts",
     "./paystackReturn/client": "./src/paystackReturn/client.ts",
+    "./components/SheetBase": "./src/components/SheetBase.tsx",
     "./server/proxyRoute": "./src/server/proxyRoute.ts",
     "./subject-aggregation": "./src/subject-aggregation.ts",
     "./migration": "./src/migration/index.ts",
