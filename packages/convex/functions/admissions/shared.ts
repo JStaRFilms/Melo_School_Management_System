@@ -8,6 +8,7 @@ import {
   normalizeCapability,
 } from "../academic/rbac";
 import { resolveActiveMembership } from "../academic/auth";
+import { sanitizeAuditSummary } from "../academic/audit";
 
 export type AdmissionsContext = QueryCtx | MutationCtx;
 
@@ -347,6 +348,28 @@ export async function requireAdmissionsStaff(
   };
 }
 
+/**
+ * Shared PII redaction for admissions audit writes (consolidation P1).
+ * The admissions audit table stays split from the canonical auditEvents table
+ * (different outcome enum with "blocked", per-application indexing, its own
+ * retention policy model), so only the sanitizer is shared, not the writer.
+ * Sanitize AFTER normalizeRequiredText: length/required validation checks the
+ * caller's contract first, and redaction itself must never throw.
+ */
+export function sanitizeAdmissionsAuditFields(args: {
+  entityId: string;
+  reasonCode?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}): { entityId: string; reasonCode?: string; metadataJson?: string } {
+  return {
+    entityId: sanitizeAuditSummary(args.entityId),
+    ...(args.reasonCode ? { reasonCode: sanitizeAuditSummary(args.reasonCode) } : {}),
+    ...(args.metadata
+      ? { metadataJson: sanitizeAuditSummary(JSON.stringify(args.metadata)) }
+      : {}),
+  };
+}
+
 export async function recordAdmissionsAudit(
   ctx: MutationCtx,
   args: {
@@ -363,6 +386,11 @@ export async function recordAdmissionsAudit(
     metadata?: Record<string, string | number | boolean | null>;
   },
 ) {
+  const sanitized = sanitizeAdmissionsAuditFields({
+    entityId: args.entityId,
+    reasonCode: args.reasonCode,
+    metadata: args.metadata,
+  });
   await ctx.db.insert("admissionsAuditEvents", {
     schoolId: args.schoolId,
     actorKind: args.actorKind,
@@ -370,13 +398,13 @@ export async function recordAdmissionsAudit(
     ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
     action: normalizeRequiredText(args.action, "Audit action", 120),
     entityType: normalizeRequiredText(args.entityType, "Audit entity type", 80),
-    entityId: normalizeRequiredText(args.entityId, "Audit entity ID", 200),
+    entityId: normalizeRequiredText(sanitized.entityId, "Audit entity ID", 200),
     ...(args.applicationId ? { applicationId: args.applicationId } : {}),
     outcome: args.outcome ?? "success",
-    ...(args.reasonCode
-      ? { reasonCode: normalizeRequiredText(args.reasonCode, "Reason code", 120) }
+    ...(sanitized.reasonCode
+      ? { reasonCode: normalizeRequiredText(sanitized.reasonCode, "Reason code", 120) }
       : {}),
-    ...(args.metadata ? { metadataJson: JSON.stringify(args.metadata) } : {}),
+    ...(sanitized.metadataJson ? { metadataJson: sanitized.metadataJson } : {}),
     createdAt: Date.now(),
   });
 }

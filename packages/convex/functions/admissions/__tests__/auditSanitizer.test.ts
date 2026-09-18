@@ -1,0 +1,61 @@
+import { describe, expect, it } from "vitest";
+import { sanitizeAdmissionsAuditFields } from "../shared";
+
+describe("sanitizeAdmissionsAuditFields (consolidation P1)", () => {
+  it("leaves clean values untouched", () => {
+    expect(
+      sanitizeAdmissionsAuditFields({
+        entityId: "admissionsApplication|abc123",
+        reasonCode: "INCOMPLETE_DOCUMENTS",
+        metadata: { revision: 3, answerCount: 12, archived: false },
+      }),
+    ).toEqual({
+      entityId: "admissionsApplication|abc123",
+      reasonCode: "INCOMPLETE_DOCUMENTS",
+      metadataJson: JSON.stringify({ revision: 3, answerCount: 12, archived: false }),
+    });
+  });
+
+  it("redacts bearer tokens and JWTs carried in reasonCode", () => {
+    const jwt =
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c";
+    const { reasonCode } = sanitizeAdmissionsAuditFields({
+      entityId: "doc-key-1",
+      reasonCode: `retry with Bearer ${jwt} failed`,
+    });
+    expect(reasonCode).not.toContain(jwt);
+    expect(reasonCode).toContain("[REDACTED_SECRET]");
+  });
+
+  it("redacts guardian email/phone and NUBAN/NIN inside metadata", () => {
+    const { metadataJson } = sanitizeAdmissionsAuditFields({
+      entityId: "doc-key-1",
+      metadata: {
+        guardianEmail: "parent@example.com token=super-secret-value",
+        phone: "08031234567",
+        account: "0123456789",
+        nin: "12345678901",
+      },
+    });
+    expect(metadataJson).toBeDefined();
+    expect(metadataJson).not.toContain("super-secret-value");
+    expect(metadataJson).not.toContain("0123456789");
+    expect(metadataJson).not.toContain("12345678901");
+    // masked tail form is preserved for support triage
+    expect(metadataJson).toContain("***-****-6789");
+    // valid JSON survives redaction
+    expect(() => JSON.parse(metadataJson as string)).not.toThrow();
+  });
+
+  it("redacts secret-bearing document keys in entityId", () => {
+    const { entityId } = sanitizeAdmissionsAuditFields({
+      entityId: "upload password=hunter2 doc-key-9",
+    });
+    expect(entityId).not.toContain("hunter2");
+    expect(entityId).toContain("[REDACTED_SECRET]");
+  });
+
+  it("omits optional fields when absent", () => {
+    expect(sanitizeAdmissionsAuditFields({ entityId: "x" })).toEqual({ entityId: "x" });
+  });
+});
