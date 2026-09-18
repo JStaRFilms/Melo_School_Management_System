@@ -243,11 +243,14 @@ export const applySchoolLogoUpload = internalMutation({
       !user ||
       user.schoolId !== args.schoolId ||
       user.isArchived ||
-      (user.role !== "admin" && user.isSchoolAdmin !== true) ||
       !school
     ) {
       throw new ConvexError("School branding access changed during upload");
     }
+    // TOCTOU re-validation against the ambient uploader: the legacy admin
+    // boolean was replaced so delegated branding managers are not authorized
+    // at upload start and then rejected at apply time.
+    await requireCapability(ctx, args.schoolId, "settings.branding.manage");
     await assertStorageUnclaimed(ctx, args.logoStorageId);
 
     let deleteStorageId: Id<"_storage"> | undefined;

@@ -22,6 +22,7 @@ async function fixture() {
     await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|p5-managed-events", ["academic.classes.manage"], { role: "teacher" });
     await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|p5-managed-none", [], { role: "teacher" });
     await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|p5-managed-general", ["settings.general.edit"], { role: "teacher" });
+    await seedReviewedTenantOperatorWithCapabilities(ctx, [schoolId], "test|p5-managed-branding", ["settings.branding.manage"], { role: "teacher" });
     return { schoolId };
   });
   return {
@@ -32,6 +33,7 @@ async function fixture() {
     managedEvents: t.withIdentity(identity("test|p5-managed-events")),
     managedNone: t.withIdentity(identity("test|p5-managed-none")),
     managedGeneral: t.withIdentity(identity("test|p5-managed-general")),
+    managedBranding: t.withIdentity(identity("test|p5-managed-branding")),
   };
 }
 
@@ -76,5 +78,19 @@ describe("naive gate removal: events/settings/branding matrix (consolidation P5)
     const f = await fixture();
     await f.t.run((ctx) => ctx.db.patch(f.schoolId as Id<"schools">, { status: "suspended" }));
     await expect(f.legacyAdmin.mutation(api.functions.academic.events.createEvent, eventArgs)).rejects.toThrow(/suspended/i);
+  });
+
+  it("completes logo upload end-to-end for delegated branding managers", async () => {
+    const f = await fixture();
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).buffer;
+    await expect(
+      f.managedBranding.action(api.functions.academic.schoolBranding.saveSchoolLogo, {
+        bytes: png,
+        logoFileName: "crest.png",
+        logoContentType: "image/png",
+      }),
+    ).resolves.toBeNull();
+    const school = await f.t.run((ctx) => ctx.db.get(f.schoolId as Id<"schools">));
+    expect(school?.logoStorageId).toBeDefined();
   });
 });
