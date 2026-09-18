@@ -16,7 +16,6 @@ import {
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
 import {
-  assertAdminForSchool,
   getAuthenticatedSchoolMembership,
 } from "./auth";
 import { normalizeHumanName } from "@school/shared/name-format";
@@ -114,11 +113,17 @@ export const updateSchoolProfile = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { schoolId } =
       await getAuthenticatedSchoolMembership(ctx, {
         capability: ["settings.general.edit", "settings.branding.manage"],
       });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    // ANY semantics (either capability suffices), matching requireCapability
+    // and the membership check above. ALL would lock out single-capability
+    // holders with no security gain here.
+    await requireCapability(ctx, schoolId, [
+      "settings.general.edit",
+      "settings.branding.manage",
+    ]);
 
     const trimmedName = args.name.trim();
     if (!trimmedName) {
@@ -171,11 +176,11 @@ export const generateSchoolLogoUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    const { userId, schoolId, role } =
+    const { schoolId } =
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "settings.branding.manage",
       });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "settings.branding.manage");
     return secureUploadUnavailable<string>();
   },
 });
@@ -211,11 +216,11 @@ export const authorizeSchoolLogoUpload = internalQuery({
     userId: v.id("users"),
   }),
   handler: async (ctx) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId } =
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "settings.branding.manage",
       });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "settings.branding.manage");
     return { schoolId, userId };
   },
 });
@@ -344,11 +349,10 @@ export const removeSchoolLogo = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
-    const { userId, schoolId, role } =
+    const { schoolId } =
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "settings.branding.manage",
       });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
     await requireCapability(ctx, schoolId, "settings.branding.manage");
 
     const school = await ctx.db.get(schoolId);
