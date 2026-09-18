@@ -1,0 +1,13 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildDocumentGrantProxyHeaders snapshot > keeps private headers plus exactly the allowlist 1`] = `
+{
+  "cache-control": "private, no-store, max-age=0",
+  "content-disposition": "attachment; filename="doc.pdf"",
+  "content-length": "42",
+  "content-security-policy": "default-src 'none'",
+  "content-type": "application/pdf",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
+}
+`;
