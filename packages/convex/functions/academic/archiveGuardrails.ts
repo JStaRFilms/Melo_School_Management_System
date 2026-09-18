@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { getActiveSession } from "./sessionScope";
 import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import {
@@ -55,12 +56,7 @@ export async function listTeacherArchiveBlockers(
 
   const [activeSession, classes, classSubjects, teacherAssignments, subjects] =
     await Promise.all([
-      ctx.db
-        .query("academicSessions")
-        .withIndex("by_school_active", (q) =>
-          q.eq("schoolId", args.schoolId).eq("isActive", true)
-        )
-        .first(),
+      getActiveSession(ctx, args.schoolId),
       ctx.db
         .query("classes")
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
