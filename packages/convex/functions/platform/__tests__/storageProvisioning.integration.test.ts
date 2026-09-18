@@ -35,7 +35,7 @@ it("lets a Platform Super Admin inspect and provision one reviewed active school
   const platform = t.withIdentity({
     subject: "platform-operator",
     tokenIdentifier: "test|platform-operator",
-  });
+  issuer: "https://deployment-auth.test",});
 
   await expect(
     t.query(api.functions.platform.index.getSchoolStorageProvisioningState, {
@@ -170,7 +170,7 @@ it("returns requires_review when the selected school has conflicting storage his
   const platform = t.withIdentity({
     subject: "review-operator",
     tokenIdentifier: "test|review-operator",
-  });
+  issuer: "https://deployment-auth.test",});
 
   await expect(
     platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, {
@@ -223,7 +223,7 @@ it("requires review instead of creating a zeroed meter for existing storage", as
   const platform = t.withIdentity({
     subject: "storage-review-operator",
     tokenIdentifier: "test|storage-review-operator",
-  });
+  issuer: "https://deployment-auth.test",});
 
   const review = await platform.query(
     api.functions.platform.index.getSchoolStorageProvisioningState,
@@ -296,7 +296,7 @@ it("blocks reconciliation when one storage object is claimed by another school",
     await ctx.db.insert("importWorkspaces", { schoolId: second, name: "Conflicting import", mode: "super_admin", status: "draft", totalRecords: 0, validRecords: 0, warningRecords: 0, errorRecords: 0, sourceFiles: [{ storageId, fileName: "students.csv", fileSize: 11, uploadedAt: now }], createdAt: now, updatedAt: now, createdBy: operatorId });
     return first;
   });
-  const platform = t.withIdentity({ subject: "ownership-review-operator", tokenIdentifier: "test|ownership-review-operator" });
+  const platform = t.withIdentity({ subject: "ownership-review-operator", tokenIdentifier: "test|ownership-review-operator" , issuer: "https://deployment-auth.test"});
   const state = await platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, { schoolId });
   expect(state).toMatchObject({ recordState: "requires_review", reconciliation: { status: "blocked", conflictingObjectCount: 1 } });
   expect(state.reconciliation?.blockers).toContain("One or more storage objects have conflicting ownership.");
@@ -318,7 +318,7 @@ it("blocks incomplete demo storage and unresolved upload intents", async () => {
     await ctx.db.insert("assetUploadIntents", { schoolId: assetSchoolId, storageId, status: "pending", createdAt: now, updatedAt: now });
     return { demoSchoolId, assetSchoolId };
   });
-  const platform = t.withIdentity({ subject: "temporary-review-operator", tokenIdentifier: "test|temporary-review-operator" });
+  const platform = t.withIdentity({ subject: "temporary-review-operator", tokenIdentifier: "test|temporary-review-operator" , issuer: "https://deployment-auth.test"});
   const demo = await platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, { schoolId: schoolIds.demoSchoolId });
   const asset = await platform.query(api.functions.platform.index.getSchoolStorageProvisioningState, { schoolId: schoolIds.assetSchoolId });
   expect(demo).toMatchObject({ reconciliation: { status: "blocked" } });
@@ -373,7 +373,7 @@ it("requires review when a migration workspace retains source files", async () =
   const platform = t.withIdentity({
     subject: "migration-storage-review-operator",
     tokenIdentifier: "test|migration-storage-review-operator",
-  });
+  issuer: "https://deployment-auth.test",});
 
   const state = await platform.query(
     api.functions.platform.index.getSchoolStorageProvisioningState,
