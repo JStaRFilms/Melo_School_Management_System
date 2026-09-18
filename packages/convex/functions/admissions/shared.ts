@@ -369,6 +369,10 @@ export function sanitizeAdmissionsAuditFields(args: {
   const sanitizeMetadataValue = (key: string, value: string): string => {
     const probe = sanitizeAuditSummary(`${key}=${value}`);
     if (probe === `${key}=${value}`) return value;
+    // A secret marker means the whole value is secret-bearing (multiword
+    // secrets redact word-by-word, leaving the tail exposed), so drop it
+    // entirely. Pure masking (***-****-1234) keeps the triage-safe remainder.
+    if (probe.includes("[REDACTED_SECRET]")) return "[REDACTED_SECRET]";
     return probe.startsWith(`${key}=`)
       ? probe.slice(key.length + 1)
       : "[REDACTED_SECRET]";

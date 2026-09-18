@@ -66,9 +66,22 @@ describe("sanitizeAdmissionsAuditFields (consolidation P1)", () => {
     });
     expect(metadataJson).not.toContain("hunter2");
     const parsed = JSON.parse(metadataJson as string);
-    expect(parsed.password).toContain("[REDACTED_SECRET]");
+    expect(parsed.password).toBe("[REDACTED_SECRET]");
     expect(typeof parsed.note).toBe("string");
     expect(typeof parsed.big).toBe("string");
+  });
+
+  it("drops multiword secret values entirely, keeps masked tails", () => {
+    const { metadataJson } = sanitizeAdmissionsAuditFields({
+      entityId: "doc-key-1",
+      metadata: {
+        password: "correct horse battery staple",
+        contact: "call 08031234567 now",
+      },
+    });
+    const parsed = JSON.parse(metadataJson as string);
+    expect(parsed.password).toBe("[REDACTED_SECRET]");
+    expect(parsed.contact).toBe("call ***-****-4567 now");
   });
 
   it("omits optional fields when absent", () => {
