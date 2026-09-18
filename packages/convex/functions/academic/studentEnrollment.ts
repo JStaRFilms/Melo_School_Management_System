@@ -41,6 +41,7 @@ import {
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -745,9 +746,7 @@ export const listStudentsByClass = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const students = await ctx.db
       .query("students")
@@ -1447,9 +1446,7 @@ async function archiveStudentRecord(
   },
 ) {
   const student = await ctx.db.get(args.studentId);
-  if (!student || student.schoolId !== args.schoolId) {
-    throw new ConvexError("Cross-school access denied");
-  }
+  assertBranchDoc(student, args.schoolId);
 
   const studentUser = await ctx.db.get(student.userId);
   if (
@@ -2203,22 +2200,16 @@ export const setStudentSubjectSelections = mutation({
 
     // Verify school boundary
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId || student.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(student, schoolId, { excludeArchived: true });
     if (student.classId !== args.classId) {
       throw new ConvexError("Student is not enrolled in this class");
     }
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     // Verify all subjects are offered in this class
     const classOfferings = await ctx.db
@@ -2385,14 +2376,10 @@ export const getStudentSubjectSelections = query({
       });
 
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId || student.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(student, schoolId, { excludeArchived: true });
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     const selections = await ctx.db
       .query("studentSubjectSelections")
@@ -2490,9 +2477,7 @@ export const getClassStudentSubjectMatrix = query({
       ctx.db.get(args.classId),
       ctx.db.get(args.sessionId),
     ]);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
     if (
       !sessionDoc ||
       sessionDoc.schoolId !== schoolId ||

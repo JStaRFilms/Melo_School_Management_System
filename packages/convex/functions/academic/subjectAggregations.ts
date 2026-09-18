@@ -9,6 +9,7 @@ import {
   listActiveClassSubjectAggregations,
 } from "./subjectAggregationHelpers";
 import { listClassAggregationOptOuts } from "./subjectAggregationSelectionHelpers";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 async function syncUmbrellaSelectionsForAggregation(
   ctx: any,
@@ -147,9 +148,7 @@ export const getClassSubjectAggregations = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const aggregations = await listActiveClassSubjectAggregations(ctx, {
       schoolId,
@@ -193,9 +192,7 @@ export const saveClassSubjectAggregation = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     if (args.components.length === 0) {
       throw new ConvexError("Select at least one component subject.");

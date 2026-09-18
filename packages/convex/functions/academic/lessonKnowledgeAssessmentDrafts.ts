@@ -15,6 +15,7 @@ import {
   resolveClassScopedKnowledgeMaterialStaffAccess,
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
 
@@ -1544,10 +1545,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
     const now = Date.now();
 
     if (existingBank) {
-      if (existingBank.schoolId !== schoolId) {
-        throw new ConvexError("Cross-school access denied");
-      }
-
+      assertBranchDoc(existingBank, schoolId);
       if (existingBank.ownerUserId !== userId && !isSchoolAdmin && role !== "admin") {
         throw new ConvexError("You cannot edit this draft");
       }

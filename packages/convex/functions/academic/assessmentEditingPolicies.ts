@@ -8,6 +8,7 @@ import {
   assessmentEditingPolicyReturnValidator,
   getAssessmentEditingPolicy,
 } from "./assessmentEditingPolicyHelpers";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 function validateAssessmentEditingPolicyInput(args: {
   editingWindowEnabled: boolean;
@@ -49,9 +50,7 @@ export const getAssessmentEditingPolicyForAdmin = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     const term = await ctx.db.get(args.termId);
     if (
@@ -97,9 +96,7 @@ export const saveAssessmentEditingPolicy = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     const term = await ctx.db.get(args.termId);
     if (
