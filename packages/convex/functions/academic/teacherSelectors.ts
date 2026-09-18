@@ -5,9 +5,11 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import {
   getAuthenticatedSchoolMembership,
+} from "./auth";
+import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
-} from "./auth";
+} from "./teacherAccess";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
 import { assertBranchDoc } from "../foundation/tenantScope";

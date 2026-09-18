@@ -15,8 +15,10 @@ import { v, ConvexError, type Infer } from "convex/values";
 import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
-  teacherHasClassAccess,
 } from "./auth";
+import {
+  teacherHasClassAccess,
+} from "./teacherAccess";
 import {
   formatClassDisplayName,
   normalizeHumanName,
@@ -195,7 +197,6 @@ const reportCardBatchStudentValidator = v.object({
   admissionNumber: v.string(),
   passportUrl: v.optional(v.union(v.string(), v.null())),
 });
-
 
 function buildPendingResult(subject: {
   _id: Id<"subjects">;
