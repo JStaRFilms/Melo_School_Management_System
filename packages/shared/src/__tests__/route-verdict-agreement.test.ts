@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { WorkspaceAccessSummary } from "../workspace-access";
 import { getWorkspaceCapabilityDenial } from "../workspace-route-access";
 import { WORKSPACE_CAPABILITY_MATRIX } from "../workspace-capability-matrix";
-import { TEACHER_PLANNING_CAPABILITIES } from "../capability-contract";
 
 type Workspace = "admin" | "teacher";
 
@@ -126,9 +125,10 @@ const TRASH_CAPABILITIES = [
 ];
 
 /**
- * Concrete server models per route, derived from the real endpoint checks
- * (assetWorkspace conjunctions; retention policy vs manual endpoints). Any
- * endpoint change here must update this model first.
+ * Concrete SERVER endpoint models per route, derived from the real checks
+ * (assetWorkspace conjunctions; retention policy endpoints). Anything about
+ * the client route gate belongs in the tests below, never here. Any endpoint
+ * change must update the corresponding model first.
  */
 function concreteServerAllows(workspace: Workspace, path: string, caps: readonly string[]): boolean {
   const has = (cap: string) => caps.includes(cap);
@@ -146,14 +146,15 @@ function concreteServerAllows(workspace: Workspace, path: string, caps: readonly
 
 describe("client-vs-server route verdicts (consolidation P11, test only)", () => {
   it("matrix matches the independently maintained contract", () => {
-    // The import resolves the shared reference to values for comparison only;
-    // the expected values below stay hardcoded, so constant drift still fails.
+    // Copy runtime contents directly: if a referenced constant such as
+    // TEACHER_PLANNING_CAPABILITIES gains a capability, this mismatches the
+    // hardcoded contract below and fails loudly for human review.
     const actual = WORKSPACE_CAPABILITY_MATRIX.map((row) => ({
       workspace: row.workspace,
       path: row.path,
       ...(row.exact ? { exact: true as const } : {}),
       required: [...row.required],
-      requiredAny: [...(row.requiredAny === undefined ? [] : row.requiredAny === TEACHER_PLANNING_CAPABILITIES ? ["academic.planning.use", "academic.curriculum.manage"] : row.requiredAny)],
+      requiredAny: [...(row.requiredAny ?? [])],
     }));
     expect(actual).toEqual(EXPECTED_CONTRACT);
   });
@@ -166,7 +167,10 @@ describe("client-vs-server route verdicts (consolidation P11, test only)", () =>
       if (!entry || entry.path === "/admin/assets/archive" || entry.path === "/admin/assets/trash" || entry.path === "/admin/admissions/retention") continue;
       if (entry.required.length > 1) continue;
       if (entry.required.length === 1 && entry.requiredAny.length > 0) continue;
-      const key = `${workspace} ${entry.path}`;
+      // Dedupe by probed path: the same winner governs its subpaths, and each
+      // distinct path (e.g. /admin/admissions vs /admin/admissions/sub, which
+      // resolve to different rows) must execute.
+      const key = `${workspace} ${path}`;
       if (seen.has(key)) continue;
       seen.add(key);
       probed += 1;
