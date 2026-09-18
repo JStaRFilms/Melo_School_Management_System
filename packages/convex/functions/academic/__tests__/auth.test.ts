@@ -6,12 +6,14 @@ import type { Id, TableNames } from "../../../_generated/dataModel";
 import {
   assertAdminForSchool,
   assertSchoolBoundary,
+  getAuthenticatedSchoolMembership,
+} from "../auth";
+import {
   assertTeacherAssignment,
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
   teacherHasClassAccess,
-  getAuthenticatedSchoolMembership,
-} from "../auth";
+} from "../teacherAccess";
 
 function asId<TableName extends TableNames>(value: string): Id<TableName> {
   return value as Id<TableName>;

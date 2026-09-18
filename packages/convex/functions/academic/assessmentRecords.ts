@@ -4,8 +4,10 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import {
   getAuthenticatedSchoolMembership,
-  assertTeacherAssignment,
 } from "./auth";
+import {
+  assertTeacherAssignment,
+} from "./teacherAccess";
 import {
   validateScoreRanges,
   deriveAssessmentFields,

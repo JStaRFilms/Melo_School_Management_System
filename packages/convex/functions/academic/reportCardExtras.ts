@@ -7,8 +7,10 @@ import { getActiveSession } from "./sessionScope";
 import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
-  teacherHasClassAccess,
 } from "./auth";
+import {
+  teacherHasClassAccess,
+} from "./teacherAccess";
 import {
   buildExtrasCollectionView,
   isManualFieldSource,

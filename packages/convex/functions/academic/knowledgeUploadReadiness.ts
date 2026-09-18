@@ -8,9 +8,11 @@ import {
 } from "../../_generated/server";
 import {
   getAuthenticatedSchoolMembership,
+} from "./auth";
+import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
-} from "./auth";
+} from "./teacherAccess";
 import { TEACHER_PLANNING_CAPABILITIES, type PermissionCapability } from "./rbac";
 import {
   assertKnowledgeMaterialIngestionAccess,

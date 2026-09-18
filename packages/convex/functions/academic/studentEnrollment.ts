@@ -24,8 +24,10 @@ import { ConvexError } from "convex/values";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
-  teacherHasClassAccess,
 } from "./auth";
+import {
+  teacherHasClassAccess,
+} from "./teacherAccess";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { provisionSchoolPortalAuthUser } from "../platform/provisioningHelpers";
 import {
