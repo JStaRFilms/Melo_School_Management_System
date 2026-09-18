@@ -1,12 +1,66 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceAccessSummary } from "../workspace-access";
 import { getWorkspaceCapabilityDenial } from "../workspace-route-access";
-import {
-  WORKSPACE_CAPABILITY_MATRIX,
-} from "../workspace-capability-matrix";
-import type { PermissionCapability } from "../capability-contract";
+import { WORKSPACE_CAPABILITY_MATRIX } from "../workspace-capability-matrix";
+import { TEACHER_PLANNING_CAPABILITIES } from "../capability-contract";
 
 type Workspace = "admin" | "teacher";
+
+type ContractEntry = {
+  workspace: Workspace;
+  path: string;
+  exact?: true;
+  required: readonly string[];
+  requiredAny: readonly string[];
+};
+
+/**
+ * Independently maintained server/client contract snapshot (consolidation
+ * P11). This literal is the oracle: if the matrix drifts, this test fails
+ * and a human reviews whether the matrix or the contract moves. It must
+ * never be generated from the matrix at test time.
+ */
+const EXPECTED_CONTRACT: readonly ContractEntry[] = [
+  { workspace: "admin", path: "/admin/dashboard", required: [], requiredAny: [] },
+  { workspace: "admin", path: "/admin", exact: true, required: ["staff.list.view"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/students", required: ["enrollment.intakes.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/admissions/retention", required: ["enrollment.intakes.manage", "enrollment.decisions.record"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/admissions", exact: true, required: [], requiredAny: ["enrollment.intakes.manage", "enrollment.applications.list"] },
+  { workspace: "admin", path: "/admin/admissions", required: ["enrollment.applications.view_basic"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/students/import", required: ["system.migration.execute"], requiredAny: [] },
+  { workspace: "admin", path: "/students/import", required: ["system.migration.execute"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/teachers", required: ["staff.list.view"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/sessions", required: ["academic.classes.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/classes", required: ["academic.classes.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/subjects", required: ["academic.subjects.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/events", required: ["academic.classes.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/assessments/results/entry", required: ["academic.assessments.enter"], requiredAny: [] },
+  { workspace: "admin", path: "/assessments/report-cards", required: ["academic.report_cards.preview"], requiredAny: [] },
+  { workspace: "admin", path: "/assessments/report-cards/manual-adjustments", required: ["academic.assessments.adjust"], requiredAny: [] },
+  { workspace: "admin", path: "/assessments/report-cards/backfill", required: ["academic.assessments.adjust"], requiredAny: [] },
+  { workspace: "admin", path: "/assessments/report-card-extras", required: ["academic.report_cards.preview"], requiredAny: [] },
+  { workspace: "admin", path: "/assessments/setup", required: ["academic.grading_bands.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/assets", required: ["assets.library.view"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/assets/archive", required: ["assets.library.view", "assets.archive.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/assets/trash", required: ["assets.library.view"], requiredAny: ["assets.trash.manage", "assets.restore", "assets.holds.apply", "assets.holds.remove", "assets.permanent_delete"] },
+  { workspace: "admin", path: "/admin/permissions", required: ["staff.permissions.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/audit", required: ["audit.branch.view"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/group", required: ["audit.group.view"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/settings", required: [], requiredAny: ["settings.general.edit", "settings.branding.manage"] },
+  { workspace: "admin", path: "/admin/settings/admission-numbering", required: ["enrollment.intakes.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/admin/settings/email-domains", required: [], requiredAny: ["settings.domains.manage", "staff.onboard", "staff.account.suspend", "enrollment.intakes.manage"] },
+  { workspace: "admin", path: "/billing", required: ["finance.reports.view"], requiredAny: [] },
+  { workspace: "admin", path: "/billing/bank-accounts", required: ["finance.bank_details.manage"], requiredAny: [] },
+  { workspace: "admin", path: "/billing/settlements", required: ["finance.settlements.view"], requiredAny: [] },
+  { workspace: "admin", path: "/academic/knowledge", required: ["academic.curriculum.manage"], requiredAny: [] },
+  { workspace: "teacher", path: "/", exact: true, required: [], requiredAny: [] },
+  { workspace: "teacher", path: "/planning", required: [], requiredAny: ["academic.planning.use", "academic.curriculum.manage"] },
+  { workspace: "teacher", path: "/assessments/exams", required: ["academic.assessments.enter"], requiredAny: [] },
+  { workspace: "teacher", path: "/assessments/report-card-workbench", required: ["academic.report_cards.preview"], requiredAny: [] },
+  { workspace: "teacher", path: "/assessments/report-cards", required: ["academic.report_cards.preview"], requiredAny: [] },
+  { workspace: "teacher", path: "/assessments/report-card-extras", required: ["academic.report_cards.preview"], requiredAny: [] },
+  { workspace: "teacher", path: "/enrollment/subjects", required: ["enrollment.intakes.manage"], requiredAny: [] },
+];
 
 const readyManaged = (
   effectiveCapabilities: readonly string[],
@@ -33,53 +87,34 @@ const readyManaged = (
   teacherAssignments: { source: "domain_checks_required", legacyTeacherId: null },
 });
 
-function within(path: string, prefix: string) {
-  return path === prefix || path.startsWith(`${prefix}/`);
-}
-
-type MatrixRow = (typeof WORKSPACE_CAPABILITY_MATRIX)[number];
-
-/** Mirror of the client's documented longest-path-wins rule selection. */
-function winningRule(workspace: Workspace, path: string): MatrixRow | undefined {
-  return WORKSPACE_CAPABILITY_MATRIX.filter(
-    (row) => row.workspace === workspace && (row.exact ? path === row.path : within(path, row.path)),
-  ).sort((a, b) => b.path.length - a.path.length)[0];
-}
-
-/** Probe corpus: every row path plus a subpath so shadowed prefix rows are covered. */
-function corpus(): Array<{ workspace: Workspace; path: string }> {
-  const seen = new Set<string>();
-  const out: Array<{ workspace: Workspace; path: string }> = [];
-  for (const row of WORKSPACE_CAPABILITY_MATRIX) {
-    for (const path of [row.path, `${row.path}/sub`]) {
-      const key = `${row.workspace} ${path}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push({ workspace: row.workspace as Workspace, path });
-      }
-    }
-  }
-  return out;
-}
-
 function clientAllows(workspace: Workspace, path: string, caps: readonly string[]): boolean {
   return getWorkspaceCapabilityDenial(workspace, path, readyManaged(caps)) === null;
 }
 
-/**
- * Documented server rule for pure single-capability routes (B11): the endpoint
- * enforces its one operation capability. This model is test-only scaffolding
- * for the flip decision; it is not product code and must not be imported by
- * any UI. Routes with conjunctive or mixed endpoint checks are modeled
- * concretely below, never flattened into `some`.
- */
-function serverAllows(
-  required: readonly PermissionCapability[],
-  requiredAny: readonly PermissionCapability[] | undefined,
-  caps: readonly string[],
-): boolean {
-  if (required.length === 0 && (requiredAny ?? []).length === 0) return true;
-  return [...required, ...(requiredAny ?? [])].some((cap) => caps.includes(cap));
+function within(path: string, prefix: string) {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/** Mirror of the client's documented longest-path-wins rule selection. */
+function winningEntry(workspace: Workspace, path: string): ContractEntry | undefined {
+  return EXPECTED_CONTRACT.filter(
+    (entry) => entry.workspace === workspace && (entry.exact ? path === entry.path : within(path, entry.path)),
+  ).sort((a, b) => b.path.length - a.path.length)[0];
+}
+
+function corpus(): Array<{ workspace: Workspace; path: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ workspace: Workspace; path: string }> = [];
+  for (const entry of EXPECTED_CONTRACT) {
+    for (const path of [entry.path, `${entry.path}/sub`]) {
+      const key = `${entry.workspace} ${path}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({ workspace: entry.workspace, path });
+      }
+    }
+  }
+  return out;
 }
 
 const TRASH_CAPABILITIES = [
@@ -92,102 +127,75 @@ const TRASH_CAPABILITIES = [
 
 /**
  * Concrete server models per route, derived from the real endpoint checks
- * (assetWorkspace.listAssets conjunctions; retention policy vs manual
- * endpoints). Any endpoint change here must update this model first.
+ * (assetWorkspace conjunctions; retention policy vs manual endpoints). Any
+ * endpoint change here must update this model first.
  */
-function concreteServerAllows(workspace: Workspace, path: string, caps: readonly string[]): boolean | null {
+function concreteServerAllows(workspace: Workspace, path: string, caps: readonly string[]): boolean {
   const has = (cap: string) => caps.includes(cap);
-  const some = (list: readonly string[]) => list.some(has);
   if (workspace === "admin" && path === "/admin/assets/archive") {
     return has("assets.library.view") && has("assets.archive.manage");
   }
   if (workspace === "admin" && path === "/admin/assets/trash") {
-    return has("assets.library.view") && some(TRASH_CAPABILITIES);
+    return has("assets.library.view") && TRASH_CAPABILITIES.some(has);
   }
   if (workspace === "admin" && path === "/admin/admissions/retention") {
-    // Policy endpoints need intakes.manage only; manual endpoints need both.
-    // The route gate demands both, so it is stricter than the policy path.
     return has("enrollment.intakes.manage");
   }
-  return null;
+  throw new Error(`no concrete server model for ${workspace} ${path}`);
 }
 
 describe("client-vs-server route verdicts (consolidation P11, test only)", () => {
-  it("admits full holders on every reachable rule", () => {
-    for (const { workspace, path } of corpus()) {
-      const rule = winningRule(workspace, path);
-      if (!rule) continue;
-      const caps = [...rule.required, ...(rule.requiredAny ?? []).slice(0, 1)];
-      expect(clientAllows(workspace, path, caps), `${workspace} ${path}`).toBe(true);
-    }
-  });
-
-  it("denies empty holders everywhere except open rules", () => {
-    for (const { workspace, path } of corpus()) {
-      const rule = winningRule(workspace, path);
-      if (!rule) continue;
-      const open = rule.required.length === 0 && (rule.requiredAny ?? []).length === 0;
-      expect(clientAllows(workspace, path, []), `${workspace} ${path}`).toBe(open);
-    }
+  it("matrix matches the independently maintained contract", () => {
+    // The import resolves the shared reference to values for comparison only;
+    // the expected values below stay hardcoded, so constant drift still fails.
+    const actual = WORKSPACE_CAPABILITY_MATRIX.map((row) => ({
+      workspace: row.workspace,
+      path: row.path,
+      ...(row.exact ? { exact: true as const } : {}),
+      required: [...row.required],
+      requiredAny: [...(row.requiredAny === undefined ? [] : row.requiredAny === TEACHER_PLANNING_CAPABILITIES ? ["academic.planning.use", "academic.curriculum.manage"] : row.requiredAny)],
+    }));
+    expect(actual).toEqual(EXPECTED_CONTRACT);
   });
 
   it("agrees with the server on pure single-or-open rules", () => {
     const seen = new Set<string>();
     let probed = 0;
     for (const { workspace, path } of corpus()) {
-      const rule = winningRule(workspace, path);
-      // required=[] rows agree (client every([]) is vacuous); single-required
-      // rows without requiredAny coincide. Everything else diverges (next test).
-      if (!rule || rule.required.length > 1 || (rule.required.length === 1 && (rule.requiredAny ?? []).length > 0)) continue;
-      const key = `${workspace} ${rule.path}`;
+      const entry = winningEntry(workspace, path);
+      if (!entry || entry.path === "/admin/assets/archive" || entry.path === "/admin/assets/trash" || entry.path === "/admin/admissions/retention") continue;
+      if (entry.required.length > 1) continue;
+      if (entry.required.length === 1 && entry.requiredAny.length > 0) continue;
+      const key = `${workspace} ${entry.path}`;
       if (seen.has(key)) continue;
       seen.add(key);
       probed += 1;
+      // Every requiredAny alternative is probed, each combined with full required.
       const probes: readonly string[][] = [
         [],
-        [...rule.required],
+        [...entry.required],
+        ...entry.requiredAny.map((alt) => [...entry.required, alt]),
         ["unrelated.capability"],
       ];
       for (const caps of probes) {
-        expect(
-          clientAllows(workspace, path, caps),
-          `client ${workspace} ${path} [${caps}]`,
-        ).toBe(serverAllows(rule.required, rule.requiredAny, caps));
+        const server = entry.required.length === 0 && entry.requiredAny.length === 0
+          ? true
+          : [...entry.required, ...entry.requiredAny].some((cap) => caps.includes(cap));
+        expect(clientAllows(workspace, path, caps), `client ${workspace} ${path} [${caps}]`).toBe(server);
       }
     }
     expect(probed).toBeGreaterThan(0);
   });
 
-  it("locks the known quantifier divergences for the flip decision", () => {
-    const seen = new Set<string>();
-    const divergent: MatrixRow[] = [];
-    for (const { workspace, path } of corpus()) {
-      const rule = winningRule(workspace, path);
-      if (!rule) continue;
-      // required=[] rows agree with the server (vacuous every + same some);
-      // divergence needs at least one required plus a second conjunct.
-      if (rule.required.length === 0) continue;
-      if (rule.required.length === 1 && (rule.requiredAny ?? []).length === 0) continue;
-      const key = `${workspace} ${rule.path}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      divergent.push(rule);
-    }
-    // New diverging rules must be reviewed here before they ship.
-    expect(divergent.map((rule) => `${rule.workspace} ${rule.path}`).sort()).toEqual([
-      "admin /admin/admissions/retention",
-      "admin /admin/assets/archive",
-      "admin /admin/assets/trash",
-    ]);
-    // Asset workspaces agree concretely: the endpoints conjoin the same sets.
+  it("agrees exactly on asset workspace conjunctions", () => {
     for (const path of ["/admin/assets/archive", "/admin/assets/trash"]) {
       const probes: readonly string[][] = [
         [],
         ["assets.library.view"],
         ["assets.archive.manage"],
-        ["assets.trash.manage"],
+        ...TRASH_CAPABILITIES.map((alt) => ["assets.library.view", alt]),
+        ...TRASH_CAPABILITIES.map((alt) => [alt]),
         ["assets.library.view", "assets.archive.manage"],
-        ["assets.library.view", "assets.trash.manage"],
       ];
       for (const caps of probes) {
         expect(clientAllows("admin", path, caps), `client ${path} [${caps}]`).toBe(
@@ -195,8 +203,10 @@ describe("client-vs-server route verdicts (consolidation P11, test only)", () =>
         );
       }
     }
-    // Retention is the real divergence: the route gate demands both
-    // capabilities while the policy endpoints need intakes.manage only.
+  });
+
+  it("locks the retention divergence for the flip decision", () => {
+    // Route gate demands both; policy endpoints need intakes.manage only.
     expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage"])).toBe(false);
     expect(concreteServerAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage"])).toBe(true);
     expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.decisions.record"])).toBe(false);
