@@ -361,12 +361,30 @@ export function sanitizeAdmissionsAuditFields(args: {
   reasonCode?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }): { entityId: string; reasonCode?: string; metadataJson?: string } {
+  // Sanitize each metadata VALUE before JSON.stringify: redacting the
+  // serialized string can drop quotes or replace the whole payload with a
+  // bare marker, producing metadataJson that no longer parses. Probe with
+  // key context so bare secrets (password: "hunter2") still trigger the
+  // key=value redaction rules; any redaction replaces the stored value.
+  const sanitizeMetadataValue = (key: string, value: string): string => {
+    const probe = sanitizeAuditSummary(`${key}=${value}`);
+    if (probe === `${key}=${value}`) return value;
+    return probe.startsWith(`${key}=`)
+      ? probe.slice(key.length + 1)
+      : "[REDACTED_SECRET]";
+  };
+  const sanitizedMetadata = args.metadata
+    ? Object.fromEntries(
+        Object.entries(args.metadata).map(([key, value]) => [
+          key,
+          typeof value === "string" ? sanitizeMetadataValue(key, value) : value,
+        ]),
+      )
+    : undefined;
   return {
     entityId: sanitizeAuditSummary(args.entityId),
     ...(args.reasonCode ? { reasonCode: sanitizeAuditSummary(args.reasonCode) } : {}),
-    ...(args.metadata
-      ? { metadataJson: sanitizeAuditSummary(JSON.stringify(args.metadata)) }
-      : {}),
+    ...(sanitizedMetadata ? { metadataJson: JSON.stringify(sanitizedMetadata) } : {}),
   };
 }
 

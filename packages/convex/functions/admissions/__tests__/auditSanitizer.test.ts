@@ -55,6 +55,22 @@ describe("sanitizeAdmissionsAuditFields (consolidation P1)", () => {
     expect(entityId).toContain("[REDACTED_SECRET]");
   });
 
+  it("keeps metadataJson parseable for quoted secrets and sensitive keys", () => {
+    const { metadataJson } = sanitizeAdmissionsAuditFields({
+      entityId: "doc-key-1",
+      metadata: {
+        password: "hunter2",
+        note: "passport=ABC123",
+        big: "x".repeat(3000),
+      },
+    });
+    expect(metadataJson).not.toContain("hunter2");
+    const parsed = JSON.parse(metadataJson as string);
+    expect(parsed.password).toContain("[REDACTED_SECRET]");
+    expect(typeof parsed.note).toBe("string");
+    expect(typeof parsed.big).toBe("string");
+  });
+
   it("omits optional fields when absent", () => {
     expect(sanitizeAdmissionsAuditFields({ entityId: "x" })).toEqual({ entityId: "x" });
   });
