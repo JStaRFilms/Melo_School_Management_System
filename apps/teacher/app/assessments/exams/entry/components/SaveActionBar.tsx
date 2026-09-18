@@ -2,17 +2,9 @@
 
 import { Save, Loader2 } from "lucide-react";
 import { useSaveAction } from "@school/shared/examSelection/client";
+import type { SaveBarProps } from "@school/shared/examSelection";
 
-interface SaveActionBarProps {
-  hasUnsavedChanges: boolean;
-  hasValidationErrors: boolean;
-  errorCount: number;
-  onSave: () => Promise<unknown>;
-  onCancel: () => void;
-  dirtyCount: number;
-  isEditingLocked?: boolean;
-  lockMessage?: string;
-}
+interface SaveActionBarProps extends SaveBarProps {}
 
 export function SaveActionBar({
   hasUnsavedChanges,
