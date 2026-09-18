@@ -354,14 +354,15 @@ export async function requireAdmissionsStaff(
  * rules to catch). Numeric NIN/account values are covered here too.
  */
 const ADMISSIONS_AUDIT_PII_KEY =
-  /(password|passwd|secret|token|bearer|apikey|api_key|auth|nin|national|account|nuban|phone|mobile|email|passport|medical|health|safeguard|guardian|bank)/i;
+  /((password|passwd|secret|token|bearer|apikey|api_key|auth|nin|national|account|nuban|phone|mobile|email|passport|medical|health|safeguard|guardian|bank)|(Key|Reference)$)/i;
 /**
  * Opaque correlation identifiers (Paystack providerEventId, Convex snapshot
  * ids): digit-masking them breaks payment-event correlation, so masking-only
  * changes are discarded and the exact value is kept. Secret markers still
- * drop the value.
+ * drop the value. Deliberately narrow (*Id only): *Key/*Reference keys fail
+ * closed into PII redaction above.
  */
-const ADMISSIONS_AUDIT_ID_KEY = /(Id|Key|Reference|_id|_key)$/;
+const ADMISSIONS_AUDIT_ID_KEY = /(Id|_id)$/;
 
 /**
  * Shared PII redaction for admissions audit writes (consolidation P1).

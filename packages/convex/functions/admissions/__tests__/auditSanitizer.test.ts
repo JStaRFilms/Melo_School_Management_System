@@ -61,6 +61,16 @@ describe("sanitizeAdmissionsAuditFields (consolidation P1)", () => {
     expect(parsed.revision).toBe(3);
   });
 
+  it("fails closed on *Key/*Reference keys holding bare secrets", () => {
+    const { metadataJson } = sanitizeAdmissionsAuditFields({
+      entityId: "attempt-1",
+      metadata: { accessKey: "AKIAIOSFODNN7EXAMPLE", documentCount: 2 },
+    });
+    const parsed = JSON.parse(metadataJson as string);
+    expect(parsed.accessKey).toBe("[REDACTED_SECRET]");
+    expect(parsed.documentCount).toBe(2);
+  });
+
   it("redacts secret-bearing document keys in entityId", () => {
     const { entityId } = sanitizeAdmissionsAuditFields({
       entityId: "upload password=hunter2 doc-key-9",
