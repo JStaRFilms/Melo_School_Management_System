@@ -11,6 +11,7 @@ import {
   resolveActiveMembership,
 } from "./auth";
 import { getContextCapabilities } from "./rbac";
+import { getActiveSession } from "./sessionScope";
 import {
   formatClassDisplayName,
   normalizeClassGradeName,
@@ -1924,12 +1925,7 @@ export const createClass = mutation({
     // Resolve target session
     let targetSessionId = args.sessionId;
     if (!targetSessionId) {
-      const activeSession = await ctx.db
-        .query("academicSessions")
-        .withIndex("by_school_active", (q) =>
-          q.eq("schoolId", schoolId).eq("isActive", true)
-        )
-        .first();
+      const activeSession = await getActiveSession(ctx, schoolId);
       targetSessionId = activeSession?._id;
     }
 
@@ -1984,12 +1980,7 @@ export const listClasses = query({
       "enrollment.intakes.manage"
     );
 
-    const activeSession = await ctx.db
-      .query("academicSessions")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .first();
+    const activeSession = await getActiveSession(ctx, schoolId);
 
     const targetSessionId = args.sessionId ?? activeSession?._id;
 
@@ -2179,12 +2170,7 @@ export const updateClass = mutation({
     });
 
     // Resolve target session
-    const activeSession = await ctx.db
-      .query("academicSessions")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .first();
+    const activeSession = await getActiveSession(ctx, schoolId);
 
     const targetSessionId = args.sessionId ?? activeSession?._id;
     const isTargetSessionActive =
