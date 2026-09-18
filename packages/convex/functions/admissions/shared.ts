@@ -369,8 +369,9 @@ const ADMISSIONS_AUDIT_ID_KEY = /(Id|_id)$/;
  * The admissions audit table stays split from the canonical auditEvents table
  * (different outcome enum with "blocked", per-application indexing, its own
  * retention policy model), so only the sanitizer is shared, not the writer.
- * Sanitize AFTER normalizeRequiredText: length/required validation checks the
- * caller's contract first, and redaction itself must never throw.
+ * Callers normalize first (length/required contract), then this helper
+ * redacts: validation never depends on secret content, and redaction itself
+ * never throws.
  */
 export function sanitizeAdmissionsAuditFields(args: {
   entityId: string;
@@ -431,9 +432,14 @@ export async function recordAdmissionsAudit(
     metadata?: Record<string, string | number | boolean | null>;
   },
 ) {
+  // Normalize the caller's contract FIRST, then redact: validation must not
+  // depend on secret content (an overlong secret-bearing reason must fail the
+  // same length check as an overlong ordinary one).
   const sanitized = sanitizeAdmissionsAuditFields({
-    entityId: args.entityId,
-    reasonCode: args.reasonCode,
+    entityId: normalizeRequiredText(args.entityId, "Audit entity ID", 200),
+    reasonCode: args.reasonCode
+      ? normalizeRequiredText(args.reasonCode, "Reason code", 120)
+      : undefined,
     metadata: args.metadata,
   });
   await ctx.db.insert("admissionsAuditEvents", {
@@ -443,12 +449,10 @@ export async function recordAdmissionsAudit(
     ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
     action: normalizeRequiredText(args.action, "Audit action", 120),
     entityType: normalizeRequiredText(args.entityType, "Audit entity type", 80),
-    entityId: normalizeRequiredText(sanitized.entityId, "Audit entity ID", 200),
+    entityId: sanitized.entityId,
     ...(args.applicationId ? { applicationId: args.applicationId } : {}),
     outcome: args.outcome ?? "success",
-    ...(sanitized.reasonCode
-      ? { reasonCode: normalizeRequiredText(sanitized.reasonCode, "Reason code", 120) }
-      : {}),
+    ...(sanitized.reasonCode ? { reasonCode: sanitized.reasonCode } : {}),
     ...(sanitized.metadataJson ? { metadataJson: sanitized.metadataJson } : {}),
     createdAt: Date.now(),
   });
