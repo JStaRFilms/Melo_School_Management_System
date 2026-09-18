@@ -1,4 +1,6 @@
-export function formatMoney(amountMinor: number, currency: string) { return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amountMinor / 100); }
+import { formatMoneyMinor } from "@school/shared/format";
+
+export function formatMoney(amountMinor: number, currency: string) { return formatMoneyMinor(amountMinor, currency); }
 
 export function availabilityMessage(state: "open" | "upcoming" | "paused" | "closed" | "unavailable", opensAt?: number) {
   if (state === "open") return "Applications are open.";

@@ -8,20 +8,14 @@ import {
   type AdminPaystackVerificationResponse,
 } from "@school/shared/paystackReturn";
 import { usePaystackReturnVerification } from "@school/shared/paystackReturn/client";
+import { formatDateTimeNG, formatMoneyMajor } from "@school/shared/format";
 
 function formatMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatMoneyMajor(amount, currency);
 }
 
 function formatDateTime(value: number) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
+  return formatDateTimeNG(value);
 }
 
 export function PaystackReturnClient({ reference }: { reference: string }) {
