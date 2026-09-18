@@ -17,6 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import type { ReportCardSheetData } from "@school/shared";
+import { EmptyState } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -714,15 +715,6 @@ function Selector({
         ))}
       </select>
     </label>
-  );
-}
-
-function EmptyState({ title, message }: { title: string; message: string }) {
-  return (
-    <section className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-8 shadow-sm">
-      <p className="font-extrabold text-slate-950">{title}</p>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">{message}</p>
-    </section>
   );
 }
 

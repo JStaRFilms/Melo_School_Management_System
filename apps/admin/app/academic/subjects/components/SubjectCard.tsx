@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { Avatar } from "@school/shared";
 import type { SubjectRecord } from "@/types";
 import { Archive } from "lucide-react";
 
@@ -17,13 +18,6 @@ export function SubjectCard({
   onSelect,
   onArchive,
 }: SubjectCardProps) {
-  const initials = subject.name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part: string) => part.charAt(0).toUpperCase())
-    .join("");
-
   return (
     <AdminSurface
       id={`subject-${subject._id}`}
@@ -37,11 +31,15 @@ export function SubjectCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${
-            isSelected ? "bg-slate-950 text-white shadow-sm" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
-          }`}>
-            {initials}
-          </div>
+          <Avatar
+            name={subject.name}
+            density="md"
+            fallback=""
+            roundedClass="rounded-lg"
+            className={`text-xs font-bold transition-colors ${
+              isSelected ? "bg-slate-950 text-white shadow-sm" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
+            }`}
+          />
           <div className="min-w-0 space-y-0 text-left">
             <h4 className="font-display text-sm font-bold tracking-tight text-slate-950 truncate">
               {subject.name}
