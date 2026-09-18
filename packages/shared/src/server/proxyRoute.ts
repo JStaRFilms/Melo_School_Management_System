@@ -80,7 +80,7 @@ export function createDocumentGrantProxy(
   if (!audience) {
     throw new Error("createDocumentGrantProxy requires an explicit audience.");
   }
-  const { getToken, getSiteUrl = defaultSiteUrl, fetchImpl = fetch } = deps;
+  const { getToken, getSiteUrl = defaultSiteUrl, fetchImpl } = deps;
 
   return async function GET(
     _request: Request,
@@ -94,7 +94,11 @@ export function createDocumentGrantProxy(
     if (!isValidDocumentGrant(grant)) return unavailable();
 
     try {
-      const upstream = await fetchImpl(
+      // Resolve the global fetch at invocation time so per-test stubs
+      // (vi.stubGlobal("fetch", ...)) take effect; an explicitly injected
+      // fetchImpl always wins.
+      const doFetch = fetchImpl ?? fetch;
+      const upstream = await doFetch(
         new URL(DOCUMENT_GRANT_UPSTREAM_PATH, siteUrl),
         {
           method: "POST",
