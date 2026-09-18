@@ -192,7 +192,10 @@ describe("client-vs-server route verdicts (consolidation P11, test only)", () =>
   });
 
   it("agrees exactly on asset workspace conjunctions", () => {
-    for (const path of ["/admin/assets/archive", "/admin/assets/trash"]) {
+    // Base paths and nested subpaths: a fall-through to a weaker parent rule
+    // must fail here, not stay green.
+    for (const path of ["/admin/assets/archive", "/admin/assets/archive/sub", "/admin/assets/trash", "/admin/assets/trash/sub"]) {
+      const rule = path.includes("/archive") ? "/admin/assets/archive" : "/admin/assets/trash";
       const probes: readonly string[][] = [
         [],
         ["assets.library.view"],
@@ -203,7 +206,7 @@ describe("client-vs-server route verdicts (consolidation P11, test only)", () =>
       ];
       for (const caps of probes) {
         expect(clientAllows("admin", path, caps), `client ${path} [${caps}]`).toBe(
-          concreteServerAllows("admin", path, caps),
+          concreteServerAllows("admin", rule, caps),
         );
       }
     }
@@ -211,11 +214,14 @@ describe("client-vs-server route verdicts (consolidation P11, test only)", () =>
 
   it("locks the retention divergence for the flip decision", () => {
     // Route gate demands both; policy endpoints need intakes.manage only.
-    expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage"])).toBe(false);
-    expect(concreteServerAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage"])).toBe(true);
-    expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.decisions.record"])).toBe(false);
-    expect(concreteServerAllows("admin", "/admin/admissions/retention", ["enrollment.decisions.record"])).toBe(false);
-    expect(clientAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage", "enrollment.decisions.record"])).toBe(true);
-    expect(clientAllows("admin", "/admin/admissions/retention", [])).toBe(false);
+    // Base path and nested subpath both resolve to the retention rule.
+    for (const path of ["/admin/admissions/retention", "/admin/admissions/retention/sub"]) {
+      expect(clientAllows("admin", path, ["enrollment.intakes.manage"])).toBe(false);
+      expect(concreteServerAllows("admin", "/admin/admissions/retention", ["enrollment.intakes.manage"])).toBe(true);
+      expect(clientAllows("admin", path, ["enrollment.decisions.record"])).toBe(false);
+      expect(concreteServerAllows("admin", "/admin/admissions/retention", ["enrollment.decisions.record"])).toBe(false);
+      expect(clientAllows("admin", path, ["enrollment.intakes.manage", "enrollment.decisions.record"])).toBe(true);
+      expect(clientAllows("admin", path, [])).toBe(false);
+    }
   });
 });
