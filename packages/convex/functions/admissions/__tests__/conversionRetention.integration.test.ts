@@ -240,7 +240,7 @@ it("completes a governed manual-number conversion through the scheduler path", a
 });
 
 it("rejects scheduler-path governed conversion from a cross-tenant or unauthorized persisted requester", async () => {
-  for (const name of ["cross-tenant", "revoked-capability", "mislinked-identity", "duplicate-membership"] as const) {
+  for (const name of ["cross-tenant", "revoked-capability", "mislinked-identity", "duplicate-membership", "legacy-shadow-duplicate"] as const) {
     const f = await fixture();
     await f.t.run((ctx) => ctx.db.insert("admissionNumberPolicies", { schoolId: f.schoolId, pattern: "{SEQ}", schoolCode: "ADM", campusCode: "MAIN", currentSequence: 0, createdAt: Date.now(), updatedAt: Date.now() }));
     const requested = await f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: `governed-${name}`, classId: f.classId, admissionNumber: "GOV/002", familyResolution: { kind: "create" as const }, overrideConfirmed: true, overrideReason: "Board-approved legacy number", overrideCounterDecision: "keep" });
@@ -259,6 +259,14 @@ it("rejects scheduler-path governed conversion from a cross-tenant or unauthoriz
         const staffUser = await ctx.db.get(conversion.requestedByUserId);
         if (!staffUser?.personId) throw new Error("persisted requester person missing");
         await ctx.db.insert("branchMemberships", { personId: staffUser.personId, schoolId: f.schoolId, legacyUserId: staffUser._id, status: "suspended", isDefaultBranch: false, joinedAt: 1, updatedAt: 1 });
+      } else if (name === "legacy-shadow-duplicate") {
+        const conversion = await ctx.db.get(requested.conversionId as Id<"admissionsConversions">);
+        if (!conversion?.requestedByUserId) throw new Error("persisted requester missing");
+        const staffUser = await ctx.db.get(conversion.requestedByUserId);
+        if (!staffUser?.personId) throw new Error("persisted requester person missing");
+        const personId = staffUser.personId;
+        await ctx.db.patch(staffUser._id, { personId: undefined });
+        await ctx.db.insert("branchMemberships", { personId, schoolId: f.schoolId, status: "active", isDefaultBranch: false, joinedAt: 1, updatedAt: 1 });
       } else {
         const conversion = await ctx.db.get(requested.conversionId as Id<"admissionsConversions">);
         const staffUser = conversion?.requestedByUserId ? await ctx.db.get(conversion.requestedByUserId) : null;
@@ -271,7 +279,14 @@ it("rejects scheduler-path governed conversion from a cross-tenant or unauthoriz
       }
     });
     await f.t.mutation(processConversionRef, { conversionId: requested.conversionId });
-    expect(await f.t.run((ctx) => ctx.db.get(requested.conversionId))).toMatchObject({ state: "failed_retryable", errorCode: "CONVERSION_RETRY_REQUIRED" });
+    // Ambiguous/missing-membership states need human reconciliation (terminal);
+    // other authorization failures stay retryable; both fail closed with no writes.
+    const terminal = name === "mislinked-identity" || name === "duplicate-membership" || name === "legacy-shadow-duplicate";
+    expect(await f.t.run((ctx) => ctx.db.get(requested.conversionId))).toMatchObject(
+      terminal
+        ? { state: "failed_terminal", errorCode: "CONVERSION_RESOLUTION_REQUIRED" }
+        : { state: "failed_retryable", errorCode: "CONVERSION_RETRY_REQUIRED" },
+    );
     expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(0);
     expect(await f.t.run((ctx) => ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).collect())).toHaveLength(0);
     expect(await f.t.run((ctx) => ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", f.schoolId).eq("number", "GOV/002")).unique())).toBeNull();

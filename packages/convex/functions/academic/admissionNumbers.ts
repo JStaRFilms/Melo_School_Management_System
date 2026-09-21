@@ -1175,7 +1175,7 @@ async function requireManualOverrideAuthority(
     // Any duplicate person/school membership is reconciliation-required
     // (auth.ts), never something the scheduler resolves by filtering.
     if (inSchool.length !== 1) {
-      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester lacks a unique branch membership" });
+      throw new ConvexError({ code: "FORBIDDEN", message: "Not authorized: ambiguous branch membership; reviewed mapping required" });
     }
     const membership = inSchool[0];
     if (membership.status !== "active") {
@@ -1185,6 +1185,15 @@ async function requireManualOverrideAuthority(
     // carries no legacy link (auth.ts rejects the same reconciliation state).
     if (membership.legacyUserId !== requester._id) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: mismatched legacy identity link" });
+    }
+    // Person-wide uniqueness, whichever branch resolved the candidate: a shadow
+    // membership under the same person must reconcile, never authorize.
+    const personPeers = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_person_and_school", (q) => q.eq("personId", membership.personId).eq("schoolId", schoolId))
+      .take(2);
+    if (personPeers.length !== 1) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Not authorized: ambiguous branch membership; reviewed mapping required" });
     }
     const effective = await evaluateEffectiveCapabilities(ctx, membership._id);
     if (!effective.some((value) => normalizeCapability(value) === normalizeCapability("enrollment.admissions.override_number"))) {
