@@ -240,7 +240,7 @@ it("completes a governed manual-number conversion through the scheduler path", a
 });
 
 it("rejects scheduler-path governed conversion from a cross-tenant or unauthorized persisted requester", async () => {
-  for (const name of ["cross-tenant", "revoked-capability"] as const) {
+  for (const name of ["cross-tenant", "revoked-capability", "mislinked-identity"] as const) {
     const f = await fixture();
     await f.t.run((ctx) => ctx.db.insert("admissionNumberPolicies", { schoolId: f.schoolId, pattern: "{SEQ}", schoolCode: "ADM", campusCode: "MAIN", currentSequence: 0, createdAt: Date.now(), updatedAt: Date.now() }));
     const requested = await f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: `governed-${name}`, classId: f.classId, admissionNumber: "GOV/002", familyResolution: { kind: "create" as const }, overrideConfirmed: true, overrideReason: "Board-approved legacy number", overrideCounterDecision: "keep" });
@@ -248,6 +248,11 @@ it("rejects scheduler-path governed conversion from a cross-tenant or unauthoriz
       if (name === "cross-tenant") {
         const foreignUserId = await ctx.db.insert("users", { schoolId: f.otherSchoolId, authId: "foreign:requester", name: "Foreign", email: "foreign@example.test", role: "admin", isSchoolAdmin: true, createdAt: 1, updatedAt: 1 });
         await ctx.db.patch(requested.conversionId, { requestedByUserId: foreignUserId });
+      } else if (name === "mislinked-identity") {
+        const conversion = await ctx.db.get(requested.conversionId as Id<"admissionsConversions">);
+        if (!conversion?.requestedByUserId) throw new Error("persisted requester missing");
+        const otherPersonId = await ctx.db.insert("persons", { authTokenIdentifier: "test|mislinked", name: "Mislinked", email: "mislinked@test.invalid", status: "active", createdAt: 1, updatedAt: 1 });
+        await ctx.db.patch(conversion.requestedByUserId, { personId: otherPersonId });
       } else {
         const conversion = await ctx.db.get(requested.conversionId as Id<"admissionsConversions">);
         const staffUser = conversion?.requestedByUserId ? await ctx.db.get(conversion.requestedByUserId) : null;
@@ -255,7 +260,8 @@ it("rejects scheduler-path governed conversion from a cross-tenant or unauthoriz
         const assignments = await ctx.db.query("membershipRoleAssignments").collect();
         const memberships = await ctx.db.query("branchMemberships").collect();
         const target = memberships.find((row) => row.legacyUserId === staffUser._id && row.schoolId === f.schoolId);
-        for (const row of assignments.filter((row) => row.membershipId === target?._id)) await ctx.db.delete(row._id);
+        if (!target) throw new Error("persisted requester membership missing");
+        for (const row of assignments.filter((row) => row.membershipId === target._id)) await ctx.db.delete(row._id);
       }
     });
     await f.t.mutation(processConversionRef, { conversionId: requested.conversionId });

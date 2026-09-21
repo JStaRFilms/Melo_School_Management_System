@@ -1160,14 +1160,24 @@ async function requireManualOverrideAuthority(
     if (!requester || requester.schoolId !== schoolId || requester.isArchived) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester is not in this school" });
     }
-    const memberships = await ctx.db
-      .query("branchMemberships")
-      .withIndex("by_legacy_user", (q) => q.eq("legacyUserId", requestedByUserId))
-      .take(3);
+    // Mirror the interactive path's canonical linkage checks (auth.ts):
+    // resolve through the person's school membership, never legacyUserId alone.
+    const memberships = requester.personId
+      ? await ctx.db
+          .query("branchMemberships")
+          .withIndex("by_person_and_school", (q) => q.eq("personId", requester.personId!).eq("schoolId", schoolId))
+          .take(2)
+      : await ctx.db
+          .query("branchMemberships")
+          .withIndex("by_legacy_user", (q) => q.eq("legacyUserId", requestedByUserId))
+          .take(101);
     const active = memberships.filter((row) => row.schoolId === schoolId && row.status === "active");
     const membership = active[0];
     if (!membership || active.length !== 1) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester lacks an active branch membership" });
+    }
+    if (membership.legacyUserId && membership.legacyUserId !== requester._id) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: mismatched legacy identity link" });
     }
     const effective = await evaluateEffectiveCapabilities(ctx, membership._id);
     if (!effective.some((value) => normalizeCapability(value) === normalizeCapability("enrollment.admissions.override_number"))) {
