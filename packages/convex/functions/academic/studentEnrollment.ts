@@ -461,6 +461,7 @@ export async function createCanonicalStudentEnrollmentHelper(
     numberingCounterVersion?: number;
     numberingSessionId?: Id<"academicSessions">;
     numberingResetPeriod?: string;
+    requestedByUserId?: Id<"users">;
   },
 ) {
   const classDoc = await ctx.db.get(args.classId);
@@ -492,6 +493,7 @@ export async function createCanonicalStudentEnrollmentHelper(
         expectedCounterVersion: args.numberingCounterVersion,
         expectedSessionId: args.numberingSessionId,
         expectedResetPeriod: args.numberingResetPeriod,
+        ...(args.requestedByUserId ? { requestedByUserId: args.requestedByUserId } : {}),
       });
     } else {
       await claimAdmissionNumberHelper(ctx, args.schoolId, admissionNumber);

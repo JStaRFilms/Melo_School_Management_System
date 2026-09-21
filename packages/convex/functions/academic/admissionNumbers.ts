@@ -7,7 +7,7 @@ import {
 } from "../../_generated/server";
 import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { requireCapability } from "./rbac";
+import { evaluateEffectiveCapabilities, normalizeCapability, requireCapability } from "./rbac";
 import { getActiveSession as getActiveSessionScope } from "./sessionScope";
 import { recordAuditEventHelper } from "./audit";
 import { requireGroupOwner } from "./groupSettings";
@@ -1142,6 +1142,59 @@ export async function claimAdmissionNumberHelper(
   });
 }
 
+/**
+ * Governed manual-number authority. Prefers ambient scheduler/worker identity;
+ * when the worker runs without ambient auth (Convex scheduler/cron), falls
+ * back to the persisted conversion requester after tenant + capability checks.
+ */
+async function requireManualOverrideAuthority(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  requestedByUserId?: Id<"users">,
+) {
+  try {
+    return await requireCapability(ctx, schoolId, "enrollment.admissions.override_number");
+  } catch (error) {
+    if (!isUnauthenticated(error) || !requestedByUserId) throw error;
+    const requester = await ctx.db.get(requestedByUserId);
+    if (!requester || requester.schoolId !== schoolId || requester.isArchived) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester is not in this school" });
+    }
+    const memberships = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_legacy_user", (q) => q.eq("legacyUserId", requestedByUserId))
+      .take(3);
+    const active = memberships.filter((row) => row.schoolId === schoolId && row.status === "active");
+    const membership = active[0];
+    if (!membership || active.length !== 1) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester lacks an active branch membership" });
+    }
+    const effective = await evaluateEffectiveCapabilities(ctx, membership._id);
+    if (!effective.some((value) => normalizeCapability(value) === normalizeCapability("enrollment.admissions.override_number"))) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester does not hold required capability 'enrollment.admissions.override_number'" });
+    }
+    const person = await ctx.db.get(membership.personId);
+    return {
+      personId: membership.personId,
+      membershipId: membership._id,
+      schoolId,
+      userId: requester._id,
+      role: requester.role,
+      isPlatformAdmin: false as const,
+      effectiveCapabilities: effective,
+      personName: person?.name,
+    };
+  }
+}
+
+function isUnauthenticated(error: unknown) {
+  if (!(error instanceof ConvexError)) return false;
+  const data = error.data as unknown;
+  if (typeof data === "object" && data !== null && (data as { code?: unknown }).code === "UNAUTHENTICATED") return true;
+  const message = error.message ?? "";
+  return message.includes("Sign in required") || message.includes("UNAUTHENTICATED");
+}
+
 export async function commitManualAdmissionNumberHelper(
   ctx: MutationCtx,
   args: {
@@ -1159,13 +1212,10 @@ export async function commitManualAdmissionNumberHelper(
     expectedCounterVersion?: number;
     expectedSessionId?: Id<"academicSessions">;
     expectedResetPeriod?: string;
+    requestedByUserId?: Id<"users">;
   },
 ) {
-  const actor = await requireCapability(
-    ctx,
-    args.schoolId,
-    "enrollment.admissions.override_number",
-  );
+  const actor = await requireManualOverrideAuthority(ctx, args.schoolId, args.requestedByUserId);
   if (
     !args.confirmed ||
     !args.reason ||
