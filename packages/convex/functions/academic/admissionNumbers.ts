@@ -1171,12 +1171,19 @@ async function requireManualOverrideAuthority(
           .query("branchMemberships")
           .withIndex("by_legacy_user", (q) => q.eq("legacyUserId", requestedByUserId))
           .take(101);
-    const active = memberships.filter((row) => row.schoolId === schoolId && row.status === "active");
-    const membership = active[0];
-    if (!membership || active.length !== 1) {
+    const inSchool = memberships.filter((row) => row.schoolId === schoolId);
+    // Any duplicate person/school membership is reconciliation-required
+    // (auth.ts), never something the scheduler resolves by filtering.
+    if (inSchool.length !== 1) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester lacks a unique branch membership" });
+    }
+    const membership = inSchool[0];
+    if (membership.status !== "active") {
       throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester lacks an active branch membership" });
     }
-    if (membership.legacyUserId && membership.legacyUserId !== requester._id) {
+    // The membership must link back to the persisted requester, even when it
+    // carries no legacy link (auth.ts rejects the same reconciliation state).
+    if (membership.legacyUserId !== requester._id) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: mismatched legacy identity link" });
     }
     const effective = await evaluateEffectiveCapabilities(ctx, membership._id);
