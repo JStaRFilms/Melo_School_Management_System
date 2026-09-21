@@ -7,7 +7,7 @@ import {
 } from "../../_generated/server";
 import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { requireCapability } from "./rbac";
+import { evaluateEffectiveCapabilities, normalizeCapability, requireCapability } from "./rbac";
 import { getActiveSession as getActiveSessionScope } from "./sessionScope";
 import { recordAuditEventHelper } from "./audit";
 import { requireGroupOwner } from "./groupSettings";
@@ -1142,6 +1142,85 @@ export async function claimAdmissionNumberHelper(
   });
 }
 
+/**
+ * Governed manual-number authority. Prefers ambient scheduler/worker identity;
+ * when the worker runs without ambient auth (Convex scheduler/cron), falls
+ * back to the persisted conversion requester after tenant + capability checks.
+ */
+async function requireManualOverrideAuthority(
+  ctx: MutationCtx,
+  schoolId: Id<"schools">,
+  requestedByUserId?: Id<"users">,
+) {
+  try {
+    return await requireCapability(ctx, schoolId, "enrollment.admissions.override_number");
+  } catch (error) {
+    if (!isUnauthenticated(error) || !requestedByUserId) throw error;
+    const requester = await ctx.db.get(requestedByUserId);
+    if (!requester || requester.schoolId !== schoolId || requester.isArchived) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester is not in this school" });
+    }
+    // Mirror the interactive path's canonical linkage checks (auth.ts):
+    // resolve through the person's school membership, never legacyUserId alone.
+    const memberships = requester.personId
+      ? await ctx.db
+          .query("branchMemberships")
+          .withIndex("by_person_and_school", (q) => q.eq("personId", requester.personId!).eq("schoolId", schoolId))
+          .take(2)
+      : await ctx.db
+          .query("branchMemberships")
+          .withIndex("by_legacy_user", (q) => q.eq("legacyUserId", requestedByUserId))
+          .take(101);
+    const inSchool = memberships.filter((row) => row.schoolId === schoolId);
+    // Any duplicate person/school membership is reconciliation-required
+    // (auth.ts), never something the scheduler resolves by filtering.
+    if (inSchool.length !== 1) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Not authorized: ambiguous branch membership; reviewed mapping required" });
+    }
+    const membership = inSchool[0];
+    if (membership.status !== "active") {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester lacks an active branch membership" });
+    }
+    // The membership must link back to the persisted requester, even when it
+    // carries no legacy link (auth.ts rejects the same reconciliation state).
+    if (membership.legacyUserId !== requester._id) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: mismatched legacy identity link" });
+    }
+    // Person-wide uniqueness, whichever branch resolved the candidate: a shadow
+    // membership under the same person must reconcile, never authorize.
+    const personPeers = await ctx.db
+      .query("branchMemberships")
+      .withIndex("by_person_and_school", (q) => q.eq("personId", membership.personId).eq("schoolId", schoolId))
+      .take(2);
+    if (personPeers.length !== 1) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Not authorized: ambiguous branch membership; reviewed mapping required" });
+    }
+    const effective = await evaluateEffectiveCapabilities(ctx, membership._id);
+    if (!effective.some((value) => normalizeCapability(value) === normalizeCapability("enrollment.admissions.override_number"))) {
+      throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester does not hold required capability 'enrollment.admissions.override_number'" });
+    }
+    const person = await ctx.db.get(membership.personId);
+    return {
+      personId: membership.personId,
+      membershipId: membership._id,
+      schoolId,
+      userId: requester._id,
+      role: requester.role,
+      isPlatformAdmin: false as const,
+      effectiveCapabilities: effective,
+      personName: person?.name,
+    };
+  }
+}
+
+function isUnauthenticated(error: unknown) {
+  if (!(error instanceof ConvexError)) return false;
+  const data = error.data as unknown;
+  if (typeof data === "object" && data !== null && (data as { code?: unknown }).code === "UNAUTHENTICATED") return true;
+  const message = error.message ?? "";
+  return message.includes("Sign in required") || message.includes("UNAUTHENTICATED");
+}
+
 export async function commitManualAdmissionNumberHelper(
   ctx: MutationCtx,
   args: {
@@ -1159,13 +1238,10 @@ export async function commitManualAdmissionNumberHelper(
     expectedCounterVersion?: number;
     expectedSessionId?: Id<"academicSessions">;
     expectedResetPeriod?: string;
+    requestedByUserId?: Id<"users">;
   },
 ) {
-  const actor = await requireCapability(
-    ctx,
-    args.schoolId,
-    "enrollment.admissions.override_number",
-  );
+  const actor = await requireManualOverrideAuthority(ctx, args.schoolId, args.requestedByUserId);
   if (
     !args.confirmed ||
     !args.reason ||
