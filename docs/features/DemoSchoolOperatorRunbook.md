@@ -1,0 +1,36 @@
+# Demo-school operator runbook
+
+This documents the current first-run workflow. It does not authorize a reset. Read the [schema coverage guide](DemoSchoolSchemaCoverage.md) before changing seed or purge behavior.
+
+## First-run target and gates
+
+`e2e/global-setup.js` requires an explicit `CONVEX_DEPLOYMENT=dev:<deployment-name>` selector. It refuses production and preview selectors. Set `DEMO_SEED_DEPLOYMENT_ENV=development`, `DEMO_SEED_OPERATOR_TOKEN`, `DEMO_SEED_DEPLOYMENT_IDENTITY`, and an HTTPS `DEMO_SEED_EXPECTED_CLOUD_URL` ending in `.convex.cloud`.
+
+The expected cloud URL must agree with the server's `CONVEX_CLOUD_URL`. Root environment files, shell `CONVEX_URL` and `NEXT_PUBLIC_CONVEX_URL`, and each Admin, Teacher, and Portal `NEXT_PUBLIC_CONVEX_URL` must agree too. A missing app cloud URL fails the check. The matching site URL is the same deployment name ending in `.convex.site` instead of `.convex.cloud`. Set each app's `NEXT_PUBLIC_CONVEX_SITE_URL` to that sibling. If absent, E2E derives it from the attested cloud URL. Explicit root, shell, or app `CONVEX_SITE_URL` and `NEXT_PUBLIC_CONVEX_SITE_URL` values must match; even a valid URL for another deployment fails before inspection. The operator token and deployment identity must match the server environment; diagnostics intentionally do not print their values.
+
+Set the Convex server's `TRUSTED_ORIGINS` to include `http://localhost:3101,http://localhost:3102,http://localhost:3103` for Teacher, Admin, and Portal sign-in. Other origins can remain in the list. The operator-gated read-only preflight reports whether the server's effective trusted origins include all three. E2E refuses to seed if any is missing. App-side or shell settings cannot replace the server setting, and preflight does not change it.
+
+The E2E setup invokes `functions/academic/demoPreflightAction:inspectDemoSchool` using the installed Convex CLI, verifies the returned server cloud URL and requires zero schools of any slug, no blockers, and no table rows. With no school, preflight checks one row per table across all 179 reviewed application tables, including indirect and shared/global tables. It reports only nonempty table names, not rows. It also rejects orphaned demo Better Auth credentials. The seed action repeats the full table check before Better Auth access, so a row added after inspection blocks seeding. Registry drift or an inspection failure blocks both checks. Only then it invokes `functions/academic/seedRunner:seedDemoSchool`, passing the inspected null school ID and exact `demo-school` slug. The server checks again before changing auth credentials or sessions. On success the first run creates canonical demo users, their school memberships, and demo data. The destructive Playwright config refuses to reuse Admin, Teacher, or Portal servers already listening on its ports. Stop those servers before running it; the admissions-smoke config retains its separate server policy.
+
+An existing populated demo school is **RESET BLOCKED**, even when the read-only inspector returns `ready: true`. That result means the known single-school cohort passed inspection, not that a reset is implemented. Each indexed table is bounded at 1000 rows; the two unindexed school tables use global 1001-row windows and refuse overflow. Storage inventory uses separate bounded transactions, so another writer could change ownership after inspection. Preflight reports rows and ownership blockers. The seed action refuses before changing credentials or sessions. There is no interactive deletion prompt implemented. Do not try to bypass this with the judge profile or tenant purge. No production or shared-development fallback is provided; use only the explicitly selected disposable development deployment and matching URLs.
+
+## Interrupted first run
+
+Better Auth writes and Convex seed mutations do not share one transaction. A timeout, crash, or failed seed can leave credentials, storage cleanup claims, or school data behind. If a first run fails at any point, treat that deployment as contaminated even if a later inspection appears empty. Stop the E2E process, abandon that disposable dev deployment, and provision a fresh empty development deployment. Reconfigure the CLI selector, server operator gate and expected cloud URL, and all three app URLs for the replacement before starting a new first run. Never reset a shared dev deployment or retry blindly on the failed target. There is no supported populated deletion or in-place recovery path.
+
+## Additional free development deployment
+
+Use the installed Convex CLI help to inspect the commands and options available in this repository's CLI version before creating or selecting another development deployment. For example, run `pnpm exec convex --help` and then the relevant subcommand's `--help`. Follow that CLI's documented development-deployment flow, and explicitly select the resulting `dev:` deployment. Do not assume this project has remaining quota or that another deployment is available.
+
+## Schema and seed maintenance checklist
+
+For every new table or changed field:
+
+1. Run `pnpm --filter @school/convex exec vitest run schemaCoverage.test.ts`. Review each reported path against the exported schema validators. Update `schemaCoverageRegistry.json` deliberately, including ownership, reason, complete typed ID and opaque references, `bySchool`, shape fingerprint, optionality, and every storage disposition. Do not regenerate the registry wholesale.
+2. Identify whether the row is school-owned, indirectly owned, shared/global, or a cross-school reference. Review inbound and outbound links. A `schoolId` reference alone does not establish ownership. Keep cleanup blocked for rows in `admissionNumberClaims` and `usageBranchPoolAllocations` until each has a reviewed indexed cleanup path. Their read-only 1001-row global scans are for this disposable single-school preflight only.
+3. For direct school-owned rows, add a valid `by_school` index and `TENANT_SCHOOL_TABLES` manifest handling, or implement and review a bounded special path. Review `DEMO_SCHOOL_TABLES` separately. Add child-before-parent cleanup and residual checks for indirect rows. Never delete shared persons, memberships, transfers, shares, or identities solely because they reference this school.
+4. For each `_storage` reference, reconcile the schema path with `TENANT_STORAGE_TABLES`, `storageIdsOnRow`, the storage ledger, retained-owner checks, and school-logo handling. Mark unsupported extraction or uncertain ownership as a reset blocker. Add tests for shared claims, missing files, interrupted retries, and the new path.
+5. Add actual E2E coverage for the behavior changed: successful empty-school first run and relevant target mismatch, operator-gate, existing-school, or blocker failure paths. E2E must verify that blocked paths do not invoke seeding or mutate authentication. Keep app, CLI, and server target agreement checks in the setup path.
+6. Run `pnpm --filter @school/convex test`, `pnpm --filter @school/convex typecheck`, and lint. Review schema, registry, purge, storage, seed and E2E diffs together. Update the [schema coverage guide](DemoSchoolSchemaCoverage.md) if ownership or reset behavior changes.
+
+No deployment or seed operation has occurred as part of this documentation update.

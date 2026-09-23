@@ -1,0 +1,5113 @@
+{
+  "academicSessions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "archivedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "664:e735201f:a25cd4fb"
+  },
+  "academicTerms": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "926:7c5cfa01:ba113eef"
+  },
+  "academicTimelineAuditEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1007:613a3c02:49070460"
+  },
+  "adminLeadershipAuditEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "reassignedDirectReportIds[]",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetUserId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "529:50fa1443:de53bbd"
+  },
+  "admissionNumberClaims": {
+    "ownership": "direct-unindexed",
+    "reason": "schoolId without by_school; number claim must be blocked until indexed cleanup is reviewed",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "224:ca2cd520:a89125ce"
+  },
+  "admissionNumberPolicies": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1268:1fa9a6fa:add61f0"
+  },
+  "admissionNumberSequences": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "955:30735e29:ffec0273"
+  },
+  "admissionsApplicantProfiles": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "942:57d1d3:7d01028b"
+  },
+  "admissionsApplicationAnswers": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "formFieldId",
+        "target": "admissionsFormFields",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "995:527a88d1:67ca4379"
+  },
+  "admissionsApplicationContacts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "993:1471224:fcfc87a0"
+  },
+  "admissionsApplications": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "conversionId",
+        "target": "admissionsConversions",
+        "optional": true
+      },
+      {
+        "path": "currentDecisionId",
+        "target": "admissionsDecisions",
+        "optional": true
+      },
+      {
+        "path": "declarationVersionId",
+        "target": "admissionsDeclarationVersions",
+        "optional": false
+      },
+      {
+        "path": "entitlementId",
+        "target": "admissionsEntitlements",
+        "optional": false
+      },
+      {
+        "path": "formVersionId",
+        "target": "admissionsFormVersions",
+        "optional": false
+      },
+      {
+        "path": "guardianId",
+        "target": "admissionsGuardians",
+        "optional": false
+      },
+      {
+        "path": "intakeId",
+        "target": "admissionsIntakes",
+        "optional": false
+      },
+      {
+        "path": "latestSnapshotId",
+        "target": "admissionsSubmissionSnapshots",
+        "optional": true
+      },
+      {
+        "path": "priceId",
+        "target": "admissionsProductPrices",
+        "optional": false
+      },
+      {
+        "path": "productId",
+        "target": "admissionsProducts",
+        "optional": false
+      },
+      {
+        "path": "programmeId",
+        "target": "admissionsProgrammes",
+        "optional": false
+      },
+      {
+        "path": "retentionPolicyId",
+        "target": "admissionsRetentionPolicies",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2498:dbc58ccf:20b155d"
+  },
+  "admissionsAuditEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorGuardianId",
+        "target": "admissionsGuardians",
+        "optional": true
+      },
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1205:be40f31b:906c558f"
+  },
+  "admissionsCommunicationOutbox": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": true
+      },
+      {
+        "path": "conversionId",
+        "target": "admissionsConversions",
+        "optional": true
+      },
+      {
+        "path": "recipientGuardianId",
+        "target": "admissionsGuardians",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1305:8a76bd36:4a6eb956"
+  },
+  "admissionsConversionAttempts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "conversionId",
+        "target": "admissionsConversions",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "770:1d2dd323:f3f66ca1"
+  },
+  "admissionsConversions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "acceptedDecisionId",
+        "target": "admissionsDecisions",
+        "optional": false
+      },
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": true
+      },
+      {
+        "path": "familyId",
+        "target": "families",
+        "optional": true
+      },
+      {
+        "path": "familyMemberId",
+        "target": "familyMembers",
+        "optional": true
+      },
+      {
+        "path": "guardianUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "numberingSessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "requestedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "requestedFamilyId",
+        "target": "families",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "snapshotId",
+        "target": "admissionsSubmissionSnapshots",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": true
+      },
+      {
+        "path": "studentUserId",
+        "target": "users",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "3076:275c02d0:92c5d8e4"
+  },
+  "admissionsDecisions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "decidedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "snapshotId",
+        "target": "admissionsSubmissionSnapshots",
+        "optional": true
+      },
+      {
+        "path": "supersedesDecisionId",
+        "target": "admissionsDecisions",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1123:7f607048:539954ea"
+  },
+  "admissionsDeclarationVersions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "programmeId",
+        "target": "admissionsProgrammes",
+        "optional": false
+      },
+      {
+        "path": "publishedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "932:95b9fca4:cbcc10c4"
+  },
+  "admissionsDocumentAccessAudits": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "documentId",
+        "target": "admissionsDocuments",
+        "optional": false
+      },
+      {
+        "path": "guardianId",
+        "target": "admissionsGuardians",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "943:e59b6111:ef61e229"
+  },
+  "admissionsDocumentAccessGrants": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "documentId",
+        "target": "admissionsDocuments",
+        "optional": false
+      },
+      {
+        "path": "guardianId",
+        "target": "admissionsGuardians",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1088:169aede7:2b9fbcb1"
+  },
+  "admissionsDocumentRequirements": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "approvalEvidenceId",
+        "target": "schoolApprovalEvidence",
+        "optional": true
+      },
+      {
+        "path": "formVersionId",
+        "target": "admissionsFormVersions",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1520:2075b35c:585b634a"
+  },
+  "admissionsDocumentReviews": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "documentId",
+        "target": "admissionsDocuments",
+        "optional": false
+      },
+      {
+        "path": "reviewerUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "720:7ce8c92a:73a642d2"
+  },
+  "admissionsDocuments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "requirementId",
+        "target": "admissionsDocumentRequirements",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": false
+      },
+      {
+        "path": "supersedesDocumentId",
+        "target": "admissionsDocuments",
+        "optional": true
+      },
+      {
+        "path": "uploadedByGuardianId",
+        "target": "admissionsGuardians",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "2176:3e6a42ca:78c98f0"
+  },
+  "admissionsDocumentUploadIntents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "documentId",
+        "target": "admissionsDocuments",
+        "optional": true
+      },
+      {
+        "path": "guardianId",
+        "target": "admissionsGuardians",
+        "optional": false
+      },
+      {
+        "path": "requirementId",
+        "target": "admissionsDocumentRequirements",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "1650:38a31c28:326cb6a6"
+  },
+  "admissionsEntitlements": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": true
+      },
+      {
+        "path": "guardianId",
+        "target": "admissionsGuardians",
+        "optional": false
+      },
+      {
+        "path": "intakeId",
+        "target": "admissionsIntakes",
+        "optional": false
+      },
+      {
+        "path": "productId",
+        "target": "admissionsProducts",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourcePurchaseAttemptId",
+        "target": "admissionsPurchaseAttempts",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1182:431e8004:9b5c9aa2"
+  },
+  "admissionsEvaluations": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "evaluatorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1099:fd109a01:5d15a449"
+  },
+  "admissionsFormFields": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "approvalEvidenceId",
+        "target": "schoolApprovalEvidence",
+        "optional": true
+      },
+      {
+        "path": "formVersionId",
+        "target": "admissionsFormVersions",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1626:88d0c18:580c65a0"
+  },
+  "admissionsFormVersions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "intakeId",
+        "target": "admissionsIntakes",
+        "optional": true
+      },
+      {
+        "path": "programmeId",
+        "target": "admissionsProgrammes",
+        "optional": false
+      },
+      {
+        "path": "publishedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "914:60227854:3ea2954e"
+  },
+  "admissionsGuardians": {
+    "ownership": "shared-or-global",
+    "reason": "Guardian is a shared identity without direct schoolId; inspect linked applications and purchases",
+    "references": [],
+    "bySchool": false,
+    "storage": {},
+    "shape": "694:b2252e14:2c59a64"
+  },
+  "admissionsIntakes": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "programmeId",
+        "target": "admissionsProgrammes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetClassId",
+        "target": "classes",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1001:4a034587:e0db7337"
+  },
+  "admissionsPaymentEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "purchaseAttemptId",
+        "target": "admissionsPurchaseAttempts",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1547:7dec5570:bedb4136"
+  },
+  "admissionsPreviousSchools": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "560:73837c09:580f9567"
+  },
+  "admissionsProductPrices": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "approvalEvidenceId",
+        "target": "schoolApprovalEvidence",
+        "optional": true
+      },
+      {
+        "path": "productId",
+        "target": "admissionsProducts",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1038:9636bd08:b9297362"
+  },
+  "admissionsProducts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "intakeId",
+        "target": "admissionsIntakes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "710:180b303e:4b82ca50"
+  },
+  "admissionsProgrammes": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "616:5a0db652:98f3ad30"
+  },
+  "admissionsPurchaseAttempts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "entitlementId",
+        "target": "admissionsEntitlements",
+        "optional": true
+      },
+      {
+        "path": "guardianId",
+        "target": "admissionsGuardians",
+        "optional": false
+      },
+      {
+        "path": "priceId",
+        "target": "admissionsProductPrices",
+        "optional": false
+      },
+      {
+        "path": "productId",
+        "target": "admissionsProducts",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2061:1303d0d4:83d52e70"
+  },
+  "admissionsPurchaseGuards": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "currentAttemptId",
+        "target": "admissionsPurchaseAttempts",
+        "optional": false
+      },
+      {
+        "path": "guardianId",
+        "target": "admissionsGuardians",
+        "optional": false
+      },
+      {
+        "path": "productId",
+        "target": "admissionsProducts",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "514:ce59c69a:db6cfb8e"
+  },
+  "admissionsRetentionJobs": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": true
+      },
+      {
+        "path": "approvedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1030:db510e81:e309e287"
+  },
+  "admissionsRetentionPolicies": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdByUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "721:7f743aac:2aabf76a"
+  },
+  "admissionsReviewAssignments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "assignedByUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "assigneeUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "847:de48652b:1e995a85"
+  },
+  "admissionsReviewEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorGuardianId",
+        "target": "admissionsGuardians",
+        "optional": true
+      },
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "snapshotId",
+        "target": "admissionsSubmissionSnapshots",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "926:cc24ff10:8c8eb0ee"
+  },
+  "admissionsSubmissionSnapshotItems": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "snapshotId",
+        "target": "admissionsSubmissionSnapshots",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "961:4b7d091b:ec798687"
+  },
+  "admissionsSubmissionSnapshots": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "applicationId",
+        "target": "admissionsApplications",
+        "optional": false
+      },
+      {
+        "path": "declarationVersionId",
+        "target": "admissionsDeclarationVersions",
+        "optional": false
+      },
+      {
+        "path": "formVersionId",
+        "target": "admissionsFormVersions",
+        "optional": false
+      },
+      {
+        "path": "productPriceId",
+        "target": "admissionsProductPrices",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "signerGuardianId",
+        "target": "admissionsGuardians",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1137:aa9908bc:14cb813e"
+  },
+  "aiImportWorkspaces": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "importerUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "ownerMembershipId",
+        "target": "branchMemberships",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "stagedRows[]",
+        "target": "opaque-any",
+        "optional": false
+      },
+      {
+        "path": "validationErrors[]",
+        "target": "opaque-any",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1527:388ca1a3:7817bf37"
+  },
+  "aiRunLogs": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "curriculumImportId",
+        "target": "curriculumImports",
+        "optional": true
+      },
+      {
+        "path": "effectiveGenerationSettings.profileId",
+        "target": "assessmentGenerationProfiles",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetArtifactId",
+        "target": "instructionArtifacts",
+        "optional": true
+      },
+      {
+        "path": "targetAssessmentBankId",
+        "target": "assessmentBanks",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "3255:f4ff99a8:26961d84"
+  },
+  "assessmentBankItems": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "bankId",
+        "target": "assessmentBanks",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2108:6b7283a1:6f4b46a1"
+  },
+  "assessmentBanks": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "effectiveGenerationSettings.profileId",
+        "target": "assessmentGenerationProfiles",
+        "optional": true
+      },
+      {
+        "path": "ownerUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "topicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "3675:c72f717f:108a46b3"
+  },
+  "assessmentEditingPolicies": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "822:2b160393:786a62ef"
+  },
+  "assessmentGenerationProfiles": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1465:54d45582:2a4a2116"
+  },
+  "assessmentRecords": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "enteredBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "3151:5441d2d4:c8def3ae"
+  },
+  "assetBranchShares": {
+    "ownership": "indirect",
+    "reason": "ownerSchoolId and recipientSchoolId may name different schools; shared link, never assume target owns the row",
+    "references": [
+      {
+        "path": "assetId",
+        "target": "schoolAssets",
+        "optional": false
+      },
+      {
+        "path": "ownerSchoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "recipientSchoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "340:d7c3338b:c0cb2847"
+  },
+  "assetPolicies": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "371:d72eb1a2:11cfa2da"
+  },
+  "assetPurgeReceipts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "assetId",
+        "target": "schoolAssets",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "307:e6317e26:7e999004"
+  },
+  "assetQuarantineLogs": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "assetId",
+        "target": "schoolAssets",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "577:59360c62:3bc658ac"
+  },
+  "assetRetentionHolds": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "appliedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "assetId",
+        "target": "schoolAssets",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "448:fb3fdd58:d9b2cc2e"
+  },
+  "assetStorageReconciliationIssues": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "assetId",
+        "target": "schoolAssets",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "756:4b188e51:1d10cc8d"
+  },
+  "assetUploadIntents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "assetId",
+        "target": "schoolAssets",
+        "optional": true
+      },
+      {
+        "path": "requestedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "728:a4c3c205:f245569b"
+  },
+  "auditAlerts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "dismissedBy",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "eventId",
+        "target": "auditEvents",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetRecipientPersonIds[]",
+        "target": "persons",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "935:f66b5e04:afc0012c"
+  },
+  "auditEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorMembershipId",
+        "target": "branchMemberships",
+        "optional": true
+      },
+      {
+        "path": "actorPersonId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "actorPlatformAdminId",
+        "target": "platformAdmins",
+        "optional": true
+      },
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1989:77fd1c42:89237ac2"
+  },
+  "billingPaymentAttempts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "checkoutPayload",
+        "target": "opaque-any",
+        "optional": false
+      },
+      {
+        "path": "gatewayEventId",
+        "target": "paymentGatewayEvents",
+        "optional": false
+      },
+      {
+        "path": "invoiceId",
+        "target": "studentInvoices",
+        "optional": false
+      },
+      {
+        "path": "paymentId",
+        "target": "billingPayments",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2461:44de25eb:8767e871"
+  },
+  "billingPayments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "invoiceId",
+        "target": "studentInvoices",
+        "optional": false
+      },
+      {
+        "path": "reconciledBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "recordedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2353:876306df:5579dec3"
+  },
+  "branchMemberships": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "legacyUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "personId",
+        "target": "persons",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "853:da955f4d:2f8a16a7"
+  },
+  "branchSettingOverrides": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; explicit bounded special cleanup in tenantPurge.ts; absent from tenant manifest",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "persons",
+        "optional": false
+      },
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "value.templateIds[]",
+        "target": "roleTemplates",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "7735:67e964af:b81b02e7"
+  },
+  "classes": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "archivedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "formTeacherId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "741:e3f15afc:2e920ab2"
+  },
+  "classSessionFormTeachers": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "formTeacherId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "550:b5894f92:7d3910c2"
+  },
+  "classSubjectAggregationComponents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "aggregationId",
+        "target": "classSubjectAggregations",
+        "optional": false
+      },
+      {
+        "path": "componentSubjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "730:f93ac457:edd44bbf"
+  },
+  "classSubjectAggregations": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "umbrellaSubjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "874:7fc3c6a3:4186c549"
+  },
+  "classSubjects": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "teacherId",
+        "target": "users",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "460:d2c06c5:83965c45"
+  },
+  "commercialContractChoices": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": false
+      },
+      {
+        "path": "rateVersionId",
+        "target": "commercialRateVersions",
+        "optional": false
+      },
+      {
+        "path": "requestedByPersonId",
+        "target": "persons",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "710:20118a8a:b199e0bc"
+  },
+  "commercialContracts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "choiceRequestId",
+        "target": "commercialContractChoices",
+        "optional": true
+      },
+      {
+        "path": "rateVersionId",
+        "target": "commercialRateVersions",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1819:35407f42:5dbf996c"
+  },
+  "commercialRateVersions": {
+    "ownership": "shared-or-global",
+    "reason": "No direct schoolId or typed reference; global, root or string-linked state, never bulk delete by school",
+    "references": [],
+    "bySchool": false,
+    "storage": {},
+    "shape": "1210:70a6327c:d8ed42b8"
+  },
+  "contentAuditEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "afterTopicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      },
+      {
+        "path": "artifactId",
+        "target": "instructionArtifacts",
+        "optional": true
+      },
+      {
+        "path": "bankId",
+        "target": "assessmentBanks",
+        "optional": true
+      },
+      {
+        "path": "beforeTopicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      },
+      {
+        "path": "bindingId",
+        "target": "knowledgeMaterialClassBindings",
+        "optional": true
+      },
+      {
+        "path": "curriculumImportId",
+        "target": "curriculumImports",
+        "optional": true
+      },
+      {
+        "path": "curriculumUnitId",
+        "target": "curriculumUnits",
+        "optional": true
+      },
+      {
+        "path": "itemId",
+        "target": "assessmentBankItems",
+        "optional": true
+      },
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "templateId",
+        "target": "instructionTemplates",
+        "optional": true
+      },
+      {
+        "path": "topicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "4235:db970968:da3a203a"
+  },
+  "curriculumImports": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "aiRunLogId",
+        "target": "aiRunLogs",
+        "optional": true
+      },
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": false
+      },
+      {
+        "path": "requestedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "reviewedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1772:c4b3d121:215b0539"
+  },
+  "curriculumUnits": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "editedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "importId",
+        "target": "curriculumImports",
+        "optional": false
+      },
+      {
+        "path": "knowledgeTopicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      },
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": false
+      },
+      {
+        "path": "reviewedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1741:eac0e93e:1d265b8"
+  },
+  "delegationCeilings": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "membershipId",
+        "target": "branchMemberships",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "persons",
+        "optional": true
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "354:c6426d6:a1b76512"
+  },
+  "demoSeedRuns": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "logoStorageId",
+        "target": "_storage",
+        "optional": false
+      },
+      {
+        "path": "portraitStorageIds[]",
+        "target": "_storage",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "logoStorageId": "legacy-extractor",
+      "portraitStorageIds[]": "legacy-extractor"
+    },
+    "shape": "1557:24869dc:546c480"
+  },
+  "demoSeedStorageCleanup": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "308:f13f2f09:673ad35"
+  },
+  "emailAddressPolicies": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "domainId",
+        "target": "schoolEmailDomains",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "639:a7bf0001:cd493885"
+  },
+  "enrollmentRequests": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "382:87235856:677ea5be"
+  },
+  "families": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "437:8799de61:ea81dad"
+  },
+  "familyMembers": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "familyId",
+        "target": "families",
+        "optional": false
+      },
+      {
+        "path": "parentUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "672:fe013957:bb3e4c4f"
+  },
+  "feePlanApplications": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "feePlanId",
+        "target": "feePlans",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "893:a591983c:67770f0"
+  },
+  "feePlanLifecycleRuns": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "feePlanId",
+        "target": "feePlans",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "833:71bc7833:9ebcffe5"
+  },
+  "feePlans": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "bankAccountId",
+        "target": "schoolBankAccounts",
+        "optional": true
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetClassIds[]",
+        "target": "classes",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2115:2c516d2f:8c6a2857"
+  },
+  "formDrafts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "payload",
+        "target": "opaque-any",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1171:bbe3b1e9:e41aa1e3"
+  },
+  "gradingBands": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "909:29035b56:7e257414"
+  },
+  "groupSettingVersions": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "persons",
+        "optional": false
+      },
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": false
+      },
+      {
+        "path": "value.templateIds[]",
+        "target": "roleTemplates",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "3925:7754573e:f75c83b0"
+  },
+  "historicalTermTotals": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "984:c05679a:563ce4a6"
+  },
+  "identityMigrationIssues": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "935:4e655216:6d48f20"
+  },
+  "importWorkspaces": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "platformAdmins",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "mergedBy",
+        "target": "platformAdmins",
+        "optional": true
+      },
+      {
+        "path": "mergedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "planningCounters[].sessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "reviewedBy",
+        "target": "platformAdmins",
+        "optional": true
+      },
+      {
+        "path": "reviewedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourceFiles[].storageId",
+        "target": "_storage",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "sourceFiles[].storageId": "unsupported-block-reset"
+    },
+    "shape": "3803:17d69112:8c9cfe0a"
+  },
+  "institutionalMailboxes": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "aliasOfMailboxId",
+        "target": "institutionalMailboxes",
+        "optional": true
+      },
+      {
+        "path": "personId",
+        "target": "persons",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1797:fdb65574:f8e5eb3c"
+  },
+  "instructionArtifactDocuments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "artifactId",
+        "target": "instructionArtifacts",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "topicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1917:cb9515ef:b20cc3b3"
+  },
+  "instructionArtifactRevisions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "artifactId",
+        "target": "instructionArtifacts",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "templateId",
+        "target": "instructionTemplates",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2175:ca1239e6:e3c28f3e"
+  },
+  "instructionArtifacts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "currentDocumentId",
+        "target": "instructionArtifactDocuments",
+        "optional": true
+      },
+      {
+        "path": "currentRevisionId",
+        "target": "instructionArtifactRevisions",
+        "optional": true
+      },
+      {
+        "path": "ownerUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "templateId",
+        "target": "instructionTemplates",
+        "optional": true
+      },
+      {
+        "path": "topicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2578:ef0bcd93:d44d3bfd"
+  },
+  "instructionArtifactSources": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "artifactId",
+        "target": "instructionArtifacts",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "628:340427b7:b1ee7505"
+  },
+  "instructionTemplates": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2203:44f05917:43ae6631"
+  },
+  "issuedReportCards": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "issuedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "report.classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "report.extras[].bundleId",
+        "target": "reportCardExtraBundles",
+        "optional": false
+      },
+      {
+        "path": "report.results[].subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "report.student._id",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "schoolLogoStorageId",
+        "target": "_storage",
+        "optional": true
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "studentPhotoStorageId",
+        "target": "_storage",
+        "optional": true
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "schoolLogoStorageId": "legacy-extractor",
+      "studentPhotoStorageId": "legacy-extractor"
+    },
+    "shape": "8658:1c2cf994:796f730e"
+  },
+  "knowledgeMaterialChunks": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "topicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1651:cfec12e4:36c84f66"
+  },
+  "knowledgeMaterialClassBindings": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "908:8d26e534:4d7e8d7a"
+  },
+  "knowledgeMaterialFileFingerprints": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "uploadIntentId",
+        "target": "knowledgeMaterialUploadIntents",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "672:74156267:34e1bcbb"
+  },
+  "knowledgeMaterials": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "ownerUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": true
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": true
+      },
+      {
+        "path": "topicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "3706:11b647fc:29ed5408"
+  },
+  "knowledgeMaterialUploadIntents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": true
+      },
+      {
+        "path": "ownerUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": true
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": true
+      },
+      {
+        "path": "topicId",
+        "target": "knowledgeTopics",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "2404:5867ebe9:7fdc6781"
+  },
+  "knowledgeOcrJobs": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "materialId",
+        "target": "knowledgeMaterials",
+        "optional": false
+      },
+      {
+        "path": "requestedByUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "1493:69d70427:2ebb123f"
+  },
+  "knowledgeTopics": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1074:ac0b6845:8d198de1"
+  },
+  "membershipDirectGrants": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "grantedBy",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "membershipId",
+        "target": "branchMemberships",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "377:f6e50a9:b9b36a67"
+  },
+  "membershipDirectRestrictions": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "membershipId",
+        "target": "branchMemberships",
+        "optional": false
+      },
+      {
+        "path": "restrictedBy",
+        "target": "persons",
+        "optional": true
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "383:ce2776f1:c00ce3a7"
+  },
+  "membershipRoleAssignments": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "assignedBy",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "membershipId",
+        "target": "branchMemberships",
+        "optional": false
+      },
+      {
+        "path": "roleTemplateId",
+        "target": "roleTemplates",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "416:7391f379:ce4d69a9"
+  },
+  "migrationFeatureSignals": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "workspaceId",
+        "target": "importWorkspaces",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "618:a62240c9:f14203c9"
+  },
+  "migrationRuns": {
+    "ownership": "shared-or-global",
+    "reason": "No direct schoolId or typed reference; global, root or string-linked state, never bulk delete by school",
+    "references": [],
+    "bySchool": false,
+    "storage": {},
+    "shape": "809:a82678dc:616e452"
+  },
+  "migrationState": {
+    "ownership": "indirect",
+    "reason": "sourceSchoolId and targetSchoolId may span tenants; review cross-school migration before removal",
+    "references": [
+      {
+        "path": "sourceSchoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetSchoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "914:93421be8:ff441d5e"
+  },
+  "paymentAllocations": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "invoiceId",
+        "target": "studentInvoices",
+        "optional": false
+      },
+      {
+        "path": "paymentId",
+        "target": "billingPayments",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "525:2794b9a9:eda01f25"
+  },
+  "paymentGatewayEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "invoiceId",
+        "target": "studentInvoices",
+        "optional": true
+      },
+      {
+        "path": "payload",
+        "target": "opaque-any",
+        "optional": false
+      },
+      {
+        "path": "paymentId",
+        "target": "billingPayments",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1572:e00dd245:325ea551"
+  },
+  "paymentMandates": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1034:aeab98d2:3f291fa2"
+  },
+  "pdfCompressionCandidates": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "assetId",
+        "target": "schoolAssets",
+        "optional": false
+      },
+      {
+        "path": "candidateStorageId",
+        "target": "_storage",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourceStorageId",
+        "target": "_storage",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "candidateStorageId": "legacy-extractor",
+      "sourceStorageId": "unsupported-block-reset"
+    },
+    "shape": "1296:9de1dfeb:901460c7"
+  },
+  "persons": {
+    "ownership": "indirect",
+    "reason": "Canonical identity can have memberships in multiple schools; primarySchoolId is not ownership",
+    "references": [
+      {
+        "path": "primarySchoolId",
+        "target": "schools",
+        "optional": true
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "774:5cea7bb9:d704cc2f"
+  },
+  "platformAdmins": {
+    "ownership": "shared-or-global",
+    "reason": "Global platform role and auth link; outside school reset",
+    "references": [],
+    "bySchool": false,
+    "storage": {},
+    "shape": "451:c5196ede:d7bf6500"
+  },
+  "rateLimitCounters": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1100:757f0847:21fca181"
+  },
+  "reportCardAttendanceClassValues": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "619:c1938594:b2d0ad72"
+  },
+  "reportCardAttendanceStudentValues": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "759:eb38f6d6:48602970"
+  },
+  "reportCardComments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "693:29348e3b:1ebbc38f"
+  },
+  "reportCardExtraBundles": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sections[].fields[].scaleTemplateId",
+        "target": "reportCardExtraScaleTemplates",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1932:2dbf3b6c:eaccb898"
+  },
+  "reportCardExtraClassAssignments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "assignedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "bundleId",
+        "target": "reportCardExtraBundles",
+        "optional": false
+      },
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "609:240cbb81:1a571f7"
+  },
+  "reportCardExtraScaleTemplates": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "822:41c9f893:738df22b"
+  },
+  "reportCardExtraStudentValues": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "bundleId",
+        "target": "reportCardExtraBundles",
+        "optional": false
+      },
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1126:52f144a0:ff5cbe6c"
+  },
+  "reportCardManualAdjustmentEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1119:492d036c:ecc08872"
+  },
+  "reportCardManualAdjustments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1122:994389ec:e1711a68"
+  },
+  "reportCardTermSettingGroups": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classIds[]",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "766:37fce606:a2837ba6"
+  },
+  "roleTemplates": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; explicit bounded special cleanup in tenantPurge.ts; absent from tenant manifest",
+    "references": [
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "803:20e09d0d:353ecd13"
+  },
+  "schoolAdminEmailUpdateReservations": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "694:46da3a0:942dc1ac"
+  },
+  "schoolAdminLeadership": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "leadAdminUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "previousLeadAdminUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "477:8b592498:deaa661e"
+  },
+  "schoolApprovalEvidence": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "approvedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "930:3c57a7e0:42226e6a"
+  },
+  "schoolAssessmentSettings": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "767:b236ec65:d48d6f0d"
+  },
+  "schoolAssets": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "archivedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "rollbackStorageId",
+        "target": "_storage",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": false
+      },
+      {
+        "path": "trashedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "uploadedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "uploadIntentId",
+        "target": "assetUploadIntents",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "rollbackStorageId": "legacy-extractor",
+      "storageId": "legacy-extractor"
+    },
+    "shape": "2491:37cc3373:b9b5a45"
+  },
+  "schoolBankAccounts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1202:fa3af97a:3e183ad2"
+  },
+  "schoolBillingSettings": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1065:342133a8:13f452ae"
+  },
+  "schoolCapabilityGrants": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "grantedByUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "intakeId",
+        "target": "admissionsIntakes",
+        "optional": true
+      },
+      {
+        "path": "programmeId",
+        "target": "admissionsProgrammes",
+        "optional": true
+      },
+      {
+        "path": "revokedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2172:6613b391:5faf3e9d"
+  },
+  "schoolDomains": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "canonicalDomainId",
+        "target": "schoolDomains",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1560:a98eb2bc:1915ed0e"
+  },
+  "schoolEmailDomains": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sharedGroupId",
+        "target": "schoolGroups",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "962:6c3b942:235e9030"
+  },
+  "schoolEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "archivedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourceTermId",
+        "target": "academicTerms",
+        "optional": true
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1051:f237ed45:5a76a85"
+  },
+  "schoolGroupBranches": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1212:dff9a270:590fe390"
+  },
+  "schoolGroups": {
+    "ownership": "indirect",
+    "reason": "Group can retain branches outside target school; remove only after retained-branch check",
+    "references": [
+      {
+        "path": "gradingDefault.schoolId",
+        "target": "schools",
+        "optional": true
+      },
+      {
+        "path": "proprietorPersonId",
+        "target": "persons",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "1589:29e8a781:b2d11adb"
+  },
+  "schoolPaymentProviders": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "activeSecretId",
+        "target": "schoolPaymentProviderSecrets",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "pendingSecretId",
+        "target": "schoolPaymentProviderSecrets",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2325:d1414307:2fc70e7f"
+  },
+  "schoolPaymentProviderSecrets": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "816:a293c778:a929247e"
+  },
+  "schools": {
+    "ownership": "indirect",
+    "reason": "Root school document; delete last only after all references and logo claims are reconciled",
+    "references": [
+      {
+        "path": "logoStorageId",
+        "target": "_storage",
+        "optional": true
+      }
+    ],
+    "bySchool": false,
+    "storage": {
+      "logoStorageId": "school-logo"
+    },
+    "shape": "1536:7e763385:85075d01"
+  },
+  "schoolSiteAssets": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "approvalEvidenceId",
+        "target": "schoolApprovalEvidence",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageId",
+        "target": "_storage",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "storageId": "legacy-extractor"
+    },
+    "shape": "1598:928501d4:d0407a36"
+  },
+  "schoolSiteAuditEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "revisionId",
+        "target": "schoolSiteRevisions",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "930:bececf88:84194702"
+  },
+  "schoolSiteProfiles": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "canonicalDomainId",
+        "target": "schoolDomains",
+        "optional": true
+      },
+      {
+        "path": "draftRevisionId",
+        "target": "schoolSiteRevisions",
+        "optional": true
+      },
+      {
+        "path": "publishedRevisionId",
+        "target": "schoolSiteRevisions",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1145:bec0b67f:e1252b27"
+  },
+  "schoolSiteRevisions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "approvalEvidenceIds[]",
+        "target": "schoolApprovalEvidence",
+        "optional": false
+      },
+      {
+        "path": "content.fields[].value.assetId",
+        "target": "schoolSiteAssets",
+        "optional": false
+      },
+      {
+        "path": "content.routeSeo[].shareAssetId",
+        "target": "schoolSiteAssets",
+        "optional": true
+      },
+      {
+        "path": "publishedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourceRevisionId",
+        "target": "schoolSiteRevisions",
+        "optional": true
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "3553:cd2e7ebc:96070ff2"
+  },
+  "schoolSubscriptions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "planId",
+        "target": "subscriptionPlans",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1128:bb92022d:4c553d59"
+  },
+  "settlementLedgers": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "metadata",
+        "target": "opaque-any",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1625:e1c84dac:a60bfb1e"
+  },
+  "settlementLegs": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "settlementId",
+        "target": "settlementLedgers",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "568:7dccb892:9b5a144"
+  },
+  "stagedImportRecords": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "clashCandidateId",
+        "target": "stagedImportRecords",
+        "optional": true
+      },
+      {
+        "path": "committedAssessmentRecordId",
+        "target": "assessmentRecords",
+        "optional": true
+      },
+      {
+        "path": "committedStudentId",
+        "target": "students",
+        "optional": true
+      },
+      {
+        "path": "existingStudentId",
+        "target": "students",
+        "optional": true
+      },
+      {
+        "path": "expectedNumberSessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "parsedData.matchedClassId",
+        "target": "classes",
+        "optional": true
+      },
+      {
+        "path": "parsedData.matchedSubjectId",
+        "target": "subjects",
+        "optional": true
+      },
+      {
+        "path": "rawPayload{value}",
+        "target": "opaque-any",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "selectedClassId",
+        "target": "classes",
+        "optional": true
+      },
+      {
+        "path": "selectedFamilyId",
+        "target": "families",
+        "optional": true
+      },
+      {
+        "path": "selectedSessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "selectedStudentId",
+        "target": "students",
+        "optional": true
+      },
+      {
+        "path": "selectedSubjectId",
+        "target": "subjects",
+        "optional": true
+      },
+      {
+        "path": "selectedTermId",
+        "target": "academicTerms",
+        "optional": true
+      },
+      {
+        "path": "selectedUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "workspaceId",
+        "target": "importWorkspaces",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "7366:4e436cdf:61d8588b"
+  },
+  "studentGraduations": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "688:18a04155:fc899f2d"
+  },
+  "studentInvoices": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "feePlanApplicationId",
+        "target": "feePlanApplications",
+        "optional": true
+      },
+      {
+        "path": "feePlanId",
+        "target": "feePlans",
+        "optional": false
+      },
+      {
+        "path": "issuedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "lastPaymentId",
+        "target": "billingPayments",
+        "optional": true
+      },
+      {
+        "path": "paymentInstructionsSnapshot.bankAccountId",
+        "target": "schoolBankAccounts",
+        "optional": true
+      },
+      {
+        "path": "revokedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "4211:87a4101f:dd2886d1"
+  },
+  "studentPromotions": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "createdBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "fromClassId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "fromSessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "toClassId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "toSessionId",
+        "target": "academicSessions",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1026:a2f84bc1:6d4bb311"
+  },
+  "students": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "archivedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "familyId",
+        "target": "families",
+        "optional": true
+      },
+      {
+        "path": "graduatingClassId",
+        "target": "classes",
+        "optional": true
+      },
+      {
+        "path": "graduatingSessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "photoSourceDocumentId",
+        "target": "admissionsDocuments",
+        "optional": true
+      },
+      {
+        "path": "photoStorageId",
+        "target": "_storage",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourceApplicationId",
+        "target": "admissionsApplications",
+        "optional": true
+      },
+      {
+        "path": "unmappedData{value}",
+        "target": "opaque-any",
+        "optional": true
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {
+      "photoStorageId": "legacy-extractor"
+    },
+    "shape": "2725:581d3d60:606057ba"
+  },
+  "studentSubjectAggregationOptOuts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "aggregationId",
+        "target": "classSubjectAggregations",
+        "optional": false
+      },
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "umbrellaSubjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "737:7987e5f1:c8e48177"
+  },
+  "studentSubjectSelections": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "552:e2e6eae5:eab1533b"
+  },
+  "studentTransfers": {
+    "ownership": "indirect",
+    "reason": "sourceSchoolId and destinationSchoolId may span tenants; inspect both before touching transfer",
+    "references": [
+      {
+        "path": "destinationAcceptedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "destinationClassId",
+        "target": "classes",
+        "optional": true
+      },
+      {
+        "path": "destinationMembershipPriorLegacyUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "destinationSchoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "destinationSessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "destinationStudentId",
+        "target": "students",
+        "optional": true
+      },
+      {
+        "path": "destinationUserPriorArchivedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": false
+      },
+      {
+        "path": "reversedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "sourceReleasedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "sourceSchoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourceStudentUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "3883:5e965325:3a67dc7b"
+  },
+  "subjects": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "archivedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "539:6ee08ef0:359966fe"
+  },
+  "subscriptionInvoiceCorrections": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "invoiceId",
+        "target": "subscriptionInvoices",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "649:9d414a84:e6715f68"
+  },
+  "subscriptionInvoices": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "contractId",
+        "target": "commercialContracts",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2380:59cd91bb:b062bb5f"
+  },
+  "subscriptionInvoiceStudents": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "invoiceId",
+        "target": "subscriptionInvoices",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "199:e1c2e268:7eec8160"
+  },
+  "subscriptionPlans": {
+    "ownership": "shared-or-global",
+    "reason": "No direct schoolId or typed reference; global, root or string-linked state, never bulk delete by school",
+    "references": [],
+    "bySchool": false,
+    "storage": {},
+    "shape": "810:47ce6bd4:b221898"
+  },
+  "teacherAssignments": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "teacherId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "461:5a793328:9654feae"
+  },
+  "usageAllowanceGrants": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "cycleId",
+        "target": "usageCycles",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "822:c73d6876:c007cb94"
+  },
+  "usageBranchPoolAllocations": {
+    "ownership": "direct-unindexed",
+    "reason": "schoolId without by_school; group-pool orphan cleanup is conditional and may leave allocations for a retained group; block reset until reviewed",
+    "references": [
+      {
+        "path": "cycleId",
+        "target": "usageCycles",
+        "optional": false
+      },
+      {
+        "path": "poolId",
+        "target": "usageGroupPools",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "511:f14dbb2:5caa34d6"
+  },
+  "usageCycleMeterSnapshots": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "cycleId",
+        "target": "usageCycles",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1156:6b54aabf:e8568853"
+  },
+  "usageCycles": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "contractId",
+        "target": "commercialContracts",
+        "optional": false
+      },
+      {
+        "path": "entitlementVersionId",
+        "target": "usageEntitlementVersions",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "2453:4a091d2c:7b41d9b2"
+  },
+  "usageEntitlementVersions": {
+    "ownership": "shared-or-global",
+    "reason": "No direct schoolId or typed reference; global, root or string-linked state, never bulk delete by school",
+    "references": [],
+    "bySchool": false,
+    "storage": {},
+    "shape": "1914:cf500fe4:3890767a"
+  },
+  "usageEvents": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "actorPersonId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1031:da5053e9:a65a5543"
+  },
+  "usageExceptionDecisions": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "grantId",
+        "target": "usageAllowanceGrants",
+        "optional": true
+      },
+      {
+        "path": "requestId",
+        "target": "usageExceptionRequests",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "533:1f3f4bc8:533a3cd8"
+  },
+  "usageExceptionRequests": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "cycleId",
+        "target": "usageCycles",
+        "optional": false
+      },
+      {
+        "path": "requestedByPersonId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "704:e7cfa80f:1667f12b"
+  },
+  "usageGroupPools": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "entitlementVersionId",
+        "target": "usageEntitlementVersions",
+        "optional": false
+      },
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": false
+      },
+      {
+        "path": "journalSchoolId",
+        "target": "schools",
+        "optional": true
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "853:90630c18:a9d4b0e6"
+  },
+  "usageMeterAllocations": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "cycleId",
+        "target": "usageCycles",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1619:25852644:cc443be2"
+  },
+  "usageOperationAttempts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "cycleId",
+        "target": "usageCycles",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1321:47756bf7:2cb3c4f5"
+  },
+  "usageOperationTransitions": {
+    "ownership": "indirect",
+    "reason": "No direct schoolId; resolve typed references before touching this row, including shared owners",
+    "references": [
+      {
+        "path": "attemptId",
+        "target": "usageOperationAttempts",
+        "optional": false
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "495:acc5f19:20a22b75"
+  },
+  "usageProviderCosts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "947:a574fe99:eec12549"
+  },
+  "usageQuotaReservations": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1731:12123d95:81e25645"
+  },
+  "users": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "archivedBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "managerUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "personId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1353:443fd1ca:1af48a7e"
+  }
+}

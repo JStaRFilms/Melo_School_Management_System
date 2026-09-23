@@ -10,6 +10,8 @@ export type SeedActionArgs = {
   targetIdentity: string;
   deploymentEnvironment: "development" | "preview" | "production";
   productionConfirmation?: string;
+  inspectedSchoolId?: string | null;
+  inspectedSchoolSlug?: string;
 };
 
 type ExistingAuthLookup = {
@@ -25,8 +27,12 @@ export function assertDemoOperatorGate(args: SeedActionArgs) {
   const expectedEnvironment = process.env.DEMO_SEED_DEPLOYMENT_ENV?.trim();
   if (!expectedIdentity || !expectedEnvironment) throw new ConvexError("Set DEMO_SEED_DEPLOYMENT_IDENTITY and DEMO_SEED_DEPLOYMENT_ENV before a demo reset.");
   if (args.targetIdentity !== expectedIdentity || args.deploymentEnvironment !== expectedEnvironment) throw new ConvexError("Caller target identity/environment does not match the explicitly configured deployment gate.");
-  if (args.deploymentEnvironment === "production" && (process.env.DEMO_SEED_ALLOW_PRODUCTION !== "true" || args.productionConfirmation !== "RESET demo-school IN PRODUCTION")) {
-    throw new ConvexError("Production reset requires DEMO_SEED_ALLOW_PRODUCTION=true and the dedicated production confirmation phrase.");
+  if (expectedEnvironment !== "development" || args.deploymentEnvironment !== "development") {
+    throw new ConvexError("Demo seed requires an independently configured development deployment target.");
+  }
+  const expectedCloudUrl = process.env.DEMO_SEED_EXPECTED_CLOUD_URL?.trim();
+  if (!expectedCloudUrl || expectedCloudUrl !== process.env.CONVEX_CLOUD_URL) {
+    throw new ConvexError("Demo seed cloud URL does not match the independently configured development target.");
   }
 }
 

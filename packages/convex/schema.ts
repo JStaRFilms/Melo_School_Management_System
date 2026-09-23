@@ -3417,6 +3417,7 @@ export default defineSchema({
     studentCursor: v.number(),
     assessmentCursor: v.number(),
     billingCursor: v.number(),
+    authIssuer: v.optional(v.string()),
     adminAuthId: v.string(),
     teacherAuthId: v.string(),
     portalAuthId: v.string(),
