@@ -19,6 +19,7 @@ import {
 import type { ReportCardSheetData } from "@school/shared";
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { getUserFacingErrorMessage } from "@school/shared";
+import { appToast } from "@school/shared/toast";
 
 type SelectorOption = { id: string; name: string };
 type StudentOption = {
@@ -49,6 +50,7 @@ type Draft = {
   finalTotalOverride: string;
 };
 
+const SAVE_TOAST_ID = "admin-manual-adjustments-save-result";
 const TERM_KEYS: TermKey[] = ["first", "second", "current"];
 const TERM_LABELS: Record<TermKey, string> = {
   first: "1st",
@@ -192,7 +194,7 @@ function ManualAdjustmentsPageContent() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [reason, setReason] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [reasonRequiredError, setReasonRequiredError] = useState(false);
 
   const cumulativeRows = useMemo(() => {
     if (!reportCard || !manualAdjustments) return [];
@@ -236,11 +238,12 @@ function ManualAdjustmentsPageContent() {
       )
     );
     setReason("");
+    setReasonRequiredError(false);
   }, [cumulativeRows, seedSignature]);
 
   const replaceSelection = useCallback(
     (next: Partial<typeof selection>) => {
-      setNotice(null);
+      setReasonRequiredError(false);
       const params = new URLSearchParams(searchParams.toString());
       for (const key of ["sessionId", "termId", "classId", "studentId"] as const) {
         if (next[key] === undefined) continue;
@@ -299,7 +302,6 @@ function ManualAdjustmentsPageContent() {
       ...current,
       [subjectId]: { ...current[subjectId], ...update },
     }));
-    setNotice(null);
   };
 
   const toggleTerm = (row: ResultRow, key: TermKey) => {
@@ -326,7 +328,6 @@ function ManualAdjustmentsPageContent() {
         ])
       )
     );
-    setNotice(null);
   };
 
   const resetAll = () => {
@@ -338,7 +339,6 @@ function ManualAdjustmentsPageContent() {
         ])
       )
     );
-    setNotice(null);
   };
 
   const handleScorePaste = (startIndex: number, text: string) => {
@@ -357,7 +357,6 @@ function ManualAdjustmentsPageContent() {
       });
       return next;
     });
-    setNotice(null);
     return true;
   };
 
@@ -370,20 +369,20 @@ function ManualAdjustmentsPageContent() {
       isSaving
     ) return;
     if (changedRows.length === 0) {
-      setNotice({ tone: "error", message: "There are no unsaved adjustments." });
+      appToast.error("There are no unsaved adjustments.", { id: SAVE_TOAST_ID });
       return;
     }
     if (!reason.trim()) {
-      setNotice({ tone: "error", message: "Enter a reason for this adjustment save." });
+      setReasonRequiredError(true);
+      appToast.error("Enter a reason for this adjustment save.", { id: SAVE_TOAST_ID });
       return;
     }
     if (validationErrors.length > 0) {
-      setNotice({ tone: "error", message: validationErrors[0] });
+      appToast.error(validationErrors[0], { id: SAVE_TOAST_ID });
       return;
     }
 
     setIsSaving(true);
-    setNotice(null);
     try {
       const result = (await saveAdjustments({
         sessionId: selection.sessionId,
@@ -404,14 +403,14 @@ function ManualAdjustmentsPageContent() {
         }),
       } as never)) as { created: number; updated: number; reset: number };
       setReason("");
-      setNotice({
-        tone: "success",
-        message: `Saved ${result.created + result.updated} adjustment${result.created + result.updated === 1 ? "" : "s"} and reset ${result.reset}.`,
-      });
+      setReasonRequiredError(false);
+      appToast.success(
+        `Saved ${result.created + result.updated} adjustment${result.created + result.updated === 1 ? "" : "s"} and reset ${result.reset}.`,
+        { id: SAVE_TOAST_ID },
+      );
     } catch (error) {
-      setNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(error, "Unable to save manual adjustments"),
+      appToast.error(getUserFacingErrorMessage(error, "Unable to save manual adjustments"), {
+        id: SAVE_TOAST_ID,
       });
     } finally {
       setIsSaving(false);
@@ -651,11 +650,22 @@ function ManualAdjustmentsPageContent() {
                   <input
                     type="text"
                     value={reason}
-                    onChange={(event) => setReason(event.target.value)}
+                    onChange={(event) => {
+                      setReason(event.target.value);
+                      setReasonRequiredError(false);
+                    }}
                     maxLength={500}
+                    required
+                    aria-invalid={reasonRequiredError}
+                    aria-describedby={reasonRequiredError ? "manual-adjustment-reason-error" : undefined}
                     placeholder="Example: Student was absent in first term; average only recorded terms."
                     className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
                   />
+                  {reasonRequiredError && (
+                    <span id="manual-adjustment-reason-error" role="alert" className="block text-sm font-semibold text-rose-800">
+                      Enter a reason for this adjustment save.
+                    </span>
+                  )}
                 </label>
                 <button
                   type="button"
@@ -667,9 +677,9 @@ function ManualAdjustmentsPageContent() {
                   {isSaving ? "Saving..." : `Save ${changedRows.length} change${changedRows.length === 1 ? "" : "s"}`}
                 </button>
               </div>
-              {(notice || validationErrors.length > 0) && (
-                <div className={`mt-3 rounded-2xl border px-4 py-3 text-sm font-semibold ${notice?.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"}`}>
-                  {notice?.message ?? validationErrors[0]}
+              {validationErrors.length > 0 && (
+                <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
+                  {validationErrors[0]}
                 </div>
               )}
             </section>
