@@ -13,6 +13,7 @@ const check = (inventory: ReturnType<typeof current>) =>
 
 test("all schema tables, typed reference paths and indexed purge entries are reviewed", () => {
   expect(check(current())).toEqual([]);
+  expect(coverage.demoResetOperations.storage["storageCandidateIds[]"]).toBe("inventory-not-owner");
 });
 
 test("new table and nested storage path fail before a maintainer classifies them", () => {
@@ -29,6 +30,13 @@ test("new table and nested storage path fail before a maintainer classifies them
     "students: unclassified storage path documents[].fileId",
     "students: validator shape changed",
   ]));
+});
+
+test("inventory-only disposition cannot be assigned to another file path", () => {
+  const altered = structuredClone(coverage);
+  altered.students.storage.photoStorageId = "inventory-not-owner";
+  expect(checkSchemaCoverage(current(), altered, TENANT_SCHOOL_TABLES, DEMO_SCHOOL_TABLES, TENANT_STORAGE_TABLES))
+    .toContain("students: inventory-not-owner is only reviewed for demoResetOperations storage arrays");
 });
 
 test("direct schoolId without by_school and nested storage are not lost", () => {

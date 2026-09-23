@@ -2101,6 +2101,22 @@
     "storage": {},
     "shape": "354:c6426d6:a1b76512"
   },
+  "demoResetOperations": {
+    "ownership": "operator-global",
+    "reason": "Deployment-level reset reservation. The ordered original 37 file IDs remain after row deletion; candidate and acknowledgment IDs track cleanup, not ownership. START binds one new school and run; FINISH checks their succeeded status and cohort counts before marking complete. Never purge with school data.",
+    "references": [
+      { "path": "newRunId", "target": "demoSeedRuns", "optional": true },
+      { "path": "newSchoolId", "target": "schools", "optional": true },
+      { "path": "personIds[]", "target": "persons", "optional": false },
+      { "path": "schoolId", "target": "schools", "optional": false },
+      { "path": "storageAcknowledgedIds[]", "target": "_storage", "optional": true },
+      { "path": "storageCandidateIds[]", "target": "_storage", "optional": false },
+      { "path": "retainedStorageIds[]", "target": "_storage", "optional": false }
+    ],
+    "bySchool": false,
+    "storage": { "storageAcknowledgedIds[]": "inventory-not-owner", "storageCandidateIds[]": "inventory-not-owner", "retainedStorageIds[]": "inventory-not-owner" },
+    "shape": "2211:2b31bc88:d019e432"
+  },
   "demoSeedRuns": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",

@@ -4,11 +4,11 @@ import type { ValidatorJSON } from "convex/values";
 type Field = { fieldType: ValidatorJSON; optional: boolean };
 export type ReferencePath = { path: string; target: string; optional: boolean };
 export type TableCoverage = {
-  ownership: "direct-indexed" | "direct-unindexed" | "indirect" | "shared-or-global";
+  ownership: "direct-indexed" | "direct-unindexed" | "indirect" | "shared-or-global" | "operator-global";
   reason: string;
   references: ReferencePath[];
   bySchool: boolean;
-  storage: Record<string, "legacy-extractor" | "school-logo" | "unsupported-block-reset">;
+  storage: Record<string, "legacy-extractor" | "school-logo" | "unsupported-block-reset" | "inventory-not-owner">;
   shape: string;
 };
 
@@ -95,7 +95,10 @@ export function checkSchemaCoverage(
     const entry = registry[name];
     const row = actual[name];
     if (!entry) { errors.push(`${name}: unclassified table`); continue; }
-    const expected = row.directSchool ? (row.bySchool ? "direct-indexed" : "direct-unindexed") :
+    // The operator reservation names a school but belongs to the deployment,
+    // not to the tenant purge. This is the only reviewed exception.
+    const operatorGlobal = name === "demoResetOperations" && entry.ownership === "operator-global";
+    const expected = operatorGlobal ? "operator-global" : row.directSchool ? (row.bySchool ? "direct-indexed" : "direct-unindexed") :
       entry.ownership === "indirect" ? "indirect" : "shared-or-global";
     if (entry.ownership !== expected) errors.push(`${name}: ownership changed (${expected})`);
     if (entry.bySchool !== row.bySchool) errors.push(`${name}: by_school index changed`);
@@ -108,8 +111,14 @@ export function checkSchemaCoverage(
     for (const ref of expectedRefs) if (!foundRefs.has(ref)) errors.push(`${name}: removed/changed reference ${ref}`);
     const storagePaths = new Set(row.references.filter((ref) => ref.target === "_storage").map((ref) => ref.path));
     for (const path of storagePaths) if (!entry.storage?.[path]) errors.push(`${name}: unclassified storage path ${path}`);
-    for (const path of Object.keys(entry.storage ?? {})) if (!storagePaths.has(path)) errors.push(`${name}: obsolete storage path ${path}`);
-    if (row.directSchool && row.bySchool && !purge.has(name) && !specialIndexed.has(name)) errors.push(`${name}: indexed direct school table absent from tenant purge manifest`);
+    for (const [path, disposition] of Object.entries(entry.storage ?? {})) {
+      if (!storagePaths.has(path)) errors.push(`${name}: obsolete storage path ${path}`);
+      if (disposition === "inventory-not-owner" && (name !== "demoResetOperations" ||
+          !["storageCandidateIds[]", "storageAcknowledgedIds[]", "retainedStorageIds[]"].includes(path))) {
+        errors.push(`${name}: inventory-not-owner is only reviewed for demoResetOperations storage arrays`);
+      }
+    }
+    if (row.directSchool && row.bySchool && !operatorGlobal && !purge.has(name) && !specialIndexed.has(name)) errors.push(`${name}: indexed direct school table absent from tenant purge manifest`);
     if (row.directSchool && row.bySchool && storagePaths.size && !storage.has(name)) errors.push(`${name}: storage references absent from tenant storage plan`);
     if (purge.has(name) && (!row.directSchool || !row.bySchool)) errors.push(`${name}: purge manifest requires indexed schoolId`);
     if (row.directSchool && !row.bySchool && purge.has(name)) errors.push(`${name}: cannot use by_school purge without index`);

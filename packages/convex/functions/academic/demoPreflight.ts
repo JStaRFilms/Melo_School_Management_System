@@ -148,6 +148,12 @@ export const inspectDemoLinksInternal = internalQuery({
     const blockers: string[] = [];
     if (schools.length > 1) blockers.push("schools: more than one school in deployment");
     if (!school && schools.length) blockers.push("schools: deployment is not empty");
+    // Historical terminal records are allowed; every in-progress phase blocks preparation.
+    for (const status of ["prepared", "deleting", "storage_pending", "auth_pending", "ready_to_seed", "seeding"] as const) {
+      if (await ctx.db.query("demoResetOperations")
+        .withIndex("by_school_slug_and_status", (q) => q.eq("schoolSlug", DEMO_SCHOOL_SLUG).eq("status", status))
+        .first()) blockers.push(`demoResetOperations: demo reset already ${status}`);
+    }
     // A failed run can leave cleanup rows after the school itself is gone.
     if (await ctx.db.query("demoSeedStorageCleanup").withIndex("by_school_slug", (q) => q.eq("schoolSlug", DEMO_SCHOOL_SLUG)).first()) {
       blockers.push("demoSeedStorageCleanup: pending storage claims");

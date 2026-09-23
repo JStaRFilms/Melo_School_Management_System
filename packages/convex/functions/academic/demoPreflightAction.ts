@@ -1,6 +1,7 @@
 "use node";
 
 import { action } from "../../_generated/server";
+import type { ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { makeFunctionReference } from "convex/server";
 import { ConvexError, v } from "convex/values";
@@ -48,17 +49,17 @@ const logoRef = makeFunctionReference<"query", { schoolId: Id<"schools"> }, Id<"
 );
 
 // Inspection only. The deployment URL is read on the server, not trusted from caller input.
-export const inspectDemoSchool = action({
-  args: { operatorToken: v.string(), targetIdentity: v.string() },
-  returns: v.object({
+const preflightArgs = { operatorToken: v.string(), targetIdentity: v.string() };
+const preflightReturns = v.object({
     cloudUrl: v.string(),
     e2eOriginsTrusted: v.boolean(),
     school: v.union(v.null(), v.object({ id: v.id("schools"), name: v.string() })),
     tables: v.array(v.object({ name: v.string(), count: v.number(), truncated: v.boolean() })),
     blockers: v.array(v.string()),
     ready: v.boolean(),
-  }),
-  handler: async (ctx, args) => {
+  });
+
+export async function inspectDemoSchoolForOperator(ctx: ActionCtx, args: { operatorToken: string; targetIdentity: string }) {
     const token = process.env.DEMO_SEED_OPERATOR_TOKEN?.trim();
     const identity = process.env.DEMO_SEED_DEPLOYMENT_IDENTITY?.trim();
     if (!token || !identity || process.env.DEMO_SEED_DEPLOYMENT_ENV !== "development" ||
@@ -106,6 +107,7 @@ export const inspectDemoSchool = action({
     const storageTables = new Set<string>(TENANT_STORAGE_TABLES);
     const actual = schemaReferenceInventory(schema);
     for (const [name, row] of Object.entries(actual)) {
+      // Ledger candidates are a reviewed inventory, not file ownership.
       const paths = row.references.filter((ref) => ref.target === "_storage").map((ref) => ref.path);
       const declared = coverage[name as keyof typeof coverage]?.storage;
       if (!declared) {
@@ -117,6 +119,8 @@ export const inspectDemoSchool = action({
     }
     for (const [name, entry] of Object.entries(coverage)) {
       for (const [path, disposition] of Object.entries(entry.storage)) {
+        if (disposition === "inventory-not-owner" && name === "demoResetOperations" &&
+            ["storageCandidateIds[]", "storageAcknowledgedIds[]", "retainedStorageIds[]"].includes(path)) continue;
         if (disposition === "unsupported-block-reset" ||
             disposition === "legacy-extractor" && (!storageTables.has(name) || !extractedPaths.has(path)) ||
             disposition === "school-logo" && (name !== "schools" || path !== "logoStorageId") ||
@@ -141,8 +145,8 @@ export const inspectDemoSchool = action({
         blockers.push(`storage: ${tableName} candidate inventory failed or exceeded 1000`);
       }
     }
-    if (candidateIds.size > 8_000) blockers.push("storage: candidate inventory exceeds 8000");
-    if (candidateIds.size && candidateIds.size <= 8_000) {
+    if (candidateIds.size > 50) blockers.push("storage: candidate inventory exceeds 50");
+    if (candidateIds.size && candidateIds.size <= 50) {
       const candidateStorageIds = [...candidateIds];
       for (const tableName of TENANT_STORAGE_TABLES) {
         try {
@@ -180,5 +184,10 @@ export const inspectDemoSchool = action({
       }
     }
     return { cloudUrl, e2eOriginsTrusted, school, tables, blockers, ready: blockers.length === 0 };
-  },
+}
+
+export const inspectDemoSchool = action({
+  args: preflightArgs,
+  returns: preflightReturns,
+  handler: inspectDemoSchoolForOperator,
 });

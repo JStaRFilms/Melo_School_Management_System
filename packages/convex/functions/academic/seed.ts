@@ -17,6 +17,8 @@ import {
 import { populateJudgeCurriculumFixture } from "./judgeCurriculumSeed";
 import { populateJudgeLessonFixture } from "./judgeLessonSeed";
 import { assertStorageClaimedOnlyBy, assertStorageUnclaimed } from "./assetStorageBoundary";
+import { validateResetStorage } from "./demoResetStorage";
+import { resetSeal, subtleSha256 } from "./demoResetDigest";
 
 const DAY = 24 * 60 * 60 * 1000;
 const timestamp = (date: string) => Date.parse(`${date}T09:00:00.000Z`);
@@ -288,7 +290,7 @@ function updateRunPhase(ctx: MutationCtx, runId: Id<"demoSeedRuns">, phase: "stu
 }
 
 export const startDemoSeedRunInternal = internalMutation({
-  args: { seedProfile: v.optional(seedProfileValidator), authIssuer: v.string(), adminAuthId: v.string(), teacherAuthId: v.string(), portalAuthId: v.string(), logoStorageId: v.id("_storage"), portraitStorageIds: v.array(v.id("_storage")) },
+  args: { seedProfile: v.optional(seedProfileValidator), resetOperationId: v.optional(v.id("demoResetOperations")), authIssuer: v.string(), adminAuthId: v.string(), teacherAuthId: v.string(), portalAuthId: v.string(), logoStorageId: v.id("_storage"), portraitStorageIds: v.array(v.id("_storage")) },
   returns: v.id("demoSeedRuns"),
   handler: async (ctx, args) => {
     const profile = getSchoolSeedProfile(profileKey(args.seedProfile));
@@ -306,6 +308,68 @@ export const startDemoSeedRunInternal = internalMutation({
     const storageIds = [args.logoStorageId, ...args.portraitStorageIds];
     if (new Set(storageIds).size !== storageIds.length) {
       throw new ConvexError("Each demo storage object must have exactly one owning purpose");
+    }
+    if (args.resetOperationId) {
+      if (profile.key !== "demo") throw new ConvexError("Reset operation can only seed demo-school.");
+      const op = await ctx.db.get(args.resetOperationId);
+      if (!op || !["ready_to_seed", "seeding", "complete"].includes(op.status)) throw new ConvexError("Reset operation is not ready to seed.");
+      let configuredIssuer: URL;
+      try {
+        configuredIssuer = new URL(process.env.CONVEX_SITE_URL ?? "");
+      } catch {
+        throw new ConvexError("Configured CONVEX_SITE_URL is invalid.");
+      }
+      if (configuredIssuer.protocol !== "https:" || configuredIssuer.pathname !== "/" ||
+          configuredIssuer.search || configuredIssuer.hash || configuredIssuer.username || configuredIssuer.password ||
+          !configuredIssuer.hostname || (process.env.CONVEX_SITE_URL !== configuredIssuer.origin && process.env.CONVEX_SITE_URL !== `${configuredIssuer.origin}/`) ||
+          issuer.origin !== configuredIssuer.origin || op.authIssuer !== configuredIssuer.origin) {
+        throw new ConvexError("Reset issuer does not match configured CONVEX_SITE_URL.");
+      }
+      if (process.env.DEMO_SEED_DEPLOYMENT_ENV !== "development" || !process.env.CONVEX_CLOUD_URL ||
+          !process.env.DEMO_SEED_EXPECTED_CLOUD_URL || !process.env.DEMO_SEED_DEPLOYMENT_IDENTITY ||
+          op.cloudUrl !== process.env.CONVEX_CLOUD_URL || op.cloudUrl !== process.env.DEMO_SEED_EXPECTED_CLOUD_URL ||
+          op.targetIdentity !== process.env.DEMO_SEED_DEPLOYMENT_IDENTITY || op.schoolSlug !== profile.schoolSlug) {
+        throw new ConvexError("Reset development target gate failed.");
+      }
+      if (op.authIds.length !== 3 || [args.adminAuthId, args.teacherAuthId, args.portalAuthId].some((id, index) => id !== op.authIds[index]) ||
+          op.retainedStorageIds.length !== 37 || storageIds.some((id, index) => id !== op.retainedStorageIds[index]) ||
+          !/^[a-f0-9]{64}$/.test(op.inventoryHash) || await subtleSha256(resetSeal(op)) !== op.inventoryHash) {
+        throw new ConvexError("Reset seed inputs do not match the reviewed operation.");
+      }
+      if (op.status === "seeding" || op.status === "complete") {
+        if (!op.newSchoolId || !op.newRunId) throw new ConvexError("Reset replay is missing its seed binding.");
+        const [school, run] = await Promise.all([ctx.db.get(op.newSchoolId), ctx.db.get(op.newRunId)]);
+        if (!school || school.slug !== profile.schoolSlug || school.logoStorageId !== args.logoStorageId ||
+            !run || run.schoolId !== school._id || run.seedProfile !== "demo" || run.authIssuer !== issuer.origin ||
+            [run.adminAuthId, run.teacherAuthId, run.portalAuthId].some((id, index) => id !== op.authIds[index]) ||
+            run.logoStorageId !== storageIds[0] || run.portraitStorageIds.length !== 36 ||
+            run.portraitStorageIds.some((id, index) => id !== storageIds[index + 1])) {
+          throw new ConvexError("Reset replay seed binding changed.");
+        }
+        return op.newRunId;
+      }
+      if (op.newSchoolId || op.newRunId || op.deletionPhase !== "storage_pending" ||
+          op.deletionCursor !== op.inventory.length || op.authAcknowledgedIds?.length !== 3 ||
+          op.authAcknowledgedIds.some((id, index) => id !== op.authIds[index]) ||
+          op.storageAcknowledgedIds?.length !== op.storageCandidateIds.length ||
+          new Set(op.storageCandidateIds).size !== op.storageCandidateIds.length ||
+          op.storageCandidateIds.some((id) => !op.storageAcknowledgedIds?.includes(id)) ||
+          new Set(storageIds).size !== 37 || storageIds.some((id) => !op.storageCandidateIds.includes(id)) ||
+          await ctx.db.get(op.schoolId) || (await ctx.db.query("schools").take(1)).length !== 0) {
+        throw new ConvexError("Reset operation is not detached and acknowledged.");
+      }
+      for (const status of ["prepared", "deleting", "storage_pending", "auth_pending", "ready_to_seed", "seeding"] as const) {
+        const active = await ctx.db.query("demoResetOperations")
+          .withIndex("by_school_slug_and_status", (q) => q.eq("schoolSlug", profile.schoolSlug).eq("status", status)).take(2);
+        if (status === "ready_to_seed" ? active.length !== 1 || active[0]._id !== op._id : active.length !== 0) {
+          throw new ConvexError("Another demo reset is active.");
+        }
+      }
+      await validateResetStorage(ctx, op, storageIds);
+      const schoolId = await ctx.db.insert("schools", { name: profile.schoolName, slug: profile.schoolSlug, status: "active", logoStorageId: args.logoStorageId, logoFileName: `${profile.schoolSlug}-crest.png`, logoContentType: "image/png", logoUpdatedAt: profile.createdAt, createdAt: profile.createdAt, updatedAt: profile.createdAt });
+      const runId = await ctx.db.insert("demoSeedRuns", { schoolId, status: "running", phase: "foundation", studentCursor: 0, assessmentCursor: 0, billingCursor: 0, authIssuer: issuer.origin, adminAuthId: args.adminAuthId, teacherAuthId: args.teacherAuthId, portalAuthId: args.portalAuthId, logoStorageId: args.logoStorageId, portraitStorageIds: args.portraitStorageIds, seedProfile: profile.key, createdAt: Date.now(), updatedAt: Date.now() });
+      await ctx.db.patch(op._id, { status: "seeding", newSchoolId: schoolId, newRunId: runId });
+      return runId;
     }
     await Promise.all(storageIds.map((storageId) => assertStorageUnclaimed(ctx, storageId)));
     const existing = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug)).unique();
