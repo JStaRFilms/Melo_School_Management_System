@@ -32,7 +32,8 @@ test("admin can sign in and open live assessment setup surfaces", async ({ page 
     expectedPath: "/admin/dashboard",
   });
 
-  await expect(page.getByRole("heading", { name: /Welcome to / })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Admin Dashboard", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "All Core School Systems Operational" })).toBeVisible();
   await page.goto(`${ADMIN_BASE_URL}/assessments/setup/exam-recording`, { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: "Protocol Dashboard" })).toBeVisible();
   await expect(page.getByText("Preview mode is active")).toHaveCount(0);
@@ -44,7 +45,12 @@ test("admin can sign in and open live assessment setup surfaces", async ({ page 
   await expect(
     page.getByRole("main").getByRole("heading", { name: "Grading Bands", level: 1 })
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Commit Global Policy" }).first()).toBeVisible();
+  const remark = page.getByRole("textbox", { name: "Remark for tier 1" });
+  const originalRemark = await remark.inputValue();
+  await remark.fill(`${originalRemark} test`);
+  await expect(page.getByRole("button", { name: "Save Changes" })).toBeVisible();
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(remark).toHaveValue(originalRemark);
   await expect(page.getByText("Preview mode is active")).toHaveCount(0);
 });
 

@@ -15,7 +15,7 @@ function configuredValue(directory, key) {
     if (!fs.existsSync(filename)) continue;
     for (const line of fs.readFileSync(filename, "utf8").split(/\r?\n/)) {
       const match = line.match(/^\s*(?:export\s+)?([A-Z_]+)\s*=\s*(.*?)\s*$/);
-      if (match?.[1] === key) value = match[2].replace(/^(['"])(.*)\1$/, "$2");
+      if (match?.[1] === key) value = match[2].replace(/\s+#.*$/, "").replace(/^(['"])(.*)\1$/, "$2");
     }
   }
   return value;
@@ -98,6 +98,21 @@ async function runFirstSeed(env, runner = privateAction, appTarget = configuredV
       throw new Error(`E2E ${functionName} HTTPS action failed; check the target and operator gate privately.`);
     }
   };
+  if (env.E2E_DEMO_VERIFY_SCHOOL !== undefined) {
+    if (env.E2E_DEMO_VERIFY_OPERATION_ID !== undefined || env.E2E_DEMO_VERIFY_SCHOOL !== DEMO_SLUG) {
+      throw new Error("E2E read-only school verification requires only demo-school.");
+    }
+    const result = await call("functions/academic/demoPreflightAction:inspectDemoSchool", identity);
+    const count = (name) => result.tables?.find((row) => row.name === name)?.count;
+    if (result.cloudUrl !== expected || result.e2eOriginsTrusted !== true || result.ready !== true ||
+        result.school?.name !== "Demo Academy" || result.blockers?.length ||
+        count("students") !== 36 || count("classes") !== 3 ||
+        count("studentInvoices") !== 36 || count("assessmentRecords") !== 756) {
+      throw new Error("E2E existing demo-school verification failed; no reset or seed invoked.");
+    }
+    input.log(`Verified existing demo-school ${result.school.id} on ${expected} without modifying it.`);
+    return;
+  }
   if (env.E2E_DEMO_VERIFY_OPERATION_ID !== undefined) {
     const operationId = env.E2E_DEMO_VERIFY_OPERATION_ID;
     if (!operationId || !/^[a-z0-9]+$/.test(operationId)) throw new Error("E2E verify requires a completed operation ID.");
@@ -183,10 +198,11 @@ module.exports = function globalSetup() { return runFirstSeed(process.env); };
 module.exports.runFirstSeed = runFirstSeed;
 module.exports.requireTarget = requireTarget;
 module.exports.privateAction = privateAction;
+module.exports.configuredValue = configuredValue;
 
 if (require.main === module) {
   (async () => {
-    if (process.env.E2E_DEMO_VERIFY_OPERATION_ID !== undefined) {
+    if (process.env.E2E_DEMO_VERIFY_OPERATION_ID !== undefined || process.env.E2E_DEMO_VERIFY_SCHOOL !== undefined) {
       if (process.argv.length !== 2) throw new Error("Verify-only mode does not accept resume arguments.");
       await runFirstSeed(process.env);
       return;

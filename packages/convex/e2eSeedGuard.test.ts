@@ -1,9 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import globalSetup from "../../e2e/global-setup.js";
 import destructiveConfig from "../../playwright.config.js";
 import admissionsConfig from "../../playwright.admissions.config.js";
 
 const guard = globalSetup as typeof globalSetup & {
+  configuredValue: (directory: string, key: string) => string | undefined;
   runFirstSeed: (env: Record<string, string | undefined>, runner: (...args: any[]) => string, appTarget: (directory: string, key: string) => string | undefined,
     input?: { stdinTTY: boolean; stdoutTTY: boolean; ask: (text: string) => Promise<string | null>; log: (text: string) => void },
     resume?: { operationId: string; schoolId: string; inventoryHash: string; confirmationPhrase: string } | null) => Promise<void>;
@@ -20,6 +24,16 @@ const empty = { cloudUrl: env.DEMO_SEED_EXPECTED_CLOUD_URL, e2eOriginsTrusted: t
 const noFileTarget = () => undefined;
 
 describe("first-run E2E demo seed guard", () => {
+  test("parses the inline comment Convex adds to its selected deployment", () => {
+    const directory = mkdtempSync(join(tmpdir(), "melo-e2e-env-"));
+    try {
+      writeFileSync(join(directory, ".env.local"), "CONVEX_DEPLOYMENT=dev:content-poodle-172 # team: demo, project: school\n");
+      expect(guard.configuredValue(directory, "CONVEX_DEPLOYMENT")).toBe("dev:content-poodle-172");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("refuses mismatched and non-dev targets before any CLI call", async () => {
     const runner = vi.fn();
     await expect(guard.runFirstSeed({ ...env, CONVEX_DEPLOYMENT: "prod:bad" }, runner, noFileTarget)).rejects.toThrow("dev: selector");
@@ -137,6 +151,21 @@ describe("first-run E2E demo seed guard", () => {
     const wrong = harness("wrong");
     await expect(guard.runFirstSeed(env, wrong.runner, noFileTarget, wrong.input, seal)).rejects.toThrow("confirmation cancelled or incorrect");
     expect(wrong.calls).toEqual(["inspectDemoResetOperation"]);
+  });
+
+  test("verify-only checks an existing first-run school without preparing a reset", async () => {
+    const verified = { ...empty, school: { id: "school", name: "Demo Academy" }, tables: [
+      { name: "students", count: 36 }, { name: "classes", count: 3 },
+      { name: "studentInvoices", count: 36 }, { name: "assessmentRecords", count: 756 },
+    ] };
+    const runner = vi.fn().mockResolvedValue(verified);
+    await guard.runFirstSeed({ ...env, E2E_DEMO_VERIFY_SCHOOL: "demo-school" }, runner, noFileTarget);
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(runner.mock.calls[0][1]).toBe("functions/academic/demoPreflightAction:inspectDemoSchool");
+    runner.mockResolvedValue({ ...verified, tables: verified.tables.filter((row) => row.name !== "studentInvoices") });
+    await expect(guard.runFirstSeed({ ...env, E2E_DEMO_VERIFY_SCHOOL: "demo-school" }, runner, noFileTarget))
+      .rejects.toThrow("existing demo-school verification failed");
+    expect(runner.mock.calls.every((call) => call[1] === "functions/academic/demoPreflightAction:inspectDemoSchool")).toBe(true);
   });
 
   test("verify-only uses one read-only action and refuses incorrect proof without preparing", async () => {

@@ -4,7 +4,7 @@ import { action, type ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { makeFunctionReference } from "convex/server";
+import { makeFunctionReference, type RegisteredAction } from "convex/server";
 import { DEMO_ACCOUNTS, DEMO_SCHOOL_SLUG } from "./demoData";
 import { assertReviewedCredential } from "./seedRunnerSecurity";
 
@@ -31,12 +31,16 @@ type FinishArgs = {
   schoolId: Id<"schools">; schoolSlug: string; operationId: Id<"demoResetOperations">;
   inventoryHash: string; confirmationPhrase: string;
 };
+type FinishResult = {
+  operationId: Id<"demoResetOperations">; runId: Id<"demoSeedRuns">; schoolId: Id<"schools">;
+  status: "complete"; studentCount: number; classCount: number; invoiceCount: number; assessmentRecordCount: number;
+};
 
 // The optional verifier is for offline tests only. Production checks the
 // reviewed Better Auth credential link without changing passwords or sessions.
 export async function finishReviewedDemoReset(
   ctx: ActionCtx, args: FinishArgs, verifyAuth: typeof assertReviewedCredential = assertReviewedCredential,
-) {
+): Promise<FinishResult> {
   const cloud = process.env.CONVEX_CLOUD_URL;
   if (!process.env.DEMO_SEED_OPERATOR_TOKEN?.trim() || args.operatorToken !== process.env.DEMO_SEED_OPERATOR_TOKEN.trim() ||
       !process.env.DEMO_SEED_DEPLOYMENT_IDENTITY?.trim() || args.targetIdentity !== process.env.DEMO_SEED_DEPLOYMENT_IDENTITY.trim() ||
@@ -63,7 +67,7 @@ export async function finishReviewedDemoReset(
   for (const [index, account] of Object.values(DEMO_ACCOUNTS).entries()) {
     await verifyAuth(ctx, account, inputs.authIds[index]);
   }
-  const runId = await ctx.runMutation(internal.functions.academic.seed.startDemoSeedRunInternal, {
+  const runId: Id<"demoSeedRuns"> = await ctx.runMutation(internal.functions.academic.seed.startDemoSeedRunInternal, {
     resetOperationId: args.operationId, authIssuer: inputs.authIssuer,
     adminAuthId: inputs.authIds[0], teacherAuthId: inputs.authIds[1], portalAuthId: inputs.authIds[2],
     logoStorageId: inputs.retainedStorageIds[0], portraitStorageIds: inputs.retainedStorageIds.slice(1),
@@ -99,7 +103,7 @@ export async function finishReviewedDemoReset(
   });
 }
 
-export const finishDemoReset = action({
+export const finishDemoReset: RegisteredAction<"public", FinishArgs, Promise<FinishResult>> = action({
   args: { operatorToken: v.string(), targetIdentity: v.string(), deploymentEnvironment: v.literal("development"),
     schoolId: v.id("schools"), schoolSlug: v.string(), operationId: v.id("demoResetOperations"),
     inventoryHash: v.string(), confirmationPhrase: v.string() },

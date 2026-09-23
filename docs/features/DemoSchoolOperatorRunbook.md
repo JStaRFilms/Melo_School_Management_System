@@ -58,6 +58,8 @@ Store the phrase privately. Do not put it on a shell command line or share it in
 
 ## Verify-only browser mode
 
+After an initial seed, set `E2E_DEMO_VERIFY_SCHOOL=demo-school`. Setup then checks the existing school, app targets, trusted origins, and seeded student, class, invoice, and assessment counts without another reset. Keep it set while Playwright runs. Do not combine it with `E2E_DEMO_VERIFY_OPERATION_ID`.
+
 After a completed reset, set `E2E_DEMO_VERIFY_OPERATION_ID` to the completed operation ID and run `node e2e/global-setup.js`. With this variable set, setup calls only the operator-gated read-only `verifyCompletedDemoReset` action. It rejects any other status, cloud URL, school/run binding, or seeded counts. Keep the same development selector, expected URL, operator token, identity, and matching app URLs. Then run browser checks with the variable still set. Unset it only when deliberately starting a separate first-run or reviewed-reset workflow. Verify-only mode does not reset or seed.
 
 The setup sends the token and confirmation phrase in HTTPS action bodies, never as CLI positional arguments. Do not put either on the shell command line.
