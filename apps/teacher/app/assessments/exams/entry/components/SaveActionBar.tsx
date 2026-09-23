@@ -4,7 +4,7 @@ import { Save, Loader2 } from "lucide-react";
 import { useSaveAction } from "@school/shared/examSelection/client";
 import type { SaveBarProps } from "@school/shared/examSelection";
 
-interface SaveActionBarProps extends SaveBarProps {}
+type SaveActionBarProps = SaveBarProps;
 
 export function SaveActionBar({
   hasUnsavedChanges,

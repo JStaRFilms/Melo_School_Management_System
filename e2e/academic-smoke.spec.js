@@ -1,8 +1,8 @@
 const { test, expect } = require("@playwright/test");
 
-const ADMIN_BASE_URL = "http://localhost:3002";
-const TEACHER_BASE_URL = "http://localhost:3001";
-const PORTAL_BASE_URL = "http://localhost:3003";
+const ADMIN_BASE_URL = "http://localhost:3102";
+const TEACHER_BASE_URL = "http://localhost:3101";
+const PORTAL_BASE_URL = "http://localhost:3103";
 
 async function signIn(page, { baseUrl, email, password, expectedPath }) {
   await page.goto(`${baseUrl}/sign-in`, { waitUntil: "networkidle" });

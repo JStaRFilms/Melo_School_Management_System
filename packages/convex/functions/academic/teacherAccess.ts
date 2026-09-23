@@ -1,6 +1,9 @@
 import { ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
+import type { QueryCtx } from "../../_generated/server";
 import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
+
+type TeacherAccessCtx = Pick<QueryCtx, "db">;
 
 /**
  * Teacher assignment checks (consolidation P8). Extracted unchanged from
@@ -17,11 +20,11 @@ import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelper
  */
 /**
  * Assert that a teacher is assigned to a class-subject pair
- * 
+ *
  * @throws ConvexError "Not assigned to this class-subject" if no matching assignment
  */
 export async function assertTeacherAssignment(
-  ctx: any,
+  ctx: TeacherAccessCtx,
   teacherId: Id<"users">,
   classId: Id<"classes">,
   subjectId: Id<"subjects">
@@ -39,37 +42,37 @@ export async function assertTeacherAssignment(
 }
 
 export async function getTeacherAssignableClassIds(
-  ctx: any,
+  ctx: TeacherAccessCtx,
   teacherId: Id<"users">,
   schoolId: Id<"schools">
 ): Promise<Array<Id<"classes">>> {
   const linkedTeacherIds = await getLinkedTeacherIds(ctx, teacherId, schoolId);
   const teacherAssignments = await ctx.db
     .query("teacherAssignments")
-    .withIndex("by_teacher", (q: any) => q.eq("teacherId", teacherId))
+    .withIndex("by_teacher", (q) => q.eq("teacherId", teacherId))
     .collect();
   const classOfferings = await ctx.db
     .query("classSubjects")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
     .collect();
   const schoolClasses = await ctx.db
     .query("classes")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
     .collect();
   const schoolSubjects = await ctx.db
     .query("subjects")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
     .collect();
 
   const activeClassIds = new Set(
     schoolClasses
-      .filter((classDoc: any) => !classDoc.isArchived)
-      .map((classDoc: any) => String(classDoc._id))
+      .filter((classDoc) => !classDoc.isArchived)
+      .map((classDoc) => String(classDoc._id))
   );
   const activeSubjectIds = new Set(
     schoolSubjects
-      .filter((subject: any) => !subject.isArchived)
-      .map((subject: any) => String(subject._id))
+      .filter((subject) => !subject.isArchived)
+      .map((subject) => String(subject._id))
   );
 
   const classIds = new Set<string>();
@@ -110,7 +113,7 @@ export async function getTeacherAssignableClassIds(
 }
 
 export async function getTeacherAssignableSubjectIds(
-  ctx: any,
+  ctx: TeacherAccessCtx,
   teacherId: Id<"users">,
   schoolId: Id<"schools">,
   classId: Id<"classes">
@@ -122,23 +125,23 @@ export async function getTeacherAssignableSubjectIds(
   }
   const teacherAssignments = await ctx.db
     .query("teacherAssignments")
-    .withIndex("by_teacher_and_class", (q: any) =>
+    .withIndex("by_teacher_and_class", (q) =>
       q.eq("teacherId", teacherId).eq("classId", classId)
     )
     .collect();
   const classOfferings = await ctx.db
     .query("classSubjects")
-    .withIndex("by_class", (q: any) => q.eq("classId", classId))
+    .withIndex("by_class", (q) => q.eq("classId", classId))
     .collect();
   const schoolSubjects = await ctx.db
     .query("subjects")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
     .collect();
 
   const activeSubjectIds = new Set(
     schoolSubjects
-      .filter((subject: any) => !subject.isArchived)
-      .map((subject: any) => String(subject._id))
+      .filter((subject) => !subject.isArchived)
+      .map((subject) => String(subject._id))
   );
 
   const subjectIds = new Set<string>();
@@ -192,7 +195,7 @@ export async function getTeacherAssignableSubjectIds(
 }
 
 export async function teacherHasClassAccess(
-  ctx: any,
+  ctx: TeacherAccessCtx,
   teacherId: Id<"users">,
   schoolId: Id<"schools">,
   classId: Id<"classes">
@@ -203,7 +206,7 @@ export async function teacherHasClassAccess(
 }
 
 async function teacherHasClassSubjectAccess(
-  ctx: any,
+  ctx: TeacherAccessCtx,
   teacherId: Id<"users">,
   classId: Id<"classes">,
   subjectId: Id<"subjects">
@@ -225,7 +228,7 @@ async function teacherHasClassSubjectAccess(
     : new Set<string>([String(teacherId)]);
   const assignment = await ctx.db
     .query("teacherAssignments")
-    .withIndex("by_teacher_and_class_and_subject", (q: any) =>
+    .withIndex("by_teacher_and_class_and_subject", (q) =>
       q
         .eq("teacherId", teacherId)
         .eq("classId", classId)
@@ -245,7 +248,7 @@ async function teacherHasClassSubjectAccess(
   ) {
     const offering = await ctx.db
       .query("classSubjects")
-      .withIndex("by_class_and_subject", (q: any) =>
+      .withIndex("by_class_and_subject", (q) =>
         q.eq("classId", classId).eq("subjectId", subjectId)
       )
       .unique();
@@ -257,7 +260,7 @@ async function teacherHasClassSubjectAccess(
 
   const offering = await ctx.db
     .query("classSubjects")
-    .withIndex("by_class_and_subject", (q: any) =>
+    .withIndex("by_class_and_subject", (q) =>
       q.eq("classId", classId).eq("subjectId", subjectId)
     )
     .unique();
@@ -271,7 +274,7 @@ async function teacherHasClassSubjectAccess(
 }
 
 async function getLinkedTeacherIds(
-  ctx: any,
+  ctx: TeacherAccessCtx,
   teacherId: Id<"users">,
   schoolId: Id<"schools">
 ): Promise<Set<string>> {

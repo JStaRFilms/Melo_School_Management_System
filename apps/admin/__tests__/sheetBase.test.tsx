@@ -48,6 +48,18 @@ describe("shared SheetBase (consolidation P18)", () => {
     expect(screen.getByText("Save")).toBeDefined();
   });
 
+  it("positions a custom panel above the absolute overlay", () => {
+    render(
+      <SheetBase open onClose={vi.fn()} title="T" panelClass="w-full bg-white">
+        x
+      </SheetBase>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.previousElementSibling?.classList.contains("absolute")).toBe(true);
+    expect(dialog.classList.contains("relative")).toBe(true);
+  });
+
   it("keeps the admin wrapper on the shared base", () => {
     render(
       <AdminSheet isOpen title="Admin sheet" description="D" onClose={vi.fn()}>

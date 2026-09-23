@@ -44,7 +44,7 @@ const DEFAULT_FRAME_CLASS =
 const DEFAULT_OVERLAY_CLASS =
   "absolute inset-0 bg-slate-950/60 backdrop-blur-[4px] transition-opacity duration-500 ease-out";
 const DEFAULT_PANEL_CLASS =
-  "relative flex w-full flex-col overflow-hidden bg-white shadow-2xl ring-1 ring-slate-950/10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] rounded-t-[2.5rem] sm:rounded-2xl";
+  "flex w-full flex-col overflow-hidden bg-white shadow-2xl ring-1 ring-slate-950/10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] rounded-t-[2.5rem] sm:rounded-2xl";
 const DEFAULT_HANDLE_CLASS = "flex justify-center py-4 sm:hidden";
 const DEFAULT_HEADER_CLASS =
   "flex items-start justify-between px-6 pb-4 pt-2 sm:pt-6 border-b border-slate-50";
@@ -171,7 +171,7 @@ export function SheetBase({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
-        className={`${panelClass} ${maxWidthClass} ${isAnimating ? openPanelClass : closedPanelClass}`}
+        className={`relative ${panelClass} ${maxWidthClass} ${isAnimating ? openPanelClass : closedPanelClass}`}
       >
         <div className={handleClass} aria-hidden="true">
           <div className={handleDotClass} />
