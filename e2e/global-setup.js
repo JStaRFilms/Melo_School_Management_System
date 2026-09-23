@@ -30,7 +30,7 @@ function requireTarget(env, appTarget = configuredValue) {
     throw new Error("E2E requires DEMO_SEED_DEPLOYMENT_ENV=development, DEMO_SEED_OPERATOR_TOKEN and DEMO_SEED_DEPLOYMENT_IDENTITY.");
   }
   const expected = env.DEMO_SEED_EXPECTED_CLOUD_URL;
-  if (!expected || !/^https:\/\/[a-z0-9-]+\.convex\.cloud$/.test(expected)) {
+  if (!expected || !/^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.convex\.cloud$/.test(expected)) {
     throw new Error("E2E requires an explicit HTTPS DEMO_SEED_EXPECTED_CLOUD_URL on convex.cloud.");
   }
   const expectedSite = expected.replace(/\.convex\.cloud$/, ".convex.site");

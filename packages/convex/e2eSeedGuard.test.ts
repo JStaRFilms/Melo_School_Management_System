@@ -29,6 +29,14 @@ describe("first-run E2E demo seed guard", () => {
     expect(runner).not.toHaveBeenCalled();
   });
 
+  test("accepts the region-qualified cloud URL returned by a Convex dev deployment", async () => {
+    const cloudUrl = "https://content-poodle-172.eu-west-1.convex.cloud";
+    const regional = { ...env, DEMO_SEED_EXPECTED_CLOUD_URL: cloudUrl, NEXT_PUBLIC_CONVEX_URL: cloudUrl };
+    const runner = vi.fn().mockReturnValueOnce({ ...empty, cloudUrl }).mockReturnValueOnce({});
+    await guard.runFirstSeed(regional, runner, noFileTarget);
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
   test("rejects shell and app site mismatches before inspection, including valid alternate site URLs", async () => {
     const runner = vi.fn();
     const other = "https://other.convex.site";
