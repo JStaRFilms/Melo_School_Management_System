@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FocusEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { hasEffectiveCapability } from "@school/shared";
@@ -31,7 +31,7 @@ function statusLabel(value: string) { return value.replaceAll("_", " "); }
 
 /** Scroll an element into view using only the workspace scroll container — never
  * the document body, or the pinned app header gets pushed out on mobile. */
-function scrollInnerIntoView(element: HTMLElement) {
+function scrollInnerIntoView(element: HTMLElement, center = false) {
   if (typeof window === "undefined") return;
   let node: HTMLElement | null = element.parentElement;
   while (node) {
@@ -39,7 +39,8 @@ function scrollInnerIntoView(element: HTMLElement) {
     const scrolls = overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay";
     if (scrolls && node.scrollHeight > node.clientHeight + 1) {
       const delta = element.getBoundingClientRect().top - node.getBoundingClientRect().top;
-      node.scrollTo?.({ top: Math.max(0, node.scrollTop + delta - 8), behavior: "smooth" });
+      const offset = center ? Math.max(0, (node.clientHeight - element.getBoundingClientRect().height) / 2) : 8;
+      node.scrollTo?.({ top: Math.max(0, node.scrollTop + delta - offset), behavior: "smooth" });
       return;
     }
     node = node.parentElement;
@@ -273,7 +274,7 @@ export function AdmissionsDashboard() {
     <div role="status" aria-live="polite" className="rounded-lg border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-sm font-medium text-slate-700 shadow-sm">
       {feedback}
     </div>
-    {canManage ? <AdminSurface as="section" intensity={openDraftId ? "none" : "medium"} className={openDraftId ? "space-y-4" : "space-y-4 rounded-2xl p-3 sm:rounded-xl sm:p-5"}>
+    {canManage ? <AdminSurface as="section" intensity="none" className="space-y-4">
       {openDraftId ? <div ref={formTopRef} className="scroll-mt-2">
         <button type="button" aria-label="Back to campaigns" onClick={cancelEdit} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-2 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 active:scale-[0.98]">
           <span aria-hidden="true">←</span> Campaigns
@@ -321,7 +322,7 @@ export function AdmissionsDashboard() {
       </div>}
       {openDraftId ? <CampaignForm values={values} update={update} errors={errors} busy={busy || (openDraftId !== "new" && !selected)} replacement={replacement} isNew={openDraftId === "new"} campaign={selected?.lifecycle === "draft" ? selected : null} canApproveFinance={canApproveFinance} customSlugs={customSlugs} onCustomizeSlug={(key) => setCustomSlugs((current) => ({ ...current, [key]: true }))} conflict={feedback.startsWith("This campaign changed")} onApprovePrice={() => void approveCurrentPrice()} onReload={reloadOpenDraft} onSave={() => void save()} onCancel={cancelEdit} /> : null}
     </AdminSurface> : null}
-    {canList && !openDraftId ? <AdminSurface as="section" className="space-y-4 rounded-2xl p-3 sm:rounded-xl sm:p-5">
+    {canList && !openDraftId ? <AdminSurface as="section" intensity="none" className="space-y-4">
       <div className="flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-bold text-slate-900">Application queue</h2>
@@ -437,14 +438,15 @@ function ChoiceEditor({ field, onChange, onFocusOption, registerRef }: {
     onChange(next);
   };
   return (
-    <div className="space-y-2 sm:col-span-2 lg:col-span-4">
+    <div className="mt-2 space-y-2">
       <span className="text-sm font-semibold text-slate-800">Choices</span>
       {rows.map((option, rowIndex) => (
         <div key={rowIndex} className="flex items-center gap-2">
+          <span aria-hidden="true" className={field.kind === "select" ? "h-[18px] w-[18px] shrink-0 rounded-full border-2 border-slate-300" : "h-[18px] w-[18px] shrink-0 rounded-[5px] border-2 border-slate-300"} />
           <input
             aria-label={`Option ${rowIndex + 1}`}
             ref={(element) => registerRef(`${field.fieldKey}:${rowIndex}`, element)}
-            className={`${fieldClass} flex-1`}
+            className={`${fieldClass} flex-1${option.trim() === "" ? " !border-rose-300 !bg-rose-50/50" : ""}`}
             value={option}
             onChange={(event) => setRow(rowIndex, event.target.value)}
             onKeyDown={(event) => {
@@ -528,6 +530,62 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
     [next[index], next[target]] = [next[target], next[index]];
     return next;
   };
+  const [movedCardKey, setMovedCardKey] = useState<string | null>(null);
+
+  // After a move, keep the card centered on screen with a brief highlight so the
+  // reorder is felt instead of just happening somewhere off-screen.
+  useEffect(() => {
+    if (!movedCardKey) return;
+    const card = cardRefs.current.get(movedCardKey);
+    if (card) scrollInnerIntoView(card, true);
+    const timer = window.setTimeout(() => setMovedCardKey((current) => current === movedCardKey ? null : current), 1200);
+    return () => window.clearTimeout(timer);
+  }, [movedCardKey, values.fieldsJson, values.requirementsJson]);
+
+  const moveField = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= fields.length) return;
+    const field = fields[index];
+    if (!field) return;
+    saveDefinitions(moveItem(fields, index, direction), requirements);
+    setMovedCardKey(field.fieldKey);
+  };
+  const moveRequirement = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= requirements.length) return;
+    const requirement = requirements[index];
+    if (!requirement) return;
+    saveDefinitions(fields, moveItem(requirements, index, direction));
+    setMovedCardKey(requirement.requirementKey);
+  };
+  const duplicateField = (index: number) => {
+    const current = fields[index];
+    if (!current) return;
+    const key = nextCampaignDefinitionKey("question", fields.map((field) => field.fieldKey));
+    const next = [...fields];
+    next.splice(index + 1, 0, { ...current, fieldKey: key });
+    saveDefinitions(next, requirements);
+    setFocusCardKey(key);
+  };
+  const duplicateRequirement = (index: number) => {
+    const current = requirements[index];
+    if (!current) return;
+    const key = nextCampaignDefinitionKey("document", requirements.map((requirement) => requirement.requirementKey));
+    const next = [...requirements];
+    next.splice(index + 1, 0, { ...current, requirementKey: key });
+    saveDefinitions(fields, next);
+    setFocusCardKey(key);
+  };
+  const [activeCardKey, setActiveCardKey] = useState<string | null>(null);
+  const cardFocusProps = (key: string) => ({
+    onFocus: () => setActiveCardKey(key),
+    onBlur: (event: FocusEvent<HTMLDivElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setActiveCardKey(null);
+    },
+  });
+  const cardHighlight = (key: string) => movedCardKey === key || activeCardKey === key
+    ? " border-sky-400 ring-2 ring-sky-200"
+    : "";
   const changeField = (index: number, patch: Partial<CampaignFieldInput>) => {
     const current = fields[index];
     if (!current) return;
@@ -583,7 +641,7 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
   const priceApproved = Boolean(values.priceApprovalEvidenceId);
 
   return (
-    <form className="space-y-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:space-y-7 sm:rounded-xl sm:p-6" onSubmit={(event) => { event.preventDefault(); onSave(); }}>
+    <form className="mx-auto min-w-0 w-full max-w-3xl space-y-6 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:space-y-7 sm:rounded-xl sm:p-6 [&_*:not(button)]:min-w-0" onSubmit={(event) => { event.preventDefault(); onSave(); }}>
       <div className="border-b border-slate-200 pb-4">
         <h3 className="font-display text-lg font-bold text-slate-900">{replacement ? "New campaign version" : "Set up an admissions campaign"}</h3>
         <p className="mt-1 text-sm text-slate-600">Start with the essentials. Technical settings stay out of the way unless you need them.</p>
@@ -655,7 +713,7 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
           <div><legend className="font-display text-base font-bold text-slate-900">3. Extra questions</legend><p className="mt-1 text-sm text-slate-600">The child profile and primary contact are already included. Add only what the school still needs.</p><details className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-1 text-sm"><summary className="flex min-h-[44px] cursor-pointer items-center font-semibold text-slate-700">See the details parents already fill in</summary><div className="grid gap-3 pb-3 sm:grid-cols-2"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Child</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-slate-600"><li>First name, last name, date of birth <span className="text-slate-400">(always required)</span></li><li>Middle name, gender, preferred name</li><li>Nationality, country of birth, home address</li></ul></div><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Primary contact</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-slate-600"><li>Full name, relationship to the child <span className="text-slate-400">(always required)</span></li><li>Email, phone number, home address</li></ul></div></div></details></div>
           <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={addQuestion}>Add question</button>
         </div>
-        {fields.length ? <div className="space-y-3">{fields.map((field, index) => <div key={`${field.fieldKey}:${index}`} data-card-key={field.fieldKey} ref={(element) => { if (element) cardRefs.current.set(field.fieldKey, element); else cardRefs.current.delete(field.fieldKey); }} className="grid gap-3 rounded-2xl border border-slate-200 p-3 sm:rounded-lg sm:grid-cols-2 sm:items-end lg:grid-cols-[1fr_12rem_auto_auto]"><label className="text-sm font-semibold text-slate-800">Question<input className={`${fieldClass} mt-1`} value={field.label} onChange={(event) => changeField(index, { label: event.target.value })} placeholder="For example, Previous school attended" /></label><label className="text-sm font-semibold text-slate-800">Answer type<select className={`${fieldClass} mt-1`} value={field.kind} onChange={(event) => { const kind = event.target.value; changeField(index, { kind, validationJson: kind === "select" || kind === "multi_select" ? JSON.stringify({ options: ["", ""] }) : "{}" }); }}>{QUESTION_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="flex min-h-[44px] items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={field.requiredMode === "required"} onChange={(event) => changeField(index, { requiredMode: event.target.checked ? "required" : "optional" })} />Required</label><div className="flex gap-2 sm:col-span-2 lg:col-span-4"><button type="button" className={iconButtonClass} onClick={() => saveDefinitions(moveItem(fields, index, -1), requirements)} disabled={index === 0} aria-label="Move question up">↑</button><button type="button" className={iconButtonClass} onClick={() => saveDefinitions(moveItem(fields, index, 1), requirements)} disabled={index === fields.length - 1} aria-label="Move question down">↓</button><button type="button" className={`${secondaryButtonClass} flex-1`} onClick={() => saveDefinitions(fields.filter((_, itemIndex) => itemIndex !== index), requirements)}>Remove</button></div>{field.kind === "select" || field.kind === "multi_select" ? <ChoiceEditor field={field} onChange={(options) => setFieldOptions(index, options)} onFocusOption={(key) => setFocusOptionKey(key)} registerRef={(key, element) => { if (element) optionRefs.current.set(key, element); else optionRefs.current.delete(key); }} /> : null}</div>)}</div> : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">No extra questions. Parents will still complete the standard child and contact details.</p>}{fields.length ? <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={addQuestion}>Add another question</button> : null}
+        {fields.length ? <div className="space-y-3">{fields.map((field, index) => <div key={`${field.fieldKey}:${index}`} data-card-key={field.fieldKey} ref={(element) => { if (element) cardRefs.current.set(field.fieldKey, element); else cardRefs.current.delete(field.fieldKey); }} {...cardFocusProps(field.fieldKey)} className={`flex overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition sm:rounded-lg${cardHighlight(field.fieldKey)}`}><div aria-hidden="true" className="flex w-11 shrink-0 flex-col items-center gap-2 border-r border-slate-100 bg-slate-50/60 py-3 text-slate-400"><span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-950 text-[11px] font-bold text-white">{index + 1}</span></div><div className="min-w-0 flex-1 p-3 sm:p-4"><input aria-label="Question" className="w-full border-b-2 border-transparent bg-transparent pb-1 text-lg font-bold text-slate-950 placeholder:font-medium placeholder:text-slate-400 focus:border-sky-600 focus:outline-none" value={field.label} onChange={(event) => changeField(index, { label: event.target.value })} placeholder="For example, Previous school attended" /><div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2"><select aria-label="Answer type" className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm transition focus:border-sky-600 focus:outline-none" value={field.kind} onChange={(event) => { const kind = event.target.value; changeField(index, { kind, validationJson: kind === "select" || kind === "multi_select" ? JSON.stringify({ options: ["", ""] }) : "{}" }); }}>{QUESTION_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button type="button" role="switch" aria-checked={field.requiredMode === "required"} aria-label="Required" onClick={() => changeField(index, { requiredMode: field.requiredMode === "required" ? "optional" : "required" })} className="flex min-h-[44px] min-w-[44px] items-center gap-2 text-sm font-semibold text-slate-600"><span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full transition ${field.requiredMode === "required" ? "bg-slate-950" : "bg-slate-300"}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${field.requiredMode === "required" ? "left-[22px]" : "left-0.5"}`} /></span>Required</button></div>{field.kind === "select" || field.kind === "multi_select" ? <ChoiceEditor field={field} onChange={(options) => setFieldOptions(index, options)} onFocusOption={(key) => setFocusOptionKey(key)} registerRef={(key, element) => { if (element) optionRefs.current.set(key, element); else optionRefs.current.delete(key); }} /> : null}<div className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2"><button type="button" className="inline-flex min-h-[44px] items-center rounded-lg px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 active:scale-[0.98]" onClick={() => duplicateField(index)} aria-label="Duplicate question">Duplicate</button><button type="button" className="inline-flex min-h-[44px] items-center rounded-lg px-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 active:scale-[0.98]" onClick={() => saveDefinitions(fields.filter((_, itemIndex) => itemIndex !== index), requirements)}>Delete</button><span className="ml-auto flex gap-1"><button type="button" className={iconButtonClass} onClick={() => moveField(index, -1)} disabled={index === 0} aria-label="Move question up">↑</button><button type="button" className={iconButtonClass} onClick={() => moveField(index, 1)} disabled={index === fields.length - 1} aria-label="Move question down">↓</button></span></div></div></div>)}</div> : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">No extra questions. Parents will still complete the standard child and contact details.</p>}{fields.length ? <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={addQuestion}>Add another question</button> : null}
       </fieldset>
 
       <fieldset className="min-w-0 space-y-4 border-t border-slate-200 pt-6">
@@ -663,7 +721,7 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
           <div><legend className="font-display text-base font-bold text-slate-900">4. Documents</legend><p className="mt-1 text-sm text-slate-600">Ask parents to upload documents, like a birth certificate. Leave this empty if nothing needs uploading.</p></div>
           <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={addRequirement}>Add document</button>
         </div>
-        {requirements.length ? <div className="space-y-3">{requirements.map((requirement, index) => <div key={`${requirement.requirementKey}:${index}`} data-card-key={requirement.requirementKey} ref={(element) => { if (element) cardRefs.current.set(requirement.requirementKey, element); else cardRefs.current.delete(requirement.requirementKey); }} className="grid gap-3 rounded-2xl border border-slate-200 p-3 sm:rounded-lg sm:grid-cols-2 sm:items-end lg:grid-cols-[1fr_10rem_9rem_auto_auto]"><label className="text-sm font-semibold text-slate-800">Document name<input className={`${fieldClass} mt-1`} value={requirement.label} onChange={(event) => changeRequirement(index, { label: event.target.value })} placeholder="For example, Birth certificate" /></label><label className="text-sm font-semibold text-slate-800">Category<select className={`${fieldClass} mt-1`} value={requirement.category} onChange={(event) => { const category = event.target.value; changeRequirement(index, { category, ...(category === "identity" || category === "medical" ? { sensitivity: "highly_sensitive" } : {}) }); }}><option value="identity">Identity</option><option value="academic">Academic</option><option value="medical">Medical</option><option value="legal">Legal</option></select></label><label className="text-sm font-semibold text-slate-800">Maximum size<select className={`${fieldClass} mt-1`} value={String(requirement.maxBytes)} onChange={(event) => changeRequirement(index, { maxBytes: Number(event.target.value) })}><option value={2 * 1024 * 1024}>2 MB</option><option value={5 * 1024 * 1024}>5 MB</option><option value={10 * 1024 * 1024}>10 MB</option></select></label><label className="flex min-h-[44px] items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={requirement.requiredMode === "required"} onChange={(event) => changeRequirement(index, { requiredMode: event.target.checked ? "required" : "optional" })} />Required</label><div className="flex gap-2 sm:col-span-2 lg:col-span-5"><button type="button" className={iconButtonClass} onClick={() => saveDefinitions(fields, moveItem(requirements, index, -1))} disabled={index === 0} aria-label="Move document up">↑</button><button type="button" className={iconButtonClass} onClick={() => saveDefinitions(fields, moveItem(requirements, index, 1))} disabled={index === requirements.length - 1} aria-label="Move document down">↓</button><button type="button" className={`${secondaryButtonClass} flex-1`} onClick={() => saveDefinitions(fields, requirements.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div></div>)}</div> : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">No documents required for this campaign.</p>}{requirements.length ? <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={addRequirement}>Add another document</button> : null}
+        {requirements.length ? <div className="space-y-3">{requirements.map((requirement, index) => <div key={`${requirement.requirementKey}:${index}`} data-card-key={requirement.requirementKey} ref={(element) => { if (element) cardRefs.current.set(requirement.requirementKey, element); else cardRefs.current.delete(requirement.requirementKey); }} {...cardFocusProps(requirement.requirementKey)} className={`flex overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition sm:rounded-lg${cardHighlight(requirement.requirementKey)}`}><div aria-hidden="true" className="flex w-11 shrink-0 flex-col items-center gap-2 border-r border-slate-100 bg-slate-50/60 py-3 text-slate-400"><span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-950 text-[11px] font-bold text-white">{index + 1}</span></div><div className="min-w-0 flex-1 p-3 sm:p-4"><input aria-label="Document name" className="w-full border-b-2 border-transparent bg-transparent pb-1 text-lg font-bold text-slate-950 placeholder:font-medium placeholder:text-slate-400 focus:border-sky-600 focus:outline-none" value={requirement.label} onChange={(event) => changeRequirement(index, { label: event.target.value })} placeholder="For example, Birth certificate" /><div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2"><select aria-label="Category" className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm transition focus:border-sky-600 focus:outline-none" value={requirement.category} onChange={(event) => { const category = event.target.value; changeRequirement(index, { category, ...(category === "identity" || category === "medical" ? { sensitivity: "highly_sensitive" } : {}) }); }}><option value="identity">Identity</option><option value="academic">Academic</option><option value="medical">Medical</option><option value="legal">Legal</option></select><select aria-label="Maximum size" className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm transition focus:border-sky-600 focus:outline-none" value={String(requirement.maxBytes)} onChange={(event) => changeRequirement(index, { maxBytes: Number(event.target.value) })}><option value={2 * 1024 * 1024}>2 MB</option><option value={5 * 1024 * 1024}>5 MB</option><option value={10 * 1024 * 1024}>10 MB</option></select><button type="button" role="switch" aria-checked={requirement.requiredMode === "required"} aria-label="Required document" onClick={() => changeRequirement(index, { requiredMode: requirement.requiredMode === "required" ? "optional" : "required" })} className="flex min-h-[44px] min-w-[44px] items-center gap-2 text-sm font-semibold text-slate-600"><span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full transition ${requirement.requiredMode === "required" ? "bg-slate-950" : "bg-slate-300"}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${requirement.requiredMode === "required" ? "left-[22px]" : "left-0.5"}`} /></span>Required</button></div><div className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2"><button type="button" className="inline-flex min-h-[44px] items-center rounded-lg px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 active:scale-[0.98]" onClick={() => duplicateRequirement(index)} aria-label="Duplicate document">Duplicate</button><button type="button" className="inline-flex min-h-[44px] items-center rounded-lg px-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 active:scale-[0.98]" onClick={() => saveDefinitions(fields, requirements.filter((_, itemIndex) => itemIndex !== index))}>Delete</button><span className="ml-auto flex gap-1"><button type="button" className={iconButtonClass} onClick={() => moveRequirement(index, -1)} disabled={index === 0} aria-label="Move document up">↑</button><button type="button" className={iconButtonClass} onClick={() => moveRequirement(index, 1)} disabled={index === requirements.length - 1} aria-label="Move document down">↓</button></span></div></div></div>)}</div> : <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">No documents required for this campaign.</p>}{requirements.length ? <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={addRequirement}>Add another document</button> : null}
       </fieldset>
 
       <fieldset className="min-w-0 space-y-4 border-t border-slate-200 pt-6">
@@ -674,7 +732,7 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
 
       {errors.length ? <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-sm text-amber-900"><p className="font-bold">Check these details:</p><ul className="mt-1 list-disc space-y-0.5 pl-5">{errors.map((error) => <li key={error}>{error}</li>)}</ul></div> : null}
 
-      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] grid grid-cols-2 items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex sm:flex-wrap sm:rounded-xl">
+      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] grid grid-cols-1 items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur min-[400px]:grid-cols-2 sm:flex sm:flex-wrap sm:rounded-xl">
         {conflict ? <button type="button" className="col-span-2 inline-flex min-h-[44px] items-center justify-center rounded-xl border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900" onClick={onReload}>Reload all server values</button> : null}
         <button className={`${buttonClass} w-full sm:w-auto`} disabled={busy || conflict || errors.length > 0}>{busy ? "Saving…" : "Save draft"}</button>
         <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={onCancel}>Cancel</button>
