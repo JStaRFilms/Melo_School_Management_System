@@ -81,4 +81,6 @@ For every new table or changed field:
 5. Add E2E coverage for changed behavior: successful empty-school first run and relevant target mismatch, operator-gate, existing-school, or blocker failure paths. E2E must verify blocked paths do not invoke seeding or mutate authentication. Keep app, CLI, and server target agreement checks in setup.
 6. Run `pnpm --filter @school/convex test`, `pnpm --filter @school/convex typecheck`, and lint. Review schema, registry, purge, storage, seed, and E2E diffs together. Update the [schema coverage guide](DemoSchoolSchemaCoverage.md) if ownership or reset behavior changes.
 
-No live deployment or seed has been run as part of this documentation update.
+## Verified isolated-development run, 2026-09-23
+
+On the separate `content-poodle-172` development deployment, the first seed created Demo Academy and the Admin, Teacher, and Portal Playwright cases passed 3/3. A later operator-confirmed reset replaced that same synthetic school through the reviewed operation. Read-only verification returned `complete`, a new school and run ID, 36 students, three classes, 36 invoices, and 756 assessment records. Running Playwright with `E2E_DEMO_VERIFY_OPERATION_ID` passed all three cases again without another reset. The original shared development deployment and production were not reset or deployed. Injected failure and cross-school isolation cases remain test simulations; this live run was the normal successful path.
