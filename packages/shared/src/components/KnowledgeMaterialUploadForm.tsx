@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -228,7 +229,9 @@ export function KnowledgeMaterialUploadForm({
   const [selectedPageRanges, setSelectedPageRanges] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isInspecting, setIsInspecting] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
   const maxPdfPages = Math.min(
     MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
     readiness.maxPagesPerOperation ?? MAX_KNOWLEDGE_MATERIAL_PDF_PAGES,
@@ -260,8 +263,7 @@ export function KnowledgeMaterialUploadForm({
     return null;
   };
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0] ?? null;
+  const selectFile = (selectedFile: File | null) => {
     if (!selectedFile) {
       clearFile();
       return;
@@ -275,6 +277,34 @@ export function KnowledgeMaterialUploadForm({
     setValidationError(null);
     setFile(selectedFile);
     if (!title.trim()) setTitle(titleFromFileName(selectedFile.name));
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    selectFile(event.target.files?.[0] ?? null);
+  };
+
+  const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    if (event.dataTransfer.types.includes("Files")) setIsDraggingFile(true);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFile(false);
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+    selectFile(event.dataTransfer.files[0] ?? null);
   };
 
   const subjectRequired = !isAdmin || !isCurriculumReference;
@@ -421,10 +451,16 @@ export function KnowledgeMaterialUploadForm({
         aria-label="Choose material file"
         onClick={() => fileInputRef.current?.click()}
         onKeyDown={handlePickerKeyDown}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className={`group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
-          file
-            ? "border-emerald-200 bg-emerald-50/30"
-            : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
+          isDraggingFile
+            ? "border-slate-950 bg-slate-100"
+            : file
+              ? "border-emerald-200 bg-emerald-50/30"
+              : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
         }`}
       >
         <input
@@ -459,7 +495,9 @@ export function KnowledgeMaterialUploadForm({
               <Upload className="h-4 w-4" />
             </div>
             <p className="text-[11px] font-bold text-slate-400">
-              Choose PDF, DOCX, PPTX, TXT, MD, or image
+              {isDraggingFile
+                ? "Drop the file here"
+                : "Drag and drop or choose PDF, DOCX, PPTX, TXT, MD, or image"}
             </p>
             <p className="mt-1 text-[9px] font-medium text-slate-300">
               Max {formatBytes(Math.min(
