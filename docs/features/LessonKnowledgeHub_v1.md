@@ -277,7 +277,7 @@ Additional rules:
 
 ## Data Flow
 
-1. A user uploads a file or registers a YouTube link through the role-appropriate route.
+1. A user uploads a file or registers a YouTube link through the role-appropriate route. The shared Admin and Teacher file picker accepts click, keyboard, and drag-and-drop selection.
 2. Convex creates a `knowledgeMaterials` record with owner, source type, school scope, visibility, and initial review state.
 3. Ingestion actions extract text, suggest labels, chunk content, and update search/index status.
 4. Teachers search the library, explicitly choose grounding materials, and open the lesson workspace.

@@ -63,4 +63,19 @@ describe("KnowledgeMaterialUploadForm drag and drop", () => {
       "Choose a supported PDF, Office document, text file, or image.",
     );
   });
+
+  it("ignores non-file drops without clearing the selected file", () => {
+    renderUploadForm();
+    const dropTarget = screen.getByRole("button", { name: "Choose material file" });
+    const file = new File(["lesson notes"], "motion.txt", { type: "text/plain" });
+
+    fireEvent.drop(dropTarget, {
+      dataTransfer: { files: [file], types: ["Files"] },
+    });
+    fireEvent.drop(dropTarget, {
+      dataTransfer: { files: [], types: ["text/plain"] },
+    });
+
+    expect(screen.getByText("motion.txt")).toBeInTheDocument();
+  });
 });

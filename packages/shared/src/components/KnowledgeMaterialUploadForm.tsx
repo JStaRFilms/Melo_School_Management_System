@@ -290,6 +290,7 @@ export function KnowledgeMaterialUploadForm({
   };
 
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
   };
@@ -301,10 +302,12 @@ export function KnowledgeMaterialUploadForm({
   };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
     dragDepthRef.current = 0;
     setIsDraggingFile(false);
-    selectFile(event.dataTransfer.files[0] ?? null);
+    const droppedFile = event.dataTransfer.files[0];
+    if (droppedFile) selectFile(droppedFile);
   };
 
   const subjectRequired = !isAdmin || !isCurriculumReference;
