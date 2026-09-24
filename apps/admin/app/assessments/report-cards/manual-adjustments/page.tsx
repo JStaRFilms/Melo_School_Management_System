@@ -244,6 +244,7 @@ function ManualAdjustmentsPageContent() {
 
   const replaceSelection = useCallback(
     (next: Partial<typeof selection>) => {
+      appToast.dismiss(SAVE_TOAST_ID);
       setReasonRequiredError(false);
       const params = new URLSearchParams(searchParams.toString());
       for (const key of ["sessionId", "termId", "classId", "studentId"] as const) {

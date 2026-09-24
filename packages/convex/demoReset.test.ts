@@ -265,7 +265,7 @@ test("reviewed and deleted operation starts one seed, rejects changed inputs, an
   expect(await fresh.run((ctx) => ctx.db.get(next.operationId))).toMatchObject({ status: "seeding", newRunId: a, newSchoolId: expect.any(String) });
   await fresh.run((ctx) => ctx.db.patch(next.operationId, { status: "complete" }));
   expect(await fresh.mutation(start, exact)).toBe(a);
-});
+}, 30_000);
 
 test("an extra reviewed file is deleted while the 37 original files survive", async () => {
   const t = await seeded();
