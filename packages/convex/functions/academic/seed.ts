@@ -17,6 +17,8 @@ import {
 import { populateJudgeCurriculumFixture } from "./judgeCurriculumSeed";
 import { populateJudgeLessonFixture } from "./judgeLessonSeed";
 import { assertStorageClaimedOnlyBy, assertStorageUnclaimed } from "./assetStorageBoundary";
+import { validateResetStorage } from "./demoResetStorage";
+import { resetSeal, subtleSha256 } from "./demoResetDigest";
 
 const DAY = 24 * 60 * 60 * 1000;
 const timestamp = (date: string) => Date.parse(`${date}T09:00:00.000Z`);
@@ -29,7 +31,7 @@ const profileKey = (value?: SchoolSeedProfileKey): SchoolSeedProfileKey => value
 // Children deliberately precede their parents. Every entry has an actual
 // `by_school` schema index (including rateLimitCounters); auth component and
 // platform tables are never part of a tenant reset.
-const DEMO_SCHOOL_TABLES = [
+export const DEMO_SCHOOL_TABLES = [
   "demoSeedRuns", "contentAuditEvents", "aiRunLogs", "rateLimitCounters",
   "assessmentBankItems", "assessmentBanks", "assessmentGenerationProfiles",
   "instructionArtifactSources", "instructionArtifactRevisions", "instructionArtifactDocuments", "instructionArtifacts", "instructionTemplates",
@@ -89,6 +91,10 @@ export const inspectDemoAuthUsageInternal = internalQuery({
       if (platformAdmin) conflicts.add(`auth id ${authId} is linked to a platform admin`);
     }
     for (const email of args.emails) {
+      if (profile.key === "demo") {
+        const persons = await ctx.db.query("persons").withIndex("by_email", (q) => q.eq("email", email)).take(2);
+        if (persons.length) conflicts.add(`email ${email} is linked to a canonical person; review its school memberships`);
+      }
       const user = await ctx.db.query("users").withIndex("by_email", (q) => q.eq("email", email)).unique();
       if (user) {
         const school = await ctx.db.get(user.schoolId);
@@ -162,6 +168,11 @@ export const clearDemoSchoolBatchInternal = internalMutation({
   }),
   handler: async (ctx, args) => {
     const profile = getSchoolSeedProfile(profileKey(args.seedProfile));
+    // The legacy 85-table traversal cannot safely reset a populated demo school.
+    // Keep the internal entry point closed as well as the public action.
+    if (profile.key === "demo") {
+      throw new ConvexError("Populated demo-school reset is disabled pending reviewed full-schema cleanup.");
+    }
     const school = await ctx.db
       .query("schools")
       .withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug))
@@ -279,20 +290,92 @@ function updateRunPhase(ctx: MutationCtx, runId: Id<"demoSeedRuns">, phase: "stu
 }
 
 export const startDemoSeedRunInternal = internalMutation({
-  args: { seedProfile: v.optional(seedProfileValidator), adminAuthId: v.string(), teacherAuthId: v.string(), portalAuthId: v.string(), logoStorageId: v.id("_storage"), portraitStorageIds: v.array(v.id("_storage")) },
+  args: { seedProfile: v.optional(seedProfileValidator), resetOperationId: v.optional(v.id("demoResetOperations")), authIssuer: v.string(), adminAuthId: v.string(), teacherAuthId: v.string(), portalAuthId: v.string(), logoStorageId: v.id("_storage"), portraitStorageIds: v.array(v.id("_storage")) },
   returns: v.id("demoSeedRuns"),
   handler: async (ctx, args) => {
     const profile = getSchoolSeedProfile(profileKey(args.seedProfile));
+    let issuer: URL;
+    try {
+      issuer = new URL(args.authIssuer);
+    } catch {
+      throw new ConvexError("Demo seed requires a valid CONVEX_SITE_URL issuer.");
+    }
+    if (issuer.protocol !== "https:" || !issuer.hostname || issuer.username || issuer.password ||
+        issuer.search || issuer.hash || issuer.pathname !== "/" || args.authIssuer !== issuer.origin && args.authIssuer !== `${issuer.origin}/`) {
+      throw new ConvexError("Demo seed requires a valid CONVEX_SITE_URL issuer.");
+    }
     if (args.portraitStorageIds.length !== profile.students.length) throw new ConvexError(`Expected ${profile.students.length} portrait PNG assets.`);
     const storageIds = [args.logoStorageId, ...args.portraitStorageIds];
     if (new Set(storageIds).size !== storageIds.length) {
       throw new ConvexError("Each demo storage object must have exactly one owning purpose");
     }
+    if (args.resetOperationId) {
+      if (profile.key !== "demo") throw new ConvexError("Reset operation can only seed demo-school.");
+      const op = await ctx.db.get(args.resetOperationId);
+      if (!op || !["ready_to_seed", "seeding", "complete"].includes(op.status)) throw new ConvexError("Reset operation is not ready to seed.");
+      let configuredIssuer: URL;
+      try {
+        configuredIssuer = new URL(process.env.CONVEX_SITE_URL ?? "");
+      } catch {
+        throw new ConvexError("Configured CONVEX_SITE_URL is invalid.");
+      }
+      if (configuredIssuer.protocol !== "https:" || configuredIssuer.pathname !== "/" ||
+          configuredIssuer.search || configuredIssuer.hash || configuredIssuer.username || configuredIssuer.password ||
+          !configuredIssuer.hostname || (process.env.CONVEX_SITE_URL !== configuredIssuer.origin && process.env.CONVEX_SITE_URL !== `${configuredIssuer.origin}/`) ||
+          issuer.origin !== configuredIssuer.origin || op.authIssuer !== configuredIssuer.origin) {
+        throw new ConvexError("Reset issuer does not match configured CONVEX_SITE_URL.");
+      }
+      if (process.env.DEMO_SEED_DEPLOYMENT_ENV !== "development" || !process.env.CONVEX_CLOUD_URL ||
+          !process.env.DEMO_SEED_EXPECTED_CLOUD_URL || !process.env.DEMO_SEED_DEPLOYMENT_IDENTITY ||
+          op.cloudUrl !== process.env.CONVEX_CLOUD_URL || op.cloudUrl !== process.env.DEMO_SEED_EXPECTED_CLOUD_URL ||
+          op.targetIdentity !== process.env.DEMO_SEED_DEPLOYMENT_IDENTITY || op.schoolSlug !== profile.schoolSlug) {
+        throw new ConvexError("Reset development target gate failed.");
+      }
+      if (op.authIds.length !== 3 || [args.adminAuthId, args.teacherAuthId, args.portalAuthId].some((id, index) => id !== op.authIds[index]) ||
+          op.retainedStorageIds.length !== 37 || storageIds.some((id, index) => id !== op.retainedStorageIds[index]) ||
+          !/^[a-f0-9]{64}$/.test(op.inventoryHash) || await subtleSha256(resetSeal(op)) !== op.inventoryHash) {
+        throw new ConvexError("Reset seed inputs do not match the reviewed operation.");
+      }
+      if (op.status === "seeding" || op.status === "complete") {
+        if (!op.newSchoolId || !op.newRunId) throw new ConvexError("Reset replay is missing its seed binding.");
+        const [school, run] = await Promise.all([ctx.db.get(op.newSchoolId), ctx.db.get(op.newRunId)]);
+        if (!school || school.slug !== profile.schoolSlug || school.logoStorageId !== args.logoStorageId ||
+            !run || run.schoolId !== school._id || run.seedProfile !== "demo" || run.authIssuer !== issuer.origin ||
+            [run.adminAuthId, run.teacherAuthId, run.portalAuthId].some((id, index) => id !== op.authIds[index]) ||
+            run.logoStorageId !== storageIds[0] || run.portraitStorageIds.length !== 36 ||
+            run.portraitStorageIds.some((id, index) => id !== storageIds[index + 1])) {
+          throw new ConvexError("Reset replay seed binding changed.");
+        }
+        return op.newRunId;
+      }
+      if (op.newSchoolId || op.newRunId || op.deletionPhase !== "storage_pending" ||
+          op.deletionCursor !== op.inventory.length || op.authAcknowledgedIds?.length !== 3 ||
+          op.authAcknowledgedIds.some((id, index) => id !== op.authIds[index]) ||
+          op.storageAcknowledgedIds?.length !== op.storageCandidateIds.length ||
+          new Set(op.storageCandidateIds).size !== op.storageCandidateIds.length ||
+          op.storageCandidateIds.some((id) => !op.storageAcknowledgedIds?.includes(id)) ||
+          new Set(storageIds).size !== 37 || storageIds.some((id) => !op.storageCandidateIds.includes(id)) ||
+          await ctx.db.get(op.schoolId) || (await ctx.db.query("schools").take(1)).length !== 0) {
+        throw new ConvexError("Reset operation is not detached and acknowledged.");
+      }
+      for (const status of ["prepared", "deleting", "storage_pending", "auth_pending", "ready_to_seed", "seeding"] as const) {
+        const active = await ctx.db.query("demoResetOperations")
+          .withIndex("by_school_slug_and_status", (q) => q.eq("schoolSlug", profile.schoolSlug).eq("status", status)).take(2);
+        if (status === "ready_to_seed" ? active.length !== 1 || active[0]._id !== op._id : active.length !== 0) {
+          throw new ConvexError("Another demo reset is active.");
+        }
+      }
+      await validateResetStorage(ctx, op, storageIds);
+      const schoolId = await ctx.db.insert("schools", { name: profile.schoolName, slug: profile.schoolSlug, status: "active", logoStorageId: args.logoStorageId, logoFileName: `${profile.schoolSlug}-crest.png`, logoContentType: "image/png", logoUpdatedAt: profile.createdAt, createdAt: profile.createdAt, updatedAt: profile.createdAt });
+      const runId = await ctx.db.insert("demoSeedRuns", { schoolId, status: "running", phase: "foundation", studentCursor: 0, assessmentCursor: 0, billingCursor: 0, authIssuer: issuer.origin, adminAuthId: args.adminAuthId, teacherAuthId: args.teacherAuthId, portalAuthId: args.portalAuthId, logoStorageId: args.logoStorageId, portraitStorageIds: args.portraitStorageIds, seedProfile: profile.key, createdAt: Date.now(), updatedAt: Date.now() });
+      await ctx.db.patch(op._id, { status: "seeding", newSchoolId: schoolId, newRunId: runId });
+      return runId;
+    }
     await Promise.all(storageIds.map((storageId) => assertStorageUnclaimed(ctx, storageId)));
     const existing = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug)).unique();
     if (existing) throw new ConvexError(`${profile.schoolSlug} must be reset before a new seed run starts.`);
     const schoolId = await ctx.db.insert("schools", { name: profile.schoolName, slug: profile.schoolSlug, status: "active", logoStorageId: args.logoStorageId, logoFileName: `${profile.schoolSlug}-crest.png`, logoContentType: "image/png", logoUpdatedAt: profile.createdAt, createdAt: profile.createdAt, updatedAt: profile.createdAt });
-    return await ctx.db.insert("demoSeedRuns", { schoolId, status: "running", phase: "foundation", studentCursor: 0, assessmentCursor: 0, billingCursor: 0, ...args, seedProfile: profile.key, createdAt: Date.now(), updatedAt: Date.now() });
+    return await ctx.db.insert("demoSeedRuns", { schoolId, status: "running", phase: "foundation", studentCursor: 0, assessmentCursor: 0, billingCursor: 0, ...args, authIssuer: issuer.origin, seedProfile: profile.key, createdAt: Date.now(), updatedAt: Date.now() });
   },
 });
 
@@ -302,15 +385,26 @@ export const populateDemoFoundationInternal = internalMutation({
     const run = await requireRun(ctx, runId);
     if (run.phase !== "foundation") return run.phase;
     const profile = getSchoolSeedProfile(profileKey(run.seedProfile));
+    if (!run.authIssuer) throw new ConvexError("Demo seed run is missing its authentication issuer; reset and retry.");
     const now = profile.createdAt; const schoolId = run.schoolId;
     const [adminFirstName, adminLastName] = profile.accounts.admin.name.split(" ");
     const [teacherFirstName, teacherLastName] = profile.accounts.teacher.name.split(" ");
     const [portalFirstName, portalLastName] = profile.accounts.portal.name.split(" ");
-    const adminUserId = await ctx.db.insert("users", { schoolId, authId: run.adminAuthId, name: profile.accounts.admin.name, firstName: adminFirstName, lastName: adminLastName, email: profile.accounts.admin.email, role: "admin", isSchoolAdmin: true, createdAt: now, updatedAt: now });
-    const teacherUserId = await ctx.db.insert("users", { schoolId, authId: run.teacherAuthId, name: profile.accounts.teacher.name, firstName: teacherFirstName, lastName: teacherLastName, email: profile.accounts.teacher.email, role: "teacher", createdAt: now, updatedAt: now });
+    const createAccount = async (authId: string, name: string, email: string, role: "admin" | "teacher" | "parent", firstName: string, lastName: string) => {
+      if (profile.key === "judge") {
+        return await ctx.db.insert("users", { schoolId, authId, name, firstName, lastName, email, role, ...(role === "admin" ? { isSchoolAdmin: true } : {}), createdAt: now, updatedAt: now });
+      }
+      const authTokenIdentifier = `${run.authIssuer}|${authId}`;
+      const personId = await ctx.db.insert("persons", { authTokenIdentifier, name, email, status: "active", primarySchoolId: schoolId, createdAt: now, updatedAt: now });
+      const userId = await ctx.db.insert("users", { schoolId, authId, authTokenIdentifier, personId, name, firstName, lastName, email, role, ...(role === "admin" ? { isSchoolAdmin: true } : {}), createdAt: now, updatedAt: now });
+      await ctx.db.insert("branchMemberships", { personId, schoolId, legacyUserId: userId, status: "active", isDefaultBranch: true, joinedAt: now, updatedAt: now });
+      return userId;
+    };
+    const adminUserId = await createAccount(run.adminAuthId, profile.accounts.admin.name, profile.accounts.admin.email, "admin", adminFirstName, adminLastName);
+    const teacherUserId = await createAccount(run.teacherAuthId, profile.accounts.teacher.name, profile.accounts.teacher.email, "teacher", teacherFirstName, teacherLastName);
     const extraTeacherIds: Id<"users">[] = [];
     for (let index = 0; index < profile.extraTeachers.length; index += 1) { const teacher = profile.extraTeachers[index]; const [firstName, lastName] = teacher.name.split(" "); extraTeacherIds.push(await ctx.db.insert("users", { schoolId, authId: `${profile.authPrefix}-teacher-${index + 2}`, name: teacher.name, firstName, lastName, email: teacher.email, role: "teacher", createdAt: now, updatedAt: now })); }
-    const portalUserId = await ctx.db.insert("users", { schoolId, authId: run.portalAuthId, name: profile.accounts.portal.name, firstName: portalFirstName, lastName: portalLastName, email: profile.accounts.portal.email, role: "parent", createdAt: now, updatedAt: now });
+    const portalUserId = await createAccount(run.portalAuthId, profile.accounts.portal.name, profile.accounts.portal.email, "parent", portalFirstName, portalLastName);
     await ctx.db.insert("schoolAdminLeadership", { schoolId, leadAdminUserId: adminUserId, createdAt: now, updatedAt: now, updatedBy: adminUserId });
     const sessionId = await ctx.db.insert("academicSessions", { schoolId, name: "2025/2026", startDate: timestamp("2025-09-01"), endDate: timestamp("2026-07-31"), isActive: true, createdAt: now, updatedAt: now });
     const termIds: Id<"academicTerms">[] = [];
