@@ -11,6 +11,7 @@ const INPUT_CLASS = "h-10 w-full rounded-xl border border-slate-200 bg-white px-
 
 interface Props {
   sources: Source[];
+  sourcesLoading: boolean;
   subjects: Subject[];
   terms: Term[];
   imports: CurriculumImportSummary[];
@@ -27,7 +28,7 @@ interface Props {
 }
 
 export function CurriculumImportSidebar(props: Props) {
-  const { sources, subjects, terms, imports, form, busy, selectedImportId, sourceQuery, sourceOrder } = props;
+  const { sources, sourcesLoading, subjects, terms, imports, form, busy, selectedImportId, sourceQuery, sourceOrder } = props;
   const update = (values: Partial<CurriculumImportForm>) => props.onFormChange({ ...form, ...values });
 
   return (
@@ -66,6 +67,7 @@ export function CurriculumImportSidebar(props: Props) {
           </div>
           <select
             required
+            disabled={sourcesLoading}
             aria-label="Ready curriculum source"
             value={form.materialId}
             onChange={(event) => {
@@ -78,7 +80,7 @@ export function CurriculumImportSidebar(props: Props) {
             }}
             className={INPUT_CLASS}
           >
-            <option value="">{sources.length === 0 && sourceQuery ? "No matching references" : "Choose source document"}</option>
+            <option value="">{sourcesLoading ? "Searching references…" : sources.length === 0 && sourceQuery ? "No matching references" : "Choose source document"}</option>
             {sources.map((source) => (
               <option key={source._id} value={source._id}>
                 {source.title}
@@ -134,7 +136,7 @@ export function CurriculumImportSidebar(props: Props) {
         </div>
 
         <button
-          disabled={busy || !form.materialId || !form.subjectId || !form.level.trim() || !form.termId}
+          disabled={busy || sourcesLoading || !form.materialId || !form.subjectId || !form.level.trim() || !form.termId}
           className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-xs font-black uppercase tracking-wider text-white hover:bg-slate-800 transition-all shadow-xs active:scale-98 disabled:opacity-40 cursor-pointer"
         >
           {busy && <LoaderCircle className="h-4 w-4 animate-spin" />}

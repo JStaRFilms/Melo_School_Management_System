@@ -42,10 +42,15 @@ function chunkUnits(units: CurriculumUnit[]) {
 export default function CurriculumImportPage() {
   const [sourceQuery, setSourceQuery] = useState("");
   const [sourceOrder, setSourceOrder] = useState<SourceOrder>("newest");
-  const context = useQuery(
+  const currentContext = useQuery(
     "functions/academic/curriculumAdminRead:listCurriculumImportContext" as never,
     { sourceQuery, sourceOrder } as never
   ) as Context | undefined;
+  const [lastContext, setLastContext] = useState<Context | undefined>();
+  useEffect(() => {
+    if (currentContext) setLastContext(currentContext);
+  }, [currentContext]);
+  const context = currentContext ?? lastContext;
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
   const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as Session[] | undefined;
   const activeSession = sessions?.find((session) => session.isActive);
@@ -370,6 +375,7 @@ export default function CurriculumImportPage() {
         {/* Left Panel: Proposal Creator & Recents */}
         <CurriculumImportSidebar
           sources={context.sources}
+          sourcesLoading={!currentContext}
           subjects={subjects}
           terms={terms ?? []}
           imports={context.imports}
