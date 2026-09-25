@@ -31,11 +31,11 @@ export function isMeaningfulCurriculumEvidenceExcerpt(value: string) {
   return canonical.length >= 16 && tokens.length >= 3 && contentTokens.length >= 2;
 }
 
-function isExactCurriculumHeadingExcerpt(
+export function isExactCurriculumHeadingExcerpt(
   excerpt: string,
-  unit: Pick<CurriculumUnit, "weekNumber" | "title">
+  unit: { weekNumber?: number | null; title: string }
 ) {
-  if (unit.weekNumber === null) return false;
+  if (unit.weekNumber === null || unit.weekNumber === undefined) return false;
   const canonicalExcerpt = canonicalizeCurriculumEvidence(excerpt);
   const canonicalTitle = canonicalizeCurriculumEvidence(unit.title);
   return canonicalTitle.length >= 4

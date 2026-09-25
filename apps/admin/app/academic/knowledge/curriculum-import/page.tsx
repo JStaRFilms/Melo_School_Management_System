@@ -26,6 +26,7 @@ type Session = { _id: string; isActive: boolean };
 type Term = { _id: string; name: string; isActive: boolean };
 type Review = { status: string; errorMessage?: string; units: CurriculumUnit[] };
 type FilterTab = "all" | "proposed" | "approved" | "rejected";
+type SourceOrder = "newest" | "oldest";
 
 const EMPTY_FORM: CurriculumImportForm = { materialId: "", subjectId: "", level: "", termId: "" };
 const BULK_REVIEW_BATCH_SIZE = 20;
@@ -39,7 +40,12 @@ function chunkUnits(units: CurriculumUnit[]) {
 }
 
 export default function CurriculumImportPage() {
-  const context = useQuery("functions/academic/curriculumAdminRead:listCurriculumImportContext" as never) as Context | undefined;
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [sourceOrder, setSourceOrder] = useState<SourceOrder>("newest");
+  const context = useQuery(
+    "functions/academic/curriculumAdminRead:listCurriculumImportContext" as never,
+    { sourceQuery, sourceOrder } as never
+  ) as Context | undefined;
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
   const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as Session[] | undefined;
   const activeSession = sessions?.find((session) => session.isActive);
@@ -370,6 +376,16 @@ export default function CurriculumImportPage() {
           form={form}
           busy={busy}
           selectedImportId={selectedImportId}
+          sourceQuery={sourceQuery}
+          sourceOrder={sourceOrder}
+          onSourceQueryChange={(query) => {
+            setSourceQuery(query);
+            setForm((current) => ({ ...current, materialId: "" }));
+          }}
+          onSourceOrderChange={(order) => {
+            setSourceOrder(order);
+            setForm((current) => ({ ...current, materialId: "" }));
+          }}
           onFormChange={setForm}
           onSelectImport={setSelectedImportId}
           onSubmit={() => void startImport()}
@@ -378,7 +394,7 @@ export default function CurriculumImportPage() {
         {/* Center Panel: Review Queue List */}
         <section className="min-w-0 bg-slate-50/50 lg:h-full lg:overflow-y-auto custom-scrollbar flex flex-col">
           {/* Sub-strip: Select all + Extraction status */}
-          {selectedImport && (
+          {selectedImport && review && (
             <div className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/95 px-5 py-2.5 backdrop-blur flex items-center justify-between text-xs text-slate-500 font-bold shadow-2xs">
               <div className="flex items-center gap-3">
                 {filteredUnits.length > 0 && (
@@ -448,6 +464,13 @@ export default function CurriculumImportPage() {
                   Clear
                 </button>
               </div>
+            </div>
+          )}
+
+          {selectedImport && !review && (
+            <div role="status" className="m-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3.5 text-xs font-semibold text-slate-600">
+              <LoaderCircle className="h-4 w-4 animate-spin text-indigo-600" />
+              Loading proposal details…
             </div>
           )}
 

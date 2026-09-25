@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import {
   canonicalizeCurriculumEvidence,
   hasCurriculumEvidenceSemanticOverlap,
+  isExactCurriculumHeadingExcerpt,
   isMeaningfulCurriculumEvidenceExcerpt,
 } from "@school/ai";
 
@@ -99,6 +100,7 @@ export function normalizeCurriculumProposal(input: CurriculumProposalInput): Cur
 }
 
 export function hasMatchingCurriculumEvidence(args: {
+  weekNumber?: number;
   title: string;
   subtopics: string[];
   learningObjectives: string[];
@@ -108,7 +110,8 @@ export function hasMatchingCurriculumEvidence(args: {
   chunks: CurriculumEvidenceChunk[];
 }) {
   if (
-    !isMeaningfulCurriculumEvidenceExcerpt(args.supportingExcerpt) ||
+    (!isMeaningfulCurriculumEvidenceExcerpt(args.supportingExcerpt)
+      && !isExactCurriculumHeadingExcerpt(args.supportingExcerpt, args)) ||
     !hasCurriculumEvidenceSemanticOverlap(args.supportingExcerpt, args)
   ) return false;
   return args.chunks.some((chunk) => {

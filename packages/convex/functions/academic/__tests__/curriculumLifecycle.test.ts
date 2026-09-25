@@ -127,6 +127,18 @@ describe("curriculum lifecycle", () => {
     expect(result.retryRun?.status).toBe("running");
   });
 
+  it("completes an exact short heading after server-side evidence validation", async () => {
+    const { t, ids } = await fixture();
+    await t.run((ctx) => ctx.db.patch(ids.chunkId, { chunkText: "Week 8 WEEK 8: FRACTIONS I Learning Objectives" }));
+    const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
+    const runId = await t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock/curriculum-fixture-v1", sourceCount: 1 });
+    await expect(t.withIdentity(admin).mutation(completeGeneration, {
+      importId,
+      aiRunLogId: runId,
+      proposals: [{ ...proposalFor(String(ids.chunkId)), weekNumber: 8, title: "Fractions I", supportingExcerpt: "Week 8 WEEK 8: FRACTIONS I" }],
+    })).resolves.toEqual({ proposalCount: 1 });
+  });
+
   it("records canonical start provenance and atomically completes valid proposals", async () => {
     const { t, ids } = await fixture();
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });

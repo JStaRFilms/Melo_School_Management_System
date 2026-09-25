@@ -6,7 +6,7 @@ import * as curriculumAdminRead from "../curriculumAdminRead";
 
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob("../../../**/*.ts");
-const listContext = curriculumAdminRead.listCurriculumImportContext as unknown as FunctionReference<"query", "public", Record<string, never>, unknown>;
+const listContext = curriculumAdminRead.listCurriculumImportContext as unknown as FunctionReference<"query", "public", { sourceQuery: string; sourceOrder: "newest" | "oldest" }, unknown>;
 const admin = { subject: "admin-auth", issuer: "https://legacy-auth.test" };
 
 describe("curriculum admin read", () => {
@@ -29,9 +29,13 @@ describe("curriculum admin read", () => {
       const newerImportId = await importRecord(readyMaterialId, 20);
       return { olderReadyMaterialId, readyMaterialId, olderImportId, newerImportId };
     });
-    const result = await t.withIdentity(admin).query(listContext, {}) as { sources: Array<{ _id: string; title: string }>; imports: Array<{ _id: string; sourceLabel: string }> };
+    const result = await t.withIdentity(admin).query(listContext, { sourceQuery: "", sourceOrder: "newest" }) as { sources: Array<{ _id: string; title: string; createdAt: number }>; imports: Array<{ _id: string; sourceLabel: string }> };
+    const oldestFirst = await t.withIdentity(admin).query(listContext, { sourceQuery: "", sourceOrder: "oldest" }) as typeof result;
+    const searchResult = await t.withIdentity(admin).query(listContext, { sourceQuery: "Late ready", sourceOrder: "newest" }) as typeof result;
     expect(result.sources.map((item) => item._id)).toEqual([expected.readyMaterialId, expected.olderReadyMaterialId]);
     expect(result.sources[0]).toEqual(expect.objectContaining({ title: "Late ready source", createdAt: 200 }));
+    expect(oldestFirst.sources.map((item) => item._id)).toEqual([expected.olderReadyMaterialId, expected.readyMaterialId]);
+    expect(searchResult.sources).toContainEqual(expect.objectContaining({ _id: expected.readyMaterialId, title: "Late ready source" }));
     expect(result.imports.map((item) => item._id)).toEqual([expected.newerImportId, expected.olderImportId]);
     expect(result.imports.find((item) => item._id === expected.olderImportId)?.sourceLabel).toBe("Exact historical source");
   });

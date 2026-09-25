@@ -97,6 +97,7 @@ export const completeGeneration = internalMutation({
   returns: v.object({ proposalCount: v.number() }),
   handler: async (ctx, args) => {
     const { schoolId, importRecord } = await loadContext(ctx, args.importId);
+    if (importRecord.status !== "generating" || importRecord.aiRunLogId !== args.aiRunLogId) throw new ConvexError("Curriculum generation run is no longer active");
     const run = await ctx.db.get(args.aiRunLogId);
     if (!run || run.schoolId !== schoolId || run.curriculumImportId !== args.importId || run.status !== "running") throw new ConvexError("Curriculum generation run not found");
     if (args.proposals.length === 0 || args.proposals.length > MAX_CURRICULUM_UNITS_PER_IMPORT) throw new ConvexError("Proposal count is outside the allowed range");
@@ -125,7 +126,7 @@ export const failGeneration = internalMutation({
     const importRecord = await ctx.db.get(args.importId);
     if (!importRecord || importRecord.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");
     const run = await ctx.db.get(args.aiRunLogId);
-    if (!run || run.schoolId !== schoolId || run.curriculumImportId !== args.importId || run.status !== "running") return null;
+    if (importRecord.status !== "generating" || importRecord.aiRunLogId !== args.aiRunLogId || !run || run.schoolId !== schoolId || run.curriculumImportId !== args.importId || run.status !== "running") return null;
     const now = Date.now();
     await ctx.db.patch(args.aiRunLogId, { status: "failed", errorCode: args.errorCode, errorMessage: args.errorMessage, finishedAt: now, updatedAt: now });
     await ctx.db.patch(args.importId, { status: "failed", errorCode: args.errorCode, errorMessage: args.errorMessage, updatedAt: now });

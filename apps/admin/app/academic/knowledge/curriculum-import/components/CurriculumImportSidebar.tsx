@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { ArrowUpDown, CheckCircle2, Clock, LoaderCircle, Search } from "lucide-react";
 import type { CurriculumImportForm, CurriculumImportSummary } from "./types";
 
 interface Source { _id: string; title: string; level: string; subjectId?: string; createdAt: number; }
-type SourceSort = "newest" | "oldest" | "title-asc" | "title-desc";
+type SourceOrder = "newest" | "oldest";
 interface Subject { _id: string; name: string; }
 interface Term { _id: string; name: string; isActive: boolean; }
 const INPUT_CLASS = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold normal-case tracking-normal text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all";
@@ -18,27 +17,18 @@ interface Props {
   form: CurriculumImportForm;
   busy: boolean;
   selectedImportId: string | null;
+  sourceQuery: string;
+  sourceOrder: SourceOrder;
+  onSourceQueryChange: (query: string) => void;
+  onSourceOrderChange: (order: SourceOrder) => void;
   onFormChange: (form: CurriculumImportForm) => void;
   onSelectImport: (importId: string) => void;
   onSubmit: () => void;
 }
 
 export function CurriculumImportSidebar(props: Props) {
-  const { sources, subjects, terms, imports, form, busy, selectedImportId } = props;
-  const [sourceQuery, setSourceQuery] = useState("");
-  const [sourceSort, setSourceSort] = useState<SourceSort>("newest");
+  const { sources, subjects, terms, imports, form, busy, selectedImportId, sourceQuery, sourceOrder } = props;
   const update = (values: Partial<CurriculumImportForm>) => props.onFormChange({ ...form, ...values });
-  const visibleSources = useMemo(() => {
-    const query = sourceQuery.trim().toLocaleLowerCase();
-    return sources
-      .filter((source) => !query || `${source.title} ${source.level}`.toLocaleLowerCase().includes(query))
-      .sort((left, right) => {
-        if (sourceSort === "newest") return right.createdAt - left.createdAt;
-        if (sourceSort === "oldest") return left.createdAt - right.createdAt;
-        const titleOrder = left.title.localeCompare(right.title, undefined, { sensitivity: "base" });
-        return sourceSort === "title-asc" ? titleOrder : -titleOrder;
-      });
-  }, [sourceQuery, sourceSort, sources]);
 
   return (
     <aside className="border-r border-slate-200/80 bg-slate-50/50 lg:h-full lg:overflow-y-auto custom-scrollbar flex flex-col">
@@ -55,7 +45,7 @@ export function CurriculumImportSidebar(props: Props) {
               <input
                 type="search"
                 value={sourceQuery}
-                onChange={(event) => setSourceQuery(event.target.value)}
+                onChange={(event) => props.onSourceQueryChange(event.target.value)}
                 placeholder="Search references"
                 aria-label="Search curriculum references"
                 className={`${INPUT_CLASS} pl-9 font-semibold`}
@@ -64,20 +54,19 @@ export function CurriculumImportSidebar(props: Props) {
             <div className="relative">
               <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <select
-                value={sourceSort}
-                onChange={(event) => setSourceSort(event.target.value as SourceSort)}
+                value={sourceOrder}
+                onChange={(event) => props.onSourceOrderChange(event.target.value as SourceOrder)}
                 aria-label="Sort curriculum references"
                 className={`${INPUT_CLASS} pl-8 pr-2 font-semibold`}
               >
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
-                <option value="title-asc">A–Z</option>
-                <option value="title-desc">Z–A</option>
               </select>
             </div>
           </div>
           <select
             required
+            aria-label="Ready curriculum source"
             value={form.materialId}
             onChange={(event) => {
               const source = sources.find((item) => item._id === event.target.value);
@@ -86,12 +75,12 @@ export function CurriculumImportSidebar(props: Props) {
                 level: source?.level || form.level,
                 subjectId: source?.subjectId || form.subjectId,
               });
-              if (event.target.value) setSourceQuery("");
+              if (event.target.value) props.onSourceQueryChange("");
             }}
             className={INPUT_CLASS}
           >
-            <option value="">{visibleSources.length === 0 && sourceQuery ? "No matching references" : "Choose source document"}</option>
-            {visibleSources.map((source) => (
+            <option value="">{sources.length === 0 && sourceQuery ? "No matching references" : "Choose source document"}</option>
+            {sources.map((source) => (
               <option key={source._id} value={source._id}>
                 {source.title}
               </option>
@@ -102,6 +91,7 @@ export function CurriculumImportSidebar(props: Props) {
         <Field label="Subject">
           <select
             required
+            aria-label="Subject"
             value={form.subjectId}
             onChange={(event) => update({ subjectId: event.target.value })}
             className={INPUT_CLASS}
@@ -119,6 +109,7 @@ export function CurriculumImportSidebar(props: Props) {
           <Field label="Level">
             <input
               required
+              aria-label="Level"
               placeholder="e.g. Primary 5"
               value={form.level}
               onChange={(event) => update({ level: event.target.value })}
@@ -128,6 +119,7 @@ export function CurriculumImportSidebar(props: Props) {
           <Field label="Term">
             <select
               required
+              aria-label="Term"
               value={form.termId}
               onChange={(event) => update({ termId: event.target.value })}
               className={INPUT_CLASS}
@@ -204,9 +196,9 @@ export function CurriculumImportSidebar(props: Props) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block text-[9px] font-black uppercase tracking-wider text-slate-500 space-y-1.5">
-      <span className="block">{label}</span>
+    <div className="block space-y-1.5 text-[9px] font-black uppercase tracking-wider text-slate-500">
+      <p>{label}</p>
       {children}
-    </label>
+    </div>
   );
 }
