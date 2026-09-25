@@ -7,6 +7,7 @@ import {
   Check,
   CheckCheck,
   LoaderCircle,
+  RotateCcw,
   Search,
   X,
 } from "lucide-react";
@@ -19,7 +20,7 @@ import { CurriculumUnitEditor, type UnitEditValues } from "./components/Curricul
 import { getCurriculumErrorMessage } from "./components/curriculumErrorMessage";
 import type { CurriculumImportForm, CurriculumImportSummary, CurriculumUnit } from "./components/types";
 
-type Context = { sources: Array<{ _id: string; title: string; level: string; subjectId?: string }>; imports: CurriculumImportSummary[] };
+type Context = { sources: Array<{ _id: string; title: string; level: string; subjectId?: string; createdAt: number }>; imports: CurriculumImportSummary[] };
 type Subject = { _id: string; name: string };
 type Session = { _id: string; isActive: boolean };
 type Term = { _id: string; name: string; isActive: boolean };
@@ -135,23 +136,42 @@ export default function CurriculumImportPage() {
     });
   };
 
+  const generateProposal = async (importId: string) => {
+    const response = await fetch("/api/ai/curriculum/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ importId }),
+    });
+    const payload = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) throw new Error(getCurriculumErrorMessage(payload, "Generation could not start."));
+  };
+
   const startImport = async () => {
     if (!form.materialId || !form.subjectId || !form.level.trim() || !form.termId || busy) return;
     setBusy(true);
     try {
       const importId = (await createImport({ ...form, level: form.level.trim() } as never)) as string;
       setSelectedImportId(importId);
-      const response = await fetch("/api/ai/curriculum/import", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ importId }),
-      });
-      const payload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) throw new Error(getCurriculumErrorMessage(payload, "Generation could not start."));
+      await generateProposal(importId);
       appToast.success("Proposal ready", { description: "Review each unit before approving it as an academic topic." });
     } catch (error) {
       appToast.error("Import could not start", {
         description: getCurriculumErrorMessage(error, "Check the source and academic context, then try again."),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryImport = async () => {
+    if (!selectedImport || selectedImport.status !== "failed" || busy) return;
+    setBusy(true);
+    try {
+      await generateProposal(selectedImport._id);
+      appToast.success("Proposal ready", { description: "The existing import was retried successfully." });
+    } catch (error) {
+      appToast.error("Retry failed", {
+        description: getCurriculumErrorMessage(error, "Check the source and try again."),
       });
     } finally {
       setBusy(false);
@@ -433,12 +453,23 @@ export default function CurriculumImportPage() {
 
           {/* Error Message */}
           {review?.status === "failed" && (
-            <p className="m-4 rounded-xl bg-rose-50 p-3.5 text-xs font-semibold text-rose-700 border border-rose-200">
-              {getCurriculumErrorMessage(
-                review.errorMessage,
-                "Generation failed. Check the extracted source, then create a fresh proposal."
-              )}
-            </p>
+            <div className="m-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-semibold text-rose-700">
+              <p>
+                {getCurriculumErrorMessage(
+                  review.errorMessage,
+                  "Generation failed. Check the extracted source, then retry this proposal."
+                )}
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void retryImport()}
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 text-[10px] font-black uppercase tracking-wider text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                Retry extraction
+              </button>
+            </div>
           )}
 
           {/* Unit Cards List */}

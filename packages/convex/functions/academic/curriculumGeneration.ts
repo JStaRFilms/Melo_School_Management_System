@@ -55,7 +55,7 @@ export const getGenerationInput = internalQuery({
   returns: v.object({ subject: v.string(), level: v.string(), term: v.string(), pages: v.array(pageValidator) }),
   handler: async (ctx, args) => {
     const { importRecord, schoolId, subject, term } = await loadContext(ctx, args.importId);
-    if (importRecord.status !== "draft") throw new ConvexError("This curriculum import is already being generated or reviewed");
+    if (importRecord.status !== "draft" && importRecord.status !== "failed") throw new ConvexError("This curriculum import is already being generated or reviewed");
     const chunks = await ctx.db.query("knowledgeMaterialChunks").withIndex("by_school_and_material", (q) => q.eq("schoolId", schoolId).eq("materialId", importRecord.materialId)).take(300);
     const pages = buildBoundedCurriculumSourcePages(chunks);
     if (pages.length === 0) throw new ConvexError("No page-aware extracted source text is available");
@@ -72,14 +72,22 @@ export const startGeneration = internalMutation({
   returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {
     const { userId, schoolId, importRecord } = await loadContext(ctx, args.importId);
-    if (importRecord.status !== "draft" || !Number.isInteger(args.sourceCount) || args.sourceCount < 1 || args.sourceCount > MAX_CURRICULUM_SOURCE_PAGES) throw new ConvexError("This curriculum import is already being generated or reviewed");
+    if ((importRecord.status !== "draft" && importRecord.status !== "failed") || !Number.isInteger(args.sourceCount) || args.sourceCount < 1 || args.sourceCount > MAX_CURRICULUM_SOURCE_PAGES) throw new ConvexError("This curriculum import is already being generated or reviewed");
     const now = Date.now();
     const aiRunLogId = await ctx.db.insert("aiRunLogs", {
       schoolId, actorUserId: userId, actorRole: "admin", outputType: "curriculum_extraction", promptClass: CURRICULUM_EXTRACTION_PROMPT_CLASS,
       status: "running", model: args.model, provider: args.provider, curriculumImportId: args.importId,
       sourceSelectionSnapshot: JSON.stringify({ materialId: String(importRecord.materialId), pageCount: args.sourceCount }), sourceCount: args.sourceCount, startedAt: now, createdAt: now, updatedAt: now,
     });
-    await ctx.db.patch(args.importId, { status: "generating", updatedAt: now });
+    await ctx.db.patch(args.importId, {
+      status: "generating",
+      provider: args.provider,
+      modelId: args.model,
+      aiRunLogId,
+      errorCode: undefined,
+      errorMessage: undefined,
+      updatedAt: now,
+    });
     return aiRunLogId;
   },
 });
@@ -131,7 +139,7 @@ export const failUnstartedGeneration = internalMutation({
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const record = await ctx.db.get(args.importId);
-    if (record && record.schoolId === schoolId && record.status === "draft") await ctx.db.patch(args.importId, { status: "failed", errorCode: args.errorCode, errorMessage: args.errorMessage, updatedAt: Date.now() });
+    if (record && record.schoolId === schoolId && (record.status === "draft" || record.status === "failed")) await ctx.db.patch(args.importId, { status: "failed", errorCode: args.errorCode, errorMessage: args.errorMessage, updatedAt: Date.now() });
     return null;
   },
 });

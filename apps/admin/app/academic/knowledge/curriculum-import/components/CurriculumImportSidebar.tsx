@@ -1,9 +1,11 @@
 "use client";
 
-import { CheckCircle2, Clock, LoaderCircle, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowUpDown, CheckCircle2, Clock, LoaderCircle, Search } from "lucide-react";
 import type { CurriculumImportForm, CurriculumImportSummary } from "./types";
 
-interface Source { _id: string; title: string; level: string; subjectId?: string; }
+interface Source { _id: string; title: string; level: string; subjectId?: string; createdAt: number; }
+type SourceSort = "newest" | "oldest" | "title-asc" | "title-desc";
 interface Subject { _id: string; name: string; }
 interface Term { _id: string; name: string; isActive: boolean; }
 const INPUT_CLASS = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold normal-case tracking-normal text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all";
@@ -23,7 +25,20 @@ interface Props {
 
 export function CurriculumImportSidebar(props: Props) {
   const { sources, subjects, terms, imports, form, busy, selectedImportId } = props;
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [sourceSort, setSourceSort] = useState<SourceSort>("newest");
   const update = (values: Partial<CurriculumImportForm>) => props.onFormChange({ ...form, ...values });
+  const visibleSources = useMemo(() => {
+    const query = sourceQuery.trim().toLocaleLowerCase();
+    return sources
+      .filter((source) => !query || `${source.title} ${source.level}`.toLocaleLowerCase().includes(query))
+      .sort((left, right) => {
+        if (sourceSort === "newest") return right.createdAt - left.createdAt;
+        if (sourceSort === "oldest") return left.createdAt - right.createdAt;
+        const titleOrder = left.title.localeCompare(right.title, undefined, { sensitivity: "base" });
+        return sourceSort === "title-asc" ? titleOrder : -titleOrder;
+      });
+  }, [sourceQuery, sourceSort, sources]);
 
   return (
     <aside className="border-r border-slate-200/80 bg-slate-50/50 lg:h-full lg:overflow-y-auto custom-scrollbar flex flex-col">
@@ -34,6 +49,33 @@ export function CurriculumImportSidebar(props: Props) {
         </div>
 
         <Field label="Ready curriculum source">
+          <div className="grid grid-cols-[minmax(0,1fr)_112px] gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={sourceQuery}
+                onChange={(event) => setSourceQuery(event.target.value)}
+                placeholder="Search references"
+                aria-label="Search curriculum references"
+                className={`${INPUT_CLASS} pl-9 font-semibold`}
+              />
+            </div>
+            <div className="relative">
+              <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <select
+                value={sourceSort}
+                onChange={(event) => setSourceSort(event.target.value as SourceSort)}
+                aria-label="Sort curriculum references"
+                className={`${INPUT_CLASS} pl-8 pr-2 font-semibold`}
+              >
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="title-asc">A–Z</option>
+                <option value="title-desc">Z–A</option>
+              </select>
+            </div>
+          </div>
           <select
             required
             value={form.materialId}
@@ -44,11 +86,12 @@ export function CurriculumImportSidebar(props: Props) {
                 level: source?.level || form.level,
                 subjectId: source?.subjectId || form.subjectId,
               });
+              if (event.target.value) setSourceQuery("");
             }}
             className={INPUT_CLASS}
           >
-            <option value="">Choose source document</option>
-            {sources.map((source) => (
+            <option value="">{visibleSources.length === 0 && sourceQuery ? "No matching references" : "Choose source document"}</option>
+            {visibleSources.map((source) => (
               <option key={source._id} value={source._id}>
                 {source.title}
               </option>

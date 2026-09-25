@@ -53,7 +53,7 @@ test("maps provider authentication failures without exposing the raw response", 
     toCurriculumGenerationFailure(authFailure),
     {
       errorCode: "provider_authentication_failed",
-      errorMessage: "OpenRouter rejected the configured API key. Update OPENROUTER_API_KEY in the active Convex deployment.",
+      errorMessage: "Curriculum extraction could not authenticate with the AI service. Contact your platform administrator.",
     }
   );
 });
@@ -63,7 +63,7 @@ test("preserves structured provider failures across a Convex error boundary", ()
     toCurriculumGenerationFailure({ data: { errorCode: "provider_model_unavailable" } }),
     {
       errorCode: "provider_model_unavailable",
-      errorMessage: "The configured OpenRouter curriculum model is unavailable. Choose another SCHOOL_AI_CURRICULUM_MODEL.",
+      errorMessage: "The configured curriculum model is unavailable. Retry later or contact your platform administrator.",
     }
   );
 });
@@ -129,6 +129,27 @@ test("rejects trivial excerpts that cannot prove a curriculum unit", () => {
   const unit = createMockCurriculumExtraction(input).units[0];
   assert.equal(
     reconcileCurriculumUnitEvidence({ ...unit, supportingExcerpt: "the week topic" }, input.pages),
+    null
+  );
+});
+
+test("accepts an exact short curriculum heading with its matching week", () => {
+  const page = {
+    pageNumbers: [1],
+    text: "Week 8 WEEK 8: FRACTIONS I Learning Objectives",
+    chunkHash: "fractions-page",
+  };
+  const unit = {
+    ...createMockCurriculumExtraction(input).units[0],
+    weekNumber: 8,
+    title: "Fractions I",
+    sourcePages: [1],
+    sourceChunkHash: page.chunkHash,
+    supportingExcerpt: "Week 8 WEEK 8: FRACTIONS I",
+  };
+  assert.deepEqual(reconcileCurriculumUnitEvidence(unit, [page]), unit);
+  assert.equal(
+    reconcileCurriculumUnitEvidence({ ...unit, weekNumber: 9 }, [page]),
     null
   );
 });

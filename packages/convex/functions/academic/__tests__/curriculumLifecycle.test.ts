@@ -110,6 +110,23 @@ describe("curriculum lifecycle", () => {
     expect(result.record?.status).toBe("failed"); expect(result.run?.status).toBe("failed"); expect(result.units).toHaveLength(0);
   });
 
+  it("retries a failed generation on the same import", async () => {
+    const { t, ids } = await fixture();
+    const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
+    const failedRunId = await t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock/failed", sourceCount: 1 });
+    await t.withIdentity(admin).mutation(failGeneration, { importId, aiRunLogId: failedRunId, errorCode: "provider_output_invalid", errorMessage: "Retry extraction." });
+
+    const retryRunId = await t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock/retry", sourceCount: 1 });
+    const result = await t.run(async (ctx) => ({ record: await ctx.db.get(importId), failedRun: await ctx.db.get(failedRunId), retryRun: await ctx.db.get(retryRunId) }));
+
+    expect(retryRunId).not.toBe(failedRunId);
+    expect(result.record).toMatchObject({ status: "generating", aiRunLogId: retryRunId, provider: "mock", modelId: "mock/retry" });
+    expect(result.record?.errorCode).toBeUndefined();
+    expect(result.record?.errorMessage).toBeUndefined();
+    expect(result.failedRun?.status).toBe("failed");
+    expect(result.retryRun?.status).toBe("running");
+  });
+
   it("records canonical start provenance and atomically completes valid proposals", async () => {
     const { t, ids } = await fixture();
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
