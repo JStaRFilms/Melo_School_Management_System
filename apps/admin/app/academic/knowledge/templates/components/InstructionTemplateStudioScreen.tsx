@@ -159,7 +159,7 @@ export function InstructionTemplateStudioScreen({
   const previewPathLabel = selectedTemplate ? getInstructionTemplateResolutionPathLabel(selectedTemplate) : scopeSummary;
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-slate-50/50">
       <style jsx global>{`
         .knowledge-scrollbar::-webkit-scrollbar { width: 4px; }
         .knowledge-scrollbar::-webkit-scrollbar-track { background: transparent; }
