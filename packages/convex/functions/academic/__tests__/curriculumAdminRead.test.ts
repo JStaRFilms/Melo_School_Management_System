@@ -6,7 +6,7 @@ import * as curriculumAdminRead from "../curriculumAdminRead";
 
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob("../../../**/*.ts");
-const listContext = curriculumAdminRead.listCurriculumImportContext as unknown as FunctionReference<"query", "public", { sourceQuery: string; sourceOrder: "newest" | "oldest" }, unknown>;
+const listContext = curriculumAdminRead.listCurriculumImportContext as unknown as FunctionReference<"query", "public", { sourceQuery?: string; sourceOrder?: "newest" | "oldest" }, unknown>;
 const admin = { subject: "admin-auth", issuer: "https://legacy-auth.test" };
 
 describe("curriculum admin read", () => {
@@ -30,8 +30,10 @@ describe("curriculum admin read", () => {
       return { olderReadyMaterialId, readyMaterialId, olderImportId, newerImportId };
     });
     const result = await t.withIdentity(admin).query(listContext, { sourceQuery: "", sourceOrder: "newest" }) as { sources: Array<{ _id: string; title: string; createdAt: number }>; imports: Array<{ _id: string; sourceLabel: string }> };
+    const existingAdmin = await t.withIdentity(admin).query(listContext, {}) as typeof result;
     const oldestFirst = await t.withIdentity(admin).query(listContext, { sourceQuery: "", sourceOrder: "oldest" }) as typeof result;
     const searchResult = await t.withIdentity(admin).query(listContext, { sourceQuery: "Late ready", sourceOrder: "newest" }) as typeof result;
+    expect(existingAdmin).toEqual(result);
     expect(result.sources.map((item) => item._id)).toEqual([expected.readyMaterialId, expected.olderReadyMaterialId]);
     expect(result.sources[0]).toEqual(expect.objectContaining({ title: "Late ready source", createdAt: 200 }));
     expect(oldestFirst.sources.map((item) => item._id)).toEqual([expected.olderReadyMaterialId, expected.readyMaterialId]);

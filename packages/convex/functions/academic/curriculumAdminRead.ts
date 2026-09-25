@@ -8,7 +8,7 @@ const unitStatus = v.union(v.literal("proposed"), v.literal("approved"), v.liter
 const sourceOrder = v.union(v.literal("newest"), v.literal("oldest"));
 
 export const listCurriculumImportContext = query({
-  args: { sourceQuery: v.string(), sourceOrder },
+  args: { sourceQuery: v.optional(v.string()), sourceOrder: v.optional(sourceOrder) },
   returns: v.object({
     sources: v.array(v.object({ _id: v.id("knowledgeMaterials"), title: v.string(), level: v.string(), subjectId: v.optional(v.id("subjects")), sourceType: v.string(), createdAt: v.number() })),
     imports: v.array(v.object({ _id: v.id("curriculumImports"), materialId: v.id("knowledgeMaterials"), sourceLabel: v.string(), subjectLabel: v.string(), termLabel: v.string(), level: v.string(), status: importStatus, provider: v.optional(v.string()), modelId: v.optional(v.string()), errorMessage: v.optional(v.string()), proposedUnitCount: v.number(), approvedUnitCount: v.number(), rejectedUnitCount: v.number(), updatedAt: v.number() })),
@@ -16,7 +16,7 @@ export const listCurriculumImportContext = query({
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-    const normalizedSourceQuery = args.sourceQuery.trim();
+    const normalizedSourceQuery = args.sourceQuery?.trim() ?? "";
     const [readyMaterials, imports] = await Promise.all([
       normalizedSourceQuery
         ? ctx.db.query("knowledgeMaterials").withSearchIndex("search_search_text", (q) => q
@@ -26,12 +26,12 @@ export const listCurriculumImportContext = query({
             .eq("processingStatus", "ready")
             .eq("reviewStatus", "approved")
             .eq("searchStatus", "indexed")).take(60)
-        : ctx.db.query("knowledgeMaterials").withIndex("by_school_curriculum_ready_approved_indexed", (q) => q.eq("schoolId", schoolId).eq("sourceType", "imported_curriculum").eq("processingStatus", "ready").eq("reviewStatus", "approved").eq("searchStatus", "indexed")).order(args.sourceOrder === "newest" ? "desc" : "asc").take(60),
+        : ctx.db.query("knowledgeMaterials").withIndex("by_school_curriculum_ready_approved_indexed", (q) => q.eq("schoolId", schoolId).eq("sourceType", "imported_curriculum").eq("processingStatus", "ready").eq("reviewStatus", "approved").eq("searchStatus", "indexed")).order(args.sourceOrder === "oldest" ? "asc" : "desc").take(60),
       ctx.db.query("curriculumImports").withIndex("by_school_and_updated_at", (q) => q.eq("schoolId", schoolId)).order("desc").take(40),
     ]);
     const sourceList = readyMaterials
       .filter(isReadyCurriculumSource)
-      .sort((left, right) => args.sourceOrder === "newest" ? right.createdAt - left.createdAt : left.createdAt - right.createdAt)
+      .sort((left, right) => args.sourceOrder === "oldest" ? left.createdAt - right.createdAt : right.createdAt - left.createdAt)
       .map((material) => ({ _id: material._id, title: material.title, level: material.level, ...(material.subjectId ? { subjectId: material.subjectId } : {}), sourceType: material.sourceType, createdAt: material.createdAt }));
     const result = [];
     for (const item of imports) {
