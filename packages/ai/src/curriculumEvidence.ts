@@ -40,8 +40,7 @@ export function isExactCurriculumHeadingExcerpt(
   const canonicalTitle = canonicalizeCurriculumEvidence(unit.title);
   const escapedTitle = canonicalTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return canonicalTitle.length >= 4
-    && new RegExp(`(?:^|[^a-z0-9])${escapedTitle}(?=$|[^a-z0-9])`).test(canonicalExcerpt)
-    && new RegExp(`\\bweek\\s+${unit.weekNumber}\\b`).test(canonicalExcerpt);
+    && new RegExp(`\\bweek\\s+${unit.weekNumber}\\b(?:\\s+week\\s+${unit.weekNumber}\\b)?\\s*[:.\\-]?\\s*${escapedTitle}(?=$|[^a-z0-9])`).test(canonicalExcerpt);
 }
 
 function curriculumEvidenceContentTokens(value: string) {

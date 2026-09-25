@@ -157,6 +157,11 @@ test("accepts an exact short curriculum heading with its matching week", () => {
     reconcileCurriculumUnitEvidence({ ...unit, supportingExcerpt: "Week 8: FRACTIONS II" }, [nextHeading]),
     null
   );
+  const adjacentHeadings = { ...page, text: "Week 8 Week 9: FRACTIONS I Learning Objectives" };
+  assert.equal(
+    reconcileCurriculumUnitEvidence({ ...unit, supportingExcerpt: "Week 8 Week 9: FRACTIONS I" }, [adjacentHeadings]),
+    null
+  );
 });
 
 test("rejects generic evidence unrelated to the proposed unit", () => {

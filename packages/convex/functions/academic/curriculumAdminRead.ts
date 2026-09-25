@@ -16,23 +16,15 @@ export const listCurriculumImportContext = query({
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-    const normalizedSourceQuery = args.sourceQuery?.trim() ?? "";
-    const [readyMaterials, imports] = await Promise.all([
-      normalizedSourceQuery
-        ? ctx.db.query("knowledgeMaterials").withSearchIndex("search_search_text", (q) => q
-            .search("searchText", normalizedSourceQuery)
-            .eq("schoolId", schoolId)
-            .eq("sourceType", "imported_curriculum")
-            .eq("processingStatus", "ready")
-            .eq("reviewStatus", "approved")
-            .eq("searchStatus", "indexed")).take(60)
-        : ctx.db.query("knowledgeMaterials").withIndex("by_school_curriculum_ready_approved_indexed", (q) => q.eq("schoolId", schoolId).eq("sourceType", "imported_curriculum").eq("processingStatus", "ready").eq("reviewStatus", "approved").eq("searchStatus", "indexed")).order(args.sourceOrder === "oldest" ? "asc" : "desc").take(60),
-      ctx.db.query("curriculumImports").withIndex("by_school_and_updated_at", (q) => q.eq("schoolId", schoolId)).order("desc").take(40),
-    ]);
-    const sourceList = readyMaterials
-      .filter(isReadyCurriculumSource)
-      .sort((left, right) => args.sourceOrder === "oldest" ? left.createdAt - right.createdAt : right.createdAt - left.createdAt)
-      .map((material) => ({ _id: material._id, title: material.title, level: material.level, ...(material.subjectId ? { subjectId: material.subjectId } : {}), sourceType: material.sourceType, createdAt: material.createdAt }));
+    const normalizedSourceQuery = args.sourceQuery?.trim().toLocaleLowerCase() ?? "";
+    const imports = await ctx.db.query("curriculumImports").withIndex("by_school_and_updated_at", (q) => q.eq("schoolId", schoolId)).order("desc").take(40);
+    const readyMaterials = ctx.db.query("knowledgeMaterials").withIndex("by_school_curriculum_ready_approved_indexed", (q) => q.eq("schoolId", schoolId).eq("sourceType", "imported_curriculum").eq("processingStatus", "ready").eq("reviewStatus", "approved").eq("searchStatus", "indexed")).order(args.sourceOrder === "oldest" ? "asc" : "desc");
+    const sourceList = [];
+    for await (const material of readyMaterials) {
+      if (!isReadyCurriculumSource(material) || (normalizedSourceQuery && !`${material.title} ${material.level}`.toLocaleLowerCase().includes(normalizedSourceQuery))) continue;
+      sourceList.push({ _id: material._id, title: material.title, level: material.level, ...(material.subjectId ? { subjectId: material.subjectId } : {}), sourceType: material.sourceType, createdAt: material.createdAt });
+      if (sourceList.length === 60) break;
+    }
     const result = [];
     for (const item of imports) {
       const [material, subject, term] = await Promise.all([ctx.db.get(item.materialId), ctx.db.get(item.subjectId), ctx.db.get(item.termId)]);
