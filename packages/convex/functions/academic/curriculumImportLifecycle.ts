@@ -48,6 +48,7 @@ export const saveCurriculumProposals = mutation({
     const importRecord = await ctx.db.get(args.importId);
     if (!importRecord || importRecord.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");
     if (importRecord.status !== "draft" && importRecord.status !== "generating") throw new ConvexError("This curriculum import is already under review");
+    if (importRecord.status === "generating" && importRecord.aiRunLogId !== args.aiRunLogId) throw new ConvexError("Curriculum generation run is no longer active");
     if (args.proposals.length === 0 || args.proposals.length > MAX_CURRICULUM_UNITS_PER_IMPORT) throw new ConvexError("Proposal count is outside the allowed range");
     const run = await ctx.db.get(args.aiRunLogId);
     if (!run || run.schoolId !== schoolId || run.curriculumImportId !== args.importId || run.outputType !== "curriculum_extraction" || run.status !== "succeeded" || !run.provider.trim() || !run.model.trim()) {

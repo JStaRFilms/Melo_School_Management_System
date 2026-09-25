@@ -7,6 +7,7 @@ import {
   Check,
   CheckCheck,
   LoaderCircle,
+  RotateCcw,
   Search,
   X,
 } from "lucide-react";
@@ -19,12 +20,13 @@ import { CurriculumUnitEditor, type UnitEditValues } from "./components/Curricul
 import { getCurriculumErrorMessage } from "./components/curriculumErrorMessage";
 import type { CurriculumImportForm, CurriculumImportSummary, CurriculumUnit } from "./components/types";
 
-type Context = { sources: Array<{ _id: string; title: string; level: string; subjectId?: string }>; imports: CurriculumImportSummary[] };
+type Context = { sources: Array<{ _id: string; title: string; level: string; subjectId?: string; createdAt: number }>; imports: CurriculumImportSummary[] };
 type Subject = { _id: string; name: string };
 type Session = { _id: string; isActive: boolean };
 type Term = { _id: string; name: string; isActive: boolean };
 type Review = { status: string; errorMessage?: string; units: CurriculumUnit[] };
 type FilterTab = "all" | "proposed" | "approved" | "rejected";
+type SourceOrder = "newest" | "oldest";
 
 const EMPTY_FORM: CurriculumImportForm = { materialId: "", subjectId: "", level: "", termId: "" };
 const BULK_REVIEW_BATCH_SIZE = 20;
@@ -38,7 +40,17 @@ function chunkUnits(units: CurriculumUnit[]) {
 }
 
 export default function CurriculumImportPage() {
-  const context = useQuery("functions/academic/curriculumAdminRead:listCurriculumImportContext" as never) as Context | undefined;
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [sourceOrder, setSourceOrder] = useState<SourceOrder>("newest");
+  const currentContext = useQuery(
+    "functions/academic/curriculumAdminRead:listCurriculumImportContext" as never,
+    { sourceQuery, sourceOrder } as never
+  ) as Context | undefined;
+  const [lastContext, setLastContext] = useState<Context | undefined>();
+  useEffect(() => {
+    if (currentContext) setLastContext(currentContext);
+  }, [currentContext]);
+  const context = currentContext ?? lastContext;
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
   const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as Session[] | undefined;
   const activeSession = sessions?.find((session) => session.isActive);
@@ -135,23 +147,42 @@ export default function CurriculumImportPage() {
     });
   };
 
+  const generateProposal = async (importId: string) => {
+    const response = await fetch("/api/ai/curriculum/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ importId }),
+    });
+    const payload = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) throw new Error(getCurriculumErrorMessage(payload, "Generation could not start."));
+  };
+
   const startImport = async () => {
     if (!form.materialId || !form.subjectId || !form.level.trim() || !form.termId || busy) return;
     setBusy(true);
     try {
       const importId = (await createImport({ ...form, level: form.level.trim() } as never)) as string;
       setSelectedImportId(importId);
-      const response = await fetch("/api/ai/curriculum/import", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ importId }),
-      });
-      const payload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) throw new Error(getCurriculumErrorMessage(payload, "Generation could not start."));
+      await generateProposal(importId);
       appToast.success("Proposal ready", { description: "Review each unit before approving it as an academic topic." });
     } catch (error) {
       appToast.error("Import could not start", {
         description: getCurriculumErrorMessage(error, "Check the source and academic context, then try again."),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retryImport = async () => {
+    if (!selectedImport || selectedImport.status !== "failed" || busy) return;
+    setBusy(true);
+    try {
+      await generateProposal(selectedImport._id);
+      appToast.success("Proposal ready", { description: "The existing import was retried successfully." });
+    } catch (error) {
+      appToast.error("Retry failed", {
+        description: getCurriculumErrorMessage(error, "Check the source and try again."),
       });
     } finally {
       setBusy(false);
@@ -344,12 +375,23 @@ export default function CurriculumImportPage() {
         {/* Left Panel: Proposal Creator & Recents */}
         <CurriculumImportSidebar
           sources={context.sources}
+          sourcesLoading={!currentContext}
           subjects={subjects}
           terms={terms ?? []}
           imports={context.imports}
           form={form}
           busy={busy}
           selectedImportId={selectedImportId}
+          sourceQuery={sourceQuery}
+          sourceOrder={sourceOrder}
+          onSourceQueryChange={(query) => {
+            setSourceQuery(query);
+            setForm((current) => ({ ...current, materialId: "" }));
+          }}
+          onSourceOrderChange={(order) => {
+            setSourceOrder(order);
+            setForm((current) => ({ ...current, materialId: "" }));
+          }}
           onFormChange={setForm}
           onSelectImport={setSelectedImportId}
           onSubmit={() => void startImport()}
@@ -358,7 +400,7 @@ export default function CurriculumImportPage() {
         {/* Center Panel: Review Queue List */}
         <section className="min-w-0 bg-slate-50/50 lg:h-full lg:overflow-y-auto custom-scrollbar flex flex-col">
           {/* Sub-strip: Select all + Extraction status */}
-          {selectedImport && (
+          {selectedImport && review && (
             <div className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/95 px-5 py-2.5 backdrop-blur flex items-center justify-between text-xs text-slate-500 font-bold shadow-2xs">
               <div className="flex items-center gap-3">
                 {filteredUnits.length > 0 && (
@@ -431,14 +473,32 @@ export default function CurriculumImportPage() {
             </div>
           )}
 
+          {selectedImport && !review && (
+            <div role="status" className="m-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3.5 text-xs font-semibold text-slate-600">
+              <LoaderCircle className="h-4 w-4 animate-spin text-indigo-600" />
+              Loading proposal details…
+            </div>
+          )}
+
           {/* Error Message */}
           {review?.status === "failed" && (
-            <p className="m-4 rounded-xl bg-rose-50 p-3.5 text-xs font-semibold text-rose-700 border border-rose-200">
-              {getCurriculumErrorMessage(
-                review.errorMessage,
-                "Generation failed. Check the extracted source, then create a fresh proposal."
-              )}
-            </p>
+            <div className="m-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-semibold text-rose-700">
+              <p>
+                {getCurriculumErrorMessage(
+                  review.errorMessage,
+                  "Generation failed. Check the extracted source, then retry this proposal."
+                )}
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void retryImport()}
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 text-[10px] font-black uppercase tracking-wider text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                Retry extraction
+              </button>
+            </div>
           )}
 
           {/* Unit Cards List */}

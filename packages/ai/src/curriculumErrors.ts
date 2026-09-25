@@ -47,7 +47,7 @@ export function toCurriculumGenerationFailure(error: unknown) {
   ) {
     return {
       errorCode: "evidence_citation_invalid",
-      errorMessage: "The model returned curriculum citations that could not be verified against the source. Try again or choose another model.",
+      errorMessage: "The proposal could not be matched reliably to the source document. Retry extraction.",
     };
   }
   if (
@@ -68,13 +68,13 @@ export function toCurriculumGenerationFailure(error: unknown) {
   ) {
     return {
       errorCode: "provider_authentication_failed",
-      errorMessage: "OpenRouter rejected the configured API key. Update OPENROUTER_API_KEY in the active Convex deployment.",
+      errorMessage: "Curriculum extraction could not authenticate with the AI service. Contact your platform administrator.",
     };
   }
   if (errorCode === "provider_model_unavailable" || providerStatus === 404) {
     return {
       errorCode: "provider_model_unavailable",
-      errorMessage: "The configured OpenRouter curriculum model is unavailable. Choose another SCHOOL_AI_CURRICULUM_MODEL.",
+      errorMessage: "The configured curriculum model is unavailable. Retry later or contact your platform administrator.",
     };
   }
   if (errorCode === "provider_rate_limited" || providerStatus === 429) {
@@ -98,7 +98,7 @@ export function toCurriculumGenerationFailure(error: unknown) {
   ) {
     return {
       errorCode: "provider_output_invalid",
-      errorMessage: "The selected model did not return a valid curriculum proposal. Try again or choose a model with structured-output support.",
+      errorMessage: "The AI response could not be turned into a curriculum proposal. Retry extraction.",
     };
   }
   if (
