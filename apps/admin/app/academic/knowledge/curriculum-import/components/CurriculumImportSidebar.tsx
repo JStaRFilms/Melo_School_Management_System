@@ -87,6 +87,7 @@ export function CurriculumImportSidebar(props: Props) {
               </option>
             ))}
           </select>
+          {sourceQuery.trim() && <p className="text-[10px] leading-4 text-slate-500">Up to 60 search matches shown; sorting applies to these results.</p>}
         </Field>
 
         <Field label="Subject">

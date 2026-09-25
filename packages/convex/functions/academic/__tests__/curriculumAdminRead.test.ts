@@ -42,23 +42,22 @@ describe("curriculum admin read", () => {
     expect(result.imports.find((item) => item._id === expected.olderImportId)?.sourceLabel).toBe("Exact historical source");
   });
 
-  it("orders matching references before limiting a long search", async () => {
+  it("limits search-index matches and sorts the returned set", async () => {
     const t = convexTest(schema, modules);
-    const { first, last } = await t.run(async (ctx) => {
+    await t.run(async (ctx) => {
       const schoolId = await ctx.db.insert("schools", { name: "Alpha", slug: "alpha", createdAt: 1, updatedAt: 1 });
       const userId = await ctx.db.insert("users", { schoolId, authId: "admin-auth", name: "Admin", email: "admin@test", role: "admin", createdAt: 1, updatedAt: 1 });
-      const ids = [];
       for (let index = 0; index < 65; index += 1) {
         const title = `Geometry reference ${index}`;
-        ids.push(await ctx.db.insert("knowledgeMaterials", { schoolId, ownerUserId: userId, ownerRole: "admin", sourceType: "imported_curriculum", visibility: "staff_shared", reviewStatus: "approved", title, level: "JSS 1", topicLabel: "Scheme", searchStatus: "indexed", searchText: title, processingStatus: "ready", ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1, indexedAt: index, createdAt: index, updatedAt: index, createdBy: userId, updatedBy: userId }));
+        await ctx.db.insert("knowledgeMaterials", { schoolId, ownerUserId: userId, ownerRole: "admin", sourceType: "imported_curriculum", visibility: "staff_shared", reviewStatus: "approved", title, level: "JSS 1", topicLabel: "Scheme", searchStatus: "indexed", searchText: title, processingStatus: "ready", ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1, indexedAt: index, createdAt: index, updatedAt: index, createdBy: userId, updatedBy: userId });
       }
-      return { first: ids[0], last: ids[64] };
     });
-    const newest = await t.withIdentity(admin).query(listContext, { sourceQuery: "Geometry reference", sourceOrder: "newest" }) as { sources: Array<{ _id: string }> };
+    const newest = await t.withIdentity(admin).query(listContext, { sourceQuery: "Geometry reference", sourceOrder: "newest" }) as { sources: Array<{ _id: string; createdAt: number }> };
     const oldest = await t.withIdentity(admin).query(listContext, { sourceQuery: "Geometry reference", sourceOrder: "oldest" }) as typeof newest;
+    const noMatch = await t.withIdentity(admin).query(listContext, { sourceQuery: "zzzznonexistentcurriculum" }) as typeof newest;
     expect(newest.sources).toHaveLength(60);
-    expect(oldest.sources).toHaveLength(60);
-    expect(newest.sources[0]._id).toBe(last);
-    expect(oldest.sources[0]._id).toBe(first);
+    expect(oldest.sources.map((source) => source._id)).toEqual(newest.sources.map((source) => source._id).reverse());
+    expect(newest.sources[0].createdAt).toBeGreaterThan(newest.sources[59].createdAt);
+    expect(noMatch.sources).toEqual([]);
   });
 });

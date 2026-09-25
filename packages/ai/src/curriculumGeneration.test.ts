@@ -162,6 +162,15 @@ test("accepts an exact short curriculum heading with its matching week", () => {
     reconcileCurriculumUnitEvidence({ ...unit, supportingExcerpt: "Week 8 Week 9: FRACTIONS I" }, [adjacentHeadings]),
     null
   );
+  assert.equal(
+    reconcileCurriculumUnitEvidence({ ...unit, title: "Fractions", supportingExcerpt: "Week 8: FRACTIONS II" }, [nextHeading]),
+    null
+  );
+  for (const title of ["Art", "ICT"]) {
+    const shortHeading = { ...page, text: `Week 8: ${title} Learning Objectives` };
+    const shortUnit = { ...unit, title, supportingExcerpt: `Week 8: ${title}`, sourceChunkHash: shortHeading.chunkHash };
+    assert.deepEqual(reconcileCurriculumUnitEvidence(shortUnit, [shortHeading]), shortUnit);
+  }
 });
 
 test("rejects generic evidence unrelated to the proposed unit", () => {
