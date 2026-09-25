@@ -67,6 +67,19 @@ export const getGenerationInput = internalQuery({
   },
 });
 
+export const getGenerationAttemptVersion = internalQuery({
+  args: importIdValidator,
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const importRecord = await ctx.db.get(args.importId);
+    if (!importRecord || importRecord.schoolId !== schoolId) throw new ConvexError("Curriculum import not found");
+    if (importRecord.status !== "draft" && importRecord.status !== "failed") throw new ConvexError("This curriculum import is already being generated or reviewed");
+    return importRecord.updatedAt;
+  },
+});
+
 export const startGeneration = internalMutation({
   args: { ...importIdValidator, provider: v.string(), model: v.string(), sourceCount: v.number() },
   returns: v.id("aiRunLogs"),
@@ -135,12 +148,12 @@ export const failGeneration = internalMutation({
 });
 
 export const failUnstartedGeneration = internalMutation({
-  args: { ...importIdValidator, errorCode: v.string(), errorMessage: v.string() }, returns: v.null(),
+  args: { ...importIdValidator, expectedUpdatedAt: v.number(), errorCode: v.string(), errorMessage: v.string() }, returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.curriculum.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const record = await ctx.db.get(args.importId);
-    if (record && record.schoolId === schoolId && (record.status === "draft" || record.status === "failed")) await ctx.db.patch(args.importId, { status: "failed", errorCode: args.errorCode, errorMessage: args.errorMessage, updatedAt: Date.now() });
+    if (record && record.schoolId === schoolId && record.updatedAt === args.expectedUpdatedAt && (record.status === "draft" || record.status === "failed")) await ctx.db.patch(args.importId, { status: "failed", errorCode: args.errorCode, errorMessage: args.errorMessage, updatedAt: Date.now() });
     return null;
   },
 });
@@ -150,7 +163,9 @@ export const requestCurriculumGeneration = action({
   returns: v.object({ importId: v.id("curriculumImports"), aiRunLogId: v.id("aiRunLogs"), proposalCount: v.number() }),
   handler: async (ctx, args): Promise<{ importId: Id<"curriculumImports">; aiRunLogId: Id<"aiRunLogs">; proposalCount: number }> => {
     let aiRunLogId: Id<"aiRunLogs"> | undefined;
+    let attemptUpdatedAt: number | undefined;
     try {
+      attemptUpdatedAt = await ctx.runQuery(internal.functions.academic.curriculumGeneration.getGenerationAttemptVersion, args);
       const input: CurriculumExtractionInput = await ctx.runQuery(internal.functions.academic.curriculumGeneration.getGenerationInput, args);
       const runtime = resolveCurriculumAiRuntime();
       aiRunLogId = await ctx.runMutation(internal.functions.academic.curriculumGeneration.startGeneration, { importId: args.importId, provider: runtime.provider, model: runtime.modelId, sourceCount: input.pages.length });
@@ -170,7 +185,7 @@ export const requestCurriculumGeneration = action({
     } catch (error) {
       const failure = toCurriculumGenerationFailure(error);
       if (aiRunLogId) await ctx.runMutation(internal.functions.academic.curriculumGeneration.failGeneration, { importId: args.importId, aiRunLogId, ...failure });
-      else await ctx.runMutation(internal.functions.academic.curriculumGeneration.failUnstartedGeneration, { importId: args.importId, ...failure });
+      else if (attemptUpdatedAt !== undefined) await ctx.runMutation(internal.functions.academic.curriculumGeneration.failUnstartedGeneration, { importId: args.importId, expectedUpdatedAt: attemptUpdatedAt, ...failure });
       throw new ConvexError(failure);
     }
   },

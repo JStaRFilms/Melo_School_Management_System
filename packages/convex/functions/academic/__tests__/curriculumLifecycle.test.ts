@@ -167,12 +167,25 @@ describe("curriculum lifecycle", () => {
   it("records a retryable pre-run failure without run metadata", async () => {
     const { t, ids } = await fixture();
     const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
+    const expectedUpdatedAt = (await t.run((ctx) => ctx.db.get(importId)))!.updatedAt;
     await t.run((ctx) => ctx.db.patch(ids.sessionId, { isActive: false }));
     await expect(t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock", sourceCount: 1 })).rejects.toThrow("active academic session");
-    await t.withIdentity(admin).mutation(failUnstartedGeneration, { importId, errorCode: "preflight_failed", errorMessage: "Curriculum proposal generation failed." });
+    await t.withIdentity(admin).mutation(failUnstartedGeneration, { importId, expectedUpdatedAt, errorCode: "preflight_failed", errorMessage: "Curriculum proposal generation failed." });
     const record = await t.run((ctx) => ctx.db.get(importId));
     expect(record).toMatchObject({ status: "failed", errorCode: "preflight_failed" });
     expect(record?.provider).toBeUndefined(); expect(record?.aiRunLogId).toBeUndefined();
+  });
+
+  it("ignores a stale pre-run failure after a newer attempt changes the import", async () => {
+    const { t, ids } = await fixture();
+    const importId = await t.withIdentity(admin).mutation(createCurriculumImport, { materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId });
+    await t.run((ctx) => ctx.db.patch(importId, { updatedAt: 100 }));
+    const runId = await t.withIdentity(admin).mutation(startGeneration, { importId, provider: "mock", model: "mock/current", sourceCount: 1 });
+    await t.withIdentity(admin).mutation(failGeneration, { importId, aiRunLogId: runId, errorCode: "current_failure", errorMessage: "Current attempt failed." });
+
+    await t.withIdentity(admin).mutation(failUnstartedGeneration, { importId, expectedUpdatedAt: 100, errorCode: "stale_failure", errorMessage: "Stale attempt failed." });
+    const record = await t.run((ctx) => ctx.db.get(importId));
+    expect(record).toMatchObject({ status: "failed", errorCode: "current_failure", errorMessage: "Current attempt failed." });
   });
 
 });

@@ -75,7 +75,6 @@ export function CurriculumImportSidebar(props: Props) {
                 level: source?.level || form.level,
                 subjectId: source?.subjectId || form.subjectId,
               });
-              if (event.target.value) props.onSourceQueryChange("");
             }}
             className={INPUT_CLASS}
           >
