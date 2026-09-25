@@ -50,6 +50,26 @@ describe("KnowledgeMaterialUploadForm drag and drop", () => {
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("motion and forces");
   });
 
+  it("resets the picker so a previously chosen file can be selected again after a drop", () => {
+    renderUploadForm();
+    const dropTarget = screen.getByRole("button", { name: "Choose material file" });
+    const input = dropTarget.querySelector<HTMLInputElement>("input[type=file]");
+    if (!input) throw new Error("Missing file input");
+    const first = new File(["first"], "first.txt", { type: "text/plain" });
+    const second = new File(["second"], "second.txt", { type: "text/plain" });
+
+    fireEvent.change(input, { target: { files: [first] } });
+    Object.defineProperty(input, "value", { configurable: true, writable: true, value: "C:\\fakepath\\first.txt" });
+    fireEvent.drop(dropTarget, {
+      dataTransfer: { files: [second], types: ["Files"] },
+    });
+
+    expect(input.value).toBe("");
+    expect(screen.getByText("second.txt")).toBeInTheDocument();
+    fireEvent.change(input, { target: { files: [first] } });
+    expect(screen.getByText("first.txt")).toBeInTheDocument();
+  });
+
   it("shows the existing validation error for an unsupported dropped file", () => {
     renderUploadForm();
     const dropTarget = screen.getByRole("button", { name: "Choose material file" });

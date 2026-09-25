@@ -307,7 +307,10 @@ export function KnowledgeMaterialUploadForm({
     dragDepthRef.current = 0;
     setIsDraggingFile(false);
     const droppedFile = event.dataTransfer.files[0];
-    if (droppedFile) selectFile(droppedFile);
+    if (droppedFile) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      selectFile(droppedFile);
+    }
   };
 
   const subjectRequired = !isAdmin || !isCurriculumReference;
