@@ -166,7 +166,7 @@ test("accepts an exact short curriculum heading with its matching week", () => {
     reconcileCurriculumUnitEvidence({ ...unit, title: "Fractions", supportingExcerpt: "Week 8: FRACTIONS II" }, [nextHeading]),
     null
   );
-  for (const title of ["Art", "ICT"]) {
+  for (const title of ["Art", "ICT", "PE", "IT"]) {
     const shortHeading = { ...page, text: `Week 8: ${title} Learning Objectives` };
     const shortUnit = { ...unit, title, supportingExcerpt: `Week 8: ${title}`, sourceChunkHash: shortHeading.chunkHash };
     assert.deepEqual(reconcileCurriculumUnitEvidence(shortUnit, [shortHeading]), shortUnit);

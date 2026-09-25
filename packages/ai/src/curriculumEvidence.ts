@@ -78,9 +78,9 @@ export function reconcileCurriculumUnitEvidence(
   const canonicalExcerpt = canonicalizeCurriculumEvidence(supportingExcerpt);
   if (
     !canonicalExcerpt ||
-    (!isMeaningfulCurriculumEvidenceExcerpt(supportingExcerpt)
-      && !isExactCurriculumHeadingExcerpt(supportingExcerpt, unit)) ||
-    !hasCurriculumEvidenceSemanticOverlap(supportingExcerpt, unit)
+    (!isExactCurriculumHeadingExcerpt(supportingExcerpt, unit)
+      && (!isMeaningfulCurriculumEvidenceExcerpt(supportingExcerpt)
+        || !hasCurriculumEvidenceSemanticOverlap(supportingExcerpt, unit)))
   ) return null;
 
   let candidates = entries.filter((entry) =>
