@@ -15,6 +15,10 @@ import {
   commitManualAdmissionNumberHelper,
   proposeAdmissionNumberHelper,
 } from "./admissionNumbers";
+import {
+  adjustSchoolEnrollmentCount,
+  isCurrentEnrollment,
+} from "./studentEnrollmentCounts";
 
 /**
  * Validates that the caller holds authority to manage student transfers
@@ -819,12 +823,20 @@ export const acceptDestinationTransfer = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await adjustSchoolEnrollmentCount(
+      ctx,
+      transfer.destinationSchoolId,
+      1,
+    );
 
     // Preserve the source row and all source-scoped records as historical evidence.
     await ctx.db.patch(sourceStudent._id, {
       enrollmentStatus: "transferred_out",
       updatedAt: now,
     });
+    if (isCurrentEnrollment(sourceStudent)) {
+      await adjustSchoolEnrollmentCount(ctx, transfer.sourceSchoolId, -1);
+    }
     await ctx.db.patch(sourceStudentUser._id, {
       isArchived: true,
       archivedAt: now,
@@ -970,6 +982,12 @@ export const reverseCompletedTransfer = mutation({
           updatedAt: now,
         });
     await ctx.db.patch(sourceStudent._id, { enrollmentStatus: "active", isArchived: false, updatedAt: now });
+    if (isCurrentEnrollment(destinationStudent)) {
+      await adjustSchoolEnrollmentCount(ctx, transfer.destinationSchoolId, -1);
+    }
+    if (!isCurrentEnrollment(sourceStudent)) {
+      await adjustSchoolEnrollmentCount(ctx, transfer.sourceSchoolId, 1);
+    }
     await ctx.db.patch(sourceUser._id, {
       isArchived: false,
       archivedAt: undefined,
