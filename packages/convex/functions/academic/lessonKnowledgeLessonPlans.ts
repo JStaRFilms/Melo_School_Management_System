@@ -20,6 +20,7 @@ import {
   getInstructionTemplateScopeRank,
   instructionTemplateResolutionKeys,
   selectInstructionTemplateBucket,
+  sortInstructionTemplates,
   type InstructionTemplateScope,
   type SupportedInstructionTemplateOutputType,
 } from "./lessonKnowledgeTemplatesHelpers";
@@ -949,6 +950,67 @@ async function resolveWorkspaceTemplate(args: {
       .filter((q) => q.eq(q.field("isActive"), true))
       .take(100);
     candidate = selectInstructionTemplateBucket(rows, bucket, outputType);
+
+    // Older seeded or imported templates may predate canonical applicability
+    // keys. Preserve them by checking the same exact scope before moving to the
+    // next fallback bucket.
+    if (!candidate) {
+      let legacyRows: Array<Doc<"instructionTemplates">> = [];
+      switch (bucket.scope) {
+        case "subject_and_level":
+          if (subjectId && level) {
+            legacyRows = await ctx.db.query("instructionTemplates")
+              .withIndex("by_school_and_output_type_and_subject_and_level", (q) =>
+                q.eq("schoolId", schoolId).eq("outputType", outputType).eq("subjectId", subjectId).eq("level", level)
+              )
+              .filter((q) => q.and(
+                q.eq(q.field("isActive"), true),
+                q.eq(q.field("templateScope"), "subject_and_level")
+              ))
+              .take(100);
+          }
+          break;
+        case "subject_only":
+          if (subjectId) {
+            legacyRows = await ctx.db.query("instructionTemplates")
+              .withIndex("by_school_and_output_type_and_subject", (q) =>
+                q.eq("schoolId", schoolId).eq("outputType", outputType).eq("subjectId", subjectId)
+              )
+              .filter((q) => q.and(
+                q.eq(q.field("isActive"), true),
+                q.eq(q.field("templateScope"), "subject_only")
+              ))
+              .take(100);
+          }
+          break;
+        case "level_only":
+          if (level) {
+            legacyRows = await ctx.db.query("instructionTemplates")
+              .withIndex("by_school_and_output_type_and_level", (q) =>
+                q.eq("schoolId", schoolId).eq("outputType", outputType).eq("level", level)
+              )
+              .filter((q) => q.and(
+                q.eq(q.field("isActive"), true),
+                q.eq(q.field("templateScope"), "level_only")
+              ))
+              .take(100);
+          }
+          break;
+        case "school_default":
+          legacyRows = await ctx.db.query("instructionTemplates")
+            .withIndex("by_school_and_output_type_and_is_school_default", (q) =>
+              q.eq("schoolId", schoolId).eq("outputType", outputType).eq("isSchoolDefault", true)
+            )
+            .filter((q) => q.and(
+              q.eq(q.field("isActive"), true),
+              q.eq(q.field("templateScope"), "school_default")
+            ))
+            .take(100);
+          break;
+      }
+      candidate = legacyRows.sort(sortInstructionTemplates)[0] ?? null;
+    }
+
     if (candidate) {
       resolutionPath = bucket.path;
       break;
