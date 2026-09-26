@@ -34,7 +34,20 @@ describe("curriculum topics in teacher planning", () => {
     const topics = await t.withIdentity(admin).query(listTopics, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 80 });
     expect(topics.map((topic) => topic._id)).toEqual([ids.topicId]);
     const work = await t.withIdentity(admin).query(listWork, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 20 });
-    expect(work).toHaveLength(1);
-    expect(work[0]).toMatchObject({ topicId: ids.topicId, sourceCount: 1, readySourceCount: 1, sourceIds: [ids.materialId] });
+    expect(work).toMatchObject({ totalCount: 1, totalIsExact: true, hasMore: false });
+    expect(work.items).toHaveLength(1);
+    expect(work.items[0]).toMatchObject({ topicId: ids.topicId, sourceCount: 1, readySourceCount: 1, sourceIds: [ids.materialId] });
+
+    const searchResult = await t.withIdentity(admin).query(listWork, { searchQuery: "Safety Club", limit: 18 });
+    expect(searchResult).toMatchObject({ totalCount: 1, totalIsExact: true, hasMore: false });
+    expect(searchResult.items.map((item) => item.topicId)).toEqual([ids.topicId]);
+
+    const firstPage = await t.withIdentity(admin).query(listWork, { searchQuery: "Distractor", limit: 18 });
+    expect(firstPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
+    expect(firstPage.items).toHaveLength(18);
+
+    const expandedPage = await t.withIdentity(admin).query(listWork, { searchQuery: "Distractor", limit: 36 });
+    expect(expandedPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
+    expect(expandedPage.items).toHaveLength(36);
   });
 });

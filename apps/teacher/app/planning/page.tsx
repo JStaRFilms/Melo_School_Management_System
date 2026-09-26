@@ -54,6 +54,8 @@ export type TopicOption = {
   status: "draft" | "active" | "retired";
 };
 
+const PLANNING_TOPIC_PAGE_SIZE = 18;
+
 export type PlanningWorkItem = {
   topicId: string;
   topicTitle: string;
@@ -79,6 +81,18 @@ export type PlanningWorkItem = {
     outputType: "lesson_plan" | "student_note" | "assignment" | "question_bank_draft" | "cbt_draft";
     draftMode: string | null;
     updatedAt: number;
+  }>;
+};
+
+type PlanningWorkResult = {
+  items: PlanningWorkItem[];
+  totalCount: number;
+  totalIsExact: boolean;
+  hasMore: boolean;
+  subjectCounts: Array<{
+    id: string;
+    name: string;
+    count: number;
   }>;
 };
 
@@ -113,6 +127,7 @@ export default function PlanningIndexPage() {
   const [examTopicIds, setExamTopicIds] = useState<string[]>([]);
   const [workSearchQuery, setWorkSearchQuery] = useState("");
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState("all");
+  const [planningWorkLimit, setPlanningWorkLimit] = useState(PLANNING_TOPIC_PAGE_SIZE);
   
   const [isMobile, setIsMobile] = useState(false);
   const [activeForm, setActiveForm] = useState<"topic" | "exam" | null>(null);
@@ -156,13 +171,19 @@ export default function PlanningIndexPage() {
       : ("skip" as never)
   ) as TopicOption[] | undefined;
   
-  const planningWork = useQuery(
+  const planningWorkResult = useQuery(
     "functions/academic/lessonKnowledgeTeacher:listTeacherPlanningTopicWork" as never,
     {
       searchQuery: workSearchQuery.trim() || undefined,
-      limit: 18,
+      limit: planningWorkLimit,
     } as never
-  ) as PlanningWorkItem[] | undefined;
+  ) as PlanningWorkResult | undefined;
+  const planningWork = planningWorkResult?.items;
+
+  useEffect(() => {
+    setPlanningWorkLimit(PLANNING_TOPIC_PAGE_SIZE);
+    setSelectedSubjectFilter("all");
+  }, [workSearchQuery]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -332,43 +353,13 @@ export default function PlanningIndexPage() {
         })
       : null;
 
-  const availableSubjects = useMemo(() => {
-    const subjectMap = new Map<string, { id: string; name: string; count: number }>();
-    (planningWork ?? []).forEach((item) => {
-      const existing = subjectMap.get(item.subjectId);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        subjectMap.set(item.subjectId, {
-          id: item.subjectId,
-          name: item.subjectName,
-          count: 1,
-        });
-      }
-    });
-    return Array.from(subjectMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [planningWork]);
+  const availableSubjects = planningWorkResult?.subjectCounts ?? [];
 
   const filteredPlanningWork = useMemo(() => {
-    return (planningWork ?? []).filter((item) => {
-      if (selectedSubjectFilter !== "all" && item.subjectId !== selectedSubjectFilter) {
-        return false;
-      }
-      if (workSearchQuery.trim()) {
-        const q = workSearchQuery.toLowerCase().trim();
-        const matchTitle = item.topicTitle.toLowerCase().includes(q);
-        const matchSummary = (item.topicSummary ?? "").toLowerCase().includes(q);
-        const matchSubject = item.subjectName.toLowerCase().includes(q) || item.subjectCode.toLowerCase().includes(q);
-        const matchLevel = item.level.toLowerCase().includes(q);
-        const matchTerm = item.termName.toLowerCase().includes(q);
-        const matchOutputs = item.outputs.some((o) => o.title.toLowerCase().includes(q));
-        if (!matchTitle && !matchSummary && !matchSubject && !matchLevel && !matchTerm && !matchOutputs) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [planningWork, selectedSubjectFilter, workSearchQuery]);
+    return (planningWork ?? []).filter(
+      (item) => selectedSubjectFilter === "all" || item.subjectId === selectedSubjectFilter
+    );
+  }, [planningWork, selectedSubjectFilter]);
 
   if (classes === undefined || terms === undefined) {
     return (
@@ -547,7 +538,9 @@ export default function PlanningIndexPage() {
                   stats={[
                     {
                       label: "Active Topics",
-                      value: planningWork?.length ?? 0,
+                      value: planningWorkResult
+                        ? `${planningWorkResult.totalCount}${planningWorkResult.totalIsExact ? "" : "+"}`
+                        : 0,
                       icon: <LayoutGrid className="h-4 w-4" />,
                     },
                     {
@@ -605,7 +598,9 @@ export default function PlanningIndexPage() {
                   >
                     <span>All Subjects</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${selectedSubjectFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
-                      {planningWork?.length ?? 0}
+                      {planningWorkResult
+                        ? `${planningWorkResult.totalCount}${planningWorkResult.totalIsExact ? "" : "+"}`
+                        : 0}
                     </span>
                   </button>
 
@@ -678,6 +673,18 @@ export default function PlanningIndexPage() {
                 </div>
               )}
             </div>
+
+            {planningWorkResult?.hasMore && (
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPlanningWorkLimit((current) => current + PLANNING_TOPIC_PAGE_SIZE)}
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-xs font-black uppercase tracking-wider text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-950"
+                >
+                  Load more topics ({planningWork?.length ?? 0} of {planningWorkResult.totalCount}{planningWorkResult.totalIsExact ? "" : "+"})
+                </button>
+              </div>
+            )}
           </div>
         </main>
 
