@@ -78,7 +78,7 @@ export async function resolveActiveSchoolMembershipsV1(
 
   const active = rows.filter((row) => !row.isArchived);
 
-  const resolvedSchools = new Set<string>();
+  const resolvedSchools = new Set<Id<"schools">>();
   for (const row of active) {
     if (resolvedSchools.has(row.schoolId)) {
       throw ambiguousMembership("Not authorized: ambiguous in-school membership");
