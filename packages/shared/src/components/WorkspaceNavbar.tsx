@@ -752,7 +752,7 @@ export function WorkspaceNavbar({
         <main
           className={`relative min-h-0 w-full flex-1 overscroll-contain custom-scrollbar scrollbar-hide [overflow-anchor:none] ${
             fullBleed
-              ? "h-full overflow-y-auto overflow-x-hidden"
+              ? "h-full overflow-y-auto"
               : "overflow-y-auto overflow-x-hidden px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 sm:p-6 lg:p-8"
           }`}
         >
