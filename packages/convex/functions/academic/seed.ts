@@ -17,6 +17,10 @@ import {
 import { populateJudgeCurriculumFixture } from "./judgeCurriculumSeed";
 import { populateJudgeLessonFixture } from "./judgeLessonSeed";
 import { assertStorageClaimedOnlyBy, assertStorageUnclaimed } from "./assetStorageBoundary";
+import {
+  adjustSchoolEnrollmentCount,
+  initializeSchoolEnrollmentCount,
+} from "./studentEnrollmentCounts";
 
 const DAY = 24 * 60 * 60 * 1000;
 const timestamp = (date: string) => Date.parse(`${date}T09:00:00.000Z`);
@@ -43,7 +47,7 @@ const DEMO_SCHOOL_TABLES = [
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
   "studentSubjectAggregationOptOuts", "studentSubjectSelections", "studentPromotions", "classSubjectAggregationComponents", "classSubjectAggregations", "teacherAssignments", "classSubjects",
   "academicTimelineAuditEvents", "academicTerms", "academicSessions", "schoolEvents",
-  "familyMembers", "students", "schoolAdminLeadership", "adminLeadershipAuditEvents", "classes", "families", "users", "subjects",
+  "familyMembers", "schoolEnrollmentCounts", "students", "schoolAdminLeadership", "adminLeadershipAuditEvents", "classes", "families", "users", "subjects",
 ] as const satisfies readonly TableNames[];
 
 function gradeFor(total: number) {
@@ -292,6 +296,7 @@ export const startDemoSeedRunInternal = internalMutation({
     const existing = await ctx.db.query("schools").withIndex("by_slug", (q) => q.eq("slug", profile.schoolSlug)).unique();
     if (existing) throw new ConvexError(`${profile.schoolSlug} must be reset before a new seed run starts.`);
     const schoolId = await ctx.db.insert("schools", { name: profile.schoolName, slug: profile.schoolSlug, status: "active", logoStorageId: args.logoStorageId, logoFileName: `${profile.schoolSlug}-crest.png`, logoContentType: "image/png", logoUpdatedAt: profile.createdAt, createdAt: profile.createdAt, updatedAt: profile.createdAt });
+    await initializeSchoolEnrollmentCount(ctx, schoolId);
     return await ctx.db.insert("demoSeedRuns", { schoolId, status: "running", phase: "foundation", studentCursor: 0, assessmentCursor: 0, billingCursor: 0, ...args, seedProfile: profile.key, createdAt: Date.now(), updatedAt: Date.now() });
   },
 });
@@ -339,7 +344,7 @@ export const populateDemoStudentsBatchInternal = internalMutation({
   handler: async (ctx, { runId }) => {
     const run = await requireRun(ctx, runId); if (run.phase !== "students") return { phase: run.phase, cursor: run.studentCursor };
     const profile = getSchoolSeedProfile(profileKey(run.seedProfile)); const data = await loadContext(ctx, runId); const end = Math.min(run.studentCursor + 12, profile.students.length); const now = profile.createdAt;
-    for (let index = run.studentCursor; index < end; index += 1) { const student = profile.students[index]; const [firstName, lastName] = student.name.split(" "); const userId = await ctx.db.insert("users", { schoolId: data.schoolId, authId: `${profile.authPrefix}-student-${student.admissionNumber}`, name: student.name, firstName, lastName, email: student.email, role: "student", createdAt: now, updatedAt: now }); const studentId = await ctx.db.insert("students", { schoolId: data.schoolId, classId: data.classIds[student.classIndex], userId, familyId: data.familyIds[student.familyIndex], admissionNumber: student.admissionNumber, houseName: ["Courage", "Unity", "Integrity", "Discovery"][index % 4], gender: student.gender, dateOfBirth: timestamp(`201${index % 4 + 1}-0${index % 8 + 1}-15`), guardianName: student.familyIndex === 0 ? profile.accounts.portal.name : `Parent ${student.familyIndex + 1} ${profile.familyLabel}`, guardianPhone: `+234 800 555 ${String(1000 + index)}`, address: `${index + 1} Learning Lane, ${profile.cityName}`, photoStorageId: run.portraitStorageIds[index], photoFileName: `portrait-${String(index + 1).padStart(2, "0")}.png`, photoContentType: "image/png", photoUpdatedAt: now, isArchived: false, createdAt: now, updatedAt: now }); for (const subjectId of data.subjectIds) await ctx.db.insert("studentSubjectSelections", { schoolId: data.schoolId, studentId, classId: data.classIds[student.classIndex], subjectId, sessionId: data.sessionId, createdAt: now, updatedAt: now }); }
+    for (let index = run.studentCursor; index < end; index += 1) { const student = profile.students[index]; const [firstName, lastName] = student.name.split(" "); const userId = await ctx.db.insert("users", { schoolId: data.schoolId, authId: `${profile.authPrefix}-student-${student.admissionNumber}`, name: student.name, firstName, lastName, email: student.email, role: "student", createdAt: now, updatedAt: now }); const studentId = await ctx.db.insert("students", { schoolId: data.schoolId, classId: data.classIds[student.classIndex], userId, familyId: data.familyIds[student.familyIndex], admissionNumber: student.admissionNumber, houseName: ["Courage", "Unity", "Integrity", "Discovery"][index % 4], gender: student.gender, dateOfBirth: timestamp(`201${index % 4 + 1}-0${index % 8 + 1}-15`), guardianName: student.familyIndex === 0 ? profile.accounts.portal.name : `Parent ${student.familyIndex + 1} ${profile.familyLabel}`, guardianPhone: `+234 800 555 ${String(1000 + index)}`, address: `${index + 1} Learning Lane, ${profile.cityName}`, photoStorageId: run.portraitStorageIds[index], photoFileName: `portrait-${String(index + 1).padStart(2, "0")}.png`, photoContentType: "image/png", photoUpdatedAt: now, isArchived: false, createdAt: now, updatedAt: now }); await adjustSchoolEnrollmentCount(ctx, data.schoolId, 1); for (const subjectId of data.subjectIds) await ctx.db.insert("studentSubjectSelections", { schoolId: data.schoolId, studentId, classId: data.classIds[student.classIndex], subjectId, sessionId: data.sessionId, createdAt: now, updatedAt: now }); }
     const phase: "students" | "assessments" = end === profile.students.length ? "assessments" : "students"; await updateRunPhase(ctx, runId, phase, { studentCursor: end, assessmentCursor: phase === "assessments" ? 0 : run.assessmentCursor }); return { phase, cursor: end };
   },
 });

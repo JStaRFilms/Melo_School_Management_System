@@ -126,6 +126,7 @@ export const TENANT_SCHOOL_TABLES = [
   "schoolCapabilityGrants",
   "schoolDomains",
   "schoolEmailDomains",
+  "schoolEnrollmentCounts",
   "schoolEvents",
   "schoolGroupBranches",
   "schoolPaymentProviderSecrets",

@@ -262,8 +262,9 @@ describe("student enrollment registered functions", () => {
       const sessionId = await ctx.db.insert("academicSessions", { schoolId, name: "2025/2026", startDate: 100, endDate: 200, isActive: true, createdAt: now, updatedAt: now });
       const futureSessionId = await ctx.db.insert("academicSessions", { schoolId, name: "2026/2027", startDate: 300, endDate: 400, isActive: false, createdAt: now, updatedAt: now });
       const studentId = await ctx.db.insert("students", { schoolId, classId, userId: studentUserId, admissionNumber: "GAMMA-001", createdAt: now, updatedAt: now });
+      await ctx.db.insert("schoolEnrollmentCounts", { schoolId, currentStudentCount: 1, updatedAt: now });
       await ctx.db.insert("studentPromotions", { schoolId, studentId, fromClassId: classId, toClassId: targetClassId, fromSessionId: sessionId, toSessionId: futureSessionId, subjectEnrollmentMode: "none", subjectEnrollmentCount: 0, batchKey: "staged", createdAt: now, createdBy: adminId });
-      return { classId, sessionId, studentId };
+      return { schoolId, classId, sessionId, studentId };
     });
 
     const result = await t.withIdentity(adminIdentity).mutation(api.functions.academic.studentEnrollment.graduateStudents, {
@@ -279,11 +280,13 @@ describe("student enrollment registered functions", () => {
       student: await ctx.db.get(ids.studentId),
       graduations: await ctx.db.query("studentGraduations").withIndex("by_student_and_session", (q) => q.eq("studentId", ids.studentId).eq("sessionId", ids.sessionId)).collect(),
       promotions: await ctx.db.query("studentPromotions").withIndex("by_student", (q) => q.eq("studentId", ids.studentId)).collect(),
+      enrollmentCount: await ctx.db.query("schoolEnrollmentCounts").withIndex("by_school", (q) => q.eq("schoolId", ids.schoolId)).unique(),
     }));
     expect(state.student).toMatchObject({ enrollmentStatus: "graduated", graduatedAt: 199, graduatingSessionId: ids.sessionId });
     expect(state.graduations).toHaveLength(1);
     expect(state.graduations[0]).toMatchObject({ certificateNumber: "CERT-1" });
     expect(state.promotions).toEqual([]);
+    expect(state.enrollmentCount?.currentStudentCount).toBe(0);
   });
 
   it("moves active-session subject selections atomically when an administrator changes a student's class", async () => {

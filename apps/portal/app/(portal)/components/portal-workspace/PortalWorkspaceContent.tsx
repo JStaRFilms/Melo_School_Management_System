@@ -458,7 +458,7 @@ function PortalReportCardLayout({
   const selectedReportCard = workspace.selectedReportCard;
 
   return (
-    <div className="lg:h-[calc(100vh-64px)] lg:overflow-hidden flex flex-col bg-surface-200">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-surface-200">
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         {/* Sidebar Bucket - Management & Navigation */}
         <aside className="lg:w-[460px] lg:h-full lg:overflow-y-auto border-r border-slate-200/60 bg-white custom-scrollbar flex flex-col lg:order-1 pt-6 pb-10">

@@ -20,7 +20,7 @@ const purgeBatch = makeFunctionReference<"mutation">(
 
 it("registers admissions and administrator-email records in tenant lifecycle boundaries", () => {
   expect(TENANT_SCHOOL_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies", "schoolAdminEmailUpdateReservations"]));
-  expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies", "schoolAdminEmailUpdateReservations"]));
+  expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies", "schoolAdminEmailUpdateReservations", "schoolEnrollmentCounts"]));
   expect(ADMISSIONS_GUARDIAN_REFERENCE_TABLES).toContain("admissionsDocumentAccessGrants");
   expect(TENANT_STORAGE_TABLES).toContain("admissionsDocumentUploadIntents");
 });

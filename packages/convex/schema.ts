@@ -284,6 +284,12 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_logo_storage", ["logoStorageId"]),
 
+  schoolEnrollmentCounts: defineTable({
+    schoolId: v.id("schools"),
+    currentStudentCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_school", ["schoolId"]),
+
   // Shared B0 foundation. These tables are additive and intentionally contain
   // contracts/data boundaries only; B1 and B4 own their feature behaviour.
   admissionsGuardians: defineTable({
@@ -2768,6 +2774,7 @@ export default defineSchema({
       "status",
     ])
     .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
+    .index("by_school_and_subject_and_status", ["schoolId", "subjectId", "status"])
     .index("by_school_and_slug", ["schoolId", "slug"])
     .index("by_school_and_status", ["schoolId", "status"])
     .searchIndex("search_search_text", {
@@ -3071,8 +3078,12 @@ export default defineSchema({
         order: v.number(),
         required: v.boolean(),
         minimumWordCount: v.optional(v.number()),
+        guidance: v.optional(v.string()),
+        formatHint: v.optional(v.union(v.literal("paragraph"), v.literal("bullets"), v.literal("numbered"), v.literal("steps"), v.literal("mixed"))),
       })
     ),
+    sourcePresetId: v.optional(v.string()),
+    sourcePresetVersion: v.optional(v.number()),
     objectiveMinimums: v.object({
       minimumObjectives: v.number(),
       minimumSourceMaterials: v.number(),

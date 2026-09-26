@@ -42,6 +42,8 @@ export function createEmptyInstructionTemplateDraft(outputType: InstructionTempl
     level: "",
     isSchoolDefault: true,
     isActive: true,
+    sourcePresetId: null,
+    sourcePresetVersion: null,
     objectiveMinimums: {
       minimumObjectives: "1",
       minimumSourceMaterials: "0",
@@ -66,6 +68,8 @@ export function createInstructionTemplateDraft(template: InstructionTemplateList
     level: template.level ?? "",
     isSchoolDefault: template.isSchoolDefault,
     isActive: template.isActive,
+    sourcePresetId: template.sourcePresetId ?? null,
+    sourcePresetVersion: template.sourcePresetVersion ?? null,
     objectiveMinimums: {
       minimumObjectives: String(template.objectiveMinimums.minimumObjectives),
       minimumSourceMaterials: String(template.objectiveMinimums.minimumSourceMaterials),
@@ -80,6 +84,8 @@ export function createInstructionTemplateDraft(template: InstructionTemplateList
         label: section.label,
         required: section.required,
         minimumWordCount: section.minimumWordCount === null ? "" : String(section.minimumWordCount),
+        guidance: section.guidance ?? "",
+        formatHint: section.formatHint ?? "",
       })),
   };
 }
@@ -91,6 +97,8 @@ export function createEmptyInstructionTemplateSectionDraft(): InstructionTemplat
     label: "",
     required: true,
     minimumWordCount: "80",
+    guidance: "",
+    formatHint: "",
   };
 }
 
@@ -101,6 +109,8 @@ export function createInstructionTemplateSectionDraftFromLabel(label: string): I
     label,
     required: true,
     minimumWordCount: "80",
+    guidance: "",
+    formatHint: "",
   };
 }
 
@@ -124,6 +134,8 @@ export function createInstructionTemplateSectionDraftFromExisting(section: {
     label: section.label,
     required: section.required,
     minimumWordCount: section.minimumWordCount === null ? "" : String(section.minimumWordCount),
+    guidance: "",
+    formatHint: "",
   };
 }
 
@@ -150,6 +162,8 @@ export function serializeInstructionTemplateDraft(draft: InstructionTemplateDraf
     level: draft.level.trim(),
     isSchoolDefault: draft.isSchoolDefault,
     isActive: draft.isActive,
+    sourcePresetId: draft.sourcePresetId,
+    sourcePresetVersion: draft.sourcePresetVersion,
     objectiveMinimums: {
       minimumObjectives: draft.objectiveMinimums.minimumObjectives.trim(),
       minimumSourceMaterials: draft.objectiveMinimums.minimumSourceMaterials.trim(),
@@ -160,6 +174,8 @@ export function serializeInstructionTemplateDraft(draft: InstructionTemplateDraf
       label: section.label.trim(),
       required: section.required,
       minimumWordCount: section.minimumWordCount.trim(),
+      guidance: section.guidance.trim(),
+      formatHint: section.formatHint,
     })),
   });
 }
@@ -288,6 +304,7 @@ export function validateInstructionTemplateDraft(
       }
       seenSectionIds.add(sectionId.toLowerCase());
 
+      if (section.guidance.length > 1500) return `Guidance for "${label}" must be 1500 characters or fewer.`;
       const minimumWordCount = normalizeSectionWordCount(section.minimumWordCount, section.required, label);
       if (section.required) {
         requiredSectionCount += 1;
@@ -308,6 +325,7 @@ export function validateInstructionTemplateDraft(
       0
     );
     const minimumSections = parseWholeNumber(draft.objectiveMinimums.minimumSections, "Minimum sections", requiredSectionCount);
+    if (minimumSections > draft.sections.length) return "Minimum sections cannot exceed the number of configured sections.";
     if (minimumSections < requiredSectionCount) {
       return "Minimum sections must cover every required section.";
     }
@@ -328,7 +346,7 @@ export function validateInstructionTemplateDraft(
       draft.isActive &&
       hasMatchingTemplateApplicability(currentTemplate, draft);
 
-    if (!retainsExistingActiveApplicability) {
+    if (draft.isActive && !retainsExistingActiveApplicability) {
       const conflict = templates.find((template) => {
         if (template.isActive === false) {
           return false;
