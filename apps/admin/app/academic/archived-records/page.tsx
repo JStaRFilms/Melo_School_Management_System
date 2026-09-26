@@ -151,7 +151,7 @@ export default function ArchivedRecordsPage() {
   if (archiveData === undefined) return <LoadingShell />;
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-slate-50/50">
       <style jsx>{`
         :global(.custom-scrollbar::-webkit-scrollbar) {
           width: 4px;

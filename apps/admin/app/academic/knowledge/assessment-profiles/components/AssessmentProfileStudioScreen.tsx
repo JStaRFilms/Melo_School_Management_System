@@ -108,7 +108,7 @@ export function AssessmentProfileStudioScreen({
   };
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/30">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-slate-50/30">
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

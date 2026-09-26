@@ -27,7 +27,7 @@ import type {
 
 function LoadingShell() {
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/60">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-slate-50/60">
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row">
         <aside className="w-full border-b lg:border-b-0 lg:border-r border-slate-200/60 bg-white/70 p-4 md:p-6 lg:h-full lg:w-[390px] lg:overflow-y-auto shrink-0">
           <div className="animate-pulse space-y-4">

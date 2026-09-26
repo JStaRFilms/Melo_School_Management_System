@@ -1172,7 +1172,7 @@ function StudentsPageContent() {
   }
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 overflow-x-hidden">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-surface-200 overflow-x-hidden">
       <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
