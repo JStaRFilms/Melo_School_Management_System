@@ -54,6 +54,8 @@ export type TopicOption = {
   status: "draft" | "active" | "retired";
 };
 
+const PLANNING_TOPIC_PAGE_SIZE = 18;
+
 export type PlanningWorkItem = {
   topicId: string;
   topicTitle: string;
@@ -79,6 +81,18 @@ export type PlanningWorkItem = {
     outputType: "lesson_plan" | "student_note" | "assignment" | "question_bank_draft" | "cbt_draft";
     draftMode: string | null;
     updatedAt: number;
+  }>;
+};
+
+type PlanningWorkResult = {
+  items: PlanningWorkItem[];
+  totalCount: number;
+  totalIsExact: boolean;
+  hasMore: boolean;
+  subjectCounts: Array<{
+    id: string;
+    name: string;
+    count: number;
   }>;
 };
 
@@ -113,6 +127,7 @@ export default function PlanningIndexPage() {
   const [examTopicIds, setExamTopicIds] = useState<string[]>([]);
   const [workSearchQuery, setWorkSearchQuery] = useState("");
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState("all");
+  const [planningWorkLimit, setPlanningWorkLimit] = useState(PLANNING_TOPIC_PAGE_SIZE);
   
   const [isMobile, setIsMobile] = useState(false);
   const [activeForm, setActiveForm] = useState<"topic" | "exam" | null>(null);
@@ -156,13 +171,41 @@ export default function PlanningIndexPage() {
       : ("skip" as never)
   ) as TopicOption[] | undefined;
   
-  const planningWork = useQuery(
+  const planningWorkResponse = useQuery(
     "functions/academic/lessonKnowledgeTeacher:listTeacherPlanningTopicWork" as never,
     {
       searchQuery: workSearchQuery.trim() || undefined,
-      limit: 18,
+      subjectId: selectedSubjectFilter === "all" ? undefined : selectedSubjectFilter,
+      limit: planningWorkLimit,
     } as never
-  ) as PlanningWorkItem[] | undefined;
+  ) as PlanningWorkResult | PlanningWorkItem[] | undefined;
+  const planningWorkResult = useMemo<PlanningWorkResult | undefined>(() => {
+    if (!Array.isArray(planningWorkResponse)) return planningWorkResponse;
+
+    const subjectCounts = new Map<string, { id: string; name: string; count: number }>();
+    for (const item of planningWorkResponse) {
+      const subject = subjectCounts.get(item.subjectId);
+      if (subject) subject.count += 1;
+      else subjectCounts.set(item.subjectId, { id: item.subjectId, name: item.subjectName, count: 1 });
+    }
+
+    return {
+      items: planningWorkResponse,
+      totalCount: planningWorkResponse.length,
+      totalIsExact: false,
+      hasMore: planningWorkResponse.length === planningWorkLimit,
+      subjectCounts: [...subjectCounts.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }, [planningWorkLimit, planningWorkResponse]);
+  const planningWork = planningWorkResult?.items;
+
+  useEffect(() => {
+    setPlanningWorkLimit(PLANNING_TOPIC_PAGE_SIZE);
+  }, [workSearchQuery]);
+
+  useEffect(() => {
+    setPlanningWorkLimit(PLANNING_TOPIC_PAGE_SIZE);
+  }, [selectedSubjectFilter]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -332,43 +375,9 @@ export default function PlanningIndexPage() {
         })
       : null;
 
-  const availableSubjects = useMemo(() => {
-    const subjectMap = new Map<string, { id: string; name: string; count: number }>();
-    (planningWork ?? []).forEach((item) => {
-      const existing = subjectMap.get(item.subjectId);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        subjectMap.set(item.subjectId, {
-          id: item.subjectId,
-          name: item.subjectName,
-          count: 1,
-        });
-      }
-    });
-    return Array.from(subjectMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [planningWork]);
-
-  const filteredPlanningWork = useMemo(() => {
-    return (planningWork ?? []).filter((item) => {
-      if (selectedSubjectFilter !== "all" && item.subjectId !== selectedSubjectFilter) {
-        return false;
-      }
-      if (workSearchQuery.trim()) {
-        const q = workSearchQuery.toLowerCase().trim();
-        const matchTitle = item.topicTitle.toLowerCase().includes(q);
-        const matchSummary = (item.topicSummary ?? "").toLowerCase().includes(q);
-        const matchSubject = item.subjectName.toLowerCase().includes(q) || item.subjectCode.toLowerCase().includes(q);
-        const matchLevel = item.level.toLowerCase().includes(q);
-        const matchTerm = item.termName.toLowerCase().includes(q);
-        const matchOutputs = item.outputs.some((o) => o.title.toLowerCase().includes(q));
-        if (!matchTitle && !matchSummary && !matchSubject && !matchLevel && !matchTerm && !matchOutputs) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [planningWork, selectedSubjectFilter, workSearchQuery]);
+  const availableSubjects = planningWorkResult?.subjectCounts ?? [];
+  const totalAvailableTopics = availableSubjects.reduce((total, subject) => total + subject.count, 0);
+  const visiblePlanningWork = planningWork ?? [];
 
   if (classes === undefined || terms === undefined) {
     return (
@@ -523,7 +532,7 @@ export default function PlanningIndexPage() {
   );
 
   return (
-    <div className="relative min-h-screen lg:h-[calc(100vh-64px)] lg:overflow-hidden flex flex-col bg-surface-200/50">
+    <div className="relative min-h-screen lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
 
       {/* Mobile Drawer */}
@@ -547,7 +556,9 @@ export default function PlanningIndexPage() {
                   stats={[
                     {
                       label: "Active Topics",
-                      value: planningWork?.length ?? 0,
+                      value: planningWorkResult
+                        ? `${totalAvailableTopics}${planningWorkResult.totalIsExact ? "" : "+"}`
+                        : 0,
                       icon: <LayoutGrid className="h-4 w-4" />,
                     },
                     {
@@ -605,7 +616,9 @@ export default function PlanningIndexPage() {
                   >
                     <span>All Subjects</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${selectedSubjectFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
-                      {planningWork?.length ?? 0}
+                      {planningWorkResult
+                        ? `${totalAvailableTopics}${planningWorkResult.totalIsExact ? "" : "+"}`
+                        : 0}
                     </span>
                   </button>
 
@@ -632,7 +645,7 @@ export default function PlanningIndexPage() {
 
             {/* Work Grid */}
             <div className="grid w-full min-w-0 gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {filteredPlanningWork.map((item) => {
+              {visiblePlanningWork.map((item) => {
                 const itemContext = item.preferredClassId
                   ? {
                       kind: "topic" as const,
@@ -660,7 +673,7 @@ export default function PlanningIndexPage() {
                 );
               })}
               
-              {filteredPlanningWork.length === 0 && (
+              {visiblePlanningWork.length === 0 && (
                 <div className="col-span-full py-16 flex flex-col items-center justify-center text-center space-y-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
                   <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-100">
                     <History className="h-5 w-5 text-slate-300" />
@@ -678,6 +691,18 @@ export default function PlanningIndexPage() {
                 </div>
               )}
             </div>
+
+            {planningWorkResult?.hasMore && (
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPlanningWorkLimit((current) => current + PLANNING_TOPIC_PAGE_SIZE)}
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-xs font-black uppercase tracking-wider text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-950"
+                >
+                  Load more topics ({planningWork?.length ?? 0} of {planningWorkResult.totalCount}{planningWorkResult.totalIsExact ? "" : "+"})
+                </button>
+              </div>
+            )}
           </div>
         </main>
 

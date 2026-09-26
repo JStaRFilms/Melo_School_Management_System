@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack --port 3004 -H 0.0.0.0",
+    "dev": "next dev --webpack --port 3104 -H 0.0.0.0",
     "build": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build --webpack",
-    "start": "next start --port 3004",
+    "start": "next start --port 3104",
     "lint": "pnpm -C ../.. exec eslint apps/apply",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -31,6 +31,18 @@ export function isMeaningfulCurriculumEvidenceExcerpt(value: string) {
   return canonical.length >= 16 && tokens.length >= 3 && contentTokens.length >= 2;
 }
 
+export function isExactCurriculumHeadingExcerpt(
+  excerpt: string,
+  unit: { weekNumber?: number | null; title: string }
+) {
+  if (unit.weekNumber === null || unit.weekNumber === undefined) return false;
+  const canonicalExcerpt = canonicalizeCurriculumEvidence(excerpt);
+  const canonicalTitle = canonicalizeCurriculumEvidence(unit.title);
+  const escapedTitle = canonicalTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return canonicalTitle.length > 0
+    && new RegExp(`^week\\s+${unit.weekNumber}\\b(?:\\s+week\\s+${unit.weekNumber}\\b)?\\s*[:.\\-]?\\s*${escapedTitle}[.!?:;]?$`).test(canonicalExcerpt);
+}
+
 function curriculumEvidenceContentTokens(value: string) {
   return (canonicalizeCurriculumEvidence(value).match(/[a-z0-9]+/g) ?? [])
     .filter((token) => token.length >= 3 && !GENERIC_EVIDENCE_WORDS.has(token));
@@ -66,8 +78,9 @@ export function reconcileCurriculumUnitEvidence(
   const canonicalExcerpt = canonicalizeCurriculumEvidence(supportingExcerpt);
   if (
     !canonicalExcerpt ||
-    !isMeaningfulCurriculumEvidenceExcerpt(supportingExcerpt) ||
-    !hasCurriculumEvidenceSemanticOverlap(supportingExcerpt, unit)
+    (!isExactCurriculumHeadingExcerpt(supportingExcerpt, unit)
+      && (!isMeaningfulCurriculumEvidenceExcerpt(supportingExcerpt)
+        || !hasCurriculumEvidenceSemanticOverlap(supportingExcerpt, unit)))
   ) return null;
 
   let candidates = entries.filter((entry) =>

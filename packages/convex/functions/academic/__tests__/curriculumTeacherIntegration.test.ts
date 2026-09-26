@@ -28,13 +28,44 @@ describe("curriculum topics in teacher planning", () => {
       const materialId = await ctx.db.insert("knowledgeMaterials", { schoolId, ownerUserId: adminId, ownerRole: "admin", sourceType: "imported_curriculum", visibility: "staff_shared", reviewStatus: "approved", title: "Second Term Scheme", subjectId, level: "JSS 1", topicLabel: "Second Term", searchStatus: "indexed", searchText: "second term scheme", processingStatus: "ready", ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1, indexedAt: now, createdAt: now, updatedAt: now, createdBy: adminId, updatedBy: adminId });
       const importId = await ctx.db.insert("curriculumImports", { schoolId, materialId, subjectId, level: "JSS 1", termId, status: "approved", requestedBy: adminId, promptVersion: "v1", schemaVersion: "v1", proposedUnitCount: 0, approvedUnitCount: 1, rejectedUnitCount: 0, duplicateWarningCount: 0, createdAt: now, updatedAt: now });
       await ctx.db.insert("curriculumUnits", { schoolId, importId, materialId, title: "Safety Club", subtopics: [], learningObjectives: ["Describe road safety clubs"], sourcePages: [3], sourceChunkHash: "chunk-3", supportingExcerpt: "Safety Club as an Agent of Socialization", confidence: 1, reviewStatus: "approved", knowledgeTopicId: topicId, validationWarnings: [], duplicateWarnings: [], createdAt: now, updatedAt: now });
-      return { subjectId, termId, topicId, materialId };
+      return { subjectId, distractorSubjectId, termId, topicId, materialId };
     });
 
     const topics = await t.withIdentity(admin).query(listTopics, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 80 });
     expect(topics.map((topic) => topic._id)).toEqual([ids.topicId]);
     const work = await t.withIdentity(admin).query(listWork, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 20 });
-    expect(work).toHaveLength(1);
-    expect(work[0]).toMatchObject({ topicId: ids.topicId, sourceCount: 1, readySourceCount: 1, sourceIds: [ids.materialId] });
+    expect(work).toMatchObject({ totalCount: 1, totalIsExact: true, hasMore: false });
+    expect(work.items).toHaveLength(1);
+    expect(work.items[0]).toMatchObject({ topicId: ids.topicId, sourceCount: 1, readySourceCount: 1, sourceIds: [ids.materialId] });
+
+    const subjectPage = await t.withIdentity(admin).query(listWork, { subjectId: ids.distractorSubjectId, limit: 18 });
+    expect(subjectPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
+    expect(subjectPage.items).toHaveLength(18);
+    expect(subjectPage.items.every((item) => item.subjectId === ids.distractorSubjectId)).toBe(true);
+    expect(subjectPage.subjectCounts).toEqual([
+      { id: ids.distractorSubjectId, name: "English", count: 301 },
+      { id: ids.subjectId, name: "Social Studies", count: 1 },
+    ]);
+
+    const combinedFilter = await t.withIdentity(admin).query(listWork, {
+      searchQuery: "Distractor",
+      subjectId: ids.distractorSubjectId,
+      limit: 18,
+    });
+    expect(combinedFilter).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
+    expect(combinedFilter.items).toHaveLength(18);
+    expect(combinedFilter.items.every((item) => item.subjectId === ids.distractorSubjectId)).toBe(true);
+
+    const searchResult = await t.withIdentity(admin).query(listWork, { searchQuery: "Safety Club", limit: 18 });
+    expect(searchResult).toMatchObject({ totalCount: 1, totalIsExact: true, hasMore: false });
+    expect(searchResult.items.map((item) => item.topicId)).toEqual([ids.topicId]);
+
+    const firstPage = await t.withIdentity(admin).query(listWork, { searchQuery: "Distractor", limit: 18 });
+    expect(firstPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
+    expect(firstPage.items).toHaveLength(18);
+
+    const expandedPage = await t.withIdentity(admin).query(listWork, { searchQuery: "Distractor", limit: 36 });
+    expect(expandedPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
+    expect(expandedPage.items).toHaveLength(36);
   });
 });

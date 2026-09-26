@@ -38,5 +38,8 @@ export function getCurriculumErrorMessage(value: unknown, fallback: string) {
     .replace(/\s+Called by client[\s\S]*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
+  if (message === "The model returned curriculum citations that could not be verified against the source. Try again or choose another model.") {
+    return "The proposal could not be matched reliably to the source document. Retry extraction.";
+  }
   return message || fallback;
 }

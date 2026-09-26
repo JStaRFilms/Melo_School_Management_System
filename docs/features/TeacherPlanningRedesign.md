@@ -31,11 +31,16 @@ Redesign the Teacher Planning interface to align with the Admin dashboard's aest
 ## Data Flow
 
 - **Queries:**
-  - `listTeacherPlanningTopicWork`: For the main work grid.
+  - `listTeacherPlanningTopicWork`: For the main work grid. Subject tabs pass `subjectId` into this query before page slicing, so each tab receives its own first page and load-more state. Search preserves and combines with the selected subject.
+  - Subject-tab counts remain independent of the loaded card page and cover every active topic visible to the teacher.
   - `getTeacherAssignableClasses`, `getTeacherActiveTerms`, `getTeacherAssignableSubjectsByClass`: For selectors.
   - `listTeacherKnowledgeTopics`: For topic selection/search.
 - **Mutations:**
   - `createTeacherKnowledgeTopic`: For new topic creation.
+
+## Database Schema
+
+- `knowledgeTopics.by_school_and_subject_and_status` supports bounded active-topic paging and counting for one school subject without scanning or truncating unrelated subjects first.
 
 ## Approval Required
 

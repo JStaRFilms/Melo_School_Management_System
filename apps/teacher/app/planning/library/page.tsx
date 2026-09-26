@@ -417,7 +417,7 @@ export default function TeacherLibraryPage() {
   };
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-surface-200 relative overflow-x-hidden">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-surface-200 relative overflow-x-hidden">
       <MaterialEditSheet
         isOpen={Boolean(editingMaterialId)}
         onClose={() => {

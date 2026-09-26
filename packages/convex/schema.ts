@@ -2774,6 +2774,7 @@ export default defineSchema({
       "status",
     ])
     .index("by_school_and_subject_and_level", ["schoolId", "subjectId", "level"])
+    .index("by_school_and_subject_and_status", ["schoolId", "subjectId", "status"])
     .index("by_school_and_slug", ["schoolId", "slug"])
     .index("by_school_and_status", ["schoolId", "status"])
     .searchIndex("search_search_text", {
