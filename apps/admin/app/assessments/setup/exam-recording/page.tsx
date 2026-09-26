@@ -402,7 +402,7 @@ function ExamSettingsContent({
   const policyDateError = getEditingWindowError(policyDraft);
 
   return (
-    <div className="lg:h-screen lg:overflow-hidden flex flex-col bg-slate-50/50">
+    <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-slate-50/50">
       <div className="relative flex-1 flex flex-col lg:flex-row-reverse min-h-0 overflow-hidden">
         {/* Sidebar Bucket: Configuration & Protocol Switches */}
         <aside className="w-full lg:w-[380px] lg:h-full lg:overflow-y-auto border-l border-slate-200 bg-white/40 backdrop-blur-xl custom-scrollbar shrink-0 flex flex-col">
