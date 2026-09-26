@@ -175,6 +175,7 @@ export default function PlanningIndexPage() {
     "functions/academic/lessonKnowledgeTeacher:listTeacherPlanningTopicWork" as never,
     {
       searchQuery: workSearchQuery.trim() || undefined,
+      subjectId: selectedSubjectFilter === "all" ? undefined : selectedSubjectFilter,
       limit: planningWorkLimit,
     } as never
   ) as PlanningWorkResult | PlanningWorkItem[] | undefined;
@@ -200,8 +201,11 @@ export default function PlanningIndexPage() {
 
   useEffect(() => {
     setPlanningWorkLimit(PLANNING_TOPIC_PAGE_SIZE);
-    setSelectedSubjectFilter("all");
   }, [workSearchQuery]);
+
+  useEffect(() => {
+    setPlanningWorkLimit(PLANNING_TOPIC_PAGE_SIZE);
+  }, [selectedSubjectFilter]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -372,12 +376,8 @@ export default function PlanningIndexPage() {
       : null;
 
   const availableSubjects = planningWorkResult?.subjectCounts ?? [];
-
-  const filteredPlanningWork = useMemo(() => {
-    return (planningWork ?? []).filter(
-      (item) => selectedSubjectFilter === "all" || item.subjectId === selectedSubjectFilter
-    );
-  }, [planningWork, selectedSubjectFilter]);
+  const totalAvailableTopics = availableSubjects.reduce((total, subject) => total + subject.count, 0);
+  const visiblePlanningWork = planningWork ?? [];
 
   if (classes === undefined || terms === undefined) {
     return (
@@ -557,7 +557,7 @@ export default function PlanningIndexPage() {
                     {
                       label: "Active Topics",
                       value: planningWorkResult
-                        ? `${planningWorkResult.totalCount}${planningWorkResult.totalIsExact ? "" : "+"}`
+                        ? `${totalAvailableTopics}${planningWorkResult.totalIsExact ? "" : "+"}`
                         : 0,
                       icon: <LayoutGrid className="h-4 w-4" />,
                     },
@@ -617,7 +617,7 @@ export default function PlanningIndexPage() {
                     <span>All Subjects</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${selectedSubjectFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
                       {planningWorkResult
-                        ? `${planningWorkResult.totalCount}${planningWorkResult.totalIsExact ? "" : "+"}`
+                        ? `${totalAvailableTopics}${planningWorkResult.totalIsExact ? "" : "+"}`
                         : 0}
                     </span>
                   </button>
@@ -645,7 +645,7 @@ export default function PlanningIndexPage() {
 
             {/* Work Grid */}
             <div className="grid w-full min-w-0 gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {filteredPlanningWork.map((item) => {
+              {visiblePlanningWork.map((item) => {
                 const itemContext = item.preferredClassId
                   ? {
                       kind: "topic" as const,
@@ -673,7 +673,7 @@ export default function PlanningIndexPage() {
                 );
               })}
               
-              {filteredPlanningWork.length === 0 && (
+              {visiblePlanningWork.length === 0 && (
                 <div className="col-span-full py-16 flex flex-col items-center justify-center text-center space-y-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
                   <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-100">
                     <History className="h-5 w-5 text-slate-300" />

@@ -886,10 +886,15 @@ export const listTeacherPlanningTopicWork = query({
             "by_school_and_subject_and_level_and_term_and_status",
             (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId!).eq("level", levelFilter).eq("termId", args.termId!).eq("status", "active"),
           ).order("desc").take(MAX_PLANNING_TOPIC_SCOPE + 1)
-        : await ctx.db.query("knowledgeTopics").withIndex(
-            "by_school_and_status",
-            (q) => q.eq("schoolId", schoolId).eq("status", "active"),
-          ).order("desc").take(MAX_PLANNING_TOPIC_SCOPE + 1);
+        : args.subjectId
+          ? await ctx.db.query("knowledgeTopics").withIndex(
+              "by_school_and_subject_and_status",
+              (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId!).eq("status", "active"),
+            ).order("desc").take(MAX_PLANNING_TOPIC_SCOPE + 1)
+          : await ctx.db.query("knowledgeTopics").withIndex(
+              "by_school_and_status",
+              (q) => q.eq("schoolId", schoolId).eq("status", "active"),
+            ).order("desc").take(MAX_PLANNING_TOPIC_SCOPE + 1);
     const topicScopeIsTruncated = topics.length > MAX_PLANNING_TOPIC_SCOPE;
     const scopedTopics = topics.slice(0, MAX_PLANNING_TOPIC_SCOPE);
 
@@ -904,16 +909,17 @@ export const listTeacherPlanningTopicWork = query({
     const termMap = new Map<string, Doc<"academicTerms"> | null>();
     allTermIds.forEach((id, index) => termMap.set(id, preTerms[index] as Doc<"academicTerms"> | null));
 
-    const filteredTopics = scopedTopics.filter((topic) => {
-      if (args.subjectId && String(topic.subjectId) !== String(args.subjectId)) return false;
-      if (args.termId && String(topic.termId) !== String(args.termId)) return false;
-      if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) return false;
-
+    const canAccessTopic = (topic: Doc<"knowledgeTopics">) => {
       if (actor.isSchoolAdmin || actor.role === "admin") return true;
       const classForLevel = levelToClass.get(normalizeLevelKey(topic.level));
       if (!classForLevel) return false;
       const subjectsForClass = assignableSubjectIdsByClass.get(String(classForLevel._id));
       return subjectsForClass?.has(String(topic.subjectId)) ?? false;
+    };
+    const filteredTopics = scopedTopics.filter((topic) => {
+      if (args.termId && String(topic.termId) !== String(args.termId)) return false;
+      if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) return false;
+      return canAccessTopic(topic);
     });
 
     const visibleTopics = filteredTopics.slice(0, limit);
@@ -1002,23 +1008,28 @@ export const listTeacherPlanningTopicWork = query({
       };
     }));
 
-    const subjectCounts = new Map<string, number>();
-    for (const topic of filteredTopics) {
-      const subjectId = String(topic.subjectId);
-      subjectCounts.set(subjectId, (subjectCounts.get(subjectId) ?? 0) + 1);
-    }
+    const allowedSubjects = await readTeacherLibrarySubjects(ctx, actor);
+    const subjectScopes = await Promise.all(allowedSubjects.map(async (subject) => {
+      const subjectTopics = await ctx.db.query("knowledgeTopics").withIndex(
+        "by_school_and_subject_and_status",
+        (q) => q.eq("schoolId", schoolId).eq("subjectId", subject.id as Id<"subjects">).eq("status", "active"),
+      ).take(MAX_PLANNING_TOPIC_SCOPE + 1);
+      return {
+        id: subject.id as Id<"subjects">,
+        name: subject.name,
+        count: subjectTopics.slice(0, MAX_PLANNING_TOPIC_SCOPE).filter(canAccessTopic).length,
+        isTruncated: subjectTopics.length > MAX_PLANNING_TOPIC_SCOPE,
+      };
+    }));
 
     return {
       items: rows.sort((a, b) => b.latestUpdatedAt - a.latestUpdatedAt),
       totalCount: filteredTopics.length,
-      totalIsExact: !topicScopeIsTruncated,
+      totalIsExact: !topicScopeIsTruncated && subjectScopes.every((subject) => !subject.isTruncated),
       hasMore: filteredTopics.length > limit,
-      subjectCounts: [...subjectCounts.entries()]
-        .map(([id, count]) => ({
-          id: id as Id<"subjects">,
-          name: subjectMap.get(id) ? normalizeHumanName(subjectMap.get(id)!.name) : "Unknown subject",
-          count,
-        }))
+      subjectCounts: subjectScopes
+        .filter((subject) => subject.count > 0)
+        .map(({ id, name, count }) => ({ id, name, count }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     };
   },
