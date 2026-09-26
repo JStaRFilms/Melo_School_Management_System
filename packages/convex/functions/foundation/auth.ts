@@ -39,6 +39,17 @@ export async function requireAuthIdentityV1(ctx: FoundationReadCtx): Promise<Aut
   };
 }
 
+const MEMBERSHIP_SCAN_LIMIT = 100;
+
+/**
+ * Fail closed on identity ambiguity. A token that resolves to two live rows in
+ * one school, or to a scan too large to verify, has no single authorized
+ * identity, so the caller must reconcile before any capability is granted.
+ */
+function ambiguousMembership(message: string) {
+  return new ConvexError({ code: "RECONCILIATION_REQUIRED", message });
+}
+
 export async function resolveActiveSchoolMembershipsV1(
   ctx: FoundationReadCtx,
   identity: AuthIdentityV1
@@ -48,7 +59,7 @@ export async function resolveActiveSchoolMembershipsV1(
     .withIndex("by_auth_token_identifier", (q) =>
       q.eq("authTokenIdentifier", identity.tokenIdentifier)
     )
-    .take(100);
+    .take(MEMBERSHIP_SCAN_LIMIT);
 
   // Compatibility mode only: existing rows have Better Auth's user id in authId.
   // Never write this fallback to a new ownership record implicitly.
@@ -57,16 +68,30 @@ export async function resolveActiveSchoolMembershipsV1(
     : await ctx.db
       .query("users")
       .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
-      .take(100);
+      .take(MEMBERSHIP_SCAN_LIMIT);
 
-  return rows
-    .filter((row) => !row.isArchived)
-    .map((row) => ({
-      userId: row._id,
-      schoolId: row.schoolId,
-      role: row.role,
-      isSchoolAdmin: row.role === "admin" || row.isSchoolAdmin === true,
-    }));
+  if (rows.length >= MEMBERSHIP_SCAN_LIMIT) {
+    throw ambiguousMembership(
+      "Not authorized: membership scan hit its limit, so the identity cannot be verified"
+    );
+  }
+
+  const active = rows.filter((row) => !row.isArchived);
+
+  const resolvedSchools = new Set<string>();
+  for (const row of active) {
+    if (resolvedSchools.has(row.schoolId)) {
+      throw ambiguousMembership("Not authorized: ambiguous in-school membership");
+    }
+    resolvedSchools.add(row.schoolId);
+  }
+
+  return active.map((row) => ({
+    userId: row._id,
+    schoolId: row.schoolId,
+    role: row.role,
+    isSchoolAdmin: row.role === "admin" || row.isSchoolAdmin === true,
+  }));
 }
 
 export async function resolveSchoolMembershipV1(

@@ -168,6 +168,44 @@ describe("B0 foundation contracts", () => {
     });
   });
 
+  test("denies one token that resolves to two live rows in the same school", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const ids = await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Duplicate", slug: "duplicate", status: "active", createdAt: now, updatedAt: now });
+      const live = await ctx.db.insert("users", { schoolId, authId: "dup-a", authTokenIdentifier: "issuer|dup", name: "A", email: "a@example.test", role: "admin", createdAt: now, updatedAt: now });
+      const duplicate = await ctx.db.insert("users", { schoolId, authId: "dup-b", authTokenIdentifier: "issuer|dup", name: "B", email: "b@example.test", role: "admin", createdAt: now, updatedAt: now });
+      return { schoolId, live, duplicate };
+    });
+
+    const identity = { subject: "dup-a", tokenIdentifier: "issuer|dup", issuer: "issuer" };
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId: ids.schoolId })).rejects.toThrow("ambiguous in-school membership");
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.hasViewerCapability, { schoolId: ids.schoolId, capability: "admissions.catalogue.manage", programmeId: null, intakeId: null })).rejects.toThrow("ambiguous in-school membership");
+
+    await t.run((ctx) => ctx.db.patch(ids.duplicate, { isArchived: true }));
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId: ids.schoolId })).resolves.toMatchObject({
+      membership: { userId: ids.live, schoolId: ids.schoolId, isSchoolAdmin: true },
+      capabilities: [],
+    });
+  });
+
+  test("denies a token whose membership scan reaches the verification limit", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const schoolId = await t.run(async (ctx) => {
+      const schoolIds: Id<"schools">[] = [];
+      for (let index = 0; index < 100; index += 1) {
+        const id = await ctx.db.insert("schools", { name: `School ${index}`, slug: `school-${index}`, status: "active", createdAt: now, updatedAt: now });
+        schoolIds.push(id);
+        await ctx.db.insert("users", { schoolId: id, authId: `many-${index}`, authTokenIdentifier: "issuer|many", name: `User ${index}`, email: `user${index}@example.test`, role: "teacher", createdAt: now, updatedAt: now });
+      }
+      return schoolIds[0];
+    });
+
+    const identity = { subject: "many-0", tokenIdentifier: "issuer|many", issuer: "issuer" };
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId })).rejects.toThrow("membership scan hit its limit");
+  });
+
   test("records an admissions payment event once for a verified replay", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
