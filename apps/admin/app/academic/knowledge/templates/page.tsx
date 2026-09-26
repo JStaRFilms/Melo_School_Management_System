@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
@@ -102,6 +102,8 @@ export default function InstructionTemplateStudioPage() {
 
   const saveTemplate = useMutation("functions/academic/lessonKnowledgeTemplates:saveInstructionTemplate" as never);
 
+  const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false);
+  useEffect(() => { if (data) setHasLoadedCatalog(true); }, [data]);
   const templates = useMemo(() => data?.templates ?? [], [data]);
   const summary = useMemo(
     () => data?.summary ?? { total: 0, active: 0, defaultCount: 0, inactive: 0 },
@@ -120,6 +122,8 @@ export default function InstructionTemplateStudioPage() {
         level: draft.level.trim() ? draft.level : null,
         isSchoolDefault: draft.isSchoolDefault,
         isActive: draft.isActive,
+        sourcePresetId: draft.sourcePresetId,
+        sourcePresetVersion: draft.sourcePresetVersion,
         objectiveMinimums: {
           minimumObjectives: parseWholeNumber(draft.objectiveMinimums.minimumObjectives, "Minimum objectives", 1),
           minimumSourceMaterials: parseWholeNumber(
@@ -133,6 +137,8 @@ export default function InstructionTemplateStudioPage() {
           id: section.id,
           label: section.label,
           required: section.required,
+          guidance: section.guidance.trim() || null,
+          formatHint: section.formatHint || null,
           minimumWordCount: section.minimumWordCount.trim()
             ? parseWholeNumber(section.minimumWordCount, `Minimum word count for ${section.label || "section"}`, 1)
             : null,
@@ -143,7 +149,7 @@ export default function InstructionTemplateStudioPage() {
     }
   };
 
-  if (!subjects || !classes || !data) {
+  if (!subjects || !classes || (!data && !hasLoadedCatalog)) {
     return <LoadingShell />;
   }
 

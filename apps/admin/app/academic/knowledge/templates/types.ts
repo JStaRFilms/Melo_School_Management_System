@@ -23,6 +23,8 @@ export interface InstructionTemplateSectionDraft {
   label: string;
   required: boolean;
   minimumWordCount: string;
+  guidance: string;
+  formatHint: "" | "paragraph" | "bullets" | "numbered" | "steps" | "mixed";
 }
 
 export interface InstructionTemplateDraft {
@@ -35,6 +37,8 @@ export interface InstructionTemplateDraft {
   level: string;
   isSchoolDefault: boolean;
   isActive: boolean;
+  sourcePresetId: string | null;
+  sourcePresetVersion: number | null;
   objectiveMinimums: InstructionTemplateObjectiveMinimumsDraft;
   sections: InstructionTemplateSectionDraft[];
 }
@@ -58,7 +62,11 @@ export interface InstructionTemplateListItem {
     order: number;
     required: boolean;
     minimumWordCount: number | null;
+    guidance: string | null;
+    formatHint: "paragraph" | "bullets" | "numbered" | "steps" | "mixed" | null;
   }>;
+  sourcePresetId: string | null;
+  sourcePresetVersion: number | null;
   objectiveMinimums: {
     minimumObjectives: number;
     minimumSourceMaterials: number;

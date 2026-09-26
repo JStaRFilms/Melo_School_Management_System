@@ -115,7 +115,11 @@ function mapTemplateRecord(args: {
       order: section.order,
       required: section.required,
       minimumWordCount: section.minimumWordCount ?? null,
+      guidance: section.guidance ?? null,
+      formatHint: section.formatHint ?? null,
     })),
+    sourcePresetId: args.template.sourcePresetId ?? null,
+    sourcePresetVersion: args.template.sourcePresetVersion ?? null,
     objectiveMinimums: args.template.objectiveMinimums,
     searchText: args.template.searchText,
     isActive: args.template.isActive,
@@ -245,6 +249,8 @@ function buildInstructionTemplateRecord(args: {
     templateScope: args.payload.templateScope,
     ...(args.payload.subjectId ? { subjectId: args.payload.subjectId } : {}),
     ...(args.payload.level ? { level: args.payload.level } : {}),
+    ...(args.payload.sourcePresetId ? { sourcePresetId: args.payload.sourcePresetId } : {}),
+    ...(args.payload.sourcePresetVersion !== undefined ? { sourcePresetVersion: args.payload.sourcePresetVersion } : {}),
     isSchoolDefault: args.payload.isSchoolDefault,
     requiredSectionIds: args.payload.requiredSectionIds,
     sectionDefinitions: args.payload.sectionDefinitions.map((section) => ({
@@ -253,6 +259,8 @@ function buildInstructionTemplateRecord(args: {
       order: section.order,
       required: section.required,
       ...(section.minimumWordCount !== undefined ? { minimumWordCount: section.minimumWordCount } : {}),
+      ...(section.guidance ? { guidance: section.guidance } : {}),
+      ...(section.formatHint ? { formatHint: section.formatHint } : {}),
     })),
     objectiveMinimums: args.payload.objectiveMinimums,
     searchText,
@@ -371,6 +379,19 @@ export const saveInstructionTemplate = mutation({
       sections: args.sectionDefinitions,
     });
     const objectiveMinimums = normalizeObjectiveMinimums(args.objectiveMinimums, normalizedSections.requiredSectionIds.length);
+    if (objectiveMinimums.minimumSections > normalizedSections.sectionDefinitions.length) {
+      throw new ConvexError("Minimum sections cannot exceed the number of configured sections");
+    }
+    const sourcePresetId = args.sourcePresetId === undefined
+      ? existing?.sourcePresetId
+      : normalizeOptionalInstructionTemplateText(args.sourcePresetId);
+    const sourcePresetVersion = args.sourcePresetVersion === undefined
+      ? existing?.sourcePresetVersion
+      : args.sourcePresetVersion ?? undefined;
+    if ((sourcePresetId === undefined) !== (sourcePresetVersion === undefined) ||
+        (sourcePresetVersion !== undefined && (!Number.isInteger(sourcePresetVersion) || sourcePresetVersion < 1))) {
+      throw new ConvexError("Preset provenance must include a valid ID and version");
+    }
 
     await ensureUniqueApplicability({
       ctx,
@@ -391,12 +412,16 @@ export const saveInstructionTemplate = mutation({
       level: applicability.level ?? undefined,
       isSchoolDefault: applicability.isSchoolDefault,
       isActive: args.isActive,
+      sourcePresetId,
+      sourcePresetVersion,
       sectionDefinitions: normalizedSections.sectionDefinitions.map((section) => ({
         id: section.id,
         label: section.label,
         order: section.order,
         required: section.required,
         ...(section.minimumWordCount !== undefined ? { minimumWordCount: section.minimumWordCount } : {}),
+        ...(section.guidance ? { guidance: section.guidance } : {}),
+        ...(section.formatHint ? { formatHint: section.formatHint } : {}),
       })),
       requiredSectionIds: normalizedSections.requiredSectionIds,
       objectiveMinimums,

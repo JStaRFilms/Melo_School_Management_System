@@ -3078,8 +3078,12 @@ export default defineSchema({
         order: v.number(),
         required: v.boolean(),
         minimumWordCount: v.optional(v.number()),
+        guidance: v.optional(v.string()),
+        formatHint: v.optional(v.union(v.literal("paragraph"), v.literal("bullets"), v.literal("numbered"), v.literal("steps"), v.literal("mixed"))),
       })
     ),
+    sourcePresetId: v.optional(v.string()),
+    sourcePresetVersion: v.optional(v.number()),
     objectiveMinimums: v.object({
       minimumObjectives: v.number(),
       minimumSourceMaterials: v.number(),
