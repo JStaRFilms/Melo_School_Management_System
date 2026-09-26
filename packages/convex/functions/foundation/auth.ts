@@ -45,6 +45,8 @@ const MEMBERSHIP_SCAN_LIMIT = 100;
  * Fail closed on identity ambiguity. A token that resolves to two live rows in
  * one school, or to a scan too large to verify, has no single authorized
  * identity, so the caller must reconcile before any capability is granted.
+ * Ambiguity is judged against the school the caller asked for, so a duplicate
+ * row in one tenant never revokes the token's access to another.
  */
 function ambiguousMembership(message: string) {
   return new ConvexError({ code: "RECONCILIATION_REQUIRED", message });
@@ -76,22 +78,14 @@ export async function resolveActiveSchoolMembershipsV1(
     );
   }
 
-  const active = rows.filter((row) => !row.isArchived);
-
-  const resolvedSchools = new Set<Id<"schools">>();
-  for (const row of active) {
-    if (resolvedSchools.has(row.schoolId)) {
-      throw ambiguousMembership("Not authorized: ambiguous in-school membership");
-    }
-    resolvedSchools.add(row.schoolId);
-  }
-
-  return active.map((row) => ({
-    userId: row._id,
-    schoolId: row.schoolId,
-    role: row.role,
-    isSchoolAdmin: row.role === "admin" || row.isSchoolAdmin === true,
-  }));
+  return rows
+    .filter((row) => !row.isArchived)
+    .map((row) => ({
+      userId: row._id,
+      schoolId: row.schoolId,
+      role: row.role,
+      isSchoolAdmin: row.role === "admin" || row.isSchoolAdmin === true,
+    }));
 }
 
 export async function resolveSchoolMembershipV1(
@@ -100,7 +94,13 @@ export async function resolveSchoolMembershipV1(
 ): Promise<ActiveSchoolMembershipV1 | null> {
   const identity = await requireAuthIdentityV1(ctx);
   const memberships = await resolveActiveSchoolMembershipsV1(ctx, identity);
-  return memberships.find((membership) => membership.schoolId === schoolId) ?? null;
+  const scoped = memberships.filter(
+    (membership) => membership.schoolId === schoolId
+  );
+  if (scoped.length > 1) {
+    throw ambiguousMembership("Not authorized: ambiguous in-school membership");
+  }
+  return scoped[0] ?? null;
 }
 
 export type CapabilityGrantProjectionV1 = {

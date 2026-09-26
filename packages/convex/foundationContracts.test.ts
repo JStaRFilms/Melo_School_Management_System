@@ -189,6 +189,27 @@ describe("B0 foundation contracts", () => {
     });
   });
 
+  test("keeps a token's access to a clean school while another school holds a duplicate", async () => {
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const ids = await t.run(async (ctx) => {
+      const cleanSchoolId = await ctx.db.insert("schools", { name: "Clean", slug: "clean", status: "active", createdAt: now, updatedAt: now });
+      const dirtySchoolId = await ctx.db.insert("schools", { name: "Dirty", slug: "dirty", status: "active", createdAt: now, updatedAt: now });
+      const cleanRow = await ctx.db.insert("users", { schoolId: cleanSchoolId, authId: "mixed-a", authTokenIdentifier: "issuer|mixed", name: "A", email: "a@example.test", role: "admin", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", { schoolId: dirtySchoolId, authId: "mixed-b", authTokenIdentifier: "issuer|mixed", name: "B", email: "b@example.test", role: "admin", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", { schoolId: dirtySchoolId, authId: "mixed-c", authTokenIdentifier: "issuer|mixed", name: "C", email: "c@example.test", role: "admin", createdAt: now, updatedAt: now });
+      return { cleanSchoolId, dirtySchoolId, cleanRow };
+    });
+
+    const identity = { subject: "mixed-a", tokenIdentifier: "issuer|mixed", issuer: "issuer" };
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId: ids.cleanSchoolId })).resolves.toMatchObject({
+      membership: { userId: ids.cleanRow, schoolId: ids.cleanSchoolId },
+      capabilities: [],
+    });
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.hasViewerCapability, { schoolId: ids.cleanSchoolId, capability: "admissions.catalogue.manage", programmeId: null, intakeId: null })).resolves.toBe(false);
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId: ids.dirtySchoolId })).rejects.toThrow("ambiguous in-school membership");
+  });
+
   test("denies a token whose membership scan reaches the verification limit", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
