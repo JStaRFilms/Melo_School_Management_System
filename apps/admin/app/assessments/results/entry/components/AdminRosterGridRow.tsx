@@ -151,12 +151,12 @@ export function AdminRosterGridRow({
       {showScaledColumn && (
         <td className="text-center font-bold text-indigo-600">
           {derived.examScaledScore !== null
-            ? derived.examScaledScore.toFixed(1)
+            ? derived.examScaledScore.toFixed(2)
             : "--"}
         </td>
       )}
       <td className="text-center font-black text-white bg-slate-950 border-r border-white/10 tabular-nums">
-        {derived.total !== null ? derived.total.toFixed(0) : "--"}
+        {derived.total !== null ? derived.total.toFixed(2) : "--"}
       </td>
       <td className="text-center">
         <span

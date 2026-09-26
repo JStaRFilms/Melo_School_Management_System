@@ -28,9 +28,9 @@ describe("shared format primitives (consolidation P19)", () => {
     expect(formatDateTimeNG(noon)).toContain("2026");
   });
 
-  it("renders scores with dash for null", () => {
+  it("renders scores at two decimals with dash for null", () => {
     expect(formatScoreOrDash(null)).toBe("—");
-    expect(formatScoreOrDash(85)).toBe("85");
-    expect(formatScoreOrDash(87.25)).toBe("87.3");
+    expect(formatScoreOrDash(85)).toBe("85.00");
+    expect(formatScoreOrDash(87.25)).toBe("87.25");
   });
 });
