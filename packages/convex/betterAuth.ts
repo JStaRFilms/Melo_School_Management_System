@@ -92,7 +92,7 @@ async function sendVerificationEmail(email: string, verificationUrl: string) {
   if (!result || typeof result !== "object" || typeof Reflect.get(result, "id") !== "string") throw new Error("Email verification provider did not confirm delivery.");
 }
 
-function getTrustedOrigins() {
+export function getTrustedOrigins() {
   const configuredOrigins =
     process.env.TRUSTED_ORIGINS?.split(",")
       .map((origin) => origin.trim())

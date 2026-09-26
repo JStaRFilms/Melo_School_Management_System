@@ -3409,6 +3409,33 @@ export default defineSchema({
       ],
     }),
 
+  // Global operator reservation. Seals original files across row deletion.
+  // Never include in tenant purge or seed manifests.
+  demoResetOperations: defineTable({
+    schoolId: v.id("schools"),
+    schoolSlug: v.string(),
+    cloudUrl: v.string(),
+    targetIdentity: v.string(),
+    status: v.union(v.literal("prepared"), v.literal("cancelled"), v.literal("deleting"), v.literal("storage_pending"), v.literal("auth_pending"), v.literal("ready_to_seed"), v.literal("seeding"), v.literal("complete")),
+    newSchoolId: v.optional(v.id("schools")),
+    newRunId: v.optional(v.id("demoSeedRuns")),
+    authAcknowledgedIds: v.optional(v.array(v.string())),
+    deletionCursor: v.optional(v.number()),
+    deletionPhase: v.optional(v.union(v.literal("rows"), v.literal("storage_pending"))),
+    storageAcknowledgedIds: v.optional(v.array(v.id("_storage"))),
+    inventory: v.array(v.object({ table: v.string(), id: v.string(), digest: v.string() })),
+    inventoryHash: v.string(),
+    confirmationPhrase: v.string(),
+    authIssuer: v.string(),
+    authIds: v.array(v.string()),
+    personIds: v.array(v.id("persons")),
+    storageCandidateIds: v.array(v.id("_storage")),
+    retainedStorageIds: v.array(v.id("_storage")),
+    createdAt: v.number(),
+  })
+    .index("by_school_slug_and_status", ["schoolSlug", "status"])
+    .index("by_school_id", ["schoolId"]),
+
   // Persisted cursor state for bounded, restart-safe demo population phases.
   demoSeedRuns: defineTable({
     schoolId: v.id("schools"),
@@ -3418,6 +3445,7 @@ export default defineSchema({
     studentCursor: v.number(),
     assessmentCursor: v.number(),
     billingCursor: v.number(),
+    authIssuer: v.optional(v.string()),
     adminAuthId: v.string(),
     teacherAuthId: v.string(),
     portalAuthId: v.string(),
@@ -3428,8 +3456,8 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_school", ["schoolId"]),
 
-  // Durable cleanup ledger: destructive demo resets retain storage IDs until a
-  // successful storage delete is acknowledged, including across retries.
+  // First-run seed cleanup ledger. Reviewed resets seal original asset IDs in
+  // demoResetOperations instead and do not delete those files.
   demoSeedStorageCleanup: defineTable({
     schoolId: v.id("schools"),
     schoolSlug: v.string(),

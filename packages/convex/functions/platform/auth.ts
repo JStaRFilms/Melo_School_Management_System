@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internalQuery } from "../../_generated/server";
-import { Id } from "../../_generated/dataModel";
+import { Id, type Doc } from "../../_generated/dataModel";
+import { resolveTokenFirstTrustedLegacyRow } from "../academic/identityResolver";
 
 /**
  * Get authenticated platform admin identity.
@@ -20,10 +21,23 @@ export async function getAuthenticatedPlatformAdmin(
     throw new ConvexError("Unauthorized");
   }
 
-  const platformAdmin = await ctx.db
-    .query("platformAdmins")
-    .withIndex("by_auth", (q: any) => q.eq("authId", identity.subject))
-    .unique();
+  // Canonical subject-vs-token rule (consolidation P6): the token identifier
+  // wins; subject fallback accepts only unlinked rows from a trusted issuer.
+  // A subject-only lookup accepted a different admin than the token holder.
+  const platformAdmin = await resolveTokenFirstTrustedLegacyRow<Doc<"platformAdmins">>(identity, {
+    byTokenIdentifier: async (tokenIdentifier) =>
+      ctx.db
+        .query("platformAdmins")
+        .withIndex("by_auth_token_identifier", (q: any) =>
+          q.eq("authTokenIdentifier", tokenIdentifier),
+        )
+        .take(2),
+    bySubject: async (authId) =>
+      ctx.db
+        .query("platformAdmins")
+        .withIndex("by_auth", (q: any) => q.eq("authId", authId))
+        .take(2),
+  });
 
   if (!platformAdmin) {
     throw new ConvexError("Platform admin access required");

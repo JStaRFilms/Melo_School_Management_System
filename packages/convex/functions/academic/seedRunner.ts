@@ -5,9 +5,11 @@ import type { ActionCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import { demoPortraitPng, demoSchoolLogoPng } from "./demoAssets";
-import { DEMO_ACCOUNTS, JUDGE_ACCOUNT_IDENTITIES, getSchoolSeedProfile, type SchoolSeedProfileKey } from "./demoData";
+import { DEMO_ACCOUNTS, JUDGE_ACCOUNT_IDENTITIES, DEMO_SCHOOL_SLUG, getSchoolSeedProfile, type SchoolSeedProfileKey } from "./demoData";
 import { assertDemoOperatorGate, assertJudgeOperatorGate, findExistingAuthId, reconcileAuthUser, type SeedActionArgs, type SeedAuthUser } from "./seedRunnerSecurity";
+import { inspectEmptyDeployment } from "./demoEmptyDeployment";
 
 const MAX_RESET_BATCHES = 500;
 
@@ -89,8 +91,53 @@ async function runSchoolSeed(
   accounts: Record<"admin" | "teacher" | "portal", SeedAuthUser>,
 ): Promise<SeedDemoResult> {
   const profile = getSchoolSeedProfile(seedProfile);
+  const authIssuer = process.env.CONVEX_SITE_URL?.trim();
+  if (!authIssuer) throw new ConvexError("CONVEX_SITE_URL is not configured on the Convex deployment.");
+  let issuer: URL;
+  try {
+    issuer = new URL(authIssuer);
+  } catch {
+    throw new ConvexError("CONVEX_SITE_URL must be a valid HTTPS issuer.");
+  }
+  if (issuer.protocol !== "https:" || !issuer.hostname || issuer.username || issuer.password ||
+      issuer.search || issuer.hash || issuer.pathname !== "/" || authIssuer !== issuer.origin && authIssuer !== `${issuer.origin}/`) {
+    throw new ConvexError("CONVEX_SITE_URL must be a valid HTTPS issuer.");
+  }
+  // No reviewed populated-school deletion plan exists. Check before changing
+  // passwords or revoking sessions. Inspection alone never authorizes deletion.
+  if (seedProfile === "demo") {
+    const inspection = await ctx.runQuery(makeFunctionReference<"query", {}, {
+      school: null | { id: Id<"schools">; name: string };
+      blockers: string[];
+    }>("functions/academic/demoPreflight:inspectDemoLinksInternal"), {});
+    if (args.inspectedSchoolId !== (inspection.school?.id ?? null)) {
+      throw new ConvexError("Inspected demo-school ID changed; inspect the exact school again.");
+    }
+    if (args.inspectedSchoolSlug !== DEMO_SCHOOL_SLUG) {
+      throw new ConvexError("Inspected school slug does not match demo-school.");
+    }
+    if (inspection.school || inspection.blockers.length) {
+      throw new ConvexError("Populated demo-school reset is disabled: canonical identities, indirect references and storage ownership require a reviewed deletion plan. No auth credentials were changed.");
+    }
+    // Recheck every application table here, not only at the operator's earlier
+    // inspection. No Better Auth lookup, password or session write precedes it.
+    let emptyBlockers: string[];
+    try {
+      emptyBlockers = await inspectEmptyDeployment(ctx);
+    } catch {
+      throw new ConvexError("Demo empty-deployment registry inspection failed; no auth credentials were changed.");
+    }
+    if (emptyBlockers.length) {
+      throw new ConvexError(`Demo deployment is not empty (${emptyBlockers.join("; ")}); no auth credentials were changed.`);
+    }
+    const pending = await ctx.runQuery(internal.functions.academic.seed.getPendingDemoStorageCleanupInternal, { seedProfile });
+    if (pending.length) throw new ConvexError("Pending demo storage cleanup requires manual review before seeding.");
+  }
   const accountValues = Object.values(accounts);
   const existingAuthIds = (await Promise.all(accountValues.map((account) => findExistingAuthId(ctx, account)))).filter((id): id is string => id !== null);
+  if (seedProfile === "demo" && existingAuthIds.length) {
+    throw new ConvexError("Existing demo credential accounts require an ownership review; no passwords or sessions were changed.");
+  }
   const preflight = await ctx.runQuery(internal.functions.academic.seed.inspectDemoAuthUsageInternal, {
     authIds: existingAuthIds,
     emails: accountValues.map((account) => account.email.toLowerCase()),
@@ -111,22 +158,22 @@ async function runSchoolSeed(
   if (postAuthPreflight.conflicts.length) throw new ConvexError(`${profile.schoolName} auth linkage preflight failed: ${postAuthPreflight.conflicts.join("; ")}`);
 
   let resetDeletedCount = 0;
-  for (let batch = 0; batch < MAX_RESET_BATCHES; batch += 1) {
-    const result = await ctx.runMutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, { seedProfile });
-    resetDeletedCount += result.deletedCount;
-    if (result.complete) break;
-    if (batch === MAX_RESET_BATCHES - 1) throw new ConvexError(`${profile.schoolName} reset exceeded its safety batch limit.`);
+  if (seedProfile !== "demo") {
+    for (let batch = 0; batch < MAX_RESET_BATCHES; batch += 1) {
+      const result = await ctx.runMutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, { seedProfile });
+      resetDeletedCount += result.deletedCount;
+      if (result.complete) break;
+      if (batch === MAX_RESET_BATCHES - 1) throw new ConvexError(`${profile.schoolName} reset exceeded its safety batch limit.`);
+    }
+    await drainStorageCleanup(ctx, seedProfile);
   }
-  // Cleanup rows may survive an interrupted reset while school-owned rows still
-  // reference their blobs. Delete only after the bounded database reset removes
-  // every owner, then acknowledge the durable ledger idempotently.
-  await drainStorageCleanup(ctx, seedProfile);
 
   const assets = await storeDemoAssets(ctx, profile.students.length);
   let runId: Id<"demoSeedRuns"> | null = null;
   try {
     runId = await ctx.runMutation(internal.functions.academic.seed.startDemoSeedRunInternal, {
       seedProfile,
+      authIssuer,
       adminAuthId,
       teacherAuthId,
       portalAuthId,
@@ -157,6 +204,8 @@ export const seedDemoSchool = action({
     targetIdentity: v.string(),
     deploymentEnvironment: v.union(v.literal("development"), v.literal("preview"), v.literal("production")),
     productionConfirmation: v.optional(v.string()),
+    inspectedSchoolId: v.optional(v.union(v.id("schools"), v.null())),
+    inspectedSchoolSlug: v.optional(v.string()),
   },
   returns: v.object({
     schoolId: v.id("schools"), studentCount: v.number(), classCount: v.number(), invoiceCount: v.number(), assessmentRecordCount: v.number(), resetDeletedCount: v.number(),

@@ -3,11 +3,14 @@ import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-cap
 import { mutation, query } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
+import { getActiveSession } from "./sessionScope";
 import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
-  teacherHasClassAccess,
 } from "./auth";
+import {
+  teacherHasClassAccess,
+} from "./teacherAccess";
 import {
   buildExtrasCollectionView,
   isManualFieldSource,
@@ -119,12 +122,7 @@ async function getExtrasWorkspaceAccess(
     throw new ConvexError("Class not found");
   }
 
-  const activeSession = await ctx.db
-    .query("academicSessions")
-    .withIndex("by_school_active", (q: any) =>
-      q.eq("schoolId", args.schoolId).eq("isActive", true)
-    )
-    .first();
+  const activeSession = await getActiveSession(ctx, args.schoolId);
 
   const targetSessionId = args.sessionId ?? activeSession?._id;
 

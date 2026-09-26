@@ -24,8 +24,10 @@ import { ConvexError } from "convex/values";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
-  teacherHasClassAccess,
 } from "./auth";
+import {
+  teacherHasClassAccess,
+} from "./teacherAccess";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { provisionSchoolPortalAuthUser } from "../platform/provisioningHelpers";
 import {
@@ -41,6 +43,8 @@ import {
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { assertBranchDoc } from "../foundation/tenantScope";
+import { isEmailAddress } from "../foundation/normalize";
 
 function toStudentAuthId(schoolId: string, admissionNumber: string) {
   return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
@@ -187,7 +191,7 @@ function normalizeOptionalEmail(value: string | null | undefined) {
     return undefined;
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+  if (!isEmailAddress(trimmed)) {
     throw new ConvexError("Enter a valid email address");
   }
 
@@ -457,6 +461,7 @@ export async function createCanonicalStudentEnrollmentHelper(
     numberingCounterVersion?: number;
     numberingSessionId?: Id<"academicSessions">;
     numberingResetPeriod?: string;
+    requestedByUserId?: Id<"users">;
   },
 ) {
   const classDoc = await ctx.db.get(args.classId);
@@ -488,6 +493,7 @@ export async function createCanonicalStudentEnrollmentHelper(
         expectedCounterVersion: args.numberingCounterVersion,
         expectedSessionId: args.numberingSessionId,
         expectedResetPeriod: args.numberingResetPeriod,
+        ...(args.requestedByUserId ? { requestedByUserId: args.requestedByUserId } : {}),
       });
     } else {
       await claimAdmissionNumberHelper(ctx, args.schoolId, admissionNumber);
@@ -745,9 +751,7 @@ export const listStudentsByClass = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const students = await ctx.db
       .query("students")
@@ -1447,9 +1451,7 @@ async function archiveStudentRecord(
   },
 ) {
   const student = await ctx.db.get(args.studentId);
-  if (!student || student.schoolId !== args.schoolId) {
-    throw new ConvexError("Cross-school access denied");
-  }
+  assertBranchDoc(student, args.schoolId);
 
   const studentUser = await ctx.db.get(student.userId);
   if (
@@ -2203,22 +2205,16 @@ export const setStudentSubjectSelections = mutation({
 
     // Verify school boundary
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId || student.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(student, schoolId, { excludeArchived: true });
     if (student.classId !== args.classId) {
       throw new ConvexError("Student is not enrolled in this class");
     }
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     // Verify all subjects are offered in this class
     const classOfferings = await ctx.db
@@ -2385,14 +2381,10 @@ export const getStudentSubjectSelections = query({
       });
 
     const student = await ctx.db.get(args.studentId);
-    if (!student || student.schoolId !== schoolId || student.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(student, schoolId, { excludeArchived: true });
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     const selections = await ctx.db
       .query("studentSubjectSelections")
@@ -2490,9 +2482,7 @@ export const getClassStudentSubjectMatrix = query({
       ctx.db.get(args.classId),
       ctx.db.get(args.sessionId),
     ]);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
     if (
       !sessionDoc ||
       sessionDoc.schoolId !== schoolId ||
@@ -2985,7 +2975,7 @@ export const getParentEmailReview = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const trimmed = (args.email ?? "").trim().toLowerCase();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    if (!trimmed || !isEmailAddress(trimmed)) {
       return {
         email: trimmed,
         matches: [],

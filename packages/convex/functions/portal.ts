@@ -1,11 +1,12 @@
 import { getUnboundStorageUrl } from "./academic/assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
 import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
+import { isOnlineCheckoutOffered } from "./foundation/billingGate";
 import type { Doc, Id } from "../_generated/dataModel";
 import { api } from "../_generated/api";
 import { query, type QueryCtx } from "../_generated/server";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
-import { getPortalStudentAccess, resolvePortalMemberships, type PortalAuth } from "./academic/portalIdentity";
+import { getPortalStudentAccess, resolvePortalMemberships, resolvePortalStudentContext, type PortalAuth } from "./academic/portalIdentity";
 import { buildStudentReportCard, reportCardResultValidator } from "./academic/reportCards";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { resolveDomainSetting } from "./academic/groupSettings";
@@ -210,13 +211,22 @@ export const getPortalShellContext = query({
   args: { studentId: v.optional(v.union(v.id("students"), v.null())) },
   returns: v.object({ schoolId: v.id("schools"), selectedStudentId: v.id("students") }),
   handler: async (ctx, args) => {
-    const portalAuth = await resolvePortalMemberships(ctx);
-    const students = await getAccessibleStudentsAcrossPortalMemberships(ctx, portalAuth);
-    const selected = args.studentId
-      ? students.find((entry) => entry.student._id === args.studentId)
-      : students[0];
-    if (!selected) throw new ConvexError("Student not found");
-    return { schoolId: selected.student.schoolId, selectedStudentId: selected.student._id };
+    // Selection (explicit id or active-first/default-branch-first) is owned
+    // by portalIdentity; the shell only narrows the return shape. Only the
+    // selection miss is mapped to the shell's message; membership errors
+    // propagate untouched.
+    let context;
+    try {
+      context = await resolvePortalStudentContext(ctx, {
+        studentId: args.studentId,
+      });
+    } catch (error) {
+      if (error instanceof ConvexError && error.data === "Student record not found") {
+        throw new ConvexError("Student not found");
+      }
+      throw error;
+    }
+    return { schoolId: context.schoolId, selectedStudentId: context.student._id };
   },
 });
 
@@ -806,12 +816,10 @@ export const getBillingData = query({
         dueDate: invoice.dueDate,
         issuedAt: invoice.issuedAt,
         status: invoice.status,
-        canPayOnline:
-          Boolean(settingsRecord?.allowOnlinePayments) &&
-          invoice.balanceDue > 0 &&
-          invoice.status !== "paid" &&
-          invoice.status !== "waived" &&
-          invoice.status !== "cancelled",
+        canPayOnline: isOnlineCheckoutOffered({
+          allowOnlinePayments: Boolean(settingsRecord?.allowOnlinePayments),
+          invoice: { balanceDue: invoice.balanceDue, status: invoice.status },
+        }),
         lineItems: invoice.lineItems,
         notes: invoice.notes ?? null,
       }));

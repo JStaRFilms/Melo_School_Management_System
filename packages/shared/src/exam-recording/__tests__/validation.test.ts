@@ -219,4 +219,22 @@ describe("validateGradingBands", () => {
     const errors = validateGradingBands(bands);
     expect(errors).toHaveLength(0);
   });
+
+  it("should fail for fractional bounds (server-strict integers)", () => {
+    const bands = [
+      createBand(0, 39.5, "F", "Fail"),
+      createBand(40, 100, "A", "Excellent"),
+    ];
+    const errors = validateGradingBands(bands);
+    expect(errors.some((e) => e.message.includes("whole number"))).toBe(true);
+  });
+
+  it("should fail for more than 100 bands", () => {
+    // 101 contiguous single-point bands spanning 0-100: only the cap fires
+    const bands = Array.from({ length: 101 }, (_, i) =>
+      createBand(i, i, `G${i}`, `Grade ${i}`)
+    );
+    const errors = validateGradingBands(bands);
+    expect(errors.some((e) => e.message.includes("1–100"))).toBe(true);
+  });
 });

@@ -1,5 +1,114 @@
 import type { ExamInputMode, GradingBand, ValidationError } from "./types";
 
+/** Server-strict cap: the thrower and returner agree on 1–100 bands. */
+export const MAX_GRADING_BANDS = 100;
+
+export type BandSetIssueCode =
+  | "empty"
+  | "too_many"
+  | "blank_label"
+  | "duplicate_label"
+  | "non_integer"
+  | "out_of_range"
+  | "inverted_range"
+  | "bad_span"
+  | "overlap"
+  | "gap";
+
+export interface BandSetIssue {
+  code: BandSetIssueCode;
+  /** Input index of the offending band (second occurrence for duplicates). */
+  index?: number;
+  /** Adjacent-band code (overlap/gap): input index of the next band in sorted order. */
+  nextIndex?: number;
+  /** trimmed grade label (label codes). */
+  label?: string;
+  /** offending bound for non_integer/out_of_range. */
+  bound?: "minScore" | "maxScore";
+  /** offending value for out_of_range. */
+  value?: number;
+  /** span end for bad_span. */
+  spanEnd?: "start" | "end";
+  /** gap range (inclusive). */
+  gapFrom?: number;
+  gapTo?: number;
+}
+
+export type BandSetInput = Pick<GradingBand, "gradeLetter" | "minScore" | "maxScore">;
+
+/**
+ * Single band-set predicate shared by the server thrower, the shared
+ * returner, and the zod schemas (consolidation P3). Server-strict superset:
+ * integers and the 100-band cap are checked here so the client can never
+ * call a set valid that the server rejects.
+ *
+ * Canonical order mirrors the server thrower: length, then per-band
+ * (label before bounds, duplicates at second occurrence), then span,
+ * overlap, gap. Structural checks assume integer bounds; non-integer sets
+ * are already rejected in stage 1.
+ */
+export function checkGradingBandSet(bands: BandSetInput[]): BandSetIssue[] {
+  const issues: BandSetIssue[] = [];
+  if (bands.length === 0) {
+    return [{ code: "empty" }];
+  }
+  if (bands.length > MAX_GRADING_BANDS) {
+    issues.push({ code: "too_many" });
+  }
+  const seenLabels = new Map<string, number>();
+  bands.forEach((band, index) => {
+    const label = band.gradeLetter.trim().toUpperCase();
+    if (label.length === 0) {
+      issues.push({ code: "blank_label", index });
+    } else if (seenLabels.has(label)) {
+      issues.push({ code: "duplicate_label", index, label: band.gradeLetter.trim() });
+    } else {
+      seenLabels.set(label, index);
+    }
+    for (const bound of ["minScore", "maxScore"] as const) {
+      if (!Number.isInteger(band[bound])) {
+        issues.push({ code: "non_integer", index, bound, value: band[bound] });
+      }
+    }
+    if (band.minScore < 0) {
+      issues.push({ code: "out_of_range", index, bound: "minScore", value: band.minScore });
+    }
+    if (band.maxScore > 100) {
+      issues.push({ code: "out_of_range", index, bound: "maxScore", value: band.maxScore });
+    }
+    if (band.minScore > band.maxScore) {
+      issues.push({ code: "inverted_range", index });
+    }
+  });
+  if (issues.length > 0) {
+    return issues;
+  }
+  const order = bands.map((band, index) => ({ ...band, index })).sort((a, b) => a.minScore - b.minScore);
+  if (order[0].minScore !== 0) {
+    issues.push({ code: "bad_span", spanEnd: "start" });
+  }
+  if (order[order.length - 1].maxScore !== 100) {
+    issues.push({ code: "bad_span", spanEnd: "end" });
+  }
+  for (let i = 0; i < order.length - 1; i++) {
+    const current = order[i];
+    const next = order[i + 1];
+    if (next.minScore <= current.maxScore) {
+      issues.push({ code: "overlap", index: current.index, nextIndex: next.index });
+    }
+    if (next.minScore !== current.maxScore + 1) {
+      issues.push({
+        code: "gap",
+        index: current.index,
+        nextIndex: next.index,
+        gapFrom: current.maxScore + 1,
+        gapTo: next.minScore - 1,
+      });
+    }
+  }
+  return issues;
+}
+
 /**
  * Validate score ranges for assessment records
  * 
@@ -60,128 +169,120 @@ export function validateScoreRanges(
 
 /**
  * Validate grading bands for overlap and coverage
- * 
- * Rules:
+ *
+ * Rules (server-strict, via checkGradingBandSet):
  * 1. minScore <= maxScore for every band
- * 2. minScore >= 0 and maxScore <= 100
+ * 2. minScore >= 0 and maxScore <= 100, whole numbers only
  * 3. No overlap between bands
  * 4. Full coverage from 0 to 100
- * 5. At least one band must be provided
- * 
+ * 5. At least one band must be provided, at most 100
+ *
  * @returns Array of validation errors (empty if valid)
  */
 export function validateGradingBands(bands: GradingBand[]): ValidationError[] {
-  const errors: ValidationError[] = [];
-
-  // Rule 5: At least one band
-  if (bands.length === 0) {
-    errors.push({
-      field: "record",
-      message: "At least one grading band must be provided",
-    });
-    return errors;
+  const issues = checkGradingBandSet(bands);
+  if (issues.length === 0) {
+    return [];
   }
-
-  // Check for duplicate grade letters/labels
-  const seenLetters = new Map<string, string>();
-  for (const band of bands) {
-    const trimmed = band.gradeLetter.trim().toUpperCase();
-    if (trimmed.length > 0) {
-      if (seenLetters.has(trimmed)) {
+  if (issues[0].code === "empty") {
+    return [
+      {
+        field: "record",
+        message: "At least one grading band must be provided",
+      },
+    ];
+  }
+  const errors: ValidationError[] = [];
+  const structural: BandSetIssue[] = [];
+  for (const issue of issues) {
+    switch (issue.code) {
+      case "too_many":
         errors.push({
           field: "record",
-          message: `Duplicate grade label "${band.gradeLetter.trim()}": each grading band must have a unique grade label.`,
+          message: `Use 1–${MAX_GRADING_BANDS} grading bands`,
         });
-      } else {
-        seenLetters.set(trimmed, band.gradeLetter.trim());
+        break;
+      case "duplicate_label":
+        errors.push({
+          field: "record",
+          message: `Duplicate grade label "${issue.label}": each grading band must have a unique grade label.`,
+        });
+        break;
+      case "blank_label":
+        errors.push({
+          field: "record",
+          message: "Each grading band needs a grade letter or label.",
+        });
+        break;
+      case "non_integer": {
+        const band = bands[issue.index ?? 0];
+        errors.push({
+          field: "record",
+          message: `Band "${band.gradeLetter}": ${issue.bound} (${issue.value}) must be a whole number`,
+        });
+        break;
       }
+      case "out_of_range": {
+        const band = bands[issue.index ?? 0];
+        errors.push({
+          field: "record",
+          message:
+            issue.bound === "minScore"
+              ? `Band "${band.gradeLetter}": minScore must be >= 0`
+              : `Band "${band.gradeLetter}": maxScore must be <= 100`,
+        });
+        break;
+      }
+      case "inverted_range": {
+        const band = bands[issue.index ?? 0];
+        errors.push({
+          field: "record",
+          message: `Band "${band.gradeLetter}": minScore (${band.minScore}) must be less than or equal to maxScore (${band.maxScore})`,
+        });
+        break;
+      }
+      default:
+        structural.push(issue);
     }
   }
 
-  // Rule 1 & 2: Validate individual bands
-  for (const band of bands) {
-    if (band.gradeLetter.trim().length === 0) {
-      errors.push({
-        field: "record",
-        message: "Each grading band needs a grade letter or label.",
-      });
-    }
-    if (band.minScore > band.maxScore) {
-      errors.push({
-        field: "record",
-        message: `Band "${band.gradeLetter}": minScore (${band.minScore}) must be less than or equal to maxScore (${band.maxScore})`,
-      });
-    }
-    if (band.minScore < 0) {
-      errors.push({
-        field: "record",
-        message: `Band "${band.gradeLetter}": minScore must be >= 0`,
-      });
-    }
-    if (band.maxScore > 100) {
-      errors.push({
-        field: "record",
-        message: `Band "${band.gradeLetter}": maxScore must be <= 100`,
-      });
-    }
-  }
-
-  // If individual band validation failed, skip overlap/coverage checks
+  // Individual band validation failed: skip overlap/coverage checks
   if (errors.length > 0) {
     return errors;
   }
 
-  // Sort bands by minScore for overlap and coverage checks
-  const sortedBands = [...bands].sort((a, b) => a.minScore - b.minScore);
-
-  // Rule 3: Check for overlaps and duplicate ranges
-  for (let i = 0; i < sortedBands.length - 1; i++) {
-    const current = sortedBands[i];
-    const next = sortedBands[i + 1];
-
-    if (current.maxScore >= next.minScore) {
+  for (const issue of structural) {
+    if (issue.code === "bad_span") {
+      errors.push({
+        field: "record",
+        message:
+          issue.spanEnd === "start"
+            ? "Grading bands must start at 0"
+            : "Grading bands must end at 100",
+      });
+      continue;
+    }
+    const current = bands[issue.index ?? 0];
+    const next = bands[issue.nextIndex ?? 0];
+    if (issue.code === "overlap") {
       if (current.minScore === next.minScore && current.maxScore === next.maxScore) {
         errors.push({
           field: "record",
           message: `Duplicate score range ${current.minScore}–${current.maxScore} found for Grade "${current.gradeLetter}" and "${next.gradeLetter}".`,
         });
       } else {
-        const overlapStart = next.minScore;
         const overlapEnd = Math.min(current.maxScore, next.maxScore);
         errors.push({
           field: "record",
-          message: `Bands overlap: range ${overlapStart}–${overlapEnd} is covered by multiple bands (Grade "${current.gradeLetter}" and "${next.gradeLetter}").`,
+          message: `Bands overlap: range ${next.minScore}–${overlapEnd} is covered by multiple bands (Grade "${current.gradeLetter}" and "${next.gradeLetter}").`,
         });
       }
+      continue;
     }
-  }
-
-  // Rule 4: Check for full coverage
-  if (sortedBands[0].minScore !== 0) {
     errors.push({
       field: "record",
-      message: "Grading bands must start at 0",
+      message: `Gap in grading bands: no band covers range ${issue.gapFrom} to ${issue.gapTo}`,
     });
-  }
-
-  if (sortedBands[sortedBands.length - 1].maxScore !== 100) {
-    errors.push({
-      field: "record",
-      message: "Grading bands must end at 100",
-    });
-  }
-
-  // Check for gaps between bands
-  for (let i = 0; i < sortedBands.length - 1; i++) {
-    const current = sortedBands[i];
-    const next = sortedBands[i + 1];
-
-    if (current.maxScore + 1 !== next.minScore) {
-      errors.push({
-        field: "record",
-        message: `Gap in grading bands: no band covers range ${current.maxScore + 1} to ${next.minScore - 1}`,
-      });
-    }
   }
 
   return errors;

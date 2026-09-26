@@ -25,6 +25,14 @@ export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigat
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";
 export { ReportCardBatchPrintStackV2 } from "./components/ReportCardBatchPrintStackV2";
 export { MeloLoader } from "./components/MeloLoader";
+export { ConfirmModal, ConfirmDialog } from "./components/ConfirmModal";
+export type { ConfirmModalProps, ConfirmDialogProps } from "./components/ConfirmModal";
+export { SheetBase } from "./components/SheetBase";
+export type { SheetBaseProps } from "./components/SheetBase";
+export { Avatar, getInitials } from "./components/Avatar";
+export type { AvatarDensity, AvatarProps } from "./components/Avatar";
+export { EmptyState } from "./components/EmptyState";
+export type { EmptyStateProps } from "./components/EmptyState";
 export {
   KnowledgeMaterialUploadForm,
   MAX_KNOWLEDGE_MATERIAL_UPLOAD_BYTES,

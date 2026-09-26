@@ -9,6 +9,7 @@ import { v, ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { type ActiveMembershipContext } from "./auth";
 import { requireCapability } from "./rbac";
+import { getActiveSession } from "./sessionScope";
 import { recordAuditEventHelper } from "./audit";
 import {
   allocateNextAdmissionNumberHelper,
@@ -600,22 +601,16 @@ export const acceptDestinationTransfer = mutation({
       );
     }
 
-    const active = await ctx.db
-      .query("academicSessions")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", transfer.destinationSchoolId).eq("isActive", true),
-      )
-      .filter((q) => q.neq(q.field("isArchived"), true))
-      .take(2);
+    const active = await getActiveSession(ctx, transfer.destinationSchoolId);
     if (
-      active.length !== 1 ||
-      (args.destinationSessionId && args.destinationSessionId !== active[0]._id)
+      !active ||
+      (args.destinationSessionId && args.destinationSessionId !== active._id)
     ) {
       throw new ConvexError(
         "Select the destination's one active academic session; refresh stale proposals",
       );
     }
-    const destinationSessionId = active[0]._id;
+    const destinationSessionId = active._id;
     if (
       args.advanceCounterTo !== undefined &&
       !args.admissionNumberOverride?.trim()
@@ -838,7 +833,7 @@ export const acceptDestinationTransfer = mutation({
       acceptanceIntent,
       destinationSessionId,
       destinationClassName: destClass.name,
-      destinationSessionName: active[0].name,
+      destinationSessionName: active.name,
       destinationClassId: args.destinationClassId,
       destinationStudentId,
       destinationAdmissionNumber,

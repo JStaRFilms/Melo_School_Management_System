@@ -1,8 +1,8 @@
 const { test, expect } = require("@playwright/test");
 
-const ADMIN_BASE_URL = "http://localhost:3002";
-const TEACHER_BASE_URL = "http://localhost:3001";
-const PORTAL_BASE_URL = "http://localhost:3003";
+const ADMIN_BASE_URL = "http://localhost:3102";
+const TEACHER_BASE_URL = "http://localhost:3101";
+const PORTAL_BASE_URL = "http://localhost:3103";
 
 async function signIn(page, { baseUrl, email, password, expectedPath }) {
   await page.goto(`${baseUrl}/sign-in`, { waitUntil: "networkidle" });
@@ -12,7 +12,7 @@ async function signIn(page, { baseUrl, email, password, expectedPath }) {
   await page.locator("#password").fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
 
-  await page.waitForURL(`**${expectedPath}*`, { timeout: 60_000 });
+  await page.waitForURL((url) => url.origin === baseUrl && url.pathname === expectedPath, { timeout: 60_000 });
   await page.waitForLoadState("networkidle");
 }
 
@@ -29,9 +29,12 @@ test("admin can sign in and open live assessment setup surfaces", async ({ page 
     baseUrl: ADMIN_BASE_URL,
     email: "admin@demo-academy.school",
     password: "Admin123!Pass",
-    expectedPath: "/assessments/setup/exam-recording",
+    expectedPath: "/admin/dashboard",
   });
 
+  await expect(page.getByRole("heading", { name: "Admin Dashboard", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "All Core School Systems Operational" })).toBeVisible();
+  await page.goto(`${ADMIN_BASE_URL}/assessments/setup/exam-recording`, { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: "Protocol Dashboard" })).toBeVisible();
   await expect(page.getByText("Preview mode is active")).toHaveCount(0);
 
@@ -42,7 +45,12 @@ test("admin can sign in and open live assessment setup surfaces", async ({ page 
   await expect(
     page.getByRole("main").getByRole("heading", { name: "Grading Bands", level: 1 })
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Commit Global Policy" }).first()).toBeVisible();
+  const remark = page.getByRole("textbox", { name: "Remark for tier 1" });
+  const originalRemark = await remark.inputValue();
+  await remark.fill(`${originalRemark} test`);
+  await expect(page.getByRole("button", { name: "Save Changes" })).toBeVisible();
+  await page.getByRole("button", { name: "Discard" }).click();
+  await expect(remark).toHaveValue(originalRemark);
   await expect(page.getByText("Preview mode is active")).toHaveCount(0);
 });
 
@@ -51,9 +59,11 @@ test("teacher can load a live exam-entry roster", async ({ page }) => {
     baseUrl: TEACHER_BASE_URL,
     email: "teacher@demo-academy.school",
     password: "Teacher123!Pass",
-    expectedPath: "/assessments/exams/entry",
+    expectedPath: "/",
   });
 
+  await expect(page.getByRole("heading", { name: /Welcome, / })).toBeVisible();
+  await page.goto(`${TEACHER_BASE_URL}/assessments/exams/entry`, { waitUntil: "networkidle" });
   await expect(page.getByText("No Students Selected")).toBeVisible();
 
   await selectOptionByLabel(page, "Session", "2025/2026");
