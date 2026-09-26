@@ -15,6 +15,7 @@ import {
   getLessonSourceContextIssue,
   levelMatchesLessonKnowledgeScope,
 } from "./lessonKnowledgeSourceContext";
+import { getPerSourceExcerptCharacterLimit } from "./instructionGenerationRules";
 import {
   getInstructionTemplateApplicabilityLabel,
   getInstructionTemplateScopeRank,
@@ -1489,6 +1490,11 @@ export const getTeacherInstructionSourceExcerpts = query({
     const warnings: string[] = [];
     let totalChars = 0;
     let totalTokenEstimate = 0;
+    const perSourceCharacterLimit = getPerSourceExcerptCharacterLimit(
+      requestedSourceIds.length,
+      MAX_PROMPT_TOTAL_EXCERPT_CHARS,
+      MAX_PROMPT_CHARS_PER_SOURCE
+    );
 
     for (const sourceId of requestedSourceIds) {
       if (totalChars >= MAX_PROMPT_TOTAL_EXCERPT_CHARS) {
@@ -1529,7 +1535,7 @@ export const getTeacherInstructionSourceExcerpts = query({
       }
 
       const remainingChars = Math.max(0, MAX_PROMPT_TOTAL_EXCERPT_CHARS - totalChars);
-      const sourceLimit = Math.min(MAX_PROMPT_CHARS_PER_SOURCE, remainingChars);
+      const sourceLimit = Math.min(perSourceCharacterLimit, remainingChars);
       const excerptText = truncateText(
         usableChunks
           .map((chunk) => truncateText(chunk.chunkText, MAX_PROMPT_CHARS_PER_CHUNK))

@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers3, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Layers3, ShieldCheck } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { cn } from "@/utils";
 import type { InstructionTemplateDraft, InstructionTemplateListItem } from "../types";
@@ -69,13 +69,30 @@ export function TemplateMonitor({ draft, validationIssue }: TemplateMonitorProps
             })}
           </div>
 
-          <div className="rounded-2xl bg-emerald-50 p-6 border border-emerald-100/50">
-            <div className="flex items-center gap-3 mb-2">
-              <ShieldCheck className="h-5 w-5 text-emerald-600" />
-              <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Audit Status</p>
+          <div className={cn(
+            "rounded-2xl border p-6",
+            validationIssue ? "border-rose-100 bg-rose-50" : "border-emerald-100/50 bg-emerald-50"
+          )}>
+            <div className="mb-2 flex items-center gap-3">
+              {validationIssue ? (
+                <AlertTriangle className="h-5 w-5 text-rose-600" />
+              ) : (
+                <ShieldCheck className="h-5 w-5 text-emerald-600" />
+              )}
+              <p className={cn(
+                "text-xs font-black uppercase tracking-widest",
+                validationIssue ? "text-rose-700" : "text-emerald-700"
+              )}>
+                {validationIssue ? "Validation issue" : "Preview status"}
+              </p>
             </div>
-            <p className="text-sm font-bold text-emerald-900">Configuration preview</p>
-            <p className="mt-1 text-[10px] font-medium text-emerald-600/80 leading-relaxed">
+            <p className={cn("text-sm font-bold", validationIssue ? "text-rose-900" : "text-emerald-900")}>
+              {validationIssue ? "Configuration needs attention" : "Configuration preview"}
+            </p>
+            <p className={cn(
+              "mt-1 text-[10px] font-medium leading-relaxed",
+              validationIssue ? "text-rose-700" : "text-emerald-600/80"
+            )}>
               {validationIssue ?? "This preview does not test which template a teacher will receive."}
             </p>
           </div>

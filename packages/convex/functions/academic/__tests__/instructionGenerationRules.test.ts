@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertUsableExcerptMinimum, countDistinctObjectives, findObjectiveSection, renderTemplateBoundMarkdown, validateGenerationMinimums } from "../instructionGenerationRules";
+import { assertUsableExcerptMinimum, countDistinctObjectives, findObjectiveSection, getPerSourceExcerptCharacterLimit, renderTemplateBoundMarkdown, validateGenerationMinimums } from "../instructionGenerationRules";
 import { instructionTemplateResolutionKeys, normalizeInstructionTemplateSections, selectInstructionTemplateBucket } from "../lessonKnowledgeTemplatesHelpers";
 import type { Id } from "../../../_generated/dataModel";
 
@@ -34,6 +34,12 @@ describe("instruction generation minimums", () => {
     expect(renderTemplateBoundMarkdown(withEmptyOptional)).not.toContain("## Instructional Materials");
     expect(renderTemplateBoundMarkdown(withEmptyOptional)).toContain("## Learning Objectives");
   });
+  it("reserves prompt budget across every selected source", () => {
+    expect(getPerSourceExcerptCharacterLimit(12, 12_000, 1_800)).toBe(1_000);
+    expect(getPerSourceExcerptCharacterLimit(4, 12_000, 1_800)).toBe(1_800);
+    expect(getPerSourceExcerptCharacterLimit(0, 12_000, 1_800)).toBe(1_800);
+  });
+
   it("counts only distinct excerpt-bearing sources, including when configured minimum is zero", () => {
     const excerpts = [{ materialId: "one", excerptText: "indexed" }, { materialId: "one", excerptText: "duplicate" }, { materialId: "two", excerptText: " " }];
     expect(() => assertUsableExcerptMinimum(excerpts, 2)).toThrow(/found 1/);

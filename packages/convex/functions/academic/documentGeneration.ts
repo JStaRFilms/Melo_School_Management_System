@@ -1340,7 +1340,9 @@ export const generateTeacherLessonPlanDraft = action({
     try {
       assertUsableExcerptMinimum(sourceExcerptBundle.excerpts, workspace.template?.objectiveMinimums.minimumSourceMaterials ?? 1);
     } catch (error) {
-      throw new ConvexError(error instanceof Error ? error.message : "Insufficient usable source excerpts");
+      const message = error instanceof Error ? error.message : "Insufficient usable source excerpts";
+      const retrievalWarning = sourceExcerptBundle.warnings[0];
+      throw new ConvexError(retrievalWarning ? `${message} ${retrievalWarning}` : message);
     }
 
     const rateLimit = (await ctx.runMutation(

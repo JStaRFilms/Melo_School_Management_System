@@ -40,6 +40,15 @@ export function validateGenerationMinimums(
   return issues;
 }
 
+export function getPerSourceExcerptCharacterLimit(
+  selectedSourceCount: number,
+  totalCharacterLimit: number,
+  perSourceCharacterLimit: number
+): number {
+  if (selectedSourceCount <= 0) return perSourceCharacterLimit;
+  return Math.max(1, Math.min(perSourceCharacterLimit, Math.floor(totalCharacterLimit / selectedSourceCount)));
+}
+
 export function countUsableExcerptSources(excerpts: ReadonlyArray<{ materialId: string; excerptText: string }>): number {
   return new Set(excerpts.filter((excerpt) => excerpt.excerptText.trim()).map((excerpt) => excerpt.materialId)).size;
 }

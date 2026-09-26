@@ -44,6 +44,14 @@ export interface DocumentPromptContext {
   readonly constraints?: string[];
 }
 
+function inlinePromptInstruction(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function findObjectiveTemplateSection(sections: DocumentTemplateSectionSummary[] | undefined) {
+  return sections?.find((section) => /^(?:learning |lesson )?objectives?$|^learning outcomes?$/i.test(section.label.trim()));
+}
+
 const documentGenerationSystemPrompt = [
   "You are a school document-generation assistant for Lesson Knowledge Hub.",
   "Return only the requested structured draft.",
@@ -74,13 +82,16 @@ function formatContextLines(context: DocumentPromptContext) {
         .filter(Boolean)
         .join("; ");
       lines.push(`- sectionId: ${section.id}; label: ${section.label}${details ? ` (${details})` : ""}${section.formatHint ? `; format: ${section.formatHint}` : ""}`);
-      if (section.guidance) lines.push(`  Writing guidance: ${section.guidance}`);
+      if (section.guidance) lines.push(`  Writing guidance: ${inlinePromptInstruction(section.guidance)}`);
     }
   } else {
     lines.push("Template sections: MISSING. Generation must fail before calling the model.");
   }
 
-  if (context.minimumObjectives !== undefined) lines.push(`Include at least ${context.minimumObjectives} distinct list items in the Learning Objectives section when that section is configured.`);
+  const objectiveSection = findObjectiveTemplateSection(context.templateSections);
+  if (context.minimumObjectives !== undefined && objectiveSection) {
+    lines.push(`In the ${objectiveSection.label} section, include at least ${context.minimumObjectives} distinct objectives, one per bulleted or numbered line.`);
+  }
   if (context.minimumSections !== undefined) lines.push(`Fill at least ${context.minimumSections} distinct template sections with non-empty content.`);
   if (context.revisionNotes) lines.push(`Revision notes: ${context.revisionNotes}`);
 
@@ -214,9 +225,11 @@ export function buildTemplateRepairPrompt(args: {
       const details = [section.required ? "required" : "optional", section.minimumWordCount ? `minimum ${section.minimumWordCount} words` : null]
         .filter(Boolean)
         .join("; ");
-      return `- sectionId: ${section.id}; label: ${section.label}${details ? ` (${details})` : ""}${section.formatHint ? `; format: ${section.formatHint}` : ""}${section.guidance ? `; guidance: ${section.guidance}` : ""}`;
+      return `- sectionId: ${section.id}; label: ${section.label}${details ? ` (${details})` : ""}${section.formatHint ? `; format: ${section.formatHint}` : ""}${section.guidance ? `; guidance: ${inlinePromptInstruction(section.guidance)}` : ""}`;
     })
     .join("\n");
+
+  const objectiveSection = findObjectiveTemplateSection(args.templateSections);
 
   return {
     system: documentGenerationSystemPrompt,
@@ -227,7 +240,7 @@ export function buildTemplateRepairPrompt(args: {
       "Use only the allowed section IDs and exact labels below. Required sections must be present and non-empty.",
       "Optional sections may be present when useful. If the minimum filled-section rule exceeds the required-section count, include enough optional sections to meet it.",
       ...(args.minimumSections !== undefined ? [`At least ${args.minimumSections} distinct template sections must contain content.`] : []),
-      ...(args.minimumObjectives !== undefined ? [`If a Learning Objectives section is configured, write at least ${args.minimumObjectives} distinct bulleted or numbered objectives there.`] : []),
+      ...(args.minimumObjectives !== undefined && objectiveSection ? [`In the ${objectiveSection.label} section, write at least ${args.minimumObjectives} distinct objectives, one per bulleted or numbered line.`] : []),
       "Do not duplicate section IDs. Do not add unknown section IDs. Do not nest a complete document inside any section.",
       "Keep the corrected JSON compact and concise. Do not repeat the whole draft inside any section.",
       "",
