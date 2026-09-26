@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, Layers3, Plus, Search, ChevronRight } from "lucide-react";
+import { BookOpenText, Plus, Search, ChevronRight } from "lucide-react";
 import { cn } from "@/utils";
 import type { InstructionTemplateListItem, InstructionTemplateOutputType } from "../types";
 import { instructionTemplateOutputTypeOptions } from "../utils";
@@ -20,6 +20,8 @@ interface TemplateListPanelProps {
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   onOutputTypeChange: (outputType: InstructionTemplateOutputType) => void;
+  onBrowseTemplates: () => void;
+  onDuplicateTemplate: (template: InstructionTemplateListItem) => void;
 }
 
 export function TemplateListPanel({
@@ -32,6 +34,8 @@ export function TemplateListPanel({
   searchQuery,
   onSearchQueryChange,
   onOutputTypeChange,
+  onBrowseTemplates,
+  onDuplicateTemplate,
 }: TemplateListPanelProps) {
   return (
     <div className="flex h-full flex-col bg-white/40 backdrop-blur-md">
@@ -49,6 +53,7 @@ export function TemplateListPanel({
             onClick={onCreateTemplate}
             className="group flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-white shadow-xl shadow-slate-950/20 transition-all hover:bg-slate-800 active:scale-95"
             title="New Template"
+            aria-label="New Template"
           >
             <Plus className="h-4 w-4 transition-transform group-hover:rotate-90" />
           </button>
@@ -57,6 +62,7 @@ export function TemplateListPanel({
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-300" />
           <input
+            aria-label="Search saved templates"
             value={searchQuery}
             onChange={(e) => onSearchQueryChange(e.target.value)}
             placeholder="Search catalog..."
@@ -64,6 +70,7 @@ export function TemplateListPanel({
           />
         </div>
 
+        <button type="button" onClick={onBrowseTemplates} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-bold text-slate-700">Choose Starter / Template Gallery</button>
         <div className="flex gap-1 rounded-xl bg-slate-100/50 p-1">
           {instructionTemplateOutputTypeOptions.map((option) => (
             <button
@@ -88,8 +95,9 @@ export function TemplateListPanel({
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50/50 py-12 text-center">
             <BookOpenText className="h-8 w-8 text-slate-200" />
             <p className="mt-4 text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Empty State
+              {searchQuery ? "No matching templates" : "No saved templates"}
             </p>
+            {searchQuery && <button type="button" onClick={() => onSearchQueryChange("")} className="mt-3 text-xs font-bold underline">Clear search</button>}
           </div>
         ) : (
           templates.map((template) => (
@@ -98,6 +106,7 @@ export function TemplateListPanel({
               template={template}
               isSelected={selectedTemplateId === template._id}
               onSelect={() => onSelectTemplate(template._id)}
+              onDuplicate={() => onDuplicateTemplate(template)}
             />
           ))
         )}
@@ -110,12 +119,15 @@ function TemplateListItemCard({
   template,
   isSelected,
   onSelect,
+  onDuplicate,
 }: {
   template: InstructionTemplateListItem;
   isSelected: boolean;
   onSelect: () => void;
+  onDuplicate: () => void;
 }) {
   return (
+    <div className="relative">
     <button
       onClick={onSelect}
       className={cn(
@@ -181,5 +193,7 @@ function TemplateListItemCard({
         <div className="absolute -bottom-4 -right-4 h-24 w-24 rounded-full bg-white/5 blur-2xl" />
       )}
     </button>
+    <button type="button" onClick={onDuplicate} className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-1 text-[10px] font-bold" aria-label={`Duplicate ${template.title}`}>Duplicate</button>
+    </div>
   );
 }

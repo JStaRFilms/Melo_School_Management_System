@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpenText, Plus, Layers3, GripVertical, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { BookOpenText, Plus, Layers3, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { cn } from "@/utils";
 import type { 
@@ -8,10 +8,7 @@ import type {
   InstructionTemplateScope, 
   InstructionTemplateSectionDraft 
 } from "../types";
-import { 
-  instructionTemplateScopeOptions,
-  moveTemplateItem
-} from "../utils";
+import { instructionTemplateScopeOptions } from "../utils";
 
 interface TemplateEditorProps {
   draft: InstructionTemplateDraft;
@@ -30,8 +27,6 @@ interface TemplateEditorProps {
 
 export function TemplateEditor({
   draft,
-  subjectLabel,
-  scopeSummary,
   subjects,
   levelOptions,
   onChange,
@@ -215,6 +210,9 @@ export function TemplateEditor({
                   onChange={(val) => onChange({ objectiveMinimums: { ...draft.objectiveMinimums, minimumSections: val } })}
                 />
               </div>
+              <p className="text-[10px] leading-relaxed text-slate-500">
+                Minimum objectives is checked only when a section is named Learning Objectives, Lesson Objectives, Objectives, or Learning Outcomes. Add one to enforce this rule; otherwise the saved value is informational.
+              </p>
             </AdminSurface>
 
             <div className="flex items-center justify-between px-2 pt-2">
@@ -266,7 +264,7 @@ function SectionRow({
 }) {
   return (
     <div
-      className="group relative flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4 rounded-xl lg:rounded-2xl border border-slate-100 bg-white p-3 lg:p-2 transition-all hover:border-slate-200 hover:shadow-sm"
+      className="group relative flex flex-col lg:flex-row lg:flex-wrap lg:items-center gap-3 lg:gap-4 rounded-xl lg:rounded-2xl border border-slate-100 bg-white p-3 lg:p-2 transition-all hover:border-slate-200 hover:shadow-sm"
     >
       {/* Action Sidebar / Header */}
       <div className="flex items-center lg:flex-col gap-2 shrink-0">
@@ -337,6 +335,30 @@ function SectionRow({
         </div>
       </div>
 
+      <div className="w-full space-y-2 lg:order-last lg:basis-full lg:pl-10">
+        <label className="block text-[10px] font-bold text-slate-500">
+          Guidance for AI, {section.label || `section ${index + 1}`}
+          <textarea
+            value={section.guidance}
+            onChange={(event) => onSectionChange(index, { guidance: event.target.value })}
+            maxLength={1500}
+            rows={2}
+            placeholder="How should this section be written? Not shown in the document."
+            className="mt-1 block w-full rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-900"
+          />
+        </label>
+        <label className="block text-[10px] font-bold text-slate-500">
+          Format, {section.label || `section ${index + 1}`}
+          <select value={section.formatHint} onChange={(event) => onSectionChange(index, { formatHint: event.target.value as InstructionTemplateSectionDraft["formatHint"] })} className="mt-1 block w-full rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-900">
+            <option value="">No preference</option>
+            <option value="paragraph">Paragraph</option>
+            <option value="bullets">Bullets</option>
+            <option value="numbered">Numbered</option>
+            <option value="steps">Steps</option>
+            <option value="mixed">Mixed</option>
+          </select>
+        </label>
+      </div>
       {/* Desktop Trash Action */}
       <button
         disabled={totalCount === 1}

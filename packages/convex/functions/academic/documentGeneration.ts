@@ -28,6 +28,7 @@ import {
 } from "@school/ai";
 import { api } from "../../_generated/api";
 import { action, type ActionCtx } from "../../_generated/server";
+import { assertUsableExcerptMinimum, findObjectiveSection, renderTemplateBoundMarkdown, validateGenerationMinimums } from "./instructionGenerationRules";
 import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import type { Id } from "../../_generated/dataModel";
 
@@ -283,7 +284,7 @@ type ResolvedTemplateSection = DocumentTemplateSectionSummary & {
 type ResolvedTemplate = {
   _id: Id<"instructionTemplates">;
   title: string;
-  objectiveMinimums: { minimumSourceMaterials: number };
+  objectiveMinimums: { minimumObjectives: number; minimumSourceMaterials: number; minimumSections: number };
   sectionDefinitions: ResolvedTemplateSection[];
   resolutionPath: string | null;
 } | null;
@@ -478,7 +479,8 @@ class TemplateDraftValidationError extends Error {
 function normalizeGeneratedTemplateDraft(
   draft: TemplateBoundInstructionDraft,
   templateSections: ResolvedTemplateSection[],
-  fallbackTopic: string
+  fallbackTopic: string,
+  minimums: { minimumObjectives: number; minimumSections: number }
 ): TemplateBoundInstructionDraft {
   if (templateSections.length === 0) {
     throw new Error(
@@ -544,6 +546,7 @@ function normalizeGeneratedTemplateDraft(
     };
   });
 
+  issues.push(...validateGenerationMinimums(draft, templateSections, minimums));
   if (issues.length > 0) {
     throw new TemplateDraftValidationError(issues);
   }
@@ -554,27 +557,6 @@ function normalizeGeneratedTemplateDraft(
     sections: normalizedSections,
     sourceNotes: draft.sourceNotes.map((note) => note.trim()).filter(Boolean),
   };
-}
-
-function renderGeneratedMarkdown(draft: TemplateBoundInstructionDraft): string {
-  const metadata = [
-    `**Subject:** ${draft.subject}`,
-    `**Level:** ${draft.level}`,
-    `**Topic:** ${draft.topic}`,
-  ];
-
-  return [
-    `# ${draft.title}`,
-    "",
-    ...metadata,
-    "",
-    ...draft.sections.flatMap((section) => [`## ${section.label}`, section.content, ""]),
-    "## Source notes",
-    ...draft.sourceNotes.map((note) => `- ${note}`),
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
 }
 
 function promptClassForOutputType(outputType: LessonPlanOutputType): string {
@@ -1355,11 +1337,10 @@ export const generateTeacherLessonPlanDraft = action({
       }
     )) as SourceExcerptBundle;
 
-    if (sourceExcerptBundle.excerpts.length === 0) {
-      throw new ConvexError(
-        sourceExcerptBundle.warnings[0] ??
-          "No usable source text was found for the selected materials. Re-upload or reprocess the materials, then try again."
-      );
+    try {
+      assertUsableExcerptMinimum(sourceExcerptBundle.excerpts, workspace.template?.objectiveMinimums.minimumSourceMaterials ?? 1);
+    } catch (error) {
+      throw new ConvexError(error instanceof Error ? error.message : "Insufficient usable source excerpts");
     }
 
     const rateLimit = (await ctx.runMutation(
@@ -1421,6 +1402,8 @@ export const generateTeacherLessonPlanDraft = action({
         topic: effectiveTopicLabel ?? undefined,
         templateName: workspace.template?.title,
         templateSections,
+        minimumObjectives: findObjectiveSection(templateSections) ? workspace.template.objectiveMinimums.minimumObjectives : undefined,
+        minimumSections: workspace.template.objectiveMinimums.minimumSections,
         sourceMaterials,
         relatedInstructionArtifacts: buildRelatedArtifactsSummary(workspace.relatedInstructionArtifacts),
         constraints: [
@@ -1459,6 +1442,8 @@ export const generateTeacherLessonPlanDraft = action({
           previousDraft: (failed.text ?? failed.message).slice(0, MAX_FAILED_RESPONSE_REPAIR_CHARS),
           validationErrors: validationIssues,
           templateSections,
+          minimumObjectives: findObjectiveSection(templateSections) ? workspace.template.objectiveMinimums.minimumObjectives : undefined,
+          minimumSections: workspace.template.objectiveMinimums.minimumSections,
         });
         result = await generateTemplateObject(model, narrowRepairPrompt(repairPrompt));
       }
@@ -1468,7 +1453,8 @@ export const generateTeacherLessonPlanDraft = action({
         generatedObject = normalizeGeneratedTemplateDraft(
           result.object,
           templateSections,
-          effectiveTopicLabel
+          effectiveTopicLabel,
+          workspace.template.objectiveMinimums
         );
       } catch (validationError) {
         if (
@@ -1485,16 +1471,19 @@ export const generateTeacherLessonPlanDraft = action({
           previousDraft: result.object,
           validationErrors: validationIssues,
           templateSections,
+          minimumObjectives: findObjectiveSection(templateSections) ? workspace.template.objectiveMinimums.minimumObjectives : undefined,
+          minimumSections: workspace.template.objectiveMinimums.minimumSections,
         });
         result = await generateTemplateObject(model, narrowRepairPrompt(repairPrompt));
         generatedObject = normalizeGeneratedTemplateDraft(
           result.object,
           templateSections,
-          effectiveTopicLabel
+          effectiveTopicLabel,
+          workspace.template.objectiveMinimums
         );
       }
 
-      const documentState = renderGeneratedMarkdown(generatedObject);
+      const documentState = renderTemplateBoundMarkdown(generatedObject);
       const plainText = markdownToPlainText(documentState);
       const usage = result.usage as { inputTokens?: number; outputTokens?: number } | undefined;
 

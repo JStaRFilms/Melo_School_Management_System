@@ -25,6 +25,8 @@ export interface DocumentTemplateSectionSummary {
   readonly order: number;
   readonly required: boolean;
   readonly minimumWordCount?: number | null;
+  readonly guidance?: string | null;
+  readonly formatHint?: "paragraph" | "bullets" | "numbered" | "steps" | "mixed" | null;
 }
 
 export interface DocumentPromptContext {
@@ -34,6 +36,8 @@ export interface DocumentPromptContext {
   readonly topic?: string;
   readonly templateName?: string;
   readonly templateSections?: DocumentTemplateSectionSummary[];
+  readonly minimumObjectives?: number;
+  readonly minimumSections?: number;
   readonly sourceMaterials?: DocumentSourceMaterialSummary[];
   readonly relatedInstructionArtifacts?: RelatedInstructionArtifactSummary[];
   readonly revisionNotes?: string;
@@ -69,12 +73,15 @@ function formatContextLines(context: DocumentPromptContext) {
       ]
         .filter(Boolean)
         .join("; ");
-      lines.push(`- sectionId: ${section.id}; label: ${section.label}${details ? ` (${details})` : ""}`);
+      lines.push(`- sectionId: ${section.id}; label: ${section.label}${details ? ` (${details})` : ""}${section.formatHint ? `; format: ${section.formatHint}` : ""}`);
+      if (section.guidance) lines.push(`  Writing guidance: ${section.guidance}`);
     }
   } else {
     lines.push("Template sections: MISSING. Generation must fail before calling the model.");
   }
 
+  if (context.minimumObjectives !== undefined) lines.push(`Include at least ${context.minimumObjectives} distinct list items in the Learning Objectives section when that section is configured.`);
+  if (context.minimumSections !== undefined) lines.push(`Fill at least ${context.minimumSections} distinct template sections with non-empty content.`);
   if (context.revisionNotes) lines.push(`Revision notes: ${context.revisionNotes}`);
 
   if (context.constraints?.length) {
@@ -197,6 +204,8 @@ export function buildTemplateRepairPrompt(args: {
   previousDraft: unknown;
   validationErrors: string[];
   templateSections: DocumentTemplateSectionSummary[];
+  minimumObjectives?: number;
+  minimumSections?: number;
 }): Prompt {
   const allowedSections = args.templateSections
     .slice()
@@ -205,7 +214,7 @@ export function buildTemplateRepairPrompt(args: {
       const details = [section.required ? "required" : "optional", section.minimumWordCount ? `minimum ${section.minimumWordCount} words` : null]
         .filter(Boolean)
         .join("; ");
-      return `- sectionId: ${section.id}; label: ${section.label}${details ? ` (${details})` : ""}`;
+      return `- sectionId: ${section.id}; label: ${section.label}${details ? ` (${details})` : ""}${section.formatHint ? `; format: ${section.formatHint}` : ""}${section.guidance ? `; guidance: ${section.guidance}` : ""}`;
     })
     .join("\n");
 
@@ -216,7 +225,9 @@ export function buildTemplateRepairPrompt(args: {
       "Return a complete corrected JSON object only. Do not return a patch, markdown, commentary, or code fence.",
       "Rewrite the full object using the same contract: title, subject, level, topic, sections, and sourceNotes.",
       "Use only the allowed section IDs and exact labels below. Required sections must be present and non-empty.",
-      "Optional sections may be present when useful; omitted optional sections will be left blank by the app.",
+      "Optional sections may be present when useful. If the minimum filled-section rule exceeds the required-section count, include enough optional sections to meet it.",
+      ...(args.minimumSections !== undefined ? [`At least ${args.minimumSections} distinct template sections must contain content.`] : []),
+      ...(args.minimumObjectives !== undefined ? [`If a Learning Objectives section is configured, write at least ${args.minimumObjectives} distinct bulleted or numbered objectives there.`] : []),
       "Do not duplicate section IDs. Do not add unknown section IDs. Do not nest a complete document inside any section.",
       "Keep the corrected JSON compact and concise. Do not repeat the whole draft inside any section.",
       "",
