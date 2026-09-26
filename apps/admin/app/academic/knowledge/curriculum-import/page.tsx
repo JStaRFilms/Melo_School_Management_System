@@ -298,7 +298,7 @@ export default function CurriculumImportPage() {
       .every((u) => checkedUnitIds.has(u._id));
 
   return (
-    <main className="min-h-screen bg-surface-200 lg:h-[calc(100vh-52px)] lg:overflow-hidden flex flex-col">
+    <main className="min-h-screen bg-surface-200 lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col">
       {/* Sleek Top Header with integrated Action Bar */}
       <div className="shrink-0 px-5 py-3 lg:px-8 bg-white border-b border-slate-200/80">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

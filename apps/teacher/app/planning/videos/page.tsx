@@ -302,7 +302,7 @@ export default function TeacherVideosPage() {
   );
 
   return (
-    <div className="relative min-h-screen lg:h-[calc(100vh-64px)] lg:overflow-hidden flex flex-col bg-surface-200/50">
+    <div className="relative min-h-screen lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-surface-200/50">
       <div className="absolute inset-0 bg-surface-200 pointer-events-none" />
 
       <TeacherSheet
