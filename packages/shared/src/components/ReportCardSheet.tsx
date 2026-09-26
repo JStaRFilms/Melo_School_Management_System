@@ -104,7 +104,7 @@ function formatDate(
 
 function formatScore(value: number | null) {
   if (value === null) return "-";
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return value.toFixed(2);
 }
 
 type ReportCardResult = ReportCardSheetData["results"][number];

@@ -83,7 +83,7 @@ function calculateDraftAverage(row: ResultRow, draft: Draft) {
 
 function formatScore(value: number | null) {
   if (value === null) return "—";
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return value.toFixed(2);
 }
 
 function seedDraft(row: ResultRow): Draft {

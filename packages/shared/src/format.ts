@@ -40,5 +40,5 @@ export function formatScoreOrDash(value: number | null): string {
   if (value === null) {
     return "—";
   }
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return value.toFixed(2);
 }
