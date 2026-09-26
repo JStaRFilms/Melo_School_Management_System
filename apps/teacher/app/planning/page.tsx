@@ -179,7 +179,7 @@ export default function PlanningIndexPage() {
       limit: planningWorkLimit,
     } as never
   ) as PlanningWorkResult | PlanningWorkItem[] | undefined;
-  const planningWorkResult = useMemo<PlanningWorkResult | undefined>(() => {
+  const normalizedPlanningWorkResult = useMemo<PlanningWorkResult | undefined>(() => {
     if (!Array.isArray(planningWorkResponse)) return planningWorkResponse;
 
     const subjectCounts = new Map<string, { id: string; name: string; count: number }>();
@@ -197,6 +197,21 @@ export default function PlanningIndexPage() {
       subjectCounts: [...subjectCounts.values()].sort((a, b) => a.name.localeCompare(b.name)),
     };
   }, [planningWorkLimit, planningWorkResponse]);
+  const planningScopeKey = `${workSearchQuery.trim()}\u0000${selectedSubjectFilter}`;
+  const [settledPlanningWork, setSettledPlanningWork] = useState<{
+    scopeKey: string;
+    result: PlanningWorkResult;
+  } | null>(null);
+
+  useEffect(() => {
+    if (normalizedPlanningWorkResult) {
+      setSettledPlanningWork({ scopeKey: planningScopeKey, result: normalizedPlanningWorkResult });
+    }
+  }, [normalizedPlanningWorkResult, planningScopeKey]);
+
+  const planningWorkResult = normalizedPlanningWorkResult
+    ?? (settledPlanningWork?.scopeKey === planningScopeKey ? settledPlanningWork.result : undefined);
+  const planningSummary = planningWorkResult ?? settledPlanningWork?.result;
   const planningWork = planningWorkResult?.items;
 
   useEffect(() => {
@@ -375,7 +390,7 @@ export default function PlanningIndexPage() {
         })
       : null;
 
-  const availableSubjects = planningWorkResult?.subjectCounts ?? [];
+  const availableSubjects = planningSummary?.subjectCounts ?? [];
   const totalAvailableTopics = availableSubjects.reduce((total, subject) => total + subject.count, 0);
   const visiblePlanningWork = planningWork ?? [];
 
@@ -556,8 +571,8 @@ export default function PlanningIndexPage() {
                   stats={[
                     {
                       label: "Active Topics",
-                      value: planningWorkResult
-                        ? `${totalAvailableTopics}${planningWorkResult.totalIsExact ? "" : "+"}`
+                      value: planningSummary
+                        ? `${totalAvailableTopics}${planningSummary.totalIsExact ? "" : "+"}`
                         : 0,
                       icon: <LayoutGrid className="h-4 w-4" />,
                     },
@@ -604,11 +619,11 @@ export default function PlanningIndexPage() {
 
               {/* Subject Filter Tabs */}
               {availableSubjects.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <div className="flex items-center gap-1.5 overflow-x-auto overscroll-x-contain whitespace-nowrap pb-1 pt-1">
                   <button
                     type="button"
                     onClick={() => setSelectedSubjectFilter("all")}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`inline-flex shrink-0 items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       selectedSubjectFilter === "all"
                         ? "bg-slate-950 text-white shadow-2xs font-extrabold"
                         : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -616,8 +631,8 @@ export default function PlanningIndexPage() {
                   >
                     <span>All Subjects</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${selectedSubjectFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-500"}`}>
-                      {planningWorkResult
-                        ? `${totalAvailableTopics}${planningWorkResult.totalIsExact ? "" : "+"}`
+                      {planningSummary
+                        ? `${totalAvailableTopics}${planningSummary.totalIsExact ? "" : "+"}`
                         : 0}
                     </span>
                   </button>
@@ -627,7 +642,7 @@ export default function PlanningIndexPage() {
                       key={sub.id}
                       type="button"
                       onClick={() => setSelectedSubjectFilter(sub.id)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`inline-flex shrink-0 items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         selectedSubjectFilter === sub.id
                           ? "bg-slate-950 text-white shadow-2xs font-extrabold"
                           : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
