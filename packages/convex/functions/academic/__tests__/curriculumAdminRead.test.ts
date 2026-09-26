@@ -6,7 +6,7 @@ import * as curriculumAdminRead from "../curriculumAdminRead";
 
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob("../../../**/*.ts");
-const listContext = curriculumAdminRead.listCurriculumImportContext as unknown as FunctionReference<"query", "public", Record<string, never>, unknown>;
+const listContext = curriculumAdminRead.listCurriculumImportContext as unknown as FunctionReference<"query", "public", { sourceQuery?: string; sourceOrder?: "newest" | "oldest" }, unknown>;
 const admin = { subject: "admin-auth", issuer: "https://legacy-auth.test" };
 
 describe("curriculum admin read", () => {
@@ -21,16 +21,43 @@ describe("curriculum admin read", () => {
       const material = async (title: string, ready: boolean, createdAt: number, searchStatus: "not_indexed" | "indexed" = "indexed") => ctx.db.insert("knowledgeMaterials", { schoolId, ownerUserId: userId, ownerRole: "admin", sourceType: "imported_curriculum", visibility: "staff_shared", reviewStatus: ready ? "approved" : "pending_review", title, level: "JSS 1", topicLabel: "Scheme", searchStatus, searchText: title, processingStatus: ready ? "ready" : "queued", ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1, indexedAt: searchStatus === "indexed" ? createdAt : null, createdAt, updatedAt: createdAt, createdBy: userId, updatedBy: userId });
       for (let index = 0; index < 151; index += 1) await material(`Older ${index}`, false, index + 1);
       for (let index = 0; index < 61; index += 1) await material(`Unindexed ${index}`, true, index + 160, "not_indexed");
+      const olderReadyMaterialId = await material("Earlier ready source", true, 190);
       const readyMaterialId = await material("Late ready source", true, 200);
       const archivedMaterialId = await material("Exact historical source", false, 201);
       const importRecord = async (materialId: typeof readyMaterialId, updatedAt: number) => ctx.db.insert("curriculumImports", { schoolId, materialId, subjectId, level: "JSS 1", termId, status: "ready_for_review", requestedBy: userId, promptVersion: "v1", schemaVersion: "v1", proposedUnitCount: 1, approvedUnitCount: 0, rejectedUnitCount: 0, duplicateWarningCount: 0, createdAt: updatedAt, updatedAt });
       const olderImportId = await importRecord(archivedMaterialId, 10);
       const newerImportId = await importRecord(readyMaterialId, 20);
-      return { readyMaterialId, olderImportId, newerImportId };
+      return { olderReadyMaterialId, readyMaterialId, olderImportId, newerImportId };
     });
-    const result = await t.withIdentity(admin).query(listContext, {}) as { sources: Array<{ _id: string; title: string }>; imports: Array<{ _id: string; sourceLabel: string }> };
-    expect(result.sources).toContainEqual(expect.objectContaining({ _id: expected.readyMaterialId, title: "Late ready source" }));
+    const result = await t.withIdentity(admin).query(listContext, { sourceQuery: "", sourceOrder: "newest" }) as { sources: Array<{ _id: string; title: string; createdAt: number }>; imports: Array<{ _id: string; sourceLabel: string }> };
+    const existingAdmin = await t.withIdentity(admin).query(listContext, {}) as typeof result;
+    const oldestFirst = await t.withIdentity(admin).query(listContext, { sourceQuery: "", sourceOrder: "oldest" }) as typeof result;
+    const searchResult = await t.withIdentity(admin).query(listContext, { sourceQuery: "Late ready", sourceOrder: "newest" }) as typeof result;
+    expect(existingAdmin).toEqual(result);
+    expect(result.sources.map((item) => item._id)).toEqual([expected.readyMaterialId, expected.olderReadyMaterialId]);
+    expect(result.sources[0]).toEqual(expect.objectContaining({ title: "Late ready source", createdAt: 200 }));
+    expect(oldestFirst.sources.map((item) => item._id)).toEqual([expected.olderReadyMaterialId, expected.readyMaterialId]);
+    expect(searchResult.sources).toContainEqual(expect.objectContaining({ _id: expected.readyMaterialId, title: "Late ready source" }));
     expect(result.imports.map((item) => item._id)).toEqual([expected.newerImportId, expected.olderImportId]);
     expect(result.imports.find((item) => item._id === expected.olderImportId)?.sourceLabel).toBe("Exact historical source");
+  });
+
+  it("limits search-index matches and sorts the returned set", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const schoolId = await ctx.db.insert("schools", { name: "Alpha", slug: "alpha", createdAt: 1, updatedAt: 1 });
+      const userId = await ctx.db.insert("users", { schoolId, authId: "admin-auth", name: "Admin", email: "admin@test", role: "admin", createdAt: 1, updatedAt: 1 });
+      for (let index = 0; index < 65; index += 1) {
+        const title = `Geometry reference ${index}`;
+        await ctx.db.insert("knowledgeMaterials", { schoolId, ownerUserId: userId, ownerRole: "admin", sourceType: "imported_curriculum", visibility: "staff_shared", reviewStatus: "approved", title, level: "JSS 1", topicLabel: "Scheme", searchStatus: "indexed", searchText: title, processingStatus: "ready", ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1, indexedAt: index, createdAt: index, updatedAt: index, createdBy: userId, updatedBy: userId });
+      }
+    });
+    const newest = await t.withIdentity(admin).query(listContext, { sourceQuery: "Geometry reference", sourceOrder: "newest" }) as { sources: Array<{ _id: string; createdAt: number }> };
+    const oldest = await t.withIdentity(admin).query(listContext, { sourceQuery: "Geometry reference", sourceOrder: "oldest" }) as typeof newest;
+    const noMatch = await t.withIdentity(admin).query(listContext, { sourceQuery: "zzzznonexistentcurriculum" }) as typeof newest;
+    expect(newest.sources).toHaveLength(60);
+    expect(oldest.sources.map((source) => source._id)).toEqual(newest.sources.map((source) => source._id).reverse());
+    expect(newest.sources[0].createdAt).toBeGreaterThan(newest.sources[59].createdAt);
+    expect(noMatch.sources).toEqual([]);
   });
 });

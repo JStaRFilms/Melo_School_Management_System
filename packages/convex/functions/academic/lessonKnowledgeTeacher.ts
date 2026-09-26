@@ -139,6 +139,8 @@ const lessonLibraryTopicValidator = v.object({
   status: v.union(v.literal("draft"), v.literal("active"), v.literal("retired")),
 });
 
+const MAX_PLANNING_TOPIC_SCOPE = 1_000;
+
 const teacherPlanningWorkItemValidator = v.object({
   topicId: v.id("knowledgeTopics"),
   topicTitle: v.string(),
@@ -828,13 +830,23 @@ export const listTeacherPlanningTopicWork = query({
     termId: v.optional(v.id("academicTerms")),
     limit: v.optional(v.number()),
   },
-  returns: v.array(teacherPlanningWorkItemValidator),
+  returns: v.object({
+    items: v.array(teacherPlanningWorkItemValidator),
+    totalCount: v.number(),
+    totalIsExact: v.boolean(),
+    hasMore: v.boolean(),
+    subjectCounts: v.array(v.object({
+      id: v.id("subjects"),
+      name: v.string(),
+      count: v.number(),
+    })),
+  }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherLibraryAccess(actor);
 
-    const limit = Math.min(Math.max(args.limit ?? 24, 1), 80);
+    const limit = Math.min(Math.max(args.limit ?? 18, 1), MAX_PLANNING_TOPIC_SCOPE);
     const search = normalizeKnowledgeSearchQuery(args.searchQuery ?? "");
     const levelFilter = normalizeOptionalText(args.level);
     const assignableClassIds = actor.isSchoolAdmin || actor.role === "admin"
@@ -868,18 +880,32 @@ export const listTeacherPlanningTopicWork = query({
       }
     }
 
-    const topics = args.subjectId && levelFilter && args.termId
-      ? await ctx.db.query("knowledgeTopics").withIndex(
-          "by_school_and_subject_and_level_and_term_and_status",
-          (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId!).eq("level", levelFilter).eq("termId", args.termId!).eq("status", "active"),
-        ).take(limit)
-      : await ctx.db.query("knowledgeTopics").withIndex(
-          "by_school_and_status",
-          (q) => q.eq("schoolId", schoolId).eq("status", "active"),
-        ).take(300);
+    const topics = search
+      ? await ctx.db.query("knowledgeTopics").withSearchIndex("search_search_text", (q) => {
+          let topicSearch = q.search("searchText", search).eq("schoolId", schoolId).eq("status", "active");
+          if (args.subjectId) topicSearch = topicSearch.eq("subjectId", args.subjectId);
+          if (args.termId) topicSearch = topicSearch.eq("termId", args.termId);
+          return topicSearch;
+        }).take(MAX_PLANNING_TOPIC_SCOPE + 1)
+      : args.subjectId && levelFilter && args.termId
+        ? await ctx.db.query("knowledgeTopics").withIndex(
+            "by_school_and_subject_and_level_and_term_and_status",
+            (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId!).eq("level", levelFilter).eq("termId", args.termId!).eq("status", "active"),
+          ).order("desc").take(MAX_PLANNING_TOPIC_SCOPE + 1)
+        : args.subjectId
+          ? await ctx.db.query("knowledgeTopics").withIndex(
+              "by_school_and_subject_and_status",
+              (q) => q.eq("schoolId", schoolId).eq("subjectId", args.subjectId!).eq("status", "active"),
+            ).order("desc").take(MAX_PLANNING_TOPIC_SCOPE + 1)
+          : await ctx.db.query("knowledgeTopics").withIndex(
+              "by_school_and_status",
+              (q) => q.eq("schoolId", schoolId).eq("status", "active"),
+            ).order("desc").take(MAX_PLANNING_TOPIC_SCOPE + 1);
+    const topicScopeIsTruncated = topics.length > MAX_PLANNING_TOPIC_SCOPE;
+    const scopedTopics = topics.slice(0, MAX_PLANNING_TOPIC_SCOPE);
 
-    const allSubjectIds = [...new Set(topics.map((t) => String(t.subjectId)))];
-    const allTermIds = [...new Set(topics.map((t) => String(t.termId)))];
+    const allSubjectIds = [...new Set(scopedTopics.map((t) => String(t.subjectId)))];
+    const allTermIds = [...new Set(scopedTopics.map((t) => String(t.termId)))];
     const [preSubjects, preTerms] = await Promise.all([
       Promise.all(allSubjectIds.map((id) => ctx.db.get(id as Id<"subjects">))),
       Promise.all(allTermIds.map((id) => ctx.db.get(id as Id<"academicTerms">))),
@@ -889,26 +915,21 @@ export const listTeacherPlanningTopicWork = query({
     const termMap = new Map<string, Doc<"academicTerms"> | null>();
     allTermIds.forEach((id, index) => termMap.set(id, preTerms[index] as Doc<"academicTerms"> | null));
 
-    const filteredTopics = topics.filter((topic) => {
-      if (args.subjectId && String(topic.subjectId) !== String(args.subjectId)) return false;
-      if (args.termId && String(topic.termId) !== String(args.termId)) return false;
-      if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) return false;
-
-      if (search) {
-        const subjectDoc = subjectMap.get(String(topic.subjectId));
-        const termDoc = termMap.get(String(topic.termId));
-        const searchable = `${topic.title} ${topic.summary ?? ""} ${subjectDoc?.name ?? ""} ${subjectDoc?.code ?? ""} ${topic.level} ${termDoc?.name ?? ""}`;
-        if (!normalizeKnowledgeSearchQuery(searchable).includes(search)) return false;
-      }
-
+    const canAccessTopic = (topic: Doc<"knowledgeTopics">) => {
       if (actor.isSchoolAdmin || actor.role === "admin") return true;
       const classForLevel = levelToClass.get(normalizeLevelKey(topic.level));
       if (!classForLevel) return false;
       const subjectsForClass = assignableSubjectIdsByClass.get(String(classForLevel._id));
       return subjectsForClass?.has(String(topic.subjectId)) ?? false;
+    };
+    const filteredTopics = scopedTopics.filter((topic) => {
+      if (args.termId && String(topic.termId) !== String(args.termId)) return false;
+      if (levelFilter && !levelMatchesKnowledgeScope(topic.level, levelFilter)) return false;
+      return canAccessTopic(topic);
     });
 
-    const rows = await Promise.all(filteredTopics.map(async (topic) => {
+    const visibleTopics = filteredTopics.slice(0, limit);
+    const rows = await Promise.all(visibleTopics.map(async (topic) => {
       const [directMaterials, artifacts, banks, approvedCurriculumUnits] = await Promise.all([
         ctx.db.query("knowledgeMaterials").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(80),
         ctx.db.query("instructionArtifacts").withIndex("by_school_and_topic", (q) => q.eq("schoolId", schoolId).eq("topicId", topic._id)).take(40),
@@ -993,9 +1014,30 @@ export const listTeacherPlanningTopicWork = query({
       };
     }));
 
-    return rows
-      .sort((a, b) => b.latestUpdatedAt - a.latestUpdatedAt)
-      .slice(0, limit);
+    const allowedSubjects = await readTeacherLibrarySubjects(ctx, actor);
+    const subjectScopes = await Promise.all(allowedSubjects.map(async (subject) => {
+      const subjectTopics = await ctx.db.query("knowledgeTopics").withIndex(
+        "by_school_and_subject_and_status",
+        (q) => q.eq("schoolId", schoolId).eq("subjectId", subject.id as Id<"subjects">).eq("status", "active"),
+      ).take(MAX_PLANNING_TOPIC_SCOPE + 1);
+      return {
+        id: subject.id as Id<"subjects">,
+        name: subject.name,
+        count: subjectTopics.slice(0, MAX_PLANNING_TOPIC_SCOPE).filter(canAccessTopic).length,
+        isTruncated: subjectTopics.length > MAX_PLANNING_TOPIC_SCOPE,
+      };
+    }));
+
+    return {
+      items: rows.sort((a, b) => b.latestUpdatedAt - a.latestUpdatedAt),
+      totalCount: filteredTopics.length,
+      totalIsExact: !topicScopeIsTruncated && subjectScopes.every((subject) => !subject.isTruncated),
+      hasMore: filteredTopics.length > limit,
+      subjectCounts: subjectScopes
+        .filter((subject) => subject.count > 0)
+        .map(({ id, name, count }) => ({ id, name, count }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
   },
 });
 
