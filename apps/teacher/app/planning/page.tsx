@@ -171,13 +171,31 @@ export default function PlanningIndexPage() {
       : ("skip" as never)
   ) as TopicOption[] | undefined;
   
-  const planningWorkResult = useQuery(
+  const planningWorkResponse = useQuery(
     "functions/academic/lessonKnowledgeTeacher:listTeacherPlanningTopicWork" as never,
     {
       searchQuery: workSearchQuery.trim() || undefined,
       limit: planningWorkLimit,
     } as never
-  ) as PlanningWorkResult | undefined;
+  ) as PlanningWorkResult | PlanningWorkItem[] | undefined;
+  const planningWorkResult = useMemo<PlanningWorkResult | undefined>(() => {
+    if (!Array.isArray(planningWorkResponse)) return planningWorkResponse;
+
+    const subjectCounts = new Map<string, { id: string; name: string; count: number }>();
+    for (const item of planningWorkResponse) {
+      const subject = subjectCounts.get(item.subjectId);
+      if (subject) subject.count += 1;
+      else subjectCounts.set(item.subjectId, { id: item.subjectId, name: item.subjectName, count: 1 });
+    }
+
+    return {
+      items: planningWorkResponse,
+      totalCount: planningWorkResponse.length,
+      totalIsExact: false,
+      hasMore: planningWorkResponse.length === planningWorkLimit,
+      subjectCounts: [...subjectCounts.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }, [planningWorkLimit, planningWorkResponse]);
   const planningWork = planningWorkResult?.items;
 
   useEffect(() => {
