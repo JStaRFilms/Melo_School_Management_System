@@ -4,6 +4,7 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
 import { draftRegistry, isDraftFormKey, parseDraftPayload, type DraftFormKey } from "../../../shared/src/drafts/registry";
 import { getAuthenticatedSchoolMembership } from "./auth";
+import { resolveDraftExpiryDate } from "../foundation/draftGuard";
 import { recordAuditEventHelper } from "./audit";
 import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 
@@ -44,7 +45,7 @@ async function owned(ctx: MutationCtx, args: { schoolId: Id<"schools">; draftId:
   if (draft.submissionLease && draft.submissionLease !== args.submissionLease)
     fail("CONFLICT", "This draft has a submission in progress.");
   if (draft.schemaVersion !== undefined && draft.schemaVersion !== policy.version) fail("SCHEMA_REJECTED", "Unsupported draft version.");
-  const expiresAt = draft.expiresAt ?? draft.createdAt + policy.retentionDays * 86400000;
+  const expiresAt = resolveDraftExpiryDate(draft, policy.retentionDays);
   if (expiresAt <= Date.now()) fail("EXPIRED", "This draft has expired.");
   const revision = draft.revision ?? 0;
   if (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision !== revision) fail("CONFLICT", "Conflict detected: load the latest draft before saving.");
@@ -63,7 +64,7 @@ function isRecoverableDraft(draft: Doc<"formDrafts">, now: number) {
   if (draft.status !== "active" || !isDraftFormKey(draft.formKey)) return false;
   const policy = draftRegistry[draft.formKey];
   if (draft.schemaVersion !== undefined && draft.schemaVersion !== policy.version) return false;
-  if ((draft.expiresAt ?? draft.createdAt + policy.retentionDays * 86400000) <= now) return false;
+  if (resolveDraftExpiryDate(draft, policy.retentionDays) <= now) return false;
   try { parseDraftPayload(draft.formKey, draft.payload); return true; }
   catch { return false; }
 }
@@ -120,7 +121,7 @@ export const getFormDraft = query({
     if (rows.length > 1) fail("DATA_INTEGRITY", "Multiple active drafts require reviewed remediation.");
     const draft = rows[0];
     if (!draft || (draft.schemaVersion !== undefined && draft.schemaVersion !== policy.version)) return null;
-    const expiresAt = draft.expiresAt ?? draft.createdAt + policy.retentionDays * 86400000;
+    const expiresAt = resolveDraftExpiryDate(draft, policy.retentionDays);
     if (expiresAt <= Date.now()) return null;
     try {
       const payload = parseDraftPayload(formKey, draft.payload);

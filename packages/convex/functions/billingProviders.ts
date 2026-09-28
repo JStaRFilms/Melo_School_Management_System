@@ -11,6 +11,7 @@ import {
   normalizeBillingText,
 } from "./billingShared";
 import { createBillingGatewayAdapter } from "./billingGateway";
+import { isProviderReadyForPayments } from "./foundation/billingGate";
 import { getAuthenticatedSchoolMembership } from "./academic/auth";
 
 type PaystackMode = "test" | "live";
@@ -454,7 +455,11 @@ export const resolveSchoolPaystackGatewaySecretContextInternal = internalQuery({
     }
 
     if (args.purpose === "payment_initialization") {
-      const canUseForPayments = allowOnlinePayments && hasActiveSecret && (record?.status === "ready" || record?.status === "rotation_pending");
+      const canUseForPayments = isProviderReadyForPayments({
+        allowOnlinePayments,
+        hasActiveSecret,
+        providerStatus: record?.status,
+      });
       if (!canUseForPayments || !secretKey) {
         const state = buildModeState({
           mode: args.mode,

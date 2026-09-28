@@ -246,7 +246,7 @@ export function AdminRosterGrid({
                 <div className="flex items-center gap-2">
                    <div className="text-right">
                      <div className="text-[14px] font-black text-slate-950 italic leading-none">
-                       {derived.total !== null ? `${derived.total.toFixed(0)}%` : "--"}
+                       {derived.total !== null ? `${derived.total.toFixed(2)}%` : "--"}
                      </div>
                    </div>
                    <div className="w-6 h-6 rounded bg-white flex items-center justify-center text-[10px] font-black" style={{color: derived.gradeColor}}>

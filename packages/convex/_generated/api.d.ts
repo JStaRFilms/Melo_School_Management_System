@@ -42,6 +42,17 @@ import type * as functions_academic_curriculumReadinessHelpers from "../function
 import type * as functions_academic_curriculumReviewLifecycle from "../functions/academic/curriculumReviewLifecycle.js";
 import type * as functions_academic_demoAssets from "../functions/academic/demoAssets.js";
 import type * as functions_academic_demoData from "../functions/academic/demoData.js";
+import type * as functions_academic_demoEmptyDeployment from "../functions/academic/demoEmptyDeployment.js";
+import type * as functions_academic_demoPreflight from "../functions/academic/demoPreflight.js";
+import type * as functions_academic_demoPreflightAction from "../functions/academic/demoPreflightAction.js";
+import type * as functions_academic_demoResetAction from "../functions/academic/demoResetAction.js";
+import type * as functions_academic_demoResetAuth from "../functions/academic/demoResetAuth.js";
+import type * as functions_academic_demoResetDeletion from "../functions/academic/demoResetDeletion.js";
+import type * as functions_academic_demoResetDigest from "../functions/academic/demoResetDigest.js";
+import type * as functions_academic_demoResetInventory from "../functions/academic/demoResetInventory.js";
+import type * as functions_academic_demoResetSeedAction from "../functions/academic/demoResetSeedAction.js";
+import type * as functions_academic_demoResetStorage from "../functions/academic/demoResetStorage.js";
+import type * as functions_academic_docSelection from "../functions/academic/docSelection.js";
 import type * as functions_academic_documentGeneration from "../functions/academic/documentGeneration.js";
 import type * as functions_academic_drafts from "../functions/academic/drafts.js";
 import type * as functions_academic_events from "../functions/academic/events.js";
@@ -96,6 +107,7 @@ import type * as functions_academic_schoolBranding from "../functions/academic/s
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
 import type * as functions_academic_seedRunnerSecurity from "../functions/academic/seedRunnerSecurity.js";
+import type * as functions_academic_sessionScope from "../functions/academic/sessionScope.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_storageEntitlementProvisioning from "../functions/academic/storageEntitlementProvisioning.js";
 import type * as functions_academic_studentClassMembership from "../functions/academic/studentClassMembership.js";
@@ -104,6 +116,7 @@ import type * as functions_academic_studentNameCompat from "../functions/academi
 import type * as functions_academic_subjectAggregationHelpers from "../functions/academic/subjectAggregationHelpers.js";
 import type * as functions_academic_subjectAggregationSelectionHelpers from "../functions/academic/subjectAggregationSelectionHelpers.js";
 import type * as functions_academic_subjectAggregations from "../functions/academic/subjectAggregations.js";
+import type * as functions_academic_teacherAccess from "../functions/academic/teacherAccess.js";
 import type * as functions_academic_teacherSelectors from "../functions/academic/teacherSelectors.js";
 import type * as functions_academic_tenantPurge from "../functions/academic/tenantPurge.js";
 import type * as functions_academic_tenantPurgeAction from "../functions/academic/tenantPurgeAction.js";
@@ -133,14 +146,19 @@ import type * as functions_billingWebhooks from "../functions/billingWebhooks.js
 import type * as functions_foundation_applicationLinks from "../functions/foundation/applicationLinks.js";
 import type * as functions_foundation_auth from "../functions/foundation/auth.js";
 import type * as functions_foundation_bankInstructions from "../functions/foundation/bankInstructions.js";
+import type * as functions_foundation_billingGate from "../functions/foundation/billingGate.js";
+import type * as functions_foundation_boundedRead from "../functions/foundation/boundedRead.js";
 import type * as functions_foundation_brandingContract from "../functions/foundation/brandingContract.js";
 import type * as functions_foundation_commercialContract from "../functions/foundation/commercialContract.js";
 import type * as functions_foundation_contracts from "../functions/foundation/contracts.js";
 import type * as functions_foundation_documentAccess from "../functions/foundation/documentAccess.js";
+import type * as functions_foundation_draftGuard from "../functions/foundation/draftGuard.js";
 import type * as functions_foundation_groupDefaultsContract from "../functions/foundation/groupDefaultsContract.js";
+import type * as functions_foundation_normalize from "../functions/foundation/normalize.js";
 import type * as functions_foundation_paidUsageGate from "../functions/foundation/paidUsageGate.js";
 import type * as functions_foundation_paymentDispatch from "../functions/foundation/paymentDispatch.js";
 import type * as functions_foundation_reportCardContract from "../functions/foundation/reportCardContract.js";
+import type * as functions_foundation_tenantScope from "../functions/foundation/tenantScope.js";
 import type * as functions_foundation_usageContract from "../functions/foundation/usageContract.js";
 import type * as functions_platform_auth from "../functions/platform/auth.js";
 import type * as functions_platform_bootstrap from "../functions/platform/bootstrap.js";
@@ -149,6 +167,7 @@ import type * as functions_platform_provisioningHelpers from "../functions/platf
 import type * as functions_platform_schoolAdminEmailUpdate from "../functions/platform/schoolAdminEmailUpdate.js";
 import type * as functions_portal from "../functions/portal.js";
 import type * as http from "../http.js";
+import type * as schemaCoverage from "../schemaCoverage.js";
 
 import type {
   ApiFromModules,
@@ -191,6 +210,17 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/curriculumReviewLifecycle": typeof functions_academic_curriculumReviewLifecycle;
   "functions/academic/demoAssets": typeof functions_academic_demoAssets;
   "functions/academic/demoData": typeof functions_academic_demoData;
+  "functions/academic/demoEmptyDeployment": typeof functions_academic_demoEmptyDeployment;
+  "functions/academic/demoPreflight": typeof functions_academic_demoPreflight;
+  "functions/academic/demoPreflightAction": typeof functions_academic_demoPreflightAction;
+  "functions/academic/demoResetAction": typeof functions_academic_demoResetAction;
+  "functions/academic/demoResetAuth": typeof functions_academic_demoResetAuth;
+  "functions/academic/demoResetDeletion": typeof functions_academic_demoResetDeletion;
+  "functions/academic/demoResetDigest": typeof functions_academic_demoResetDigest;
+  "functions/academic/demoResetInventory": typeof functions_academic_demoResetInventory;
+  "functions/academic/demoResetSeedAction": typeof functions_academic_demoResetSeedAction;
+  "functions/academic/demoResetStorage": typeof functions_academic_demoResetStorage;
+  "functions/academic/docSelection": typeof functions_academic_docSelection;
   "functions/academic/documentGeneration": typeof functions_academic_documentGeneration;
   "functions/academic/drafts": typeof functions_academic_drafts;
   "functions/academic/events": typeof functions_academic_events;
@@ -245,6 +275,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
   "functions/academic/seedRunnerSecurity": typeof functions_academic_seedRunnerSecurity;
+  "functions/academic/sessionScope": typeof functions_academic_sessionScope;
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/storageEntitlementProvisioning": typeof functions_academic_storageEntitlementProvisioning;
   "functions/academic/studentClassMembership": typeof functions_academic_studentClassMembership;
@@ -253,6 +284,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/subjectAggregationHelpers": typeof functions_academic_subjectAggregationHelpers;
   "functions/academic/subjectAggregationSelectionHelpers": typeof functions_academic_subjectAggregationSelectionHelpers;
   "functions/academic/subjectAggregations": typeof functions_academic_subjectAggregations;
+  "functions/academic/teacherAccess": typeof functions_academic_teacherAccess;
   "functions/academic/teacherSelectors": typeof functions_academic_teacherSelectors;
   "functions/academic/tenantPurge": typeof functions_academic_tenantPurge;
   "functions/academic/tenantPurgeAction": typeof functions_academic_tenantPurgeAction;
@@ -282,14 +314,19 @@ declare const fullApi: ApiFromModules<{
   "functions/foundation/applicationLinks": typeof functions_foundation_applicationLinks;
   "functions/foundation/auth": typeof functions_foundation_auth;
   "functions/foundation/bankInstructions": typeof functions_foundation_bankInstructions;
+  "functions/foundation/billingGate": typeof functions_foundation_billingGate;
+  "functions/foundation/boundedRead": typeof functions_foundation_boundedRead;
   "functions/foundation/brandingContract": typeof functions_foundation_brandingContract;
   "functions/foundation/commercialContract": typeof functions_foundation_commercialContract;
   "functions/foundation/contracts": typeof functions_foundation_contracts;
   "functions/foundation/documentAccess": typeof functions_foundation_documentAccess;
+  "functions/foundation/draftGuard": typeof functions_foundation_draftGuard;
   "functions/foundation/groupDefaultsContract": typeof functions_foundation_groupDefaultsContract;
+  "functions/foundation/normalize": typeof functions_foundation_normalize;
   "functions/foundation/paidUsageGate": typeof functions_foundation_paidUsageGate;
   "functions/foundation/paymentDispatch": typeof functions_foundation_paymentDispatch;
   "functions/foundation/reportCardContract": typeof functions_foundation_reportCardContract;
+  "functions/foundation/tenantScope": typeof functions_foundation_tenantScope;
   "functions/foundation/usageContract": typeof functions_foundation_usageContract;
   "functions/platform/auth": typeof functions_platform_auth;
   "functions/platform/bootstrap": typeof functions_platform_bootstrap;
@@ -298,6 +335,7 @@ declare const fullApi: ApiFromModules<{
   "functions/platform/schoolAdminEmailUpdate": typeof functions_platform_schoolAdminEmailUpdate;
   "functions/portal": typeof functions_portal;
   http: typeof http;
+  schemaCoverage: typeof schemaCoverage;
 }>;
 
 /**

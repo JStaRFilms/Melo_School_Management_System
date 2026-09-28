@@ -10,8 +10,8 @@ function localOrigin(name, fallback) {
   return url.origin;
 }
 
-const ADMIN_ORIGIN = localOrigin("E2E_ADMIN_ORIGIN", "http://localhost:3002");
-const APPLY_ORIGIN = localOrigin("E2E_APPLY_ORIGIN", "http://localhost:3004");
+const ADMIN_ORIGIN = localOrigin("E2E_ADMIN_ORIGIN", "http://localhost:3102");
+const APPLY_ORIGIN = localOrigin("E2E_APPLY_ORIGIN", "http://localhost:3104");
 const SCHOOL_SLUG = process.env.E2E_ADMISSIONS_SCHOOL_SLUG;
 
 if (ADMIN_ORIGIN === APPLY_ORIGIN) {

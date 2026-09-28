@@ -1,6 +1,7 @@
 import { mutation, query } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
-import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
+import { getAuthenticatedSchoolMembership } from "./auth";
+import { requireCapability } from "./rbac";
 import { normalizeHumanName } from "@school/shared/name-format";
 
 function normalizeEventTitle(value: string) {
@@ -44,9 +45,9 @@ export const listEvents = query({
     })
   ),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { schoolId } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "academic.classes.manage");
 
     const events = await ctx.db
       .query("schoolEvents")
@@ -84,9 +85,9 @@ export const createEvent = mutation({
   },
   returns: v.id("schoolEvents"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "academic.classes.manage");
 
     const title = normalizeEventTitle(args.title);
     const description = normalizeOptionalEventText(args.description);
@@ -122,9 +123,9 @@ export const updateEvent = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "academic.classes.manage");
 
     const event = await ctx.db.get(args.eventId);
     if (!event || event.schoolId !== schoolId || event.isArchived) {
@@ -163,9 +164,9 @@ export const archiveEvent = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "academic.classes.manage");
 
     const event = await ctx.db.get(args.eventId);
     if (!event || event.schoolId !== schoolId) {
@@ -194,9 +195,9 @@ export const restoreEvent = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } =
+    const { userId, schoolId } =
       await getAuthenticatedSchoolMembership(ctx, { capability: "academic.classes.manage" });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "academic.classes.manage");
 
     const event = await ctx.db.get(args.eventId);
     if (!event || event.schoolId !== schoolId) {

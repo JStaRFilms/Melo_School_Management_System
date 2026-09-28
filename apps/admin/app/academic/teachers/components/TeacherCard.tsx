@@ -2,6 +2,7 @@
 
 import { Archive } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { Avatar } from "@school/shared";
 import type { TeacherRecord } from "@/types";
 
 interface TeacherCardProps {
@@ -17,12 +18,6 @@ export function TeacherCard({
   onSelect,
   onArchive,
 }: TeacherCardProps) {
-  const initials = teacher.name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part: string) => part.charAt(0).toUpperCase())
-    .join("");
   const formattedDate = new Date(teacher.createdAt).toLocaleDateString(undefined, {
     month: "short",
     year: "numeric",
@@ -47,11 +42,15 @@ export function TeacherCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${
-            isSelected ? "bg-slate-950 text-white shadow-sm" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
-          }`}>
-            {initials}
-          </div>
+          <Avatar
+            name={teacher.name}
+            density="md"
+            fallback=""
+            roundedClass="rounded-lg"
+            className={`text-xs font-bold transition-colors ${
+              isSelected ? "bg-slate-950 text-white shadow-sm" : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
+            }`}
+          />
           <div className="min-w-0 space-y-0">
             <h4 className="font-display text-sm font-bold tracking-tight text-slate-950 truncate">
               {teacher.name}

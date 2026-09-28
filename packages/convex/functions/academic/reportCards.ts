@@ -15,8 +15,10 @@ import { v, ConvexError, type Infer } from "convex/values";
 import {
   assertAdminForSchool,
   getAuthenticatedSchoolMembership,
-  teacherHasClassAccess,
 } from "./auth";
+import {
+  teacherHasClassAccess,
+} from "./teacherAccess";
 import {
   formatClassDisplayName,
   normalizeHumanName,
@@ -45,6 +47,7 @@ import {
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { pickMostRecentDoc } from "./docSelection";
 
 const DEFAULT_CA_MAX = 20;
 const DEFAULT_EXAM_MAX = 40;
@@ -84,20 +87,6 @@ function normalizeOptionalComment(value: string | null | undefined) {
     );
   }
   return trimmed;
-}
-
-function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>(
-  docs: T[]
-) {
-  return docs.reduce<T | null>((latest, doc) => {
-    if (latest === null) {
-      return doc;
-    }
-
-    const latestTimestamp = latest.updatedAt ?? latest.createdAt ?? 0;
-    const docTimestamp = doc.updatedAt ?? doc.createdAt ?? 0;
-    return docTimestamp > latestTimestamp ? doc : latest;
-  }, null);
 }
 
 function getTermOrderForSession(
@@ -208,7 +197,6 @@ const reportCardBatchStudentValidator = v.object({
   admissionNumber: v.string(),
   passportUrl: v.optional(v.union(v.string(), v.null())),
 });
-
 
 function buildPendingResult(subject: {
   _id: Id<"subjects">;

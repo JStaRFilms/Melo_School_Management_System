@@ -29,6 +29,7 @@ describe("platform school enrollment visibility", () => {
       const now = 1;
       await ctx.db.insert("platformAdmins", {
         authId: platformIdentity.subject,
+        authTokenIdentifier: platformIdentity.tokenIdentifier,
         email: "owner@platform.test",
         name: "Platform Owner",
         isActive: true,
@@ -107,6 +108,7 @@ describe("platform school enrollment visibility", () => {
     await t.run(async (ctx) => {
       await ctx.db.insert("platformAdmins", {
         authId: platformIdentity.subject,
+        authTokenIdentifier: platformIdentity.tokenIdentifier,
         email: "owner@platform.test",
         name: "Platform Owner",
         isActive: true,

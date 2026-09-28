@@ -18,13 +18,13 @@ module.exports = defineConfig({
   webServer: [
     {
       command: "pnpm --filter @school/admin dev",
-      url: "http://localhost:3002/sign-in",
+      url: "http://localhost:3102/sign-in",
       reuseExistingServer: true,
       timeout: 180_000,
     },
     {
       command: "pnpm --filter @school/apply dev",
-      url: `http://localhost:3004/s/${encodeURIComponent(schoolSlug)}`,
+      url: `http://localhost:3104/s/${encodeURIComponent(schoolSlug)}`,
       reuseExistingServer: true,
       timeout: 180_000,
     },
