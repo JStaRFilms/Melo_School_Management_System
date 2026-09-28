@@ -1,7 +1,7 @@
 # EduClearance school transfer network and Melo integration
 
 **Status:** Integration design agreed; not implemented in Melo.
-**Existing product:** `C:/CreativeOS/01_Projects/Code/Personal_Stuff/2026-06-11_EduClearance`, deployed independently at `educlearance.meloschool.com`.
+**Existing product:** [EduClearance](https://github.com/J-StaR-Films-Studios/EduClearance), deployed independently at `educlearance.meloschool.com`.
 
 ## Goal
 
