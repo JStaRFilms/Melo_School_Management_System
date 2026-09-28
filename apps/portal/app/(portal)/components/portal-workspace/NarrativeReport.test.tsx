@@ -14,6 +14,7 @@ describe("issued progress report paper", () => {
       ],
     } }} />);
     expect(screen.getByText("Former class")).toBeTruthy();
+    expect(screen.getByText("2024/25 | Term 2")).toBeTruthy();
     expect(container.querySelector("section p")?.textContent).toBe("Uses colour with care.\nWorks together.");
     expect(screen.getByText("Keeps a steady beat.")).toBeTruthy();
     expect(container.textContent?.indexOf("Art")).toBeLessThan(container.textContent!.indexOf("Music"));

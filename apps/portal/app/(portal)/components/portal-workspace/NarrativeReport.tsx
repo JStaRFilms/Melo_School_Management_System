@@ -26,7 +26,7 @@ export function NarrativeReport({ report }: { report: NonNullable<PortalWorkspac
         <div><dt className="text-slate-500">Student</dt><dd className="font-semibold">{snapshot.studentName}</dd></div>
         <div><dt className="text-slate-500">Admission number</dt><dd>{snapshot.admissionNumber}</dd></div>
         <div><dt className="text-slate-500">Class at issue</dt><dd>{snapshot.className}</dd></div>
-        <div><dt className="text-slate-500">Period</dt><dd>{snapshot.sessionName} · {snapshot.termName}</dd></div>
+        <div><dt className="text-slate-500">Period</dt><dd>{snapshot.sessionName} | {snapshot.termName}</dd></div>
       </dl>
     </header>
     <div className="divide-y divide-slate-200">

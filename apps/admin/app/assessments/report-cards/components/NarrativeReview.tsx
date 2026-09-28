@@ -1,9 +1,10 @@
 "use client";
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { deriveSchoolTheme } from "@school/shared/theme";
 
-type Preview = { status: "draft" | "issued"; issuedAt: number | null; reviewedKey: string | null; snapshot: { schoolName: string; studentName: string; admissionNumber: string; className: string; sessionName: string; termName: string; subjects: { subjectId: string; name: string; comment: string }[] } };
+type Preview = { status: "draft" | "issued"; issuedAt: number | null; reviewedKey: string | null; snapshot: { schoolName: string; primaryColor?: string; accentColor?: string; studentName: string; admissionNumber: string; className: string; sessionName: string; termName: string; subjects: { subjectId: string; name: string; comment: string }[] } };
 export function NarrativeReview({ studentId, classId, sessionId, termId }: { studentId: string; classId: string; sessionId: string; termId: string }) {
   const [message, setMessage] = useState("");
   const [publishing, setPublishing] = useState(false);
@@ -13,12 +14,12 @@ export function NarrativeReview({ studentId, classId, sessionId, termId }: { stu
   const publish = useMutation("functions/academic/narrativeReports:publish" as never);
   const missing = preview?.snapshot.subjects.filter(s => !s.comment.trim()) ?? [];
   return <main className="mx-auto max-w-3xl space-y-6 p-4 pb-24 sm:p-8 print:max-w-none print:p-0">
-    <style>{`@media print { @page { size: A4; margin: 14mm; } body { background: white !important; } main, main * { color: #111827 !important; background: white !important; } main section { break-inside: auto; } main h2 { break-after: avoid; } main section p { orphans: 3; widows: 3; } }`}</style>
+    <style>{`@media print { @page { size: A4; margin: 14mm; } body { background: white !important; } main, main * { color: #111827 !important; background: white !important; } main section { break-inside: auto; } main h2 { break-after: avoid; border-color: #111827 !important; } main section p { orphans: 3; widows: 3; } }`}</style>
     <Link href={`/assessments/report-cards?sessionId=${sessionId}&termId=${termId}&classId=${classId}`} className="print:hidden underline">Back to student selection</Link>
     {!preview ? <p role="status">Loading report review...</p> : <>
-      <div className="rounded-xl border bg-white p-6 print:rounded-none print:border-0 print:p-0 print:text-black">
-        <header className="border-b pb-4"><h1 className="text-2xl font-bold">{preview.snapshot.schoolName}</h1><p>{preview.snapshot.studentName} - {preview.snapshot.admissionNumber}</p><p>{preview.snapshot.className} - {preview.snapshot.sessionName} - {preview.snapshot.termName}</p><p className="mt-2 font-semibold">{preview.status === "draft" ? "Draft, not published - not visible to families" : `Published ${new Date(preview.issuedAt!).toLocaleString()}`}</p></header>
-        <div className="space-y-5 pt-5">{preview.snapshot.subjects.map(subject => <section key={subject.subjectId}><h2 className="font-bold">{subject.name}</h2><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{subject.comment.trim() || "No comment yet"}</p></section>)}</div>
+      <div className="narrative-review-paper rounded-xl border bg-white p-6 print:rounded-none print:border-0 print:p-0 print:text-black" style={deriveSchoolTheme(preview.snapshot.primaryColor, preview.snapshot.accentColor) as CSSProperties}>
+        <header className="border-b pb-4"><p className="mb-3 inline-block rounded px-3 py-1 text-sm font-semibold" style={{ backgroundColor: "var(--school-primary)", color: "var(--school-primary-contrast)" }}>Progress report</p><h1 className="text-2xl font-bold">{preview.snapshot.schoolName}</h1><p>{preview.snapshot.studentName} - {preview.snapshot.admissionNumber}</p><p>{preview.snapshot.className} - {preview.snapshot.sessionName} - {preview.snapshot.termName}</p><p className="mt-2 font-semibold">{preview.status === "draft" ? "Draft, not published - not visible to families" : `Published ${new Date(preview.issuedAt!).toLocaleString()}`}</p></header>
+        <div className="space-y-5 pt-5">{preview.snapshot.subjects.map(subject => <section key={subject.subjectId}><h2 className="border-l-4 pl-3 font-bold" style={{ borderColor: "var(--school-accent)" }}>{subject.name}</h2><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{subject.comment.trim() || "No comment yet"}</p></section>)}</div>
       </div>
       {preview.status === "draft" ? <div className="space-y-3 print:hidden">
         {!preview.snapshot.subjects.length ? <p role="alert">Assign subjects to this class before publishing.</p> : missing.length ? <p role="alert">Missing comments: {missing.map(s => s.name).join(", ")}. Enter each subject comment before publishing.</p> : <p>All subject comments are ready for review.</p>}

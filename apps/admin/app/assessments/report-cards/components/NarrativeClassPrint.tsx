@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
+import { deriveSchoolTheme } from "@school/shared/theme";
 
-type Issued = { issuedAt: number; snapshot: { schoolName: string; studentName: string; admissionNumber: string; className: string; sessionName: string; termName: string; subjects: { subjectId: string; name: string; order: number; comment: string }[] } };
+type Issued = { issuedAt: number; snapshot: { schoolName: string; primaryColor?: string; accentColor?: string; studentName: string; admissionNumber: string; className: string; sessionName: string; termName: string; subjects: { subjectId: string; name: string; order: number; comment: string }[] } };
 
 export function NarrativeClassPrint({ classId, sessionId, termId, onExit }: { classId: string; sessionId: string; termId: string; onExit: () => void }) {
   const batch = useQuery("functions/academic/narrativeReports:getIssuedClassBatch" as never,
@@ -27,6 +28,7 @@ export function NarrativeClassPrint({ classId, sessionId, termId, onExit }: { cl
       .narrative-batch .batch-sheet:last-child { break-after: auto; page-break-after: auto; }
       .narrative-batch .batch-sheet * { color: #111827 !important; background: white !important; }
       .narrative-batch .batch-sheet header, .narrative-batch .batch-sheet h2 { break-after: avoid; }
+      .narrative-batch .batch-sheet h2 { border-color: #111827 !important; }
       .narrative-batch .batch-sheet section { break-inside: auto; }
       .narrative-batch .batch-sheet p { orphans: 3; widows: 3; }
     }`}</style>
@@ -37,16 +39,16 @@ export function NarrativeClassPrint({ classId, sessionId, termId, onExit }: { cl
         {batch.reports.length > 0 && <button type="button" className="rounded border px-4 py-2" onClick={() => window.print()}>Print issued class reports</button>}
       </>}
     </div>
-    {batch?.reports.map((report, index) => <article key={`${report.snapshot.admissionNumber}-${index}`} className="batch-sheet bg-white p-8 text-slate-900">
+    {batch?.reports.map((report, index) => <article key={`${report.snapshot.admissionNumber}-${index}`} className="batch-sheet bg-white p-8 text-slate-900" style={deriveSchoolTheme(report.snapshot.primaryColor, report.snapshot.accentColor) as CSSProperties}>
       <header className="border-b pb-4">
-        <p className="text-sm font-semibold">Progress report</p>
+        <p className="mb-3 inline-block rounded px-3 py-1 text-sm font-semibold" style={{ backgroundColor: "var(--school-primary)", color: "var(--school-primary-contrast)" }}>Progress report</p>
         <h1 className="text-2xl font-bold">{report.snapshot.schoolName}</h1>
         <p>{report.snapshot.studentName} | {report.snapshot.admissionNumber}</p>
         <p>{report.snapshot.className} | {report.snapshot.sessionName} | {report.snapshot.termName}</p>
         <p>Issued {new Date(report.issuedAt).toLocaleDateString("en-GB")}</p>
       </header>
       {report.snapshot.subjects.slice().sort((a, b) => a.order - b.order).map(subject => <section key={subject.subjectId} className="border-b py-4">
-        <h2 className="font-semibold">{subject.name}</h2>
+        <h2 className="border-l-4 pl-3 font-semibold" style={{ borderColor: "var(--school-accent)" }}>{subject.name}</h2>
         <p className="whitespace-pre-wrap break-words leading-relaxed">{subject.comment}</p>
       </section>)}
     </article>)}
