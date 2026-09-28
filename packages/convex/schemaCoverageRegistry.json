@@ -2105,16 +2105,48 @@
     "ownership": "operator-global",
     "reason": "Deployment-level reset reservation. The ordered original 37 file IDs remain after row deletion; candidate and acknowledgment IDs track cleanup, not ownership. START binds one new school and run; FINISH checks their succeeded status and cohort counts before marking complete. Never purge with school data.",
     "references": [
-      { "path": "newRunId", "target": "demoSeedRuns", "optional": true },
-      { "path": "newSchoolId", "target": "schools", "optional": true },
-      { "path": "personIds[]", "target": "persons", "optional": false },
-      { "path": "schoolId", "target": "schools", "optional": false },
-      { "path": "storageAcknowledgedIds[]", "target": "_storage", "optional": true },
-      { "path": "storageCandidateIds[]", "target": "_storage", "optional": false },
-      { "path": "retainedStorageIds[]", "target": "_storage", "optional": false }
+      {
+        "path": "newRunId",
+        "target": "demoSeedRuns",
+        "optional": true
+      },
+      {
+        "path": "newSchoolId",
+        "target": "schools",
+        "optional": true
+      },
+      {
+        "path": "personIds[]",
+        "target": "persons",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "storageAcknowledgedIds[]",
+        "target": "_storage",
+        "optional": true
+      },
+      {
+        "path": "storageCandidateIds[]",
+        "target": "_storage",
+        "optional": false
+      },
+      {
+        "path": "retainedStorageIds[]",
+        "target": "_storage",
+        "optional": false
+      }
     ],
     "bySchool": false,
-    "storage": { "storageAcknowledgedIds[]": "inventory-not-owner", "storageCandidateIds[]": "inventory-not-owner", "retainedStorageIds[]": "inventory-not-owner" },
+    "storage": {
+      "storageAcknowledgedIds[]": "inventory-not-owner",
+      "storageCandidateIds[]": "inventory-not-owner",
+      "retainedStorageIds[]": "inventory-not-owner"
+    },
     "shape": "2211:2b31bc88:d019e432"
   },
   "demoSeedRuns": {
@@ -2751,7 +2783,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "2203:44f05917:43ae6631"
+    "shape": "2651:2f3deb8c:16b33d54"
   },
   "issuedReportCards": {
     "ownership": "direct-indexed",
@@ -3948,6 +3980,20 @@
     "bySchool": true,
     "storage": {},
     "shape": "962:6c3b942:235e9030"
+  },
+  "schoolEnrollmentCounts": {
+    "ownership": "direct-indexed",
+    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "references": [
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "237:c706e429:aa0f5ced"
   },
   "schoolEvents": {
     "ownership": "direct-indexed",
