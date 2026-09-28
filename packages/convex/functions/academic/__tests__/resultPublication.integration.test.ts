@@ -122,8 +122,9 @@ describe("graded result release", () => {
     const inspected = await f.admin.query(api.functions.academic.resultPublication.getClassReadiness, f.tuple);
     expect(inspected.released?._id).toBeDefined();
     expect(inspected.rows[0].status).toBe("certified");
-    expect((await f.admin.query(api.functions.academic.resultPublication.getReleaseContext, {})).classes)
-      .toContainEqual({ id: f.ids.classId, name: "JSS 1" });
+    expect((await f.admin.query(api.functions.academic.resultPublication.listReleaseClasses,
+      { paginationOpts: { numItems: 24, cursor: null } })).page)
+      .toContainEqual({ id: f.ids.classId, name: "JSS 1", isArchived: true });
     expect(await f.read()).toEqual(issued);
     const late = await f.t.run(ctx => ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId,
       userId: f.ids.studentUserId, admissionNumber: "LATE", createdAt: 2, updatedAt: 2 }));
@@ -278,6 +279,93 @@ describe("graded result release", () => {
     await f.certify();
     const ready = await f.readiness();
     expect(ready).toMatchObject({ ready: true, certifiedCount: 1 });
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    expect(await f.read()).not.toBeNull();
+  });
+
+  it("pages past 257 published and archived classes without blocking active release", async () => {
+    const f = await fixture();
+    const archived = await f.t.run(async ctx => {
+      const sessionId = await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: "Old session",
+        startDate: 1, endDate: 2, isActive: false, isArchived: true, createdAt: 1, updatedAt: 1 });
+      const termId = await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId, name: "Old term",
+        startDate: 1, endDate: 2, isActive: false, isArchived: true, createdAt: 1, updatedAt: 1 });
+      return { sessionId, termId };
+    });
+    for (let batch = 0; batch < 13; batch++) {
+      await f.t.run(async ctx => {
+        for (let i = 0; i < 20 && batch * 20 + i < 257; i++) {
+          const classId = await ctx.db.insert("classes", { schoolId: f.ids.schoolId,
+            name: `Old ${batch * 20 + i}`, level: "Junior", isArchived: true, createdAt: 1, updatedAt: 1 });
+          await ctx.db.insert("classResultPublications", { schoolId: f.ids.schoolId, ...archived, classId,
+            releasedAt: 1, releasedBy: f.ids.adminId, reviewKey: `old-${batch * 20 + i}`,
+            eligibleCount: 0, certifiedCount: 0, excludedCount: 0 });
+        }
+      });
+    }
+    for (let batch = 0; batch < 13; batch++) {
+      await f.t.run(async ctx => {
+        for (let i = 0; i < 20 && batch * 20 + i < 257; i++) {
+          await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId,
+            name: `Older term ${batch * 20 + i}`, startDate: 1, endDate: 2,
+            isActive: false, createdAt: 1, updatedAt: 1 });
+        }
+      });
+    }
+    for (let batch = 0; batch < 13; batch++) {
+      await f.t.run(async ctx => {
+        for (let i = 0; i < 20 && batch * 20 + i < 257; i++) {
+          await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId,
+            name: `Past session ${batch * 20 + i}`, startDate: 1, endDate: 2,
+            isActive: false, createdAt: 1, updatedAt: 1 });
+        }
+      });
+    }
+    const context = await f.admin.query(api.functions.academic.resultPublication.getReleaseContext, {});
+    expect(context.canRelease).toBe(true);
+    await expect(f.t.query(api.functions.academic.resultPublication.listReleasedClasses,
+      { paginationOpts: { numItems: 24, cursor: null } })).rejects.toThrow();
+    const opts = { numItems: 24, cursor: null as string | null };
+    const first = await f.admin.query(api.functions.academic.resultPublication.listReleasedClasses, { paginationOpts: opts });
+    expect(first.page).toHaveLength(24);
+    const archivedTuple = { sessionId: first.page[0].sessionId, termId: first.page[0].termId, classId: first.page[0].classId };
+    const selected = await f.admin.query(api.functions.academic.resultPublication.getReleaseSelection, archivedTuple);
+    expect(selected).toMatchObject({ released: true, session: { isArchived: true }, term: { isArchived: true }, klass: { isArchived: true } });
+    expect((await f.admin.query(api.functions.academic.resultPublication.getClassReadiness, archivedTuple)).released).not.toBeNull();
+    let cursor = first.continueCursor;
+    let total = first.page.length;
+    while (true) {
+      const page = await f.admin.query(api.functions.academic.resultPublication.listReleasedClasses,
+        { paginationOpts: { ...opts, cursor } });
+      total += page.page.length;
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    expect(total).toBe(257);
+    const classPage = await f.admin.query(api.functions.academic.resultPublication.listReleaseClasses, { paginationOpts: opts });
+    expect(classPage.page).toHaveLength(24);
+    expect(classPage.isDone).toBe(false);
+    const termPage = await f.admin.query(api.functions.academic.resultPublication.listReleaseTerms,
+      { sessionId: f.ids.sessionId, paginationOpts: opts });
+    expect(termPage.page).toHaveLength(24);
+    expect(termPage.isDone).toBe(false);
+    const sessionPage = await f.admin.query(api.functions.academic.resultPublication.listReleaseSessions, { paginationOpts: opts });
+    expect(sessionPage.page).toHaveLength(24);
+    expect(sessionPage.isDone).toBe(false);
+    expect((await f.admin.query(api.functions.academic.resultPublication.getReleaseSelection, f.tuple))?.session)
+      .toMatchObject({ id: f.ids.sessionId, isActive: true });
+    expect((await f.admin.query(api.functions.academic.resultPublication.getReleaseSelection, f.tuple))?.released).toBe(false);
+    expect(await f.officer.query(api.functions.academic.resultPublication.getReleaseSelection,
+      { ...f.tuple, classId: f.ids.otherClassId })).toBeNull();
+    const otherSessionId = await f.t.run(ctx => ctx.db.insert("academicSessions", {
+      schoolId: f.ids.otherSchoolId, name: "Other school session", startDate: 1, endDate: 2,
+      isActive: true, createdAt: 1, updatedAt: 1 }));
+    await expect(f.officer.query(api.functions.academic.resultPublication.listReleaseTerms,
+      { sessionId: otherSessionId, paginationOpts: opts })).rejects.toThrow("Invalid session");
+    await f.certify();
+    const ready = await f.readiness();
+    expect(ready.ready).toBe(true);
     await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
       { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
     expect(await f.read()).not.toBeNull();

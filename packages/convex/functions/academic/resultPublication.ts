@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { getAuthenticatedSchoolMembership, assertAdminForSchool, resolveActiveMembership } from "./auth";
@@ -237,27 +238,95 @@ export const getReleaseContext = query({
       await requireCapability(ctx, schoolId, "academic.report_cards.publish_final");
       canRelease = true;
     } catch { /* Read-only staff can still inspect readiness. */ }
-    const [school, control, sessions, terms, classes, publications] = await Promise.all([
-      ctx.db.get(schoolId), releaseControl(ctx, schoolId),
-      ctx.db.query("academicSessions").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(257),
-      ctx.db.query("academicTerms").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(257),
-      ctx.db.query("classes").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(257),
-      ctx.db.query("classResultPublications").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(257),
-    ]);
-    if (!school || sessions.length > 256 || terms.length > 256 || classes.length > 256 || publications.length > 256)
-      throw new ConvexError("Release selectors need review");
-    const releasedSessions = new Set(publications.map(p => p.sessionId));
-    const releasedTerms = new Set(publications.map(p => p.termId));
-    const releasedClasses = new Set(publications.map(p => p.classId));
+    const [school, control] = await Promise.all([ctx.db.get(schoolId), releaseControl(ctx, schoolId)]);
+    if (!school) throw new ConvexError("School not found");
     return {
       schoolId, schoolName: school.name, canRelease: canRelease && !control?.releasesPaused,
       releasesPaused: control?.releasesPaused ?? false,
-       releasePauseReason: control?.reason ?? null, releasePauseUpdatedAt: control?.updatedAt ?? null,
-       canExclude: role === "admin" || isSchoolAdmin,
-      sessions: sessions.filter(s => !s.isArchived || releasedSessions.has(s._id)).map(s => ({ id: s._id, name: s.name })),
-      terms: terms.filter(t => !t.isArchived || releasedTerms.has(t._id)).map(t => ({ id: t._id, sessionId: t.sessionId, name: t.name })),
-      classes: classes.filter(c => !c.isArchived || releasedClasses.has(c._id)).map(c => ({ id: c._id, name: c.name })),
+      releasePauseReason: control?.reason ?? null, releasePauseUpdatedAt: control?.updatedAt ?? null,
+      canExclude: role === "admin" || isSchoolAdmin,
     };
+  },
+});
+
+const selectorArgs = { paginationOpts: paginationOptsValidator };
+function assertSelectorPage(opts: { numItems: number; maximumRowsRead?: number }) {
+  if (opts.numItems < 1 || opts.numItems > 32 || (opts.maximumRowsRead !== undefined && opts.maximumRowsRead > 64))
+    throw new ConvexError("Select up to 32 options at a time");
+}
+async function selectorSchool(ctx: QueryCtx) {
+  const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+  await requireCapability(ctx, schoolId, "academic.report_cards.preview");
+  return schoolId;
+}
+
+export const listReleaseSessions = query({
+  args: selectorArgs,
+  handler: async (ctx, args) => {
+    const schoolId = await selectorSchool(ctx);
+    assertSelectorPage(args.paginationOpts);
+    const page = await ctx.db.query("academicSessions").withIndex("by_school", q => q.eq("schoolId", schoolId))
+      .order("desc").paginate(args.paginationOpts);
+    return { ...page, page: page.page.map(s => ({ id: s._id, name: s.name, isActive: s.isActive, isArchived: !!s.isArchived })) };
+  },
+});
+
+export const listReleaseTerms = query({
+  args: { ...selectorArgs, sessionId: v.id("academicSessions") },
+  handler: async (ctx, args) => {
+    const schoolId = await selectorSchool(ctx);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.schoolId !== schoolId) throw new ConvexError("Invalid session");
+    assertSelectorPage(args.paginationOpts);
+    const page = await ctx.db.query("academicTerms").withIndex("by_session", q => q.eq("sessionId", args.sessionId))
+      .order("desc").paginate(args.paginationOpts);
+    // Never trust an unscoped legacy row in the by_session index.
+    if (page.page.some(t => t.schoolId !== schoolId)) throw new ConvexError("Term needs reconciliation");
+    return { ...page, page: page.page.map(t => ({ id: t._id, name: t.name, sessionId: t.sessionId,
+      isActive: t.isActive, isArchived: !!t.isArchived })) };
+  },
+});
+
+export const listReleaseClasses = query({
+  args: selectorArgs,
+  handler: async (ctx, args) => {
+    const schoolId = await selectorSchool(ctx);
+    assertSelectorPage(args.paginationOpts);
+    const page = await ctx.db.query("classes").withIndex("by_school", q => q.eq("schoolId", schoolId))
+      .order("desc").paginate(args.paginationOpts);
+    return { ...page, page: page.page.map(c => ({ id: c._id, name: c.name, isArchived: !!c.isArchived })) };
+  },
+});
+
+export const listReleasedClasses = query({
+  args: selectorArgs,
+  handler: async (ctx, args) => {
+    const schoolId = await selectorSchool(ctx);
+    assertSelectorPage(args.paginationOpts);
+    const page = await ctx.db.query("classResultPublications").withIndex("by_school", q => q.eq("schoolId", schoolId))
+      .order("desc").paginate(args.paginationOpts);
+    return { ...page, page: await Promise.all(page.page.map(async p => {
+      const [session, term, klass] = await Promise.all([ctx.db.get(p.sessionId), ctx.db.get(p.termId), ctx.db.get(p.classId)]);
+      if (!session || !term || !klass || session.schoolId !== schoolId || term.schoolId !== schoolId ||
+        klass.schoolId !== schoolId || term.sessionId !== session._id) throw new ConvexError("Released tuple needs reconciliation");
+      return { id: p._id, sessionId: p.sessionId, termId: p.termId, classId: p.classId,
+        label: `${klass.name} / ${session.name} / ${term.name}`, releasedAt: p.releasedAt };
+    })) };
+  },
+});
+
+// Hydrate a deep link or paginated release without trusting IDs from the browser.
+export const getReleaseSelection = query({
+  args: tupleArgs,
+  handler: async (ctx, args) => {
+    const schoolId = await selectorSchool(ctx);
+    const [session, term, klass] = await Promise.all([ctx.db.get(args.sessionId), ctx.db.get(args.termId), ctx.db.get(args.classId)]);
+    if (!session || !term || !klass || session.schoolId !== schoolId || term.schoolId !== schoolId ||
+      klass.schoolId !== schoolId || term.sessionId !== session._id) return null;
+    const released = await publicationFor(ctx, { ...args, schoolId });
+    return { session: { id: session._id, name: session.name, isActive: session.isActive, isArchived: !!session.isArchived },
+      term: { id: term._id, name: term.name, sessionId: term.sessionId, isActive: term.isActive, isArchived: !!term.isArchived },
+      klass: { id: klass._id, name: klass.name, isArchived: !!klass.isArchived }, released: !!released };
   },
 });
 
