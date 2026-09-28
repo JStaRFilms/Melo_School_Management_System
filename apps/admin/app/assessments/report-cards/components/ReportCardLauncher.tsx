@@ -8,7 +8,6 @@ import {
   CalendarDays,
   Target,
   Users,
-  User,
   Printer,
   FileText,
   SlidersHorizontal,
@@ -147,7 +146,10 @@ export function ReportCardLauncher() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link href={`/assessments/report-cards/release?${new URLSearchParams({ sessionId: selectedSessionId, termId: selectedTermId, classId: selectedClassId })}`} className="inline-flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 focus-visible:outline-2">
+              Class result release
+            </Link>
             <Link
               href={`/assessments/report-card-extras${
                 selectedSessionId ? `?sessionId=${selectedSessionId}&termId=${selectedTermId}&classId=${selectedClassId}` : ""

@@ -36,8 +36,7 @@ export function CertifyReportCard({
   if (reportCard.certifiedAt)
     return (
       <p className="rounded border p-3 text-sm">
-        Certified copy. Printing and downloads preserve the issued scores,
-        comments and grading policy.
+        Certified copy. This student&apos;s report is saved, but certification alone does not publish it to families. Check Class result release for this class and term. Printing and downloads preserve the issued scores, comments and grading policy.
       </p>
     );
   if (!allowed) return null;
@@ -48,9 +47,7 @@ export function CertifyReportCard({
       </summary>
       <p>
         Save and review all scores, extras and comments first. Certification
-        creates an immutable issued copy used by Admin, Teacher and Portal
-        previews, print and downloads. It cannot be replaced by later policy
-        edits.
+        saves an immutable copy for staff review and printing. Families cannot see it until the class results are released. Later policy edits cannot replace it.
       </p>
       {reportCard.gradingPolicy?.source !== "current" ? (
         <p>

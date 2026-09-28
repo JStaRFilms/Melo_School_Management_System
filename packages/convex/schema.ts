@@ -1950,6 +1950,42 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_session_term", ["schoolId", "sessionId", "termId"]),
 
+  classResultPublications: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    releasedAt: v.number(),
+    releasedBy: v.id("users"),
+    releasedByMembershipId: v.optional(v.id("branchMemberships")),
+    releasedByPersonId: v.optional(v.id("persons")),
+    reviewKey: v.string(),
+    eligibleCount: v.number(),
+    certifiedCount: v.number(),
+    excludedCount: v.number(),
+  }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+    .index("by_school", ["schoolId"]),
+
+  classResultExclusions: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    reason: v.string(),
+    approvedBy: v.id("users"),
+    approvedAt: v.number(),
+  }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+    .index("by_school", ["schoolId"]),
+
+  classResultPublicationStudents: defineTable({
+    schoolId: v.id("schools"),
+    publicationId: v.id("classResultPublications"),
+    studentId: v.id("students"),
+    issuedReportCardId: v.id("issuedReportCards"),
+  }).index("by_publication_and_student", ["publicationId", "studentId"])
+    .index("by_school", ["schoolId"]),
+
   issuedReportCards: defineTable({
     schoolId: v.id("schools"),
     studentId: v.id("students"),

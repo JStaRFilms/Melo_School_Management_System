@@ -92,6 +92,7 @@ import type * as functions_academic_reportCardExtrasModel from "../functions/aca
 import type * as functions_academic_reportCardManualAdjustments from "../functions/academic/reportCardManualAdjustments.js";
 import type * as functions_academic_reportCardTermSettings from "../functions/academic/reportCardTermSettings.js";
 import type * as functions_academic_reportCards from "../functions/academic/reportCards.js";
+import type * as functions_academic_resultPublication from "../functions/academic/resultPublication.js";
 import type * as functions_academic_schoolBranding from "../functions/academic/schoolBranding.js";
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
@@ -241,6 +242,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/reportCardManualAdjustments": typeof functions_academic_reportCardManualAdjustments;
   "functions/academic/reportCardTermSettings": typeof functions_academic_reportCardTermSettings;
   "functions/academic/reportCards": typeof functions_academic_reportCards;
+  "functions/academic/resultPublication": typeof functions_academic_resultPublication;
   "functions/academic/schoolBranding": typeof functions_academic_schoolBranding;
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;

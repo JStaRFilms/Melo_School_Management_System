@@ -74,6 +74,7 @@ export interface PortalWorkspaceData {
     name: string;
   } | null;
   selectedReportCard: ReportCardSheetData | null;
+  selectedResultState: "released" | "withheld" | "no_eligible_record";
   history: PortalHistoryItem[];
   notifications: PortalNotificationItem[];
 }

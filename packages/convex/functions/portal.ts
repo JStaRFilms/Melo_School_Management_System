@@ -1,4 +1,4 @@
-import { getUnboundStorageUrl } from "./academic/assetStorageBoundary";
+import { getUnboundStorageUrl, isStorageOwnershipDenied } from "./academic/assetStorageBoundary";
 import { ConvexError, v } from "convex/values";
 import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -6,7 +6,8 @@ import { api } from "../_generated/api";
 import { query, type QueryCtx } from "../_generated/server";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 import { getPortalStudentAccess, resolvePortalMemberships, type PortalAuth } from "./academic/portalIdentity";
-import { buildStudentReportCard, reportCardResultValidator } from "./academic/reportCards";
+import { reportCardResultValidator } from "./academic/reportCards";
+import { getReleasedGradedReport } from "./academic/resultPublication";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { resolveDomainSetting } from "./academic/groupSettings";
 
@@ -176,6 +177,7 @@ export const portalWorkspaceDataValidator = v.object({
     })
   ),
   selectedReportCard: v.union(v.null(), reportCardResultValidator),
+  selectedResultState: v.union(v.literal("released"), v.literal("withheld"), v.literal("no_eligible_record")),
   history: v.array(portalHistoryItemValidator),
   notifications: v.array(portalNotificationValidator),
 });
@@ -257,26 +259,48 @@ async function getAccessibleStudentsAcrossPortalMemberships(ctx: QueryCtx, porta
   return entries;
 }
 
-async function tryBuildStudentReportCard(
-  ctx: any,
-  args: {
-    userId: Id<"users">;
-    schoolId: Id<"schools">;
-    role: string;
-    studentId: Id<"students">;
-    sessionId: Id<"academicSessions">;
-    termId: Id<"academicTerms">;
-    preferredClassId?: Id<"classes">;
-  }
+// Frozen inclusion and issued class, not the student's mutable current class,
+// establish historical membership. An issued card for a second class in the same
+// term is ambiguous, even if only one class has been released.
+async function releasedPortalReport(
+  ctx: QueryCtx,
+  schoolId: Id<"schools">,
+  studentId: Id<"students">,
+  sessionId: Id<"academicSessions">,
+  termId: Id<"academicTerms">,
 ) {
-  try {
-    return await buildStudentReportCard(ctx, {
-      ...args,
-      skipRoleCheck: true,
-    });
-  } catch {
-    return null;
+  // Use the release index prefix to discover class candidates. Do not read
+  // issued report contents for an unpublished tuple.
+  const releases = await ctx.db.query("classResultPublications")
+    .withIndex("by_school_and_session_and_term_and_class", q =>
+      q.eq("schoolId", schoolId).eq("sessionId", sessionId).eq("termId", termId))
+    .take(33);
+  if (!releases.length || releases.length > 32) return null;
+  const eligible = [] as typeof releases;
+  for (const release of releases) {
+    const included = await ctx.db.query("classResultPublicationStudents")
+      .withIndex("by_publication_and_student", q => q.eq("publicationId", release._id).eq("studentId", studentId))
+      .take(2);
+    if (included.length > 1 || included.some(row => row.schoolId !== schoolId)) return null;
+    if (included.length === 1) eligible.push(release);
   }
+  if (eligible.length !== 1) return null;
+  const frozen = await getReleasedGradedReport(ctx, { schoolId, studentId, sessionId, termId, classId: eligible[0].classId });
+  if (!frozen) return null;
+  const issued = await ctx.db.query("issuedReportCards")
+    .withIndex("by_student_session_term", q => q.eq("studentId", studentId).eq("sessionId", sessionId).eq("termId", termId))
+    .take(33);
+  if (issued.length > 32 || issued.some(row => row.schoolId !== schoolId || row.classId !== frozen.classId) ||
+      !issued.some(row => row._id === frozen._id)) return null;
+  // The report's URLs were captured at certification time. Never return stale
+  // URLs; rehydrate only storage IDs pinned on that issued record.
+  const safeImage = async (id: Id<"_storage"> | undefined) => {
+    if (!id) return null;
+    try { return await getUnboundStorageUrl(ctx, id); }
+    catch (error) { if (isStorageOwnershipDenied(error)) return null; throw error; }
+  };
+  return { ...frozen.report, schoolLogoUrl: await safeImage(frozen.schoolLogoStorageId),
+    student: { ...frozen.report.student, photoUrl: await safeImage(frozen.studentPhotoStorageId) } };
 }
 
 export const getWorkspaceData = query({
@@ -316,17 +340,18 @@ export const getWorkspaceData = query({
       ctx.db
         .query("academicSessions")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-        .collect(),
+        .take(257),
       ctx.db
         .query("academicTerms")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-        .collect(),
+        .take(257),
       ctx.db
         .query("schoolEvents")
         .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-        .collect(),
+        .take(256),
       resolveDomainSetting(ctx, schoolId, "notification_preferences"),
     ]);
+    if (sessions.length > 256 || terms.length > 256) throw new ConvexError("Academic history exceeds supported bounds");
     const notificationPreferences =
       notificationSetting.value ?? {
         showReportUpdates: true,
@@ -414,57 +439,32 @@ export const getWorkspaceData = query({
         ? sessions.find((session: any) => String(session._id) === String(args.sessionId)) ?? null
         : null;
 
-    let selectedSession: any = requestedSession ?? activeSession;
-    let selectedTerm: any = requestedTerm ?? null;
-
-    if (selectedTerm) {
-      selectedSession =
-        sessions.find((session: any) => String(session._id) === String(selectedTerm.sessionId)) ??
-        selectedSession;
+    // Explicit IDs are a request for that exact tuple, never a request to
+    // substitute an active term or to silently switch sessions.
+    if ((args.termId && !requestedTerm) || (args.sessionId && !requestedSession) ||
+        (requestedTerm && requestedSession && requestedTerm.sessionId !== requestedSession._id)) {
+      throw new ConvexError("Invalid session or term");
     }
+    const selectedSession = requestedTerm
+      ? sessions.find(session => session._id === requestedTerm.sessionId) ?? null
+      : requestedSession ?? activeSession;
+    if (requestedTerm && !selectedSession) throw new ConvexError("Invalid session or term");
+    const selectedTerm = requestedTerm ?? (selectedSession
+      ? terms.filter(term => term.sessionId === selectedSession._id)
+          .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.startDate - a.startDate)[0] ?? null
+      : null);
+    const selectedSessionId = selectedSession?._id ?? null;
+    const selectedTermId = selectedTerm?._id ?? null;
 
-    if (!selectedTerm && selectedSession) {
-      const sessionTerms = terms.filter(
-        (term: any) => String(term.sessionId) === String(selectedSession._id)
-      );
-      selectedTerm =
-        sessionTerms.find((term: any) => term.isActive) ??
-        sortNewestFirst(sessionTerms)[0] ??
-        null;
-    }
-
-    if (!selectedSession && selectedTerm) {
-      selectedSession =
-        sessions.find((session: any) => String(session._id) === String(selectedTerm?.sessionId ?? "")) ??
-        null;
-    }
-
-    if (!selectedSession) {
-      selectedSession = activeSession;
-    }
-
-    if (!selectedTerm) {
-      selectedTerm = activeTerm;
-    }
-
-    const selectedSessionId = selectedSession ? selectedSession._id : null;
-    const selectedTermId = selectedTerm ? selectedTerm._id : null;
-
-    const selectedReportCard =
-      selectedStudent && selectedSessionId && selectedTermId
-        ? await tryBuildStudentReportCard(ctx, {
-            userId,
-            schoolId,
-            role: portalRole,
-            studentId: selectedStudent._id,
-            sessionId: selectedSessionId,
-            termId: selectedTermId,
-            preferredClassId: selectedStudent.classId,
-          })
-        : null;
+    const selectedReportCard = selectedStudent && selectedSessionId && selectedTermId
+      ? await releasedPortalReport(ctx, schoolId, selectedStudent._id, selectedSessionId, selectedTermId)
+      : null;
+    const selectedResultState = selectedReportCard ? "released" as const
+      : selectedStudent && selectedSessionId && selectedTermId ? "withheld" as const
+      : "no_eligible_record" as const;
 
     const allTerms = terms
-      .filter((term: any) => !term.isArchived)
+      .filter((term: any) => sessions.some(session => session._id === term.sessionId))
       .sort((a: any, b: any) => {
         const sessionA = sessions.find((session: any) => String(session._id) === String(a.sessionId));
         const sessionB = sessions.find((session: any) => String(session._id) === String(b.sessionId));
@@ -475,8 +475,9 @@ export const getWorkspaceData = query({
         return b.startDate - a.startDate;
       });
 
-    const historyLimit = Math.max(1, Math.min(args.historyLimit ?? 4, 12));
-    const selectedHistoryTerms = allTerms.slice(0, historyLimit);
+    const historyLimit = Number.isFinite(args.historyLimit) ? Math.max(1, Math.min(Math.floor(args.historyLimit!), 12)) : 4;
+    // Filter for released rows first; a run of withheld recent terms must not
+    // displace an older published result.
     const history = [] as Array<{
       sessionId: Id<"academicSessions">;
       termId: Id<"academicTerms">;
@@ -496,21 +497,16 @@ export const getWorkspaceData = query({
     }>;
 
     if (selectedStudent) {
-      for (const term of selectedHistoryTerms) {
+      for (const term of allTerms) {
+        if (history.length >= historyLimit) break;
         const session = sessions.find((entry: any) => String(entry._id) === String(term.sessionId));
         if (!session) {
           continue;
         }
 
-        const reportCard = await tryBuildStudentReportCard(ctx, {
-          userId,
-          schoolId,
-          role: portalRole,
-          studentId: selectedStudent._id,
-          sessionId: session._id,
-          termId: term._id,
-          preferredClassId: selectedStudent.classId,
-        });
+        const reportCard = selectedSessionId === session._id && selectedTermId === term._id
+          ? selectedReportCard
+          : await releasedPortalReport(ctx, schoolId, selectedStudent._id, session._id, term._id);
 
         if (reportCard) {
           history.push({
@@ -534,30 +530,7 @@ export const getWorkspaceData = query({
             }),
             note: null,
           });
-          continue;
         }
-
-        history.push({
-          sessionId: session._id,
-          termId: term._id,
-          sessionName: normalizeHumanName(session.name),
-          termName: normalizeHumanName(term.name),
-          classId: selectedStudent.classId,
-          className: selectedStudentRow?.className ?? "Current class",
-          generatedAt: term.startDate,
-          totalSubjects: 0,
-          recordedSubjects: 0,
-          pendingSubjects: 0,
-          averageScore: null,
-          totalScore: 0,
-          resultCalculationMode: "standalone",
-          href: buildPortalHref("/report-cards", {
-            studentId: String(selectedStudent._id),
-            sessionId: String(session._id),
-            termId: String(term._id),
-          }),
-          note: "Report card not ready yet.",
-        });
       }
     }
 
@@ -570,23 +543,6 @@ export const getWorkspaceData = query({
     }> = [];
 
     if (selectedReportCard) {
-      if (
-        notificationPreferences.showReportUpdates &&
-        selectedReportCard.summary.pendingSubjects > 0
-      ) {
-        notifications.push({
-          id: `pending-${selectedReportCard.student._id}`,
-          title: "Some subjects are still pending",
-          body: `${selectedReportCard.summary.pendingSubjects} subject${
-            selectedReportCard.summary.pendingSubjects === 1 ? "" : "s"
-          } still need marks for ${selectedReportCard.termName}.`,
-          tone: "warning",
-          href: buildPortalHref("/results", {
-            studentId: String(selectedStudentId),
-          }),
-        });
-      }
-
       if (
         notificationPreferences.showReportUpdates &&
         selectedReportCard.student.nextTermBegins
@@ -652,9 +608,7 @@ export const getWorkspaceData = query({
         title: "Academic updates will appear here",
         body: "Use the report card and result history views to track performance once the school publishes results.",
         tone: "info",
-        href: buildPortalHref("/report-cards", {
-          studentId: String(selectedStudentId ?? ""),
-        }),
+        href: null,
       });
     }
 
@@ -694,6 +648,7 @@ export const getWorkspaceData = query({
           }
         : null,
       selectedReportCard,
+      selectedResultState,
       history,
       notifications,
     };
