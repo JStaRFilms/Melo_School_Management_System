@@ -443,6 +443,26 @@ it("lists other archived sessions while one session has an invalid scoring scan"
   expect(second?.detailFields).toContainEqual({ label: "Assessment records", value: "1" });
 });
 
+it("does not disclose session state to unauthenticated callers", async () => {
+  const f = await fixture();
+  const missing = await f.t.run(async ctx => {
+    const id = await ctx.db.insert("academicSessions", { schoolId: f.schoolId, name: "Deleted",
+      startDate: 1, endDate: 2, isActive: false, createdAt: 1, updatedAt: 1 });
+    await ctx.db.delete(id);
+    await ctx.db.patch(f.second, { isArchived: true, archivedAt: 3 });
+    return id;
+  });
+  for (const sessionId of [f.first, f.second, missing]) {
+    await expect(f.t.query(endpoint.getSessionScoringPolicy, { sessionId })).rejects.toThrow(/Unauthorized/);
+    await expect(f.t.mutation(endpoint.cancelSessionScoringScan, { sessionId })).rejects.toThrow(/Unauthorized/);
+  }
+  expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: f.first })).policy).toEqual(legacy);
+  for (const sessionId of [f.second, missing]) {
+    await expect(f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId }))
+      .rejects.toThrow(/Session not found in this school/);
+  }
+});
+
 it("denies a cross-school session before reading scores", async () => {
   const f = await fixture();
   const foreignSession = await f.t.run(async ctx => {
@@ -450,7 +470,14 @@ it("denies a cross-school session before reading scores", async () => {
     return ctx.db.insert("academicSessions", { schoolId, name: "Foreign", startDate: 1, endDate: 2,
       isActive: true, createdAt: 1, updatedAt: 1 });
   });
-  await expect(f.viewer.query(endpoint.previewSessionScoringChange, {
-    sessionId: foreignSession, policy,
-  })).rejects.toThrow();
+  const missing = await f.t.run(async ctx => {
+    const id = await ctx.db.insert("academicSessions", { schoolId: f.schoolId, name: "Deleted",
+      startDate: 1, endDate: 2, isActive: false, createdAt: 1, updatedAt: 1 });
+    await ctx.db.delete(id);
+    return id;
+  });
+  for (const sessionId of [foreignSession, missing]) {
+    await expect(f.viewer.query(endpoint.previewSessionScoringChange, { sessionId, policy }))
+      .rejects.toThrow(/Session not found in this school/);
+  }
 });

@@ -80,13 +80,23 @@ function recordedPolicy(row: Doc<"assessmentRecords">): SessionScoringPolicy {
 }
 
 async function requirePolicyAdmin(ctx: Context, sessionId: Id<"academicSessions">, requireOverride = false) {
+  // Do not resolve even the session's existence until the caller has an identity.
+  if (!(await ctx.auth.getUserIdentity())) throw new ConvexError("Unauthorized");
   const session = await ctx.db.get(sessionId);
   if (!session || session.isArchived)
     throw new ConvexError("Session not found in this school");
   const { schoolId } = session;
-  const { userId, role } = await getAuthenticatedSchoolMembership(ctx, {
-    schoolId, capability: "academic.grading_bands.manage",
-  });
+  let membership: Awaited<ReturnType<typeof getAuthenticatedSchoolMembership>>;
+  try {
+    membership = await getAuthenticatedSchoolMembership(ctx, {
+      schoolId, capability: "academic.grading_bands.manage",
+    });
+  } catch (error) {
+    if (!(error instanceof ConvexError)) throw error;
+    // A signed-in caller must not distinguish an inaccessible branch from an absent session.
+    throw new ConvexError("Session not found in this school");
+  }
+  const { userId, role } = membership;
   await assertAdminForSchool(ctx, userId, schoolId, role);
   if (requireOverride) {
     const effective = await resolveEffectiveAcademicPolicy(ctx, schoolId);
