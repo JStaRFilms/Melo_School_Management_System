@@ -47,14 +47,16 @@ function buildQueryArgs(
   studentId: string | null,
   sessionId: string | null,
   termId: string | null,
-  historyLimit: number
+  historyLimit: number,
+  now: number
 ) {
   const args: {
     studentId?: Id<"students"> | null;
     sessionId?: Id<"academicSessions"> | null;
     termId?: Id<"academicTerms"> | null;
     historyLimit: number;
-  } = { historyLimit };
+    now: number;
+  } = { historyLimit, now };
 
   if (studentId) {
     args.studentId = studentId as Id<"students">;
@@ -78,6 +80,16 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
   const studentId = searchParams.get("studentId");
   const sessionId = searchParams.get("sessionId");
   const termId = searchParams.get("termId");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const refresh = () => setNow(Date.now());
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
   const [pendingSelection, setPendingSelection] = useState<{ from: string; to: string } | null>(null);
   const [billingNotice, setBillingNotice] = useState<string | null>(null);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
@@ -87,7 +99,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
 
   const workspace = useQuery(
     api.functions.portal.getWorkspaceData,
-    buildQueryArgs(studentId, sessionId, termId, historyLimit)
+    buildQueryArgs(studentId, sessionId, termId, historyLimit, now)
   ) as PortalWorkspaceData | undefined;
   const billing = useQuery(
     api.functions.portal.getBillingData,

@@ -189,7 +189,10 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
   return { rows, eligibleCount, certifiedCount, excludedCount, ready, reviewKey };
 }
 
-const tupleArgs = { sessionId: v.id("academicSessions"), termId: v.id("academicTerms"), classId: v.id("classes") };
+// Omitted schoolId is retained for older default-branch callers. The Admin
+// workspace passes its selected branch explicitly on every operation.
+const schoolArg = { schoolId: v.optional(v.id("schools")) };
+const tupleArgs = { ...schoolArg, sessionId: v.id("academicSessions"), termId: v.id("academicTerms"), classId: v.id("classes") };
 
 async function releaseControl(ctx: Ctx, schoolId: Id<"schools">) {
   const rows = await ctx.db.query("resultReleaseControls")
@@ -201,9 +204,9 @@ async function releaseControl(ctx: Ctx, schoolId: Id<"schools">) {
 // School administrators can stop new publications without exposing draft marks
 // or revoking issued copies already visible to families.
 export const setReleasesPaused = mutation({
-  args: { releasesPaused: v.boolean(), reason: v.string() },
+  args: { ...schoolArg, releasesPaused: v.boolean(), reason: v.string() },
   handler: async (ctx, args) => {
-    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const reason = args.reason.trim();
     if (reason.length < 10 || reason.length > 500) throw new ConvexError("Provide a specific reason (10-500 characters)");
@@ -227,10 +230,10 @@ export const setReleasesPaused = mutation({
 // The Admin screen uses server-derived authority and selectors. Admin-only
 // selectors elsewhere cannot serve exam officers with publish-final access.
 export const getReleaseContext = query({
-  args: {},
-  handler: async (ctx) => {
+  args: schoolArg,
+  handler: async (ctx, args) => {
     const { schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, {
-      capability: "academic.report_cards.preview",
+      schoolId: args.schoolId, capability: "academic.report_cards.preview",
     });
     await requireCapability(ctx, schoolId, "academic.report_cards.preview");
     let canRelease = false;
@@ -249,13 +252,13 @@ export const getReleaseContext = query({
   },
 });
 
-const selectorArgs = { paginationOpts: paginationOptsValidator };
+const selectorArgs = { ...schoolArg, paginationOpts: paginationOptsValidator };
 function assertSelectorPage(opts: { numItems: number; maximumRowsRead?: number }) {
   if (opts.numItems < 1 || opts.numItems > 32 || (opts.maximumRowsRead !== undefined && opts.maximumRowsRead > 64))
     throw new ConvexError("Select up to 32 options at a time");
 }
-async function selectorSchool(ctx: QueryCtx) {
-  const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+async function selectorSchool(ctx: QueryCtx, selectedSchoolId?: Id<"schools">) {
+  const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { schoolId: selectedSchoolId, capability: "academic.report_cards.preview" });
   await requireCapability(ctx, schoolId, "academic.report_cards.preview");
   return schoolId;
 }
@@ -263,7 +266,7 @@ async function selectorSchool(ctx: QueryCtx) {
 export const listReleaseSessions = query({
   args: selectorArgs,
   handler: async (ctx, args) => {
-    const schoolId = await selectorSchool(ctx);
+    const schoolId = await selectorSchool(ctx, args.schoolId);
     assertSelectorPage(args.paginationOpts);
     const page = await ctx.db.query("academicSessions").withIndex("by_school", q => q.eq("schoolId", schoolId))
       .order("desc").paginate(args.paginationOpts);
@@ -274,7 +277,7 @@ export const listReleaseSessions = query({
 export const listReleaseTerms = query({
   args: { ...selectorArgs, sessionId: v.id("academicSessions") },
   handler: async (ctx, args) => {
-    const schoolId = await selectorSchool(ctx);
+    const schoolId = await selectorSchool(ctx, args.schoolId);
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.schoolId !== schoolId) throw new ConvexError("Invalid session");
     assertSelectorPage(args.paginationOpts);
@@ -290,7 +293,7 @@ export const listReleaseTerms = query({
 export const listReleaseClasses = query({
   args: selectorArgs,
   handler: async (ctx, args) => {
-    const schoolId = await selectorSchool(ctx);
+    const schoolId = await selectorSchool(ctx, args.schoolId);
     assertSelectorPage(args.paginationOpts);
     const page = await ctx.db.query("classes").withIndex("by_school", q => q.eq("schoolId", schoolId))
       .order("desc").paginate(args.paginationOpts);
@@ -301,7 +304,7 @@ export const listReleaseClasses = query({
 export const listReleasedClasses = query({
   args: selectorArgs,
   handler: async (ctx, args) => {
-    const schoolId = await selectorSchool(ctx);
+    const schoolId = await selectorSchool(ctx, args.schoolId);
     assertSelectorPage(args.paginationOpts);
     const page = await ctx.db.query("classResultPublications").withIndex("by_school", q => q.eq("schoolId", schoolId))
       .order("desc").paginate(args.paginationOpts);
@@ -319,7 +322,7 @@ export const listReleasedClasses = query({
 export const getReleaseSelection = query({
   args: tupleArgs,
   handler: async (ctx, args) => {
-    const schoolId = await selectorSchool(ctx);
+    const schoolId = await selectorSchool(ctx, args.schoolId);
     const [session, term, klass] = await Promise.all([ctx.db.get(args.sessionId), ctx.db.get(args.termId), ctx.db.get(args.classId)]);
     if (!session || !term || !klass || session.schoolId !== schoolId || term.schoolId !== schoolId ||
       klass.schoolId !== schoolId || term.sessionId !== session._id) return null;
@@ -330,12 +333,19 @@ export const getReleaseSelection = query({
   },
 });
 
+async function staffDisplayName(ctx: QueryCtx, schoolId: Id<"schools">, userId: Id<"users"> | null) {
+  if (!userId) return "Staff member";
+  const user = await ctx.db.get(userId);
+  return user?.schoolId === schoolId && user.role !== "student" && user.role !== "parent" && user.name.trim()
+    ? user.name.trim() : "Staff member";
+}
+
 export const getClassReadiness = query({
   args: tupleArgs,
   handler: async (ctx, args) => {
-    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+    const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.preview" });
     await requireCapability(ctx, schoolId, "academic.report_cards.preview");
-    const tuple = { ...args, schoolId };
+    const tuple = { schoolId, sessionId: args.sessionId, termId: args.termId, classId: args.classId };
     await assertReadTuple(ctx, tuple);
     const released = await publicationFor(ctx, tuple);
     if (released) {
@@ -355,27 +365,34 @@ export const getClassReadiness = query({
           canExclude: false, approvedBy: e.approvedBy as Id<"users"> | null }))]
         .map(async row => {
           const student = await ctx.db.get(row.studentId);
-          const user = student ? await ctx.db.get(student.userId) : null;
-          return { ...row, name: user?.name ?? student?.admissionNumber ?? "Unknown student",
+          const [user, approvedByName] = await Promise.all([
+            student ? ctx.db.get(student.userId) : null,
+            row.approvedBy ? staffDisplayName(ctx, schoolId, row.approvedBy) : null,
+          ]);
+          const { approvedBy, ...safeRow } = row;
+          return { ...safeRow, approvedByName, name: user?.name ?? student?.admissionNumber ?? "Unknown student",
             admissionNumber: student?.admissionNumber ?? "Unknown" };
         }));
       if (included.length !== released.eligibleCount || excluded.length !== released.excludedCount)
         throw new ConvexError("Frozen roster requires reconciliation");
-      return { released, rows, eligibleCount: released.eligibleCount,
+      return { released: { ...released, releasedByName: await staffDisplayName(ctx, schoolId, released.releasedBy) }, rows,
+        eligibleCount: released.eligibleCount,
         certifiedCount: released.certifiedCount, excludedCount: released.excludedCount,
         ready: false, reviewKey: null };
     }
     const { rows, ...readiness } = await buildReadiness(ctx, tuple);
     // Evidence includes assessment and issued documents for the digest. It is
     // never part of the staff readiness payload, which contains no marks.
-    return { released, ...readiness, rows: rows.map(({ evidence, issuedReportCardId, ...row }) => row) };
+    return { released, ...readiness, rows: await Promise.all(rows.map(async ({ evidence, issuedReportCardId, approvedBy, ...row }) => ({
+      ...row, approvedByName: approvedBy ? await staffDisplayName(ctx, schoolId, approvedBy) : null,
+    }))) };
   },
 });
 
 export const excludeStudent = mutation({
   args: { ...tupleArgs, studentId: v.id("students"), reason: v.string() },
   handler: async (ctx, args) => {
-    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx);
+    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     const tuple = { schoolId, sessionId: args.sessionId, termId: args.termId, classId: args.classId };
     await assertTuple(ctx, tuple);
@@ -401,7 +418,7 @@ export const excludeStudent = mutation({
 export const releaseClassResults = mutation({
   args: { ...tupleArgs, reviewedKey: v.string(), confirmation: v.string() },
   handler: async (ctx, args) => {
-    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.publish_final" });
+    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.publish_final" });
     const auth = await requireCapability(ctx, schoolId, "academic.report_cards.publish_final");
     const tuple = { schoolId, sessionId: args.sessionId, termId: args.termId, classId: args.classId };
     const { school, session, term, klass } = await assertReadTuple(ctx, tuple);

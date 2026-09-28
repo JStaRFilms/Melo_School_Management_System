@@ -297,6 +297,7 @@ export const getWorkspaceData = query({
     sessionId: v.optional(v.union(v.id("academicSessions"), v.null())),
     termId: v.optional(v.union(v.id("academicTerms"), v.null())),
     historyLimit: v.optional(v.number()),
+    now: v.optional(v.number()),
   },
   returns: portalWorkspaceDataValidator,
   handler: async (ctx, args) => {
@@ -326,11 +327,18 @@ export const getWorkspaceData = query({
 
     // Explicit IDs use point reads. School-wide term counts do not gate a
     // student's issued card or its older history.
+    const eventTime = args.now;
+    if (eventTime !== undefined && (!Number.isFinite(eventTime) || eventTime < 0))
+      throw new ConvexError("Invalid current time");
     const [requestedTerm, requestedSession, activeSessions, schoolEvents, notificationSetting] = await Promise.all([
       args.termId ? ctx.db.get(args.termId) : Promise.resolve(null),
       args.sessionId ? ctx.db.get(args.sessionId) : Promise.resolve(null),
       ctx.db.query("academicSessions").withIndex("by_school_active", q => q.eq("schoolId", schoolId).eq("isActive", true)).take(2),
-      ctx.db.query("schoolEvents").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(256),
+      // Legacy Portal bundles do not send `now`. Without a client clock,
+      // omit event notices rather than guessing which events are upcoming.
+      eventTime === undefined ? Promise.resolve([]) : ctx.db.query("schoolEvents")
+        .withIndex("by_school_and_start", q => q.eq("schoolId", schoolId).gte("startDate", eventTime))
+        .order("asc").take(64),
       resolveDomainSetting(ctx, schoolId, "notification_preferences"),
     ]);
     if ((args.termId && (!requestedTerm || requestedTerm.schoolId !== schoolId)) ||
@@ -536,11 +544,7 @@ export const getWorkspaceData = query({
     }
 
     const upcomingEvents = notificationPreferences.showUpcomingEvents
-      ? sortNewestFirst(
-          schoolEvents.filter(
-            (event: any) => !event.isArchived && event.startDate >= Date.now(),
-          ),
-        ).slice(0, 3)
+      ? schoolEvents.filter(event => !event.isArchived).slice(0, 3)
       : [];
 
     for (const event of upcomingEvents) {

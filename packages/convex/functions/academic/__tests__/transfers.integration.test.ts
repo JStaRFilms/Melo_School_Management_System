@@ -1894,7 +1894,7 @@ describe("U6 Portal canonical identity continuity", () => {
       schoolId: h.schoolB,
       selectedStudentId: accepted.destinationStudentId,
     });
-    const current = await studentLogin.query(portalApi.getWorkspaceData, {});
+    const current = await studentLogin.query(portalApi.getWorkspaceData, { now: Date.now() });
     expect(current.selectedStudentId).toBe(accepted.destinationStudentId);
     expect(current.school.id).toBe(h.schoolB);
     expect(current.viewer.schoolId).toBe(h.schoolB);
@@ -1924,6 +1924,7 @@ describe("U6 Portal canonical identity continuity", () => {
       }),
     ).toEqual({ schoolId: h.schoolA, selectedStudentId: h.studentId });
     const sourceHistory = await studentLogin.query(portalApi.getWorkspaceData, {
+      now: Date.now(),
       studentId: h.studentId,
     });
     expect(sourceHistory.school.id).toBe(h.schoolA);
@@ -2020,7 +2021,7 @@ describe("U6 Portal canonical identity continuity", () => {
         updatedAt: 1,
       });
     });
-    const before = await studentLogin.query(portalApi.getWorkspaceData, {});
+    const before = await studentLogin.query(portalApi.getWorkspaceData, { now: Date.now() });
     expect(before.students.map((student) => student.studentId)).not.toContain(
       unrelated,
     );
@@ -2044,13 +2045,14 @@ describe("U6 Portal canonical identity continuity", () => {
         throw new Error("Missing destination membership fixture");
       await ctx.db.patch(membership._id, { status: "suspended" });
     });
-    const after = await studentLogin.query(portalApi.getWorkspaceData, {});
+    const after = await studentLogin.query(portalApi.getWorkspaceData, { now: Date.now() });
     expect(after.selectedStudentId).toBe(h.studentId);
     expect(after.students.map((student) => student.studentId)).toEqual([
       h.studentId,
     ]);
     await expect(
       studentLogin.query(portalApi.getWorkspaceData, {
+      now: Date.now(),
         studentId: accepted.destinationStudentId,
       }),
     ).rejects.toThrow("Student not found");
@@ -2078,7 +2080,7 @@ describe("U6 Portal canonical identity continuity", () => {
       await ctx.db.patch(user.personId, { status: "suspended" });
     });
     expect(await login.query(portalApi.canAccessPortal, {})).toBe(false);
-    await expect(login.query(portalApi.getWorkspaceData, {})).rejects.toThrow(
+    await expect(login.query(portalApi.getWorkspaceData, { now: Date.now() })).rejects.toThrow(
       "Canonical account is inactive",
     );
   });
@@ -2127,7 +2129,7 @@ describe("U6 Portal canonical identity continuity", () => {
       email: "not-the-contact@legacy.test",
     });
     expect(await trusted.query(portalApi.canAccessPortal, {})).toBe(true);
-    expect((await trusted.query(portalApi.getWorkspaceData, {})).selectedStudentId).toBe(studentId);
+    expect((await trusted.query(portalApi.getWorkspaceData, { now: Date.now() })).selectedStudentId).toBe(studentId);
     const wrongSubject = t.withIdentity({
       tokenIdentifier: "https://legacy-auth.test|not-prelinked",
       subject: "wrong-subject",

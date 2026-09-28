@@ -43,7 +43,7 @@ async function fixture() {
   const parent = t.withIdentity(parentIdentity);
   const student = t.withIdentity(studentIdentity);
   const admin = t.withIdentity(adminIdentity);
-  const workspace = (termId = ids.oldTermId, historyLimit = 4) => parent.query(api.functions.portal.getWorkspaceData, { studentId: ids.studentId, sessionId: ids.sessionId, termId, historyLimit });
+  const workspace = (termId = ids.oldTermId, historyLimit = 4) => parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: ids.studentId, sessionId: ids.sessionId, termId, historyLimit });
   const certify = async () => {
     const tuple = { studentId: ids.studentId, classId: ids.classId, sessionId: ids.sessionId, termId: ids.oldTermId };
     const report = await admin.query(api.functions.academic.reportCards.getStudentReportCard, tuple);
@@ -61,16 +61,75 @@ async function fixture() {
 }
 
 describe("family graded release gate", () => {
+  it("shows upcoming school events beyond 256 past events without leaking another school's events", async () => {
+    const f = await fixture();
+    const now = Date.now();
+    const upcomingIds = await f.t.run(async ctx => {
+      const event = (schoolId: typeof f.ids.schoolId, title: string, startDate: number, isArchived = false) => ({
+        schoolId, title, startDate, endDate: startDate + 1_000, isAllDay: false,
+        isArchived, createdAt: 1, updatedAt: 1, updatedBy: f.ids.adminId,
+      });
+      for (let i = 0; i < 270; i++) {
+        await ctx.db.insert("schoolEvents", event(f.ids.schoolId, `Past ${i}`, now - 10_000 - i));
+      }
+      await ctx.db.insert("schoolEvents", event(f.ids.schoolId, "Archived", now + 1_000, true));
+      await ctx.db.insert("schoolEvents", event(f.ids.otherSchoolId, "Other school", now + 1_500));
+      const first = await ctx.db.insert("schoolEvents", event(f.ids.schoolId, "School open day", now + 2_000));
+      const second = await ctx.db.insert("schoolEvents", event(f.ids.schoolId, "Family meeting", now + 3_000));
+      return [first, second];
+    });
+    const result = await f.parent.query(api.functions.portal.getWorkspaceData, {
+      studentId: f.ids.studentId, now,
+    });
+    expect(result.selectedReportCard).toBeNull();
+    expect(result.history).toEqual([]);
+    expect(result.notifications.filter(notice => notice.id.startsWith("event-")).map(notice => notice.id))
+      .toEqual(upcomingIds.map(id => `event-${id}`));
+    expect(JSON.stringify(result.notifications)).not.toMatch(/Archived|Other school|Past 269/);
+    const refreshed = await f.parent.query(api.functions.portal.getWorkspaceData, {
+      studentId: f.ids.studentId, now: now + 2_500,
+    });
+    expect(refreshed.notifications.filter(notice => notice.id.startsWith("event-")).map(notice => notice.id))
+      .toEqual([`event-${upcomingIds[1]}`]);
+  });
+
+  it("keeps legacy no-now requests callable without event notices or draft results", async () => {
+    const f = await fixture();
+    const now = Date.now();
+    const eventId = await f.t.run(async ctx => {
+      return ctx.db.insert("schoolEvents", {
+        schoolId: f.ids.schoolId, title: "Upcoming open day", startDate: now + 10_000,
+        endDate: now + 11_000, isAllDay: false, createdAt: 1, updatedAt: 1,
+        updatedBy: f.ids.adminId,
+      });
+    });
+    const legacyArgs = { studentId: f.ids.studentId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId };
+    const withheld = await f.parent.query(api.functions.portal.getWorkspaceData, legacyArgs);
+    expect(withheld).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+    expect(withheld.notifications.some(notice => notice.id.startsWith("event-"))).toBe(false);
+    await f.certify();
+    await f.release();
+    const [legacy, current] = await Promise.all([
+      f.parent.query(api.functions.portal.getWorkspaceData, legacyArgs),
+      f.parent.query(api.functions.portal.getWorkspaceData, { ...legacyArgs, now }),
+    ]);
+    expect(legacy.selectedResultState).toBe("released");
+    expect(legacy.selectedReportCard).toEqual(current.selectedReportCard);
+    expect(legacy.history).toEqual(current.history);
+    expect(legacy.notifications.some(notice => notice.id.startsWith("event-"))).toBe(false);
+    expect(current.notifications.some(notice => notice.id === `event-${eventId}`)).toBe(true);
+  });
+
   it("hides partial drafts and certified but unreleased cards for parent and student", async () => {
     const f = await fixture();
     for (const viewer of [f.parent, f.student]) {
-      const result = await viewer.query(api.functions.portal.getWorkspaceData, { studentId: f.ids.studentId, termId: f.ids.oldTermId });
+      const result = await viewer.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: f.ids.studentId, termId: f.ids.oldTermId });
       expect(result).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
       expect(JSON.stringify(result.notifications)).not.toMatch(/pending|marks|comment|score|grade|\/report-cards/i);
     }
     await f.certify();
     for (const viewer of [f.parent, f.student]) {
-      const result = await viewer.query(api.functions.portal.getWorkspaceData, { studentId: f.ids.studentId, termId: f.ids.oldTermId });
+      const result = await viewer.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: f.ids.studentId, termId: f.ids.oldTermId });
       expect(result).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
       expect(JSON.stringify(result.notifications)).not.toMatch(/pending|marks|comment|score|grade|\/report-cards/i);
     }
@@ -83,7 +142,7 @@ describe("family graded release gate", () => {
     const released = await f.workspace();
     expect(released.selectedResultState).toBe("released");
     expect(released.selectedReportCard?.summary.totalScore).toBeGreaterThan(0);
-    const studentView = await f.student.query(api.functions.portal.getWorkspaceData, { studentId: f.ids.studentId, termId: f.ids.oldTermId });
+    const studentView = await f.student.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: f.ids.studentId, termId: f.ids.oldTermId });
     expect(studentView.selectedReportCard).toEqual(released.selectedReportCard);
     await f.t.run(async ctx => {
       await ctx.db.patch(f.ids.recordId, { total: 1, remark: "Changed after release" });
@@ -105,15 +164,15 @@ describe("family graded release gate", () => {
     await f.certify();
     await f.release();
     const secondSessionId = await f.t.run(ctx => ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: "Different session", startDate: 20, endDate: 30, isActive: false, createdAt: 1, updatedAt: 1 }));
-    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { studentId: f.ids.studentId, sessionId: secondSessionId, termId: f.ids.oldTermId })).rejects.toThrow();
-    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { studentId: f.ids.studentId, sessionId: f.ids.otherSchoolId as never, termId: f.ids.oldTermId })).rejects.toThrow();
-    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { studentId: f.ids.studentId, termId: f.ids.otherSchoolId as never })).rejects.toThrow();
-    await expect(f.t.withIdentity({ subject: "stranger", tokenIdentifier: "https://school.test|stranger" }).query(api.functions.portal.getWorkspaceData, { studentId: f.ids.studentId })).rejects.toThrow();
+    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: f.ids.studentId, sessionId: secondSessionId, termId: f.ids.oldTermId })).rejects.toThrow();
+    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: f.ids.studentId, sessionId: f.ids.otherSchoolId as never, termId: f.ids.oldTermId })).rejects.toThrow();
+    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: f.ids.studentId, termId: f.ids.otherSchoolId as never })).rejects.toThrow();
+    await expect(f.t.withIdentity({ subject: "stranger", tokenIdentifier: "https://school.test|stranger" }).query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: f.ids.studentId })).rejects.toThrow();
     const otherStudentId = await f.t.run(async ctx => {
       const userId = await ctx.db.insert("users", { schoolId: f.ids.otherSchoolId, authId: "other-student", name: "Other student", email: "other@student.test", role: "student", createdAt: 1, updatedAt: 1 });
       return ctx.db.insert("students", { schoolId: f.ids.otherSchoolId, classId: f.ids.nextClassId, userId, admissionNumber: "OTHER", createdAt: 1, updatedAt: 1 });
     });
-    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { studentId: otherStudentId })).rejects.toThrow();
+    await expect(f.parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: otherStudentId })).rejects.toThrow();
     await f.t.run(async ctx => {
       const issued = await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId)).unique();
       await ctx.db.insert("issuedReportCards", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.nextClassId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, issuedAt: issued!.issuedAt, issuedBy: f.ids.adminId, report: { ...issued!.report, classId: f.ids.nextClassId } });
@@ -130,7 +189,7 @@ describe("family graded release gate", () => {
       const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: "late-student", name: "Late", email: "late@gate.test", role: "student", createdAt: 2, updatedAt: 2 });
       return ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId, userId, familyId: existing!.familyId, admissionNumber: "LATE", createdAt: 2, updatedAt: 2 });
     });
-    expect(await f.parent.query(api.functions.portal.getWorkspaceData, { studentId: late, termId: f.ids.oldTermId })).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: late, termId: f.ids.oldTermId })).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
     await f.t.run(async ctx => {
       const rows = await ctx.db.query("classResultPublicationStudents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect();
       await ctx.db.delete(rows[0]._id);

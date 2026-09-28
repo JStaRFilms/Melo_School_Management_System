@@ -65,6 +65,90 @@ async function fixture() {
 }
 
 describe("graded result release", () => {
+  it("binds selectors, pause, exclusions and release to a selected non-default branch", async () => {
+    const f = await fixture();
+    await f.certify();
+    const foreignSchoolId = await f.t.run(async ctx => {
+      const now = 1;
+      const foreign = await ctx.db.insert("schools", { name: "Foreign", slug: "foreign-release", status: "active", createdAt: now, updatedAt: now });
+      for (const identity of [adminIdentity, officerIdentity]) {
+        const isAdmin = identity === adminIdentity;
+        const existingUser = await ctx.db.query("users").withIndex("by_auth_token_identifier_and_archived", q =>
+          q.eq("authTokenIdentifier", identity.tokenIdentifier).eq("isArchived", undefined)).unique();
+        const person = isAdmin
+          ? await ctx.db.insert("persons", { authTokenIdentifier: identity.tokenIdentifier, email: "admin@branch.test",
+            name: "Admin", status: "active", primarySchoolId: f.ids.otherSchoolId, createdAt: now, updatedAt: now })
+          : (await ctx.db.query("persons").withIndex("by_token_identifier", q => q.eq("authTokenIdentifier", identity.tokenIdentifier)).unique())!._id;
+        await ctx.db.patch(person, { primarySchoolId: f.ids.otherSchoolId });
+        const original = await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q =>
+          q.eq("personId", person).eq("schoolId", f.ids.schoolId)).unique();
+        if (original) await ctx.db.patch(original._id, { isDefaultBranch: false });
+        else await ctx.db.insert("branchMemberships", { personId: person, schoolId: f.ids.schoolId, status: "active",
+          isDefaultBranch: false, legacyUserId: existingUser!._id, joinedAt: now, updatedAt: now });
+        const otherUser = await ctx.db.insert("users", { schoolId: f.ids.otherSchoolId,
+          authId: identity.subject, name: isAdmin ? "Admin B" : "Officer B", email: `${identity.subject}@branch.test`,
+          role: isAdmin ? "admin" : "staff", isSchoolAdmin: isAdmin, createdAt: now, updatedAt: now });
+        const otherMembership = await ctx.db.insert("branchMemberships", { personId: person,
+          schoolId: f.ids.otherSchoolId, status: "active", isDefaultBranch: true, legacyUserId: otherUser, joinedAt: now, updatedAt: now });
+        if (!isAdmin) {
+          for (const capability of ["academic.report_cards.preview", "academic.report_cards.publish_final"])
+            await ctx.db.insert("membershipDirectGrants", { membershipId: otherMembership, capability, grantedAt: now });
+        }
+      }
+      const second = await ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId,
+        userId: f.ids.studentUserId, admissionNumber: "REVIEW-EXCLUSION", createdAt: now, updatedAt: now });
+      await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId: second,
+        classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: now, updatedAt: now });
+      return { foreign, second };
+    });
+    const schoolId = f.ids.schoolId;
+    await f.t.run(async ctx => {
+      const person = await ctx.db.query("persons").withIndex("by_token_identifier", q =>
+        q.eq("authTokenIdentifier", officerIdentity.tokenIdentifier)).unique();
+      const otherMembership = await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q =>
+        q.eq("personId", person!._id).eq("schoolId", f.ids.otherSchoolId)).unique();
+      for (const capability of ["academic.report_cards.preview", "academic.report_cards.publish_final"])
+        await ctx.db.insert("membershipDirectRestrictions", { membershipId: otherMembership!._id,
+          capability, restrictedAt: 1 });
+    });
+    await expect(f.officer.query(api.functions.academic.resultPublication.getReleaseContext,
+      { schoolId: f.ids.otherSchoolId })).rejects.toThrow();
+    // Legacy calls without schoolId may still resolve the user's legacy school;
+    // the workspace always supplies the selected branch instead.
+    const paginationOpts = { numItems: 10, cursor: null };
+    expect((await f.officer.query(api.functions.academic.resultPublication.getReleaseContext, { schoolId })).schoolId).toBe(schoolId);
+    expect((await f.officer.query(api.functions.academic.resultPublication.listReleaseSessions, { schoolId, paginationOpts })).page[0].id).toBe(f.ids.sessionId);
+    expect((await f.officer.query(api.functions.academic.resultPublication.listReleaseTerms,
+      { schoolId, sessionId: f.ids.sessionId, paginationOpts })).page[0].id).toBe(f.ids.termId);
+    expect((await f.officer.query(api.functions.academic.resultPublication.listReleaseClasses, { schoolId, paginationOpts })).page[0].id).toBe(f.ids.classId);
+    expect((await f.officer.query(api.functions.academic.resultPublication.getReleaseSelection, { schoolId, ...f.tuple }))?.klass.id).toBe(f.ids.classId);
+    await expect(f.officer.query(api.functions.academic.resultPublication.getClassReadiness,
+      { schoolId: foreignSchoolId.foreign, ...f.tuple })).rejects.toThrow();
+    await expect(f.officer.query(api.functions.academic.resultPublication.listReleasedClasses,
+      { schoolId: foreignSchoolId.foreign, paginationOpts })).rejects.toThrow();
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.setReleasesPaused,
+      { schoolId: foreignSchoolId.foreign, releasesPaused: true, reason: "Unauthorized branch attempt" })).rejects.toThrow();
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent,
+      { schoolId: foreignSchoolId.foreign, ...f.tuple, studentId: foreignSchoolId.second, reason: "Unauthorized branch attempt" })).rejects.toThrow();
+    await f.admin.mutation(api.functions.academic.resultPublication.setReleasesPaused,
+      { schoolId, releasesPaused: true, reason: "School roster needs review" });
+    const paused = await f.officer.query(api.functions.academic.resultPublication.getReleaseContext, { schoolId });
+    expect(paused.releasesPaused).toBe(true);
+    await f.admin.mutation(api.functions.academic.resultPublication.setReleasesPaused,
+      { schoolId, releasesPaused: false, reason: "School roster reviewed" });
+    await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent,
+      { schoolId, ...f.tuple, studentId: foreignSchoolId.second, reason: "No scores after enrollment review" });
+    const ready = await f.officer.query(api.functions.academic.resultPublication.getClassReadiness, { schoolId, ...f.tuple });
+    expect(ready).toMatchObject({ ready: true, excludedCount: 1 });
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { schoolId: foreignSchoolId.foreign, ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow();
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { schoolId, ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    expect((await f.officer.query(api.functions.academic.resultPublication.listReleasedClasses,
+      { schoolId, paginationOpts })).page).toHaveLength(1);
+    expect(await f.read()).not.toBeNull();
+  });
+
   it("withholds drafts and certified reports until an atomic, idempotent release", async () => {
     const f = await fixture();
     expect(await f.read()).toBeNull();
@@ -81,6 +165,14 @@ describe("graded result release", () => {
     const retry = await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
       { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
     expect(retry._id).toEqual(release._id);
+    const staffView = await f.officer.query(api.functions.academic.resultPublication.getClassReadiness, f.tuple);
+    expect(staffView.released?.releasedByName).toBe("Officer");
+    await f.t.run(async ctx => {
+      const officer = await ctx.db.query("users").withIndex("by_auth_token_identifier_and_archived", q =>
+        q.eq("authTokenIdentifier", officerIdentity.tokenIdentifier).eq("isArchived", undefined)).unique();
+      await ctx.db.patch(officer!._id, { name: " " });
+    });
+    expect((await f.admin.query(api.functions.academic.resultPublication.getClassReadiness, f.tuple)).released?.releasedByName).toBe("Staff member");
     expect((await f.read())?.report.summary.totalScore).toBeGreaterThan(0);
     expect(await f.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect()
       .then(events => events.filter(e => e.action === "result_release.publish")))).toHaveLength(1);
@@ -261,6 +353,9 @@ describe("graded result release", () => {
       { ...f.tuple, studentId: second, reason: "No scores after reviewed class enrollment" });
     const ready = await f.readiness();
     expect(ready).toMatchObject({ ready: true, eligibleCount: 1, excludedCount: 1 });
+    expect(ready.rows.find(r => r.status === "excluded")?.approvedByName).toBe("Admin");
+    await f.t.run(ctx => ctx.db.patch(f.ids.adminId, { name: "  " }));
+    expect((await f.readiness()).rows.find(r => r.status === "excluded")?.approvedByName).toBe("Staff member");
     await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
       { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
     expect(await f.t.run(ctx => getReleasedGradedReport(ctx, { ...f.tuple, schoolId: f.ids.schoolId, studentId: second }))).toBeNull();

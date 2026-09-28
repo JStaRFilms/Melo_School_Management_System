@@ -530,6 +530,7 @@ describe("U1f typed group domain defaults", () => {
     expect(await f.t.run((ctx) => ctx.db.get(timeline.termId))).toEqual(existingTermBefore);
     const portal = f.t.withIdentity({ tokenIdentifier: "test|student" });
     const portalData = await portal.query(api.functions.portal.getWorkspaceData, {
+      now: Date.now(),
       studentId: timeline.studentId,
     });
     expect(portalData.notifications.some((item) => item.id === `event-${timeline.eventId}`)).toBe(false);

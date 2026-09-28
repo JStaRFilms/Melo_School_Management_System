@@ -1,0 +1,9 @@
+# PR #88 Kilo corrections
+
+Addressed Kilo comments 4127099953, 4127099958, 4127099967 and 4127099973 on reviewed head 19b03b3.
+
+The Admin release tuple now comes from the route query on every render. Selector changes and published-class picks push a matching URL; back, forward and same-route navigation update the tuple. While a push or branch-reset replace is pending, the old release panel is hidden. Switching branches clears tuple query parameters before allowing a new selection. Changing session clears both term and class. The selected-branch `schoolId` arguments and server membership checks from the P1 fix are unchanged.
+
+An open confirmation now explains that the roster changed when its review key changes, rather than silently disabling submit. Staff-authorized readiness resolves approver and releaser names from users belonging to the same school. Missing, blank or non-staff names display "Staff member". The panel never prints a raw `approvedBy` or `releasedBy` ID. Stored actor IDs and audit events remain unchanged; a successful mutation shows the neutral label until the readiness query refreshes.
+
+Changed `apps/admin/app/assessments/report-cards/release/{page.tsx,ClassReleasePanel.tsx}`, `packages/convex/functions/academic/resultPublication.ts`, and their focused Admin and Convex integration tests. Tests cover push/back/forward and branch reset, session clearing, an open stale dialog, resolved names and fallback. Admin and Convex typechecks passed. Focused Admin tests passed, 19 tests; focused Convex publication tests passed, 13 tests. Targeted ESLint and `git diff --check` passed. The theme audit reports rose-700 in the release controls as semantic error text; other listed Portal colours belong to parallel work. No portal or FR-023 edits in this correction. No commit, push or deployment.

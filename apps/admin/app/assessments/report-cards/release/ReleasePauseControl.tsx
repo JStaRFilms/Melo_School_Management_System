@@ -3,11 +3,13 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../../packages/convex/_generated/api";
+import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import { ReviewDialog } from "./ClassReleasePanel";
 
 const button = "min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-50";
 
-export function ReleasePauseControl({ school, paused, reason, updatedAt, canManage, transition, onTransition }: {
+export function ReleasePauseControl({ schoolId, school, paused, reason, updatedAt, canManage, transition, onTransition }: {
+  schoolId: Id<"schools">;
   school: string;
   paused: boolean;
   reason: string | null;
@@ -45,7 +47,7 @@ export function ReleasePauseControl({ school, paused, reason, updatedAt, canMana
       <div className="flex flex-wrap gap-3"><button type="button" className={button} disabled={pending} onClick={close}>Cancel</button><button type="button" className={button} disabled={pending || transition || !confirmed || explanation.trim().length < 10 || explanation.trim().length > 500} onClick={async () => {
         setPending(true); setError(""); onTransition(next);
         try {
-          await setPaused({ releasesPaused: next, reason: explanation.trim() });
+          await setPaused({ schoolId, releasesPaused: next, reason: explanation.trim() });
           setNotice(next ? "New releases paused. Published reports remain visible." : "New releases resumed.");
           closeAfterSuccess();
         } catch (e) {
