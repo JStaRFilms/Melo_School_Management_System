@@ -38,6 +38,10 @@ import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers"
 import { finishFormDraft } from "./drafts";
 import { requireCapability } from "./rbac";
 import {
+  adjustSchoolEnrollmentCount,
+  isCurrentEnrollment,
+} from "./studentEnrollmentCounts";
+import {
   deriveEffectiveSubjectSelectionIds,
   listClassAggregationOptOuts,
   listStudentAggregationOptOuts,
@@ -565,6 +569,10 @@ export async function createCanonicalStudentEnrollmentHelper(
     createdAt: now,
     updatedAt: now,
   });
+  // Canonical creation path: every caller (manual enrollment, admissions
+  // conversion) counts the new student here. adjust is a no-op until the
+  // platform backfill initializes the school's counter row.
+  await adjustSchoolEnrollmentCount(ctx, args.schoolId, 1);
   return { studentId, studentUserId, admissionNumber };
 }
 
@@ -1068,6 +1076,20 @@ export const updateStudent = mutation({
       admissionNumber: nextAdmissionNumber,
       createdAt: student.createdAt,
       updatedAt: Date.now(),
+      // Lifecycle state is not editable here: preserve it so profile edits
+      // cannot resurrect graduated students or desync the enrollment counter.
+      ...(student.enrollmentStatus !== undefined
+        ? { enrollmentStatus: student.enrollmentStatus }
+        : {}),
+      ...(student.graduatedAt !== undefined
+        ? { graduatedAt: student.graduatedAt }
+        : {}),
+      ...(student.graduatingSessionId !== undefined
+        ? { graduatingSessionId: student.graduatingSessionId }
+        : {}),
+      ...(student.graduatingClassId !== undefined
+        ? { graduatingClassId: student.graduatingClassId }
+        : {}),
     };
 
     const nextGender =
@@ -1473,6 +1495,9 @@ async function archiveStudentRecord(
     archivedBy: args.actingUserId,
     updatedAt: now,
   });
+  if (isCurrentEnrollment(student)) {
+    await adjustSchoolEnrollmentCount(ctx, args.schoolId, -1);
+  }
   await ctx.db.patch(student.userId, {
     isArchived: true,
     archivedAt: now,
@@ -1578,6 +1603,9 @@ export const restoreStudent = mutation({
       isArchived: false,
       updatedAt: now,
     });
+    if ((student.enrollmentStatus ?? "active") === "active") {
+      await adjustSchoolEnrollmentCount(ctx, schoolId, 1);
+    }
     await ctx.db.patch(student.userId, {
       isArchived: false,
       updatedAt: now,
@@ -1653,6 +1681,9 @@ export const reconcileArchivedStudents = mutation({
             archivedBy: (studentUser.archivedBy as Id<"users">) ?? userId,
             updatedAt: now,
           });
+          if (isCurrentEnrollment(student)) {
+            await adjustSchoolEnrollmentCount(ctx, schoolId, -1);
+          }
 
           // Clean up any pending staged outgoing promotions
           const pendingPromotions = await ctx.db
@@ -2095,6 +2126,9 @@ export const graduateStudents = mutation({
         graduatingClassId: args.classId,
         updatedAt: now,
       });
+      if (isCurrentEnrollment(student)) {
+        await adjustSchoolEnrollmentCount(ctx, schoolId, -1);
+      }
 
       // Purge any pending outgoing promotions or staged future selections
       const pendingPromotions = await ctx.db
@@ -2164,6 +2198,9 @@ export const cancelStudentGraduation = mutation({
       graduatingClassId: undefined,
       updatedAt: Date.now(),
     });
+    if (!isCurrentEnrollment(student)) {
+      await adjustSchoolEnrollmentCount(ctx, schoolId, 1);
+    }
 
     return { cancelled: true };
   },

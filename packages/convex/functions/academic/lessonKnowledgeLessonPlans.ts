@@ -15,9 +15,12 @@ import {
   getLessonSourceContextIssue,
   levelMatchesLessonKnowledgeScope,
 } from "./lessonKnowledgeSourceContext";
+import { getPerSourceExcerptCharacterLimit } from "./instructionGenerationRules";
 import {
   getInstructionTemplateApplicabilityLabel,
   getInstructionTemplateScopeRank,
+  instructionTemplateResolutionKeys,
+  selectInstructionTemplateBucket,
   sortInstructionTemplates,
   type InstructionTemplateScope,
   type SupportedInstructionTemplateOutputType,
@@ -142,6 +145,8 @@ const templateSectionValidator = v.object({
   order: v.number(),
   required: v.boolean(),
   minimumWordCount: v.union(v.number(), v.null()),
+  guidance: v.union(v.string(), v.null()),
+  formatHint: v.union(v.literal("paragraph"), v.literal("bullets"), v.literal("numbered"), v.literal("steps"), v.literal("mixed"), v.null()),
 });
 
 const objectiveMinimumsValidator = v.object({
@@ -936,58 +941,81 @@ async function resolveWorkspaceTemplate(args: {
   let candidate: Doc<"instructionTemplates"> | null = null;
   let resolutionPath: string | null = null;
 
-  if (subjectId && level) {
-    const exactRows = await ctx.db
-      .query("instructionTemplates")
-      .withIndex("by_school_and_output_type_and_subject_and_level", (q) =>
-        q.eq("schoolId", schoolId)
-          .eq("outputType", outputType)
-          .eq("subjectId", subjectId)
-          .eq("level", level)
+  // Applicability keys include the scope. Querying them directly prevents a
+  // different level's subject-specific template from entering a fallback bucket.
+  const buckets = instructionTemplateResolutionKeys({ outputType, subjectId, level });
+  for (const bucket of buckets) {
+    const rows = await ctx.db.query("instructionTemplates")
+      .withIndex("by_school_and_template_key", (q) =>
+        q.eq("schoolId", schoolId).eq("templateKey", bucket.key)
       )
-      .take(20);
-    candidate = exactRows.filter((row) => row.isActive).sort((a, b) => sortInstructionTemplates(a, b))[0] ?? null;
-    if (candidate) {
-      resolutionPath = "subject + level";
-    }
-  }
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .take(100);
+    candidate = selectInstructionTemplateBucket(rows, bucket, outputType);
 
-  if (!candidate && subjectId) {
-    const subjectRows = await ctx.db
-      .query("instructionTemplates")
-      .withIndex("by_school_and_output_type_and_subject", (q) =>
-        q.eq("schoolId", schoolId).eq("outputType", outputType).eq("subjectId", subjectId)
-      )
-      .take(20);
-    candidate = subjectRows.filter((row) => row.isActive).sort((a, b) => sortInstructionTemplates(a, b))[0] ?? null;
-    if (candidate) {
-      resolutionPath = "subject only";
+    // Older seeded or imported templates may predate canonical applicability
+    // keys. Preserve them by checking the same exact scope before moving to the
+    // next fallback bucket.
+    if (!candidate) {
+      let legacyRows: Array<Doc<"instructionTemplates">> = [];
+      switch (bucket.scope) {
+        case "subject_and_level":
+          if (subjectId && level) {
+            legacyRows = await ctx.db.query("instructionTemplates")
+              .withIndex("by_school_and_output_type_and_subject_and_level", (q) =>
+                q.eq("schoolId", schoolId).eq("outputType", outputType).eq("subjectId", subjectId).eq("level", level)
+              )
+              .filter((q) => q.and(
+                q.eq(q.field("isActive"), true),
+                q.eq(q.field("templateScope"), "subject_and_level")
+              ))
+              .take(100);
+          }
+          break;
+        case "subject_only":
+          if (subjectId) {
+            legacyRows = await ctx.db.query("instructionTemplates")
+              .withIndex("by_school_and_output_type_and_subject", (q) =>
+                q.eq("schoolId", schoolId).eq("outputType", outputType).eq("subjectId", subjectId)
+              )
+              .filter((q) => q.and(
+                q.eq(q.field("isActive"), true),
+                q.eq(q.field("templateScope"), "subject_only")
+              ))
+              .take(100);
+          }
+          break;
+        case "level_only":
+          if (level) {
+            legacyRows = await ctx.db.query("instructionTemplates")
+              .withIndex("by_school_and_output_type_and_level", (q) =>
+                q.eq("schoolId", schoolId).eq("outputType", outputType).eq("level", level)
+              )
+              .filter((q) => q.and(
+                q.eq(q.field("isActive"), true),
+                q.eq(q.field("templateScope"), "level_only")
+              ))
+              .take(100);
+          }
+          break;
+        case "school_default":
+          legacyRows = await ctx.db.query("instructionTemplates")
+            .withIndex("by_school_and_output_type_and_is_school_default", (q) =>
+              q.eq("schoolId", schoolId).eq("outputType", outputType).eq("isSchoolDefault", true)
+            )
+            .filter((q) => q.and(
+              q.eq(q.field("isActive"), true),
+              q.eq(q.field("templateScope"), "school_default")
+            ))
+            .take(100);
+          break;
+      }
+      candidate = legacyRows.sort(sortInstructionTemplates)[0] ?? null;
     }
-  }
 
-  if (!candidate && level) {
-    const levelRows = await ctx.db
-      .query("instructionTemplates")
-      .withIndex("by_school_and_output_type_and_level", (q) =>
-        q.eq("schoolId", schoolId).eq("outputType", outputType).eq("level", level)
-      )
-      .take(20);
-    candidate = levelRows.filter((row) => row.isActive).sort((a, b) => sortInstructionTemplates(a, b))[0] ?? null;
     if (candidate) {
-      resolutionPath = "level only";
-    }
-  }
-
-  if (!candidate) {
-    const defaultRows = await ctx.db
-      .query("instructionTemplates")
-      .withIndex("by_school_and_output_type_and_is_school_default", (q) =>
-        q.eq("schoolId", schoolId).eq("outputType", outputType).eq("isSchoolDefault", true)
-      )
-      .take(20);
-    candidate = defaultRows.filter((row) => row.isActive).sort((a, b) => sortInstructionTemplates(a, b))[0] ?? null;
-    if (candidate) {
-      resolutionPath = "school default";
+      resolutionPath = bucket.path;
+      break;
     }
   }
 
@@ -1025,6 +1053,8 @@ async function resolveWorkspaceTemplate(args: {
         order: section.order,
         required: section.required,
         minimumWordCount: section.minimumWordCount ?? null,
+        guidance: section.guidance ?? null,
+        formatHint: section.formatHint ?? null,
       })),
     objectiveMinimums: candidate.objectiveMinimums,
     resolutionPath,
@@ -1461,6 +1491,11 @@ export const getTeacherInstructionSourceExcerpts = query({
     const warnings: string[] = [];
     let totalChars = 0;
     let totalTokenEstimate = 0;
+    const perSourceCharacterLimit = getPerSourceExcerptCharacterLimit(
+      requestedSourceIds.length,
+      MAX_PROMPT_TOTAL_EXCERPT_CHARS,
+      MAX_PROMPT_CHARS_PER_SOURCE
+    );
 
     for (const sourceId of requestedSourceIds) {
       if (totalChars >= MAX_PROMPT_TOTAL_EXCERPT_CHARS) {
@@ -1501,7 +1536,7 @@ export const getTeacherInstructionSourceExcerpts = query({
       }
 
       const remainingChars = Math.max(0, MAX_PROMPT_TOTAL_EXCERPT_CHARS - totalChars);
-      const sourceLimit = Math.min(MAX_PROMPT_CHARS_PER_SOURCE, remainingChars);
+      const sourceLimit = Math.min(perSourceCharacterLimit, remainingChars);
       const excerptText = truncateText(
         usableChunks
           .map((chunk) => truncateText(chunk.chunkText, MAX_PROMPT_CHARS_PER_CHUNK))

@@ -17,7 +17,7 @@
     "./runtime": "./src/runtime.ts"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test src/runtime.test.ts src/curriculumGeneration.test.ts",
+    "test": "node --experimental-strip-types --test src/runtime.test.ts src/curriculumGeneration.test.ts src/prompts.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx"
   },

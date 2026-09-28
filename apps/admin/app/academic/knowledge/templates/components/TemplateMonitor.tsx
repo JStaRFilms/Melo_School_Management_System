@@ -1,13 +1,12 @@
 "use client";
 
-import { Terminal, Layers3, PencilLine, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Layers3, ShieldCheck } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { cn } from "@/utils";
 import type { InstructionTemplateDraft, InstructionTemplateListItem } from "../types";
 import { 
   instructionTemplateScopeOptions, 
-  getInstructionTemplateDraftResolutionRank,
-  getInstructionTemplateScopeLabel
+  getInstructionTemplateDraftResolutionRank
 } from "../utils";
 
 interface TemplateMonitorProps {
@@ -20,15 +19,7 @@ interface TemplateMonitorProps {
   validationIssue: string | null;
 }
 
-export function TemplateMonitor({
-  draft,
-  templates,
-  subjectLabel,
-  scopeSummary,
-  currentTemplateLabel,
-  previewPathLabel,
-  validationIssue,
-}: TemplateMonitorProps) {
+export function TemplateMonitor({ draft, validationIssue }: TemplateMonitorProps) {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Logic Waterfall & Matrix View */}
@@ -37,7 +28,7 @@ export function TemplateMonitor({
         <div className="order-2 lg:order-1 space-y-8">
           <div className="space-y-1.5 px-1">
             <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Resolution Path</h2>
-            <p className="text-sm font-bold text-slate-900 tracking-tight">How this template was selected</p>
+            <p className="text-sm font-bold text-slate-900 tracking-tight">Configured fallback priority</p>
           </div>
 
           <div className="relative space-y-2 pl-4">
@@ -78,14 +69,31 @@ export function TemplateMonitor({
             })}
           </div>
 
-          <div className="rounded-2xl bg-emerald-50 p-6 border border-emerald-100/50">
-            <div className="flex items-center gap-3 mb-2">
-              <ShieldCheck className="h-5 w-5 text-emerald-600" />
-              <p className="text-xs font-black uppercase tracking-widest text-emerald-700">Audit Status</p>
+          <div className={cn(
+            "rounded-2xl border p-6",
+            validationIssue ? "border-rose-100 bg-rose-50" : "border-emerald-100/50 bg-emerald-50"
+          )}>
+            <div className="mb-2 flex items-center gap-3">
+              {validationIssue ? (
+                <AlertTriangle className="h-5 w-5 text-rose-600" />
+              ) : (
+                <ShieldCheck className="h-5 w-5 text-emerald-600" />
+              )}
+              <p className={cn(
+                "text-xs font-black uppercase tracking-widest",
+                validationIssue ? "text-rose-700" : "text-emerald-700"
+              )}>
+                {validationIssue ? "Validation issue" : "Preview status"}
+              </p>
             </div>
-            <p className="text-sm font-bold text-emerald-900">Logic Verified</p>
-            <p className="mt-1 text-[10px] font-medium text-emerald-600/80 leading-relaxed">
-              Resolution path is stable and matches the current academic context.
+            <p className={cn("text-sm font-bold", validationIssue ? "text-rose-900" : "text-emerald-900")}>
+              {validationIssue ? "Configuration needs attention" : "Configuration preview"}
+            </p>
+            <p className={cn(
+              "mt-1 text-[10px] font-medium leading-relaxed",
+              validationIssue ? "text-rose-700" : "text-emerald-600/80"
+            )}>
+              {validationIssue ?? "This preview does not test which template a teacher will receive."}
             </p>
           </div>
         </div>
@@ -99,7 +107,7 @@ export function TemplateMonitor({
               </h1>
               <div className="flex items-center gap-2">
                 <div className="h-1 w-1 rounded-full bg-emerald-400" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Resolved Configuration</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Draft configuration</span>
               </div>
             </div>
             <div className="hidden lg:flex items-center gap-6 border-l border-white/10 pl-6">
@@ -123,7 +131,8 @@ export function TemplateMonitor({
                     </div>
                     <div className="space-y-0.5">
                       <p className="text-sm lg:text-base font-bold text-slate-900 tracking-tight">{section.label || "Unnamed Block"}</p>
-                      <p className="text-[9px] lg:text-[10px] font-black uppercase tracking-widest text-slate-300">{section.required ? "Strict Requirement" : "Optional Component"}</p>
+                      <p className="text-[9px] lg:text-[10px] font-black uppercase tracking-widest text-slate-300">{section.required ? "Required" : "Optional"}{section.formatHint ? ` · ${section.formatHint}` : ""}</p>
+                      {section.guidance && <p className="mt-2 max-w-prose text-xs font-medium text-slate-600">{section.guidance}</p>}
                     </div>
                   </div>
                   
@@ -142,7 +151,7 @@ export function TemplateMonitor({
                   <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Global Objectives</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 lg:gap-8">
-                  <SmallStat label="Objectives" value={draft.objectiveMinimums.minimumObjectives} />
+                  <SmallStat label="Objectives (only with an objectives section)" value={draft.objectiveMinimums.minimumObjectives} />
                   <SmallStat label="Sources" value={draft.objectiveMinimums.minimumSourceMaterials} />
                   <SmallStat label="Total Sections" value={draft.objectiveMinimums.minimumSections} />
                 </div>
@@ -172,13 +181,3 @@ function SmallStat({ label, value }: { label: string; value: string | number }) 
     </div>
   );
 }
-
-function AuditStat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="space-y-0.5">
-      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-      <p className="text-sm font-black text-slate-900">{value}</p>
-    </div>
-  );
-}
-

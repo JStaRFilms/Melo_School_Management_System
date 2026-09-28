@@ -14,11 +14,18 @@ export const instructionTemplateScopeValidator = v.union(
   v.literal("school_default")
 );
 
+export const instructionTemplateFormatHintValidator = v.union(
+  v.literal("paragraph"), v.literal("bullets"), v.literal("numbered"), v.literal("steps"), v.literal("mixed")
+);
+export type InstructionTemplateFormatHint = "paragraph" | "bullets" | "numbered" | "steps" | "mixed";
+
 export const instructionTemplateSectionInputValidator = v.object({
   id: v.optional(v.union(v.string(), v.null())),
   label: v.string(),
   required: v.boolean(),
   minimumWordCount: v.optional(v.union(v.number(), v.null())),
+  guidance: v.optional(v.union(v.string(), v.null())),
+  formatHint: v.optional(v.union(instructionTemplateFormatHintValidator, v.null())),
 });
 
 export const instructionTemplateObjectiveMinimumsInputValidator = v.object({
@@ -37,6 +44,8 @@ export const instructionTemplateDraftValidator = v.object({
   level: v.optional(v.union(v.string(), v.null())),
   isSchoolDefault: v.boolean(),
   isActive: v.boolean(),
+  sourcePresetId: v.optional(v.union(v.string(), v.null())),
+  sourcePresetVersion: v.optional(v.union(v.number(), v.null())),
   sectionDefinitions: v.array(instructionTemplateSectionInputValidator),
   objectiveMinimums: instructionTemplateObjectiveMinimumsInputValidator,
 });
@@ -61,8 +70,12 @@ export const instructionTemplateListItemValidator = v.object({
       order: v.number(),
       required: v.boolean(),
       minimumWordCount: v.union(v.number(), v.null()),
+      guidance: v.union(v.string(), v.null()),
+      formatHint: v.union(instructionTemplateFormatHintValidator, v.null()),
     })
   ),
+  sourcePresetId: v.union(v.string(), v.null()),
+  sourcePresetVersion: v.union(v.number(), v.null()),
   objectiveMinimums: instructionTemplateObjectiveMinimumsInputValidator,
   searchText: v.string(),
   isActive: v.boolean(),
@@ -103,6 +116,8 @@ export type InstructionTemplateSectionInput = {
   label: string;
   required: boolean;
   minimumWordCount?: number | null;
+  guidance?: string | null;
+  formatHint?: InstructionTemplateFormatHint | null;
 };
 
 export type InstructionTemplateObjectiveMinimums = {
@@ -117,6 +132,8 @@ export type NormalizedInstructionTemplateSection = {
   order: number;
   required: boolean;
   minimumWordCount?: number;
+  guidance?: string;
+  formatHint?: InstructionTemplateFormatHint;
 };
 
 export type NormalizedInstructionTemplateApplicability = {
@@ -138,6 +155,8 @@ export type NormalizedInstructionTemplatePayload = {
   level: string | undefined;
   isSchoolDefault: boolean;
   isActive: boolean;
+  sourcePresetId?: string;
+  sourcePresetVersion?: number;
   sectionDefinitions: NormalizedInstructionTemplateSection[];
   requiredSectionIds: string[];
   objectiveMinimums: InstructionTemplateObjectiveMinimums;
@@ -183,6 +202,34 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || "section";
+}
+
+export function instructionTemplateResolutionKeys(args: {
+  outputType: SupportedInstructionTemplateOutputType;
+  subjectId: Id<"subjects"> | null;
+  level: string | null;
+}) {
+  const { outputType, subjectId } = args;
+  const level = normalizeOptionalInstructionTemplateText(args.level)?.toLowerCase() ?? null;
+  return [
+    ...(subjectId && level ? [{ key: `${outputType}:subject_and_level:${subjectId}:${level}`, scope: "subject_and_level", path: "subject + level" }] : []),
+    ...(subjectId ? [{ key: `${outputType}:subject_only:${subjectId}`, scope: "subject_only", path: "subject only" }] : []),
+    ...(level ? [{ key: `${outputType}:level_only:${level}`, scope: "level_only", path: "level only" }] : []),
+    { key: `${outputType}:school_default`, scope: "school_default", path: "school default" },
+  ] as const;
+}
+
+export function selectInstructionTemplateBucket<T extends {
+  templateKey: string;
+  templateScope: string;
+  outputType: string;
+  isActive: boolean;
+  updatedAt: number;
+  title: string;
+}>(rows: T[], bucket: { key: string; scope: string }, outputType: SupportedInstructionTemplateOutputType): T | null {
+  return rows.filter((row) => row.isActive && row.outputType === outputType &&
+    row.templateScope === bucket.scope && row.templateKey === bucket.key)
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.title.localeCompare(b.title))[0] ?? null;
 }
 
 function buildScopedKey(args: {
@@ -361,12 +408,18 @@ export function normalizeInstructionTemplateSections(args: {
     }
     seenIds.add(idKey);
 
+    const guidance = normalizeOptionalInstructionTemplateText(section.guidance);
+    if (guidance && guidance.length > 1500) {
+      throw new ConvexError(`Section guidance for "${label}" must be 1500 characters or fewer`);
+    }
     sectionDefinitions.push({
       id,
       label,
       order: index,
       required: section.required,
       ...(minimumWordCount !== undefined ? { minimumWordCount } : {}),
+      ...(guidance ? { guidance } : {}),
+      ...(section.formatHint ? { formatHint: section.formatHint } : {}),
     });
 
     if (section.required) {

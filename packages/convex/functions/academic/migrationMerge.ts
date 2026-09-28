@@ -11,6 +11,7 @@ import {
   proposeAdmissionNumberHelper,
 } from "./admissionNumbers";
 import { recordAuditEventHelper } from "./audit";
+import { adjustSchoolEnrollmentCount } from "./studentEnrollmentCounts";
 import {
   deriveAssessmentFields,
   validateScoreRanges,
@@ -674,6 +675,7 @@ export const commitImportWorkspace = mutation({
           createdAt: now,
           updatedAt: now,
         });
+        await adjustSchoolEnrollmentCount(ctx, args.schoolId, 1);
         outcomes.push({
           recordId: record._id,
           rowNumber: record.rowNumber,
