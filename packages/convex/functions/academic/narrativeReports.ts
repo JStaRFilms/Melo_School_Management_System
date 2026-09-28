@@ -268,8 +268,8 @@ export const getIssuedClassBatch = query({
     const [issued, current, arrivals, departures, graduations] = await Promise.all([
       ctx.db.query("issuedNarrativeReports").withIndex("by_classId_and_sessionId_and_termId", q =>
         q.eq("classId", args.classId).eq("sessionId", args.sessionId).eq("termId", args.termId)).take(limit + 1),
-      ctx.db.query("students").withIndex("by_school_and_class", q =>
-        q.eq("schoolId", auth.schoolId).eq("classId", args.classId)).take(limit + 1),
+      session.isActive ? ctx.db.query("students").withIndex("by_school_and_class", q =>
+        q.eq("schoolId", auth.schoolId).eq("classId", args.classId)).take(limit + 1) : Promise.resolve([]),
       ctx.db.query("studentPromotions").withIndex("by_to_class_and_to_session", q =>
         q.eq("toClassId", args.classId).eq("toSessionId", args.sessionId)).take(limit + 1),
       ctx.db.query("studentPromotions").withIndex("by_from_class_and_from_session", q =>

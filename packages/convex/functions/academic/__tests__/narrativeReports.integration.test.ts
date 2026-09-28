@@ -111,6 +111,26 @@ describe("issued class narrative batch", () => {
       classId: ids.classId, sessionId: ids.sessionId, termId: ids.termId,
     })).toMatchObject({ skipped: 1, reports: [{ snapshot: { studentName: "Student" } }] });
   });
+  it("ignores a large present-day class when printing a small inactive historical roster", async () => {
+    const { t, ids, as, enable } = await fixture();
+    await enable();
+    await t.run(async ctx => {
+      await ctx.db.patch(ids.sessionId, { isActive: false });
+      await ctx.db.insert("studentGraduations", { schoolId: ids.schoolId, studentId: ids.secondStudentId,
+        classId: ids.classId, sessionId: ids.sessionId, graduationDate: 90,
+        createdAt: 1, createdBy: ids.adminId });
+      await ctx.db.insert("issuedNarrativeReports", { schoolId: ids.schoolId, classId: ids.classId,
+        sessionId: ids.sessionId, termId: ids.termId, studentId: ids.studentId, issuedAt: 1,
+        issuedBy: ids.adminId, snapshot: { schoolName: "School A", studentName: "Historical pupil",
+          admissionNumber: "NAR-001", className: "Nursery", sessionName: "2025-26",
+          termName: "Term 1", subjects: [{ subjectId: ids.subjectId, name: "Art", order: 0, comment: "Issued" }] } });
+      for (let i = 0; i < 41; i++) await ctx.db.insert("students", { schoolId: ids.schoolId,
+        classId: ids.classId, userId: ids.adminId, admissionNumber: `NOW-${i}`, createdAt: 1, updatedAt: 1 });
+    });
+    expect(await as("admin").query(fn.getIssuedClassBatch, {
+      classId: ids.classId, sessionId: ids.sessionId, termId: ids.termId,
+    })).toMatchObject({ skipped: 1, reports: [{ snapshot: { studentName: "Historical pupil" } }] });
+  });
   it("fails closed instead of returning a partial batch above 40 reports", async () => {
     const { t, ids, as, enable } = await fixture();
     await enable();
