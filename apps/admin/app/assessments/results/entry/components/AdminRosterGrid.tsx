@@ -18,7 +18,8 @@ import type { ExamInputMode } from "@school/shared";
 import { scoreRowPolicy, scoreRosterHasScaledColumn, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import { buildReportCardExtrasHref,buildReportCardHref } from "@school/shared";
 import Link from "next/link";
-import { useEffect,useState } from "react";
+import { ScoreNumberInput } from "@school/shared/drafts";
+import { useEffect,useRef,useState } from "react";
 import { AdminRosterGridRow } from "./AdminRosterGridRow";
 
 interface AdminRosterGridProps {
@@ -32,6 +33,7 @@ interface AdminRosterGridProps {
   sessionId: string;
   termId: string;
   classId: string;
+  highlightedStudentId?: string | null;
   isEditable?: boolean;
   onScoreChange: (
     studentId: Id<"students">,
@@ -51,6 +53,7 @@ export function AdminRosterGrid({
   sessionId,
   termId,
   classId,
+  highlightedStudentId,
   isEditable = true,
   onScoreChange,
 }: AdminRosterGridProps) {
@@ -58,6 +61,14 @@ export function AdminRosterGrid({
   const mixedLegacy = !policy && roster.some(row => { const weights = scoreRowPolicy(examInputMode, policy, row.assessmentRecord); return weights.examRawMax !== scoreRowPolicy(examInputMode).examRawMax || weights.ca1Max !== 20 || weights.ca2Max !== 20 || weights.ca3Max !== 20 || weights.examContributionMax !== 40; });
   const examLabel = mixedLegacy ? "row limit" : `/${policy?.examRawMax ?? (examInputMode === "raw40" ? 40 : 60)}`;
   const [selectedStudentId, setSelectedStudentId] = useState(roster[0]?.studentId ?? "");
+  const scrolledStudentRef = useRef<string | null>(null);
+  useEffect(() => {
+    const scrollKey = `${sessionId}:${termId}:${classId}:${highlightedStudentId}`;
+    if (!highlightedStudentId || !roster.some(row => row.studentId === highlightedStudentId) || scrolledStudentRef.current === scrollKey) return;
+    const isDesktop = window.matchMedia?.("(min-width: 768px)").matches ?? true;
+    const row = document.getElementById(`${isDesktop ? "student" : "mobile-student"}-${highlightedStudentId}`);
+    if (row) { row.scrollIntoView({ block: "center" }); scrolledStudentRef.current = scrollKey; }
+  }, [highlightedStudentId, roster, sessionId, termId, classId]);
 
   useEffect(() => {
     if (roster.length === 0) {
@@ -66,11 +77,11 @@ export function AdminRosterGrid({
     }
 
     setSelectedStudentId((current) =>
-      roster.some((student) => student.studentId === current)
-        ? current
-        : roster[0].studentId
+      roster.some((student) => student.studentId === highlightedStudentId)
+        ? highlightedStudentId!
+        : roster.some((student) => student.studentId === current) ? current : roster[0].studentId
     );
-  }, [roster]);
+  }, [roster, highlightedStudentId]);
 
   return (
     <section className="space-y-4">
@@ -95,7 +106,7 @@ export function AdminRosterGrid({
             onChange={(event) => {
               const nextStudentId = event.target.value;
               setSelectedStudentId(nextStudentId);
-              document.getElementById(`student-${nextStudentId}`)?.scrollIntoView({
+              document.getElementById(`mobile-student-${nextStudentId}`)?.scrollIntoView({
                 behavior: "smooth",
                 block: "start",
               });
@@ -222,7 +233,7 @@ export function AdminRosterGrid({
           return (
             <div
               key={student.studentId}
-              id={`student-${student.studentId}`}
+              id={`mobile-student-${student.studentId}`}
               className={`p-3 rounded-xl border transition-all ${
                 isIncomplete ? "border-slate-100 bg-slate-50/20 grayscale" : "border-slate-200 bg-white"
               }`}
@@ -277,20 +288,11 @@ export function AdminRosterGrid({
                       <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
                         {input.label} /{input.max}
                       </span>
-                      <input
-                        type="number"
-                        value={input.value ?? ""}
+                      <ScoreNumberInput
+                        value={input.value}
                         min={0} max={input.max} step="0.01" aria-label={`${humanNameFinalStrict(student.studentName)} ${input.field === "examRawScore" ? "exam" : input.field.toUpperCase()} score out of ${input.max}`}
                         disabled={!isEditable}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          const parsed = raw === "" ? null : Number(raw);
-                          onScoreChange(
-                            student.studentId,
-                            input.field,
-                            parsed === null || Number.isNaN(parsed) ? null : parsed
-                          );
-                        }}
+                        onScoreChange={(next) => onScoreChange(student.studentId, input.field, next)}
                         placeholder="--"
                         aria-invalid={Boolean(inputError)}
                         className={`w-full bg-transparent text-center font-black text-sm text-slate-900 outline-none tabular-nums p-0 ${

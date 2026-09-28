@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
@@ -47,7 +47,10 @@ function TeacherReportCardPageContent() {
   const hasTriggeredClassPrintRef = useRef(false);
   const printRaf1Ref = useRef<number | null>(null);
   const printRaf2Ref = useRef<number | null>(null);
-  const [printWarning, setPrintWarning] = useState<string | null>(null);
+  const [printWarning, setPrintWarning] = useState<
+    { kind: "single" | "batch"; context: string; message: string } | null
+  >(null);
+  const printedBatchRef = useRef<string | null>(null);
 
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
@@ -83,9 +86,31 @@ function TeacherReportCardPageContent() {
     classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;
   const isClassPrintBlocked = blockedClassPrintCount > 0;
   const batchWarning = classReportCards?.find(card => card.scoringPolicyWarning)?.scoringPolicyWarning ?? null;
+  const batchContext = `${sessionId}:${termId}:${resolvedClassId}:${studentId}`;
+  const batchPrintStateRef = useRef({ context: batchContext, ready: false });
+  const isBatchReady = isPrintClassMode && !isClassPrintBlocked && Boolean(classReportCards && reportCard?.student._id === studentId);
+  useLayoutEffect(() => {
+    batchPrintStateRef.current = { context: batchContext, ready: isBatchReady };
+  }, [batchContext, isBatchReady]);
+  const scheduleBatchPrint = useCallback((expectedContext: string) => {
+    if (printRaf1Ref.current !== null) cancelAnimationFrame(printRaf1Ref.current);
+    if (printRaf2Ref.current !== null) cancelAnimationFrame(printRaf2Ref.current);
+    printRaf1Ref.current = requestAnimationFrame(() => {
+      printRaf1Ref.current = null;
+      if (batchPrintStateRef.current.context !== expectedContext || !batchPrintStateRef.current.ready) return;
+      printRaf2Ref.current = requestAnimationFrame(() => {
+        printRaf2Ref.current = null;
+        if (batchPrintStateRef.current.context !== expectedContext || !batchPrintStateRef.current.ready) return;
+        printedBatchRef.current = expectedContext;
+        window.print();
+      });
+    });
+  }, []);
   const handleSinglePrint = () => {
-    if (reportCard?.scoringPolicyWarning) setPrintWarning(reportCard.scoringPolicyWarning);
-    else window.print();
+    if (reportCard?.student._id !== studentId) return;
+    if (reportCard.scoringPolicyWarning) {
+      setPrintWarning({ kind: "single", context: studentId, message: reportCard.scoringPolicyWarning });
+    } else window.print();
   };
 
   const exitFullClassPrint = useCallback(() => {
@@ -97,6 +122,7 @@ function TeacherReportCardPageContent() {
 
   const handleSelectStudent = useCallback(
     (nextStudentId: string) => {
+      setPrintWarning(null);
       const params = new URLSearchParams(searchParamsString);
       params.set("studentId", nextStudentId);
       if (resolvedClassId) {
@@ -108,7 +134,7 @@ function TeacherReportCardPageContent() {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     },
-    [pathname, resolvedClassId, router, searchParamsString]
+    [pathname, resolvedClassId, router, searchParamsString, setPrintWarning]
   );
 
   const handlePrintFullClass = useCallback(() => {
@@ -130,33 +156,33 @@ function TeacherReportCardPageContent() {
     }
 
     hasTriggeredClassPrintRef.current = true;
-    if (batchWarning) { setPrintWarning(batchWarning); return; }
-    printRaf1Ref.current = requestAnimationFrame(() => {
-      printRaf2Ref.current = requestAnimationFrame(() => {
-        window.print();
-      });
-    });
-  }, [isPrintClassMode, isClassPrintBlocked, batchWarning, setPrintWarning]);
+    if (batchWarning) {
+      setPrintWarning({ kind: "batch", context: batchContext, message: batchWarning });
+      return;
+    }
+    scheduleBatchPrint(batchContext);
+  }, [isPrintClassMode, isClassPrintBlocked, batchWarning, batchContext, scheduleBatchPrint, setPrintWarning]);
 
-  // Reset the print trigger guard when context changes
+  // A queued frame must not print a different batch after navigation.
   useEffect(() => {
     hasTriggeredClassPrintRef.current = false;
+    printedBatchRef.current = null;
     setPrintWarning(null);
-  }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
-
-  useEffect(() => {
-    if (isPrintClassMode) return;
-    if (printRaf1Ref.current !== null) cancelAnimationFrame(printRaf1Ref.current);
-    if (printRaf2Ref.current !== null) cancelAnimationFrame(printRaf2Ref.current);
-    printRaf1Ref.current = null;
-    printRaf2Ref.current = null;
-  }, [isPrintClassMode]);
+    return () => {
+      if (printRaf1Ref.current !== null) cancelAnimationFrame(printRaf1Ref.current);
+      if (printRaf2Ref.current !== null) cancelAnimationFrame(printRaf2Ref.current);
+      printRaf1Ref.current = null;
+      printRaf2Ref.current = null;
+    };
+  }, [isPrintClassMode, batchContext]);
 
   // Handle afterprint to exit batch mode
   useEffect(() => {
     if (!isPrintClassMode) return;
 
     const handleAfterPrint = () => {
+      if (printedBatchRef.current !== batchContext) return;
+      printedBatchRef.current = null;
       exitFullClassPrint();
     };
 
@@ -164,7 +190,7 @@ function TeacherReportCardPageContent() {
     return () => {
       window.removeEventListener("afterprint", handleAfterPrint);
     };
-  }, [isPrintClassMode, exitFullClassPrint]);
+  }, [isPrintClassMode, exitFullClassPrint, batchContext]);
 
   if (!studentId || !sessionId || !termId) {
     return (
@@ -187,7 +213,18 @@ function TeacherReportCardPageContent() {
   if (isPrintClassMode) {
     return (
       <>
-        {printWarning && <ReportScoringPrintWarning message={printWarning} onCancel={() => { setPrintWarning(null); exitFullClassPrint(); }} onContinue={() => { setPrintWarning(null); requestAnimationFrame(() => requestAnimationFrame(() => window.print())); }} />}
+        {printWarning?.kind === "batch" && printWarning.context === batchContext && (
+          <ReportScoringPrintWarning
+            message={printWarning.message}
+            onCancel={() => { setPrintWarning(null); exitFullClassPrint(); }}
+            onContinue={() => {
+              setPrintWarning(null);
+              if (batchPrintStateRef.current.context === batchContext && batchPrintStateRef.current.ready) {
+                scheduleBatchPrint(batchContext);
+              }
+            }}
+          />
+        )}
         <div className="rc-no-print mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
           <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
             <div>
@@ -245,7 +282,16 @@ function TeacherReportCardPageContent() {
         onSelectStudent={handleSelectStudent}
         onPrintFullClass={handlePrintFullClass}
       />
-      {printWarning && <ReportScoringPrintWarning message={printWarning} onCancel={() => setPrintWarning(null)} onContinue={() => { setPrintWarning(null); window.print(); }} />}
+      {printWarning?.kind === "single" && printWarning.context === studentId && (
+        <ReportScoringPrintWarning
+          message={printWarning.message}
+          onCancel={() => setPrintWarning(null)}
+          onContinue={() => {
+            setPrintWarning(null);
+            if (printWarning.context === studentId && reportCard.student._id === studentId) window.print();
+          }}
+        />
+      )}
       {reportCard.scoringPolicyWarning && <div className="rc-no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{reportCard.scoringPolicyWarning}</div>}
       <ReportCardToolbar
         onPrint={handleSinglePrint}

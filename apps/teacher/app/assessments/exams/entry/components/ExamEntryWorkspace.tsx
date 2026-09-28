@@ -161,7 +161,7 @@ export function ExamEntryWorkspace({
 
       const examInputMode: ExamInputMode =
         sheetData?.settings?.examInputMode ?? "raw40";
-      const scorePolicy = sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
+      const scorePolicy = sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
       const rowPolicy = scoreRowPolicy(examInputMode, scorePolicy, rosterEntry?.assessmentRecord);
       const error = isClearingSavedScore
         ? getClearedScoreMessage(field)
@@ -255,7 +255,7 @@ export function ExamEntryWorkspace({
 
     const examInputMode: ExamInputMode =
       sheetData.settings?.examInputMode ?? "raw40";
-    const scorePolicy = sheetData.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
+    const scorePolicy = sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
     const allErrors: ValidationErrors = new Map();
 
     for (const [studentId, scores] of draftScores.entries()) {
@@ -427,7 +427,7 @@ export function ExamEntryWorkspace({
     }
 
     return window.confirm(
-      "You have unsaved changes. Discard them and load a different exam sheet?"
+      "You have unsaved changes. Load a different exam sheet? Your draft will remain available when you return."
     );
   }, [hasUnsavedChanges]);
 
@@ -493,7 +493,7 @@ export function ExamEntryWorkspace({
           roster={roster}
           examInputMode={examInputMode}
           gradingBands={sheetData?.gradingBands ?? []}
-                policy={sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined}
+                policy={sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined}
           draftScores={draftScores}
           validationErrors={validationErrors}
           sessionId={selection.sessionId ?? ""}

@@ -11,7 +11,7 @@ import {
   validateScoresForPolicy,
   sessionScoringSnapshotMode,
 } from "@school/shared/exam-recording";
-import type { ExamInputMode, GradingBand } from "@school/shared/exam-recording";
+import type { GradingBand } from "@school/shared/exam-recording";
 import {
   normalizeHumanName,
   normalizePersonName,
@@ -457,10 +457,8 @@ export const upsertAssessmentRecordsBulk = mutation({
         updatedBy: band.updatedBy,
       }));
 
-    const examInputMode: ExamInputMode = settings.policy.examRawMax === 60 ? "raw60_scaled_to_40" : "raw40";
     const examRawMaxSnapshot = settings.policy.examRawMax;
-    const recordedMode = settings.source === "session"
-      ? sessionScoringSnapshotMode(settings.policy) : examInputMode;
+    const recordedMode = sessionScoringSnapshotMode(settings.policy);
 
     let updated = 0;
     let created = 0;
@@ -524,8 +522,7 @@ export const upsertAssessmentRecordsBulk = mutation({
 
       // Compute derived fields
       const derived = deriveForSessionPolicy(record, rowPolicy, sortedBands);
-      const rowRecordedMode = settings.source === "legacy" && existingRecord
-        ? existingRecord.examInputModeSnapshot : recordedMode;
+      const rowRecordedMode = sessionScoringSnapshotMode(rowPolicy);
       const rowRawMax = rowPolicy.examRawMax;
 
       const now = Date.now();
@@ -544,8 +541,9 @@ export const upsertAssessmentRecordsBulk = mutation({
           examInputModeSnapshot: rowRecordedMode,
           examRawMaxSnapshot: rowRawMax,
           sessionScoringPolicyVersion: settings.source === "session" ? settings.version : undefined,
-          // An edited row no longer represents the reviewed import's raw evidence.
-          assessmentPolicySnapshot: undefined,
+          // Drop reviewed-import provenance, but retain the row's effective
+          // maxima so the next legacy edit and session resolver use the same policy.
+          assessmentPolicySnapshot: settings.source === "legacy" ? rowPolicy : undefined,
           gradingPolicySnapshot: undefined,
           updatedBy: userId,
           updatedAt: now,
@@ -571,6 +569,7 @@ export const upsertAssessmentRecordsBulk = mutation({
           examInputModeSnapshot: recordedMode,
           examRawMaxSnapshot,
           sessionScoringPolicyVersion: settings.source === "session" ? settings.version : undefined,
+          assessmentPolicySnapshot: settings.source === "legacy" ? rowPolicy : undefined,
           status: "draft",
           enteredBy: userId,
           updatedBy: userId,

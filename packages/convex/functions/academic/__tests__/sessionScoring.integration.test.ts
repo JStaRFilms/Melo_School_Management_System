@@ -47,6 +47,52 @@ async function fixture() {
   return { t, viewer: t.withIdentity({ subject: "owner", issuer: "test", tokenIdentifier: "test|owner" }), ...ids };
 }
 
+it("uses the selected non-default branch for policy queries, scan and apply without exposing other schools", async () => {
+  const f = await fixture();
+  const selector = api.functions.academic.adminSelectors.getAdminSessions;
+  expect(await f.viewer.query(selector, {})).toEqual([
+    { id: f.second, name: "Second" }, { id: f.first, name: "First" },
+  ]);
+  const branch = await f.t.run(async ctx => {
+    const owner = await ctx.db.get(f.userId);
+    if (!owner?.personId) throw new Error("Missing owner");
+    const schoolId = await ctx.db.insert("schools", { name: "Branch", slug: "branch", status: "active", createdAt: 1, updatedAt: 1 });
+    const userId = await ctx.db.insert("users", { schoolId, personId: owner.personId, authId: "owner",
+      authTokenIdentifier: "test|owner", name: "Owner", email: "owner@school.test", role: "admin", createdAt: 1, updatedAt: 1 });
+    await ctx.db.insert("branchMemberships", { schoolId, personId: owner.personId, legacyUserId: userId,
+      isDefaultBranch: false, status: "active", joinedAt: 1, updatedAt: 1 });
+    const sessionId = await ctx.db.insert("academicSessions", { schoolId, name: "Branch session",
+      startDate: 5, endDate: 6, isActive: true, createdAt: 1, updatedAt: 1 });
+    const foreignSchoolId = await ctx.db.insert("schools", { name: "Foreign", slug: "foreign", status: "active", createdAt: 1, updatedAt: 1 });
+    const foreignSessionId = await ctx.db.insert("academicSessions", { schoolId: foreignSchoolId,
+      name: "Foreign session", startDate: 7, endDate: 8, isActive: true, createdAt: 1, updatedAt: 1 });
+    return { schoolId, sessionId, foreignSchoolId, foreignSessionId };
+  });
+  expect(await f.viewer.query(selector, { schoolId: branch.schoolId })).toEqual([
+    { id: branch.sessionId, name: "Branch Session" },
+  ]);
+  await expect(f.viewer.query(selector, { schoolId: branch.foreignSchoolId })).rejects.toThrow();
+  expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: f.first })).policy).toEqual(legacy);
+  expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: branch.sessionId })).policy).toEqual(legacy);
+  expect((await f.viewer.query(endpoint.previewSessionScoringChange, { sessionId: branch.sessionId, policy })).phase).toBe("not_started");
+  await f.viewer.mutation(endpoint.startSessionScoringScan, { sessionId: branch.sessionId,
+    policy, expectedVersion: 0, expectedPolicy: legacy });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.viewer.query(endpoint.getSessionScoringJob, { sessionId: branch.sessionId }))
+    .toMatchObject({ phase: "ready", scanned: 0 });
+  await f.viewer.mutation(endpoint.applySessionScoringChange, { sessionId: branch.sessionId,
+    policy, expectedVersion: 0, expectedPolicy: legacy, confirmRegrade: true });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: branch.sessionId })).version).toBe(1);
+  expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: f.first })).version).toBe(0);
+  await expect(f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: branch.foreignSessionId })).rejects.toThrow();
+  await expect(f.viewer.query(endpoint.previewSessionScoringChange, { sessionId: branch.foreignSessionId, policy })).rejects.toThrow();
+  await expect(f.viewer.mutation(endpoint.startSessionScoringScan, { sessionId: branch.foreignSessionId,
+    policy, expectedVersion: 0, expectedPolicy: legacy })).rejects.toThrow();
+  await expect(f.viewer.mutation(endpoint.applySessionScoringChange, { sessionId: branch.foreignSessionId,
+    policy, expectedVersion: 0, expectedPolicy: legacy, confirmRegrade: true })).rejects.toThrow();
+});
+
 it("rejects over-limit scores atomically and leaves another session alone", async () => {
   const f = await fixture();
   await scan(f);
@@ -204,6 +250,58 @@ it("uses the recorded legacy exam maximum after school settings change", async (
   expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: f.second })).policy).toEqual(legacy);
 });
 
+it("keeps custom legacy weights across successive manual edits and resolves them for new rows", async () => {
+  const f = await fixture();
+  const custom = { ca1Max: 50, ca2Max: 0, ca3Max: 0, examRawMax: 80, examContributionMax: 50 };
+  await f.t.run(ctx => ctx.db.patch(f.recordId, {
+    ca1: 10, ca2: 0, ca3: 0, examRawScore: 40, examScaledScore: 25, total: 35,
+    examRawMaxSnapshot: 80, examInputModeSnapshot: "custom",
+    assessmentPolicySnapshot: { ...custom, source: "branch_legacy", mode: "legacy",
+      groupVersion: 0, revision: 1, examInputMode: "custom" },
+    gradingPolicySnapshot: { version: 1, bands: [] },
+  }));
+  const args = { sessionId: f.first, termId: f.termId, classId: f.classId, subjectId: f.subjectId };
+  const save = (examRawScore: number) => f.viewer.mutation(
+    api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk,
+    { ...args, records: [{ studentId: f.studentId, ca1: 20, ca2: 0, ca3: 0, examRawScore }] },
+  );
+  expect(await save(50)).toMatchObject({ updated: 1, errors: [] });
+  const first = await f.t.run(ctx => ctx.db.get(f.recordId));
+  expect(first).toMatchObject({ total: 51.25, examScaledScore: 31.25,
+    examInputModeSnapshot: "custom", assessmentPolicySnapshot: custom });
+  expect(first?.assessmentPolicySnapshot).toEqual(custom);
+  expect(first?.gradingPolicySnapshot).toBeUndefined();
+  expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: f.first })).policy).toEqual(custom);
+  expect(await save(80)).toMatchObject({ updated: 1, errors: [] });
+  expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toMatchObject({ total: 70,
+    examScaledScore: 50, assessmentPolicySnapshot: custom });
+  const studentId = await f.t.run(ctx => ctx.db.insert("students", { schoolId: f.schoolId,
+    userId: f.userId, classId: f.classId, admissionNumber: "124", isArchived: false, createdAt: 2, updatedAt: 2 }));
+  expect(await f.viewer.mutation(api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk, {
+    ...args, records: [{ studentId, ca1: 20, ca2: 0, ca3: 0, examRawScore: 80 }],
+  })).toMatchObject({ created: 1, errors: [] });
+  const inserted = await f.t.run(ctx => ctx.db.query("assessmentRecords")
+    .withIndex("by_student_sheet", q => q.eq("schoolId", f.schoolId).eq("sessionId", f.first)
+      .eq("termId", f.termId).eq("classId", f.classId).eq("subjectId", f.subjectId).eq("studentId", studentId)).unique());
+  expect(inserted).toMatchObject({ examInputModeSnapshot: "custom", examRawMaxSnapshot: 80,
+    assessmentPolicySnapshot: custom, examScaledScore: 50, total: 70 });
+});
+
+it("records custom mode for a legacy raw-50 policy", async () => {
+  const f = await fixture();
+  const custom = { ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 50, examContributionMax: 50 };
+  await f.t.run(ctx => ctx.db.patch(f.recordId, { ca3: 5, examRawMaxSnapshot: 50,
+    assessmentPolicySnapshot: custom }));
+  expect((await f.viewer.query(endpoint.getSessionScoringPolicy, { sessionId: f.first })).policy).toEqual(custom);
+  expect(await f.viewer.mutation(api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk, {
+    sessionId: f.first, termId: f.termId, classId: f.classId, subjectId: f.subjectId,
+    records: [{ studentId: f.studentId, ca1: 10, ca2: 10, ca3: 5, examRawScore: 50 }],
+  })).toMatchObject({ updated: 1, errors: [] });
+  expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toMatchObject({
+    examInputModeSnapshot: "custom", assessmentPolicySnapshot: custom, total: 75,
+  });
+});
+
 it("keeps mixed legacy rows readable and reconciles only after an explicit full scan", async () => {
   const f = await fixture();
   const mixedId = await f.t.run(async ctx => {
@@ -354,5 +452,5 @@ it("denies a cross-school session before reading scores", async () => {
   });
   await expect(f.viewer.query(endpoint.previewSessionScoringChange, {
     sessionId: foreignSession, policy,
-  })).rejects.toThrow(/Session not found/);
+  })).rejects.toThrow();
 });

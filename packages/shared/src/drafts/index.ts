@@ -1,4 +1,5 @@
 export * from "./types";
+export { ScoreNumberInput } from "./ScoreNumberInput";
 export * from "./DraftStatusIndicator";
 export * from "./DraftRecoveryModal";
 export * from "./useFormDraft";

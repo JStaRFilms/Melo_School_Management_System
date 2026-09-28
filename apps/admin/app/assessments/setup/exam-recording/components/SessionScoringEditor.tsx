@@ -26,6 +26,8 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
   const current = useQuery("functions/academic/sessionScoring:getSessionScoringPolicy" as never, { sessionId } as never) as Current | undefined;
   const job = useQuery("functions/academic/sessionScoring:getSessionScoringJob" as never, { sessionId } as never) as Job | null | undefined;
   const [draft, setDraft] = useState<SessionScoringPolicy | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [rawValue, setRawValue] = useState("");
   const [baseline, setBaseline] = useState<Current | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +37,9 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
   const apply = useMutation("functions/academic/sessionScoring:applySessionScoringChange" as never);
   const cancel = useMutation("functions/academic/sessionScoring:cancelSessionScoringScan" as never);
   const resume = useMutation("functions/academic/sessionScoring:resumeSessionScoringJob" as never);
+  const incompleteInput = editingField !== null && !/^(?:\d+)(?:\.\d{1,2})?$/.test(rawValue);
   const validation = draft ? validateSessionScoringPolicy(draft) : [];
+  if (incompleteInput) validation.push("Finish entering a valid weight before scanning.");
   const dirty = !!draft && !!baseline && (!same(draft, baseline.policy) || (baseline.source === "legacy" && pinLegacy));
   const stale = !!current && !!baseline && current.version !== baseline.version;
   const matching = !!job && !!draft && !!baseline && same(job.policy, draft) && job.expectedVersion === baseline.version;
@@ -91,8 +95,10 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
       {baseline.source === "legacy" && <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={pinLegacy} disabled={locked || busy || stale} onChange={event => setPinLegacy(event.target.checked)} /> Save these legacy weights as an explicit session policy</label>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {fields.map(([field, label]) => <label key={field} className="text-sm font-semibold text-slate-700">{label}
-          <input type="number" min={field === "examRawMax" ? "0.01" : "0"} max="100" step="0.01" value={Number.isNaN(draft[field]) ? "" : draft[field]}
-            disabled={locked || busy} onChange={event => setDraft(previous => previous ? { ...previous, [field]: event.target.value === "" ? NaN : Number(event.target.value) } : previous)}
+          <input type="text" inputMode="decimal" value={editingField === field ? rawValue : Number.isNaN(draft[field]) ? "" : draft[field]}
+            disabled={locked || busy} onFocus={() => { setEditingField(field); setRawValue(Number.isNaN(draft[field]) ? "" : String(draft[field])); }}
+            onBlur={() => { if (rawValue === "") setDraft(previous => previous ? { ...previous, [field]: NaN } : previous); setEditingField(null); }}
+            onChange={event => { const raw = event.target.value; setRawValue(raw); if (/^\d+(?:\.\d{1,2})?$/.test(raw)) setDraft(previous => previous ? { ...previous, [field]: Number(raw) } : previous); }}
             className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 disabled:opacity-50" />
         </label>)}
       </div>

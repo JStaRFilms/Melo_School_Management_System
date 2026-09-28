@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ScoreNumberInput } from "@school/shared/drafts";
 import type { ExamInputMode } from "@school/shared";
 import { scoreRowPolicy, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
@@ -87,27 +88,18 @@ export function AdminRosterGridRow({
 
   const studentErrors = validationErrors.get(student.studentId) ?? {};
 
-  const parseScoreValue = (raw: string) => {
-    if (raw === "") return null;
-    const parsed = Number(raw);
-    return Number.isNaN(parsed) ? null : parsed;
-  };
-
   const renderScoreInput = (field: ScoreField, value: number | null, max: number, isExam = false) => {
     const error = studentErrors[field];
 
     return (
       <div className="flex flex-col items-center gap-1">
-        <input
-          type="number"
-          value={value ?? ""}
+        <ScoreNumberInput
+          value={value}
           min={0}
           max={max}
           step="0.01"
           disabled={!isEditable}
-          onChange={(e) => {
-            onScoreChange(student.studentId, field, parseScoreValue(e.target.value));
-          }}
+          onScoreChange={(next) => onScoreChange(student.studentId, field, next)}
           placeholder="--"
           title={error ?? undefined}
           aria-label={`${displayStudentName} ${field === "examRawScore" ? "exam" : field.toUpperCase()} score out of ${max}`}

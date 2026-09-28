@@ -31,6 +31,19 @@ vi.mock("@school/shared/drafts", () => ({ useDirtyForm: () => {} }));
 beforeEach(() => { state.job = null; state.calls = []; state.current = { policy: original, version: 0, source: "legacy" }; });
 
 describe("session scoring editor", () => {
+  it("keeps decimal weight text until complete and scans exact hundredths", async () => {
+    render(<SessionScoringEditor sessionId={"session1" as never} />);
+    const input = screen.getByLabelText("CA 1 contribution") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "20." } });
+    expect(input.value).toBe("20.");
+    expect(screen.getByRole("button", { name: "Scan all session scores" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.change(input, { target: { value: "20.25" } });
+    fireEvent.change(screen.getByLabelText("CA 2 contribution"), { target: { value: "19.75" } });
+    expect(screen.getByText(/total 100\/100/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Scan all session scores" }));
+    await waitFor(() => expect(state.calls[0].args.policy).toMatchObject({ ca1Max: 20.25, ca2Max: 19.75 }));
+  });
   it("requires a complete valid scan and confirmation before starting regrade", async () => {
     const view = render(<SessionScoringEditor sessionId={"session1" as never} />);
     fireEvent.click(screen.getByRole("button", { name: /20\/20\/10/ }));

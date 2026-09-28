@@ -1,7 +1,7 @@
 import { internalAction, internalMutation, internalQuery } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
-import { assertSessionScoringAvailable } from "./sessionScoring";
+import { assertSessionScoringAvailable, isSessionScoringLocked } from "./sessionScoring";
 import type { Id, TableNames } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import {
@@ -818,14 +818,19 @@ export const duplicateBatch = internalMutation({
     const fkDefs = FK_DEFINITIONS[currentTable] || [];
 
     for (const doc of page.page) {
-      if (currentTable === "assessmentRecords") {
-        await assertSessionScoringAvailable(ctx, sourceSchoolId, doc.sessionId);
-        await assertSessionScoringAvailable(ctx, targetSchoolId, idMaps.academicSessions?.[String(doc.sessionId)] as Id<"academicSessions"> ?? doc.sessionId);
-      }
       const oldId = doc._id as string;
       // If already duplicated in previous attempt, skip
       if (idMaps[currentTable][oldId]) {
         continue;
+      }
+      if (currentTable === "assessmentRecords") {
+        await assertSessionScoringAvailable(ctx, sourceSchoolId, doc.sessionId);
+        const mappedSessionId = idMaps.academicSessions?.[String(doc.sessionId)] as Id<"academicSessions"> | undefined;
+        if (!mappedSessionId) throw new ConvexError(`Missing target session mapping for assessment ${oldId}`);
+        const targetSession = await ctx.db.get(mappedSessionId);
+        if (!targetSession || targetSession.schoolId !== targetSchoolId)
+          throw new ConvexError(`Invalid target session mapping for assessment ${oldId}`);
+        await assertSessionScoringAvailable(ctx, targetSchoolId, mappedSessionId);
       }
 
       // Clone document and strip system fields
@@ -1797,7 +1802,8 @@ export const runSplitIntegrityCheck = internalQuery({
 
     const allAssessments = await ctx.db.query("assessmentRecords").collect();
     for (const a of allAssessments) {
-      await assertSessionScoringAvailable(ctx, a.schoolId, a.sessionId);
+      if (await isSessionScoringLocked(ctx, a.schoolId, a.sessionId))
+        anomalies.push(`Assessment ${a._id} belongs to locked scoring session ${a.sessionId}`);
       const s = await ctx.db.get(a.studentId);
       if (s && s.schoolId !== a.schoolId) {
         anomalies.push(`Assessment ${a._id} schoolId (${a.schoolId}) !== student.schoolId (${s.schoolId})`);

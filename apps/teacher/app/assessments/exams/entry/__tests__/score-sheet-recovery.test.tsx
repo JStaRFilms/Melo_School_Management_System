@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { scoreSheetDraftKey, useScoreSheetDraft } from "@school/shared/drafts";
 
-function DraftProbe({ school, session = "s1" }: { school: string; session?: string }) {
+function DraftProbe({ school, session = "s1", score = 57 }: { school: string; session?: string; score?: number }) {
   const key = scoreSheetDraftKey(school, session, "t1", "c1", "sub1");
   const [scores, setScores] = useScoreSheetDraft<string, "examRawScore">(key);
   return <><span>{scores.get("student1")?.examRawScore ?? "empty"}</span>
-    <button onClick={() => setScores(previous => new Map(previous).set("student1", { examRawScore: 57 }))}>Edit</button>
+    <button onClick={() => setScores(previous => new Map(previous).set("student1", { examRawScore: score }))}>Edit</button>
     <button onClick={() => setScores(new Map())}>Discard</button></>;
 }
 
@@ -19,8 +19,13 @@ describe("score sheet recovery", () => {
     view.unmount(); // Error boundary remount while the backend guard blocks reads.
     const recovered = render(<DraftProbe school="school1" />);
     expect(screen.getByText("57")).toBeTruthy();
-    recovered.rerender(<DraftProbe school="school2" />);
+    recovered.rerender(<DraftProbe school="school2" score={31} />);
     expect(screen.getByText("empty")).toBeTruthy();
+    act(() => screen.getByRole("button", { name: "Edit" }).click());
+    expect(screen.getByText("31")).toBeTruthy();
+    recovered.rerender(<DraftProbe school="school1" />);
+    expect(screen.getByText("57")).toBeTruthy();
+    recovered.rerender(<DraftProbe school="school2" />);
     recovered.rerender(<DraftProbe school="school1" session="s2" />);
     expect(screen.getByText("empty")).toBeTruthy();
     recovered.rerender(<DraftProbe school="school1" />);

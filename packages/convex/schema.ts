@@ -24,11 +24,12 @@ import {
 } from "./functions/foundation/contracts";
 
 const assessmentPolicySnapshotValidator = v.object({
-  source: v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override")),
-  mode: v.union(v.literal("legacy"), v.literal("inherit"), v.literal("override")),
-  groupVersion: v.number(),
-  revision: v.number(),
-  examInputMode: v.union(v.literal("raw40"), v.literal("raw60_scaled_to_40"), v.literal("custom")),
+  // Reviewed imports carry provenance; a manual edit retains only numeric row policy.
+  source: v.optional(v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override"))),
+  mode: v.optional(v.union(v.literal("legacy"), v.literal("inherit"), v.literal("override"))),
+  groupVersion: v.optional(v.number()),
+  revision: v.optional(v.number()),
+  examInputMode: v.optional(v.union(v.literal("raw40"), v.literal("raw60_scaled_to_40"), v.literal("custom"))),
   ca1Max: v.number(),
   ca2Max: v.number(),
   ca3Max: v.number(),

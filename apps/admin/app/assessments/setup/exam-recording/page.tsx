@@ -30,6 +30,7 @@ import {
   mockTermsBySession,
 } from "@/mock-data";
 import { isConvexConfigured } from "@/convex-runtime";
+import { useAuth } from "@/AuthProvider";
 import type {
   AssessmentEditingPolicyResponse,
   Id,
@@ -41,16 +42,50 @@ export default function ExamRecordingSettingsPage() {
     return <MockExamSettingsPage />;
   }
 
-  return <LiveExamSettingsPage />;
+  return <SelectedBranchExamSettingsPage />;
 }
 
-function LiveExamSettingsPage() {
+function SelectedBranchExamSettingsPage() {
+  const { workspaceAccess } = useAuth();
+  if (workspaceAccess?.state !== "ready") return null;
+  const schoolId = workspaceAccess.branch.schoolId as Id<"schools">;
+  if (workspaceAccess.compatibility.legacyDefaultSchoolId !== schoolId) {
+    return <BranchSessionScoringPage key={schoolId} schoolId={schoolId} />;
+  }
+  return <LiveExamSettingsPage key={schoolId} schoolId={schoolId} />;
+}
+
+function BranchSessionScoringPage({ schoolId }: { schoolId: Id<"schools"> }) {
+  const sessions = useQuery(
+    "functions/academic/adminSelectors:getAdminSessions" as never,
+    { schoolId } as never
+  ) as SelectorOption[] | undefined;
+  const [sessionId, setSessionId] = useState<Id<"academicSessions"> | null>(null);
+  const selectedSessionId = sessions?.some(session => session.id === sessionId) ? sessionId : null;
+  return (
+    <main className="mx-auto max-w-[1200px] space-y-6 p-6">
+      <AdminHeader title="Session scoring policy" />
+      <label className="block text-sm font-semibold text-slate-700">
+        Session
+        <select value={selectedSessionId ?? ""} onChange={event => setSessionId(event.target.value as Id<"academicSessions"> || null)}
+          disabled={!sessions} className="mt-2 block h-10 rounded-xl border border-slate-200 bg-white px-4 text-slate-900">
+          <option value="">Select Session</option>
+          {sessions?.map(session => <option key={session.id} value={session.id}>{session.name}</option>)}
+        </select>
+      </label>
+      {selectedSessionId && <SessionScoringEditor key={selectedSessionId} sessionId={selectedSessionId} />}
+    </main>
+  );
+}
+
+function LiveExamSettingsPage({ schoolId }: { schoolId: Id<"schools"> }) {
   const { requestDeparture } = useDepartureGuard();
   const settings = useQuery(
     "functions/academic/settings:getSchoolAssessmentSettings" as never
   ) as { examInputMode: ExamInputMode } | null | undefined;
   const sessions = useQuery(
-    "functions/academic/adminSelectors:getAdminSessions" as never
+    "functions/academic/adminSelectors:getAdminSessions" as never,
+    { schoolId } as never
   ) as SelectorOption[] | undefined;
   const saveSettings = useMutation(
     "functions/academic/settings:saveSchoolAssessmentSettings" as never

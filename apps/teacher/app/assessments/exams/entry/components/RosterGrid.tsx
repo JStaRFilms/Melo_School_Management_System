@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ScoreNumberInput } from "@school/shared/drafts";
 import type { ExamInputMode } from "@school/shared";
 import { scoreRowPolicy, scoreRosterHasScaledColumn, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
@@ -168,25 +169,14 @@ export function RosterGrid({
                   <label htmlFor={`mobile-${student.studentId}-ca1`} className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
                     CA1 /{rowPolicy.ca1Max}
                   </label>
-                  <input
+                  <ScoreNumberInput
                     id={`mobile-${student.studentId}-ca1`}
-                    type="number"
-                    value={ca1 ?? ""}
+                    value={ca1}
                     min={0}
                     max={rowPolicy.ca1Max}
                     step="0.01"
                     disabled={!isEditable}
-                    onChange={(e) => {
-                      const v =
-                        e.target.value === ""
-                          ? null
-                          : Number(e.target.value);
-                      onScoreChange(
-                        student.studentId,
-                        "ca1",
-                        isNaN(v as number) ? null : v
-                      );
-                    }}
+                    onScoreChange={(next) => onScoreChange(student.studentId, "ca1", next)}
                     placeholder="--"
                     className={`score-input-mobile ${studentErrors.ca1 ? "error" : ""}`}
                   />
@@ -195,25 +185,14 @@ export function RosterGrid({
                   <label htmlFor={`mobile-${student.studentId}-ca2`} className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
                     CA2 /{rowPolicy.ca2Max}
                   </label>
-                  <input
+                  <ScoreNumberInput
                     id={`mobile-${student.studentId}-ca2`}
-                    type="number"
-                    value={ca2 ?? ""}
+                    value={ca2}
                     min={0}
                     max={rowPolicy.ca2Max}
                     step="0.01"
                     disabled={!isEditable}
-                    onChange={(e) => {
-                      const v =
-                        e.target.value === ""
-                          ? null
-                          : Number(e.target.value);
-                      onScoreChange(
-                        student.studentId,
-                        "ca2",
-                        isNaN(v as number) ? null : v
-                      );
-                    }}
+                    onScoreChange={(next) => onScoreChange(student.studentId, "ca2", next)}
                     placeholder="--"
                     className={`score-input-mobile ${studentErrors.ca2 ? "error" : ""}`}
                   />
@@ -222,25 +201,14 @@ export function RosterGrid({
                   <label htmlFor={`mobile-${student.studentId}-ca3`} className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
                     CA3 /{rowPolicy.ca3Max}
                   </label>
-                  <input
+                  <ScoreNumberInput
                     id={`mobile-${student.studentId}-ca3`}
-                    type="number"
-                    value={ca3 ?? ""}
+                    value={ca3}
                     min={0}
                     max={rowPolicy.ca3Max}
                     step="0.01"
                     disabled={!isEditable}
-                    onChange={(e) => {
-                      const v =
-                        e.target.value === ""
-                          ? null
-                          : Number(e.target.value);
-                      onScoreChange(
-                        student.studentId,
-                        "ca3",
-                        isNaN(v as number) ? null : v
-                      );
-                    }}
+                    onScoreChange={(next) => onScoreChange(student.studentId, "ca3", next)}
                     placeholder="--"
                     className={`score-input-mobile ${studentErrors.ca3 ? "error" : ""}`}
                   />
@@ -249,25 +217,14 @@ export function RosterGrid({
                   <label htmlFor={`mobile-${student.studentId}-exam`} className="text-[8px] font-black editorial-spacing text-center block text-amber-700">
                     {mixedLegacy ? `Exam /${rowExamMax}` : examLabel}
                   </label>
-                  <input
+                  <ScoreNumberInput
                     id={`mobile-${student.studentId}-exam`}
-                    type="number"
-                    value={examRaw ?? ""}
+                    value={examRaw}
                     min={0}
                     max={rowExamMax}
                     step="0.01"
                     disabled={!isEditable}
-                    onChange={(e) => {
-                      const v =
-                        e.target.value === ""
-                          ? null
-                          : Number(e.target.value);
-                      onScoreChange(
-                        student.studentId,
-                        "examRawScore",
-                        isNaN(v as number) ? null : v
-                      );
-                    }}
+                    onScoreChange={(next) => onScoreChange(student.studentId, "examRawScore", next)}
                     placeholder="--"
                     className={`score-input-mobile bg-amber-50/20 border-amber-200 ${studentErrors.examRawScore ? "error" : ""}`}
                   />

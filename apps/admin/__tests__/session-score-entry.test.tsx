@@ -15,7 +15,7 @@ describe("admin session scoring", () => {
   it("uses the recorded legacy maximum for a row even when the school mode is /40", () => {
     const roster = [{ studentId: "student1", studentName: "Ada Doe", assessmentRecord: { examRawMaxSnapshot: 60, ca1: 20, ca2: 20, ca3: 20, examRawScore: 60 } } as never];
     const { container } = render(<AdminRosterGrid roster={roster} examInputMode="raw40" gradingBands={[]} draftScores={new Map()} validationErrors={new Map()} sheetLabel="Scores" sessionId="s" termId="t" classId="c" onScoreChange={() => {}} />);
-    expect(container.querySelector<HTMLInputElement>('input[type="number"][max="60"]')).not.toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[inputmode="decimal"][max="60"]')).not.toBeNull();
     expect(screen.getAllByText("40.00").length).toBeGreaterThan(0);
   });
   it("keeps every desktop row aligned for mixed legacy modes and custom snapshots", () => {

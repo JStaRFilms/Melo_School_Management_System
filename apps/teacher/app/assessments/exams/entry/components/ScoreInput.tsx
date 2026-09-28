@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { ScoreNumberInput } from "@school/shared/drafts";
 import type { ScoreField } from "@/lib/types";
 
 interface ScoreInputProps {
@@ -27,33 +28,18 @@ export function ScoreInput({
   disabled = false,
 }: ScoreInputProps) {
   const errorId = useId();
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    if (raw === "") {
-      onChange(null);
-      return;
-    }
-    const num = Number(raw);
-    if (isNaN(num)) {
-      onChange(null);
-    } else {
-      onChange(num);
-    }
-  };
-
   const hasError = validationError != null;
   const errorDescriptionId = hasError ? errorId : undefined;
 
   return (
     <div className="flex flex-col items-center gap-1">
       {/* Desktop: exact mockup score-input */}
-      <input
-        type="number"
-        value={value ?? ""}
+      <ScoreNumberInput
+        value={value}
         min={0}
         max={max}
         step="0.01"
-        onChange={handleChange}
+        onScoreChange={onChange}
         disabled={disabled}
         placeholder="--"
         aria-label={`${studentName ? `${studentName} ` : ""}${field === "examRawScore" ? "exam" : field.toUpperCase()} score out of ${max}`}
@@ -65,13 +51,12 @@ export function ScoreInput({
         } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       />
       {/* Mobile: exact mockup score-input-mobile */}
-      <input
-        type="number"
-        value={value ?? ""}
+      <ScoreNumberInput
+        value={value}
         min={0}
         max={max}
         step="0.01"
-        onChange={handleChange}
+        onScoreChange={onChange}
         disabled={disabled}
         placeholder="--"
         aria-label={`${studentName ? `${studentName} ` : ""}${field === "examRawScore" ? "exam" : field.toUpperCase()} score out of ${max}`}

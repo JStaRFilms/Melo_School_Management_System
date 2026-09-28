@@ -73,7 +73,8 @@ function getClearedScoreMessage(field: ScoreField): string {
 export default function AdminScoreEntryPage() {
   const searchParams = useSearchParams();
   const { session, workspaceAccess } = useAuth();
-  const draftScope = `${workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId : "preview"}:${session?.user.id ?? "anonymous"}`;
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : null;
+  const draftScope = `${schoolId ?? "preview"}:${session?.user.id ?? "anonymous"}`;
   const studentId = searchParams.get("studentId");
   const selection = useMemo(
     () => ({
@@ -90,32 +91,36 @@ export default function AdminScoreEntryPage() {
     return <MockAdminScoreEntryPage selection={selection} draftScope={draftScope} />;
   }
 
-  return <LiveAdminScoreEntryPage selection={selection} studentId={studentId} draftScope={draftScope} />;
+  if (!schoolId) return null;
+  return <LiveAdminScoreEntryPage key={schoolId} schoolId={schoolId} selection={selection} studentId={studentId} draftScope={draftScope} />;
 }
 
 function LiveAdminScoreEntryPage({
-  selection, studentId, draftScope,
+  schoolId, selection, studentId, draftScope,
 }: {
+  schoolId: Id<"schools">;
   selection: SelectionState;
   studentId: string | null;
   draftScope: string;
 }) {
   const sessions = useQuery(
-    "functions/academic/adminSelectors:getAdminSessions" as never
+    "functions/academic/adminSelectors:getAdminSessions" as never,
+    { schoolId } as never
   ) as SelectorOption[] | undefined;
   const terms = useQuery(
     "functions/academic/adminSelectors:getTermsBySession" as never,
     selection.sessionId
-      ? ({ sessionId: selection.sessionId } as never)
+      ? ({ schoolId, sessionId: selection.sessionId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const classes = useQuery(
-    "functions/academic/adminSelectors:getAllClasses" as never
+    "functions/academic/adminSelectors:getAllClasses" as never,
+    { schoolId } as never
   ) as SelectorOption[] | undefined;
   const subjects = useQuery(
     "functions/academic/adminSelectors:getSubjectsByClass" as never,
     selection.classId
-      ? ({ classId: selection.classId } as never)
+      ? ({ schoolId, classId: selection.classId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
   const isSelectedSubjectAvailable =
@@ -133,6 +138,7 @@ function LiveAdminScoreEntryPage({
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
     isSheetReady
       ? ({
+          schoolId,
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
@@ -140,11 +146,6 @@ function LiveAdminScoreEntryPage({
         } as never)
       : ("skip" as never)
   ) as ExamEntrySheetResponse | undefined;
-  useEffect(() => {
-    if (sheetData && studentId && sheetData.roster.some(row => row.studentId === studentId)) {
-      document.getElementById(`student-${studentId}`)?.scrollIntoView({ block: "center" });
-    }
-  }, [sheetData, studentId]);
   const upsertAssessmentRecordsBulk = useMutation(
     "functions/academic/assessmentRecords:upsertAssessmentRecordsBulk" as never
   );
@@ -163,14 +164,15 @@ function LiveAdminScoreEntryPage({
         examRawScore: number;
       }>;
     }) =>
-      (await upsertAssessmentRecordsBulk(args as never)) as UpsertResponse,
-    [upsertAssessmentRecordsBulk]
+      (await upsertAssessmentRecordsBulk({ ...args, schoolId } as never)) as UpsertResponse,
+    [upsertAssessmentRecordsBulk, schoolId]
   );
 
   return (
     <AdminScoreEntryContent
       selection={selection}
       draftScope={draftScope}
+      highlightedStudentId={studentId}
       sessions={sessions ?? []}
       terms={terms ?? []}
       classes={classes ?? []}
@@ -260,6 +262,7 @@ function MockAdminScoreEntryPage({
 interface AdminScoreEntryContentProps {
   selection: SelectionState;
   draftScope: string;
+  highlightedStudentId?: string | null;
   sessions: SelectorOption[];
   terms: SelectorOption[];
   classes: SelectorOption[];
@@ -277,6 +280,7 @@ interface AdminScoreEntryContentProps {
 function AdminScoreEntryContent({
   selection,
   draftScope,
+  highlightedStudentId,
   sessions,
   terms,
   classes,
@@ -360,7 +364,7 @@ function AdminScoreEntryContent({
 
       const examInputMode: ExamInputMode =
         sheetData?.settings?.examInputMode ?? "raw40";
-      const scorePolicy = sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
+      const scorePolicy = sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
       const rowPolicy = scoreRowPolicy(examInputMode, scorePolicy, rosterEntry?.assessmentRecord);
       const error = isClearingSavedScore
         ? getClearedScoreMessage(field)
@@ -441,6 +445,7 @@ function AdminScoreEntryContent({
     }
 
     if (policyChanged) {
+      appToast.warning("Review required before saving", { id: ADMIN_RESULTS_ENTRY_SAVE_BLOCKED_TOAST_ID, description: "Review this draft against the current scoring policy before saving." });
       throw createHandledSaveError("Review this draft against the current scoring policy before saving.");
     }
 
@@ -454,7 +459,7 @@ function AdminScoreEntryContent({
 
     const examInputMode: ExamInputMode =
       sheetData.settings?.examInputMode ?? "raw40";
-    const scorePolicy = sheetData.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
+    const scorePolicy = sheetData.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
     const allErrors: ValidationErrors = new Map();
 
     for (const [studentId, scores] of draftScores.entries()) {
@@ -630,7 +635,7 @@ function AdminScoreEntryContent({
   const handleBeforeSelectionChange = useCallback(() => {
     if (!hasUnsavedChanges) return true;
     return window.confirm(
-      "You have unsaved changes. Discard them and load a different exam sheet?"
+      "You have unsaved changes. Load a different exam sheet? Your draft will remain available when you return."
     );
   }, [hasUnsavedChanges]);
 
@@ -755,9 +760,10 @@ function AdminScoreEntryContent({
             ) : (
               <AdminRosterGrid
                 roster={roster}
+                highlightedStudentId={highlightedStudentId}
                 examInputMode={examInputMode}
                 gradingBands={sheetData?.gradingBands ?? []}
-                policy={sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined}
+                policy={sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined}
                 draftScores={draftScores}
                 validationErrors={validationErrors}
                 sheetLabel={sheetLabel}

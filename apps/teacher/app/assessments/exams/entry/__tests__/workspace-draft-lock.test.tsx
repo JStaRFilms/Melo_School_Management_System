@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { ExamEntryWorkspace } from "../components/ExamEntryWorkspace";
 
 vi.mock("../components/SelectionBar", () => ({ SelectionBar: () => null }));
-vi.mock("../components/RosterGrid", () => ({ RosterGrid: ({ draftScores, onScoreChange }: { draftScores: Map<string, { examRawScore?: number }>; onScoreChange: (id: string, field: "examRawScore", value: number) => void }) => <><button onClick={() => onScoreChange("student1", "examRawScore", 50)}>Enter 50</button><span>Draft: {draftScores.get("student1")?.examRawScore ?? "empty"}</span></> }));
+vi.mock("../components/RosterGrid", () => ({ RosterGrid: ({ draftScores, onScoreChange, policy }: { draftScores: Map<string, { examRawScore?: number }>; onScoreChange: (id: string, field: "examRawScore", value: number) => void; policy?: { examRawMax: number } }) => <><button onClick={() => onScoreChange("student1", "examRawScore", 50)}>Enter 50</button><span>Draft: {draftScores.get("student1")?.examRawScore ?? "empty"}</span><span>Exam max: {policy?.examRawMax ?? "missing"}</span></> }));
 vi.mock("../components/SaveActionBar", () => ({ SaveActionBar: ({ onSave, isEditingLocked }: { onSave: () => Promise<unknown>; isEditingLocked: boolean }) => <button disabled={isEditingLocked} onClick={() => void Promise.resolve(onSave()).catch(() => {})}>Save scores</button> }));
 vi.mock("@school/shared/toast", () => ({ appToast: { info: vi.fn(), warning: vi.fn() } }));
 
@@ -16,6 +16,10 @@ beforeEach(() => { window.sessionStorage.clear(); props.onSaveRecords.mockClear(
 afterEach(cleanup);
 
 describe("teacher score draft during session lock", () => {
+  it("passes legacy /80 policy to the roster before any explicit session version", () => {
+    render(<ExamEntryWorkspace {...props} sheetData={{ roster: [{ studentId: "student1", studentName: "Ada", assessmentRecord: null }], gradingBands: [], editingState: { canEdit: true, hasPolicy: true, message: "Open" }, settings: { examInputMode: "raw40", ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80, examContributionMax: 50, sessionPolicyVersion: 0 } } as never} isLoadingSheet={false} />);
+    expect(screen.getByText("Exam max: 80")).toBeTruthy();
+  });
   it("restores unsaved scores after a guarded query unmount and requires review under a new policy", async () => {
     const view = render(<ExamEntryWorkspace {...props} sheetData={sheet(0)} isLoadingSheet={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Enter 50" }));

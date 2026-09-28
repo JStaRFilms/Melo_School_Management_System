@@ -80,13 +80,14 @@ function recordedPolicy(row: Doc<"assessmentRecords">): SessionScoringPolicy {
 }
 
 async function requirePolicyAdmin(ctx: Context, sessionId: Id<"academicSessions">, requireOverride = false) {
-  const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx, {
-    capability: "academic.grading_bands.manage",
+  const session = await ctx.db.get(sessionId);
+  if (!session || session.isArchived)
+    throw new ConvexError("Session not found in this school");
+  const { schoolId } = session;
+  const { userId, role } = await getAuthenticatedSchoolMembership(ctx, {
+    schoolId, capability: "academic.grading_bands.manage",
   });
   await assertAdminForSchool(ctx, userId, schoolId, role);
-  const session = await ctx.db.get(sessionId);
-  if (!session || session.schoolId !== schoolId || session.isArchived)
-    throw new ConvexError("Session not found in this school");
   if (requireOverride) {
     const effective = await resolveEffectiveAcademicPolicy(ctx, schoolId);
     if (effective.governance.mode !== "legacy" && !effective.governance.allowBranchOverride)
@@ -150,7 +151,7 @@ export const previewSessionScoringChange = query({
   },
 });
 
-/** Locks the session before any preflight reads. A new scan replaces an invalid/ready/complete scan. */
+/** Locks the session before preflight reads. An invalid or complete scan can be replaced; cancel a ready scan first. */
 export const startSessionScoringScan = mutation({
   args: { sessionId: v.id("academicSessions"), policy: v.object(policyFields),
     expectedVersion: v.number(), expectedPolicy: v.object(policyFields) },
