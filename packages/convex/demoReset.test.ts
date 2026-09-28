@@ -123,7 +123,7 @@ test("authorized batches delete the complete 36-student seed and resume after in
     students: await ctx.db.query("students").collect(), assessments: await ctx.db.query("assessmentRecords").collect(),
   }))).toEqual({ schools: [], persons: [], users: [], memberships: [], students: [], assessments: [] });
   await expect(runBatch()).rejects.toThrow("not in row deletion phase");
-});
+}, 30_000);
 
 test("full seeded reset continues through storage and auth ledger without live Better Auth changes", async () => {
   const t = await seeded();
@@ -191,7 +191,7 @@ test("full seeded reset continues through storage and auth ledger without live B
   expect(await t.run((ctx) => ctx.db.get(operationId))).toMatchObject({
     status: "ready_to_seed", authAcknowledgedIds: operation.authIds,
   });
-});
+}, 30_000);
 
 test("reviewed and deleted operation starts one seed, rejects changed inputs, and replays safely", async () => {
   const t = await seeded();

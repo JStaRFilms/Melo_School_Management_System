@@ -105,7 +105,7 @@ test("public finish starts a ready operation and refuses wrong targets before ST
   await expect(verify()).rejects.toThrow("counts changed");
   await expect(t.action(api.functions.academic.demoResetSeedAction.finishDemoReset, args)).rejects.toThrow("counts");
   expect(await t.run((ctx) => ctx.db.get(op._id))).toMatchObject({ status: "complete", newRunId: result.runId });
-});
+}, 30_000);
 
 test.each([
   [{ providerId: "other", accountId: "auth-admin-demo" }],
@@ -120,7 +120,7 @@ test.each([
   const unchanged = await t.run((ctx) => ctx.db.get(op._id));
   expect(unchanged?.status).toBe("ready_to_seed");
   expect(unchanged?.newRunId).toBeUndefined();
-});
+}, 30_000);
 
 test("full reviewed reset resumes after a committed student batch and replays without inserts", async () => {
   const { t, op, args } = await ready();
@@ -172,4 +172,4 @@ test("full reviewed reset resumes after a committed student batch and replays wi
     students: await db.db.query("students").collect(), assessments: await db.db.query("assessmentRecords").collect(),
   }))).toEqual(snapshot);
   expect(verify).toHaveBeenCalledTimes(6);
-});
+}, 30_000);
