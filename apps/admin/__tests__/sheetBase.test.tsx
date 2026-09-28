@@ -54,6 +54,25 @@ describe("shared SheetBase (consolidation P18)", () => {
     }
   });
 
+  it("keeps Tab focus inside a sheet with no enabled controls", () => {
+    render(
+      <>
+        <button type="button">Outside</button>
+        <SheetBase open dismissDisabled onClose={vi.fn()} title="Processing">
+          <p>Working...</p>
+        </SheetBase>
+      </>,
+    );
+    const outside = screen.getByRole("button", { name: "Outside" });
+    const dialog = screen.getByRole("dialog");
+    outside.focus();
+    expect(fireEvent.keyDown(window, { key: "Tab", cancelable: true })).toBe(false);
+    expect(document.activeElement).toBe(dialog);
+    outside.focus();
+    expect(fireEvent.keyDown(window, { key: "Tab", shiftKey: true, cancelable: true })).toBe(false);
+    expect(document.activeElement).toBe(dialog);
+  });
+
   it("closes on Escape and overlay click unless dismissal is disabled", () => {
     const onClose = vi.fn();
     const { rerender } = render(<SheetBase open onClose={onClose} title="T">x</SheetBase>);

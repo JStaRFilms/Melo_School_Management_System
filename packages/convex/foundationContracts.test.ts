@@ -210,7 +210,7 @@ describe("B0 foundation contracts", () => {
     await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId: ids.dirtySchoolId })).rejects.toThrow("ambiguous in-school membership");
   });
 
-  test("denies a token whose membership scan reaches the verification limit", async () => {
+  test("accepts exactly 100 token memberships but rejects a 101st", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
     const schoolId = await t.run(async (ctx) => {
@@ -224,7 +224,14 @@ describe("B0 foundation contracts", () => {
     });
 
     const identity = { subject: "many-0", tokenIdentifier: "issuer|many", issuer: "issuer" };
-    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId })).rejects.toThrow("membership scan hit its limit");
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId }))
+      .resolves.toMatchObject({ membership: { schoolId }, capabilities: [] });
+    await t.run(async (ctx) => {
+      const overflowSchool = await ctx.db.insert("schools", { name: "School 100", slug: "school-100", status: "active", createdAt: now, updatedAt: now });
+      await ctx.db.insert("users", { schoolId: overflowSchool, authId: "many-100", authTokenIdentifier: "issuer|many", name: "User 100", email: "user100@example.test", role: "teacher", createdAt: now, updatedAt: now });
+    });
+    await expect(t.withIdentity(identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId }))
+      .rejects.toThrow("membership scan hit its limit");
   });
 
   test("records an admissions payment event once for a verified replay", async () => {

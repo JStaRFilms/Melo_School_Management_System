@@ -61,7 +61,7 @@ export async function resolveActiveSchoolMembershipsV1(
     .withIndex("by_auth_token_identifier", (q) =>
       q.eq("authTokenIdentifier", identity.tokenIdentifier)
     )
-    .take(MEMBERSHIP_SCAN_LIMIT);
+    .take(MEMBERSHIP_SCAN_LIMIT + 1);
 
   // Compatibility mode only: existing rows have Better Auth's user id in authId.
   // Never write this fallback to a new ownership record implicitly.
@@ -70,9 +70,9 @@ export async function resolveActiveSchoolMembershipsV1(
     : await ctx.db
       .query("users")
       .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
-      .take(MEMBERSHIP_SCAN_LIMIT);
+      .take(MEMBERSHIP_SCAN_LIMIT + 1);
 
-  if (rows.length >= MEMBERSHIP_SCAN_LIMIT) {
+  if (rows.length > MEMBERSHIP_SCAN_LIMIT) {
     throw ambiguousMembership(
       "Not authorized: membership scan hit its limit, so the identity cannot be verified"
     );
