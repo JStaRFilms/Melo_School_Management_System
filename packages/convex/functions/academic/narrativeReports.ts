@@ -405,36 +405,92 @@ export const getIssuedForPortal = query({
   },
 });
 
-// B3 uses this neutral availability hint to suppress a graded fallback before issue.
+// Resolve historical membership from bounded, same-school period evidence. An
+// inactive session without evidence must not inherit today's class by guesswork.
+async function resolvePeriodClass(ctx: QueryCtx, args: {
+  schoolId: Id<"schools">; studentId: Id<"students">; sessionId: Id<"academicSessions">;
+  termId: Id<"academicTerms">; currentClassId: Id<"classes">; isActive: boolean;
+  graduatingClassId?: Id<"classes">; graduatingSessionId?: Id<"academicSessions">;
+  transferredOut?: boolean;
+}) {
+  const { schoolId, studentId, sessionId, termId } = args;
+  const narrativeIssue = await issuedFor(ctx, { studentId, sessionId, termId });
+  const gradedIssue = await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q =>
+    q.eq("studentId", studentId).eq("sessionId", sessionId).eq("termId", termId)).first();
+  if (narrativeIssue && gradedIssue) throw new ConvexError("Conflicting issued reports");
+  for (const row of [narrativeIssue, gradedIssue]) {
+    if (row && (row.schoolId !== schoolId || row.studentId !== studentId || row.sessionId !== sessionId || row.termId !== termId))
+      throw new ConvexError("Invalid report selection");
+  }
+  const issuedClass = narrativeIssue?.classId ?? gradedIssue?.classId;
+  if (issuedClass) return { classId: issuedClass, narrativeIssue, gradedIssue };
+  const [arrivals, departures, graduations, records, selections] = await Promise.all([
+    ctx.db.query("studentPromotions").withIndex("by_student_and_to_session", q => q.eq("studentId", studentId).eq("toSessionId", sessionId)).take(101),
+    ctx.db.query("studentPromotions").withIndex("by_student_and_from_session", q => q.eq("studentId", studentId).eq("fromSessionId", sessionId)).take(101),
+    ctx.db.query("studentGraduations").withIndex("by_student_and_session", q => q.eq("studentId", studentId).eq("sessionId", sessionId)).take(101),
+    ctx.db.query("assessmentRecords").withIndex("by_student_and_term", q => q.eq("schoolId", schoolId).eq("studentId", studentId).eq("sessionId", sessionId).eq("termId", termId)).take(101),
+    ctx.db.query("studentSubjectSelections").withIndex("by_student_and_session", q => q.eq("studentId", studentId).eq("sessionId", sessionId)).take(101),
+  ]);
+  if ([arrivals, departures, graduations, records, selections].some(rows => rows.length > 100))
+    throw new ConvexError("Enrollment history requires review");
+  if ([...arrivals, ...departures, ...graduations, ...selections].some(row => row.schoolId !== schoolId))
+    throw new ConvexError("Invalid enrollment history");
+  const candidates = new Set([
+    ...arrivals.map(row => row.toClassId), ...departures.map(row => row.fromClassId),
+    ...graduations.map(row => row.classId), ...records.map(row => row.classId),
+    ...selections.map(row => row.classId),
+    ...(args.graduatingSessionId === sessionId && args.graduatingClassId ? [args.graduatingClassId] : []),
+  ]);
+  if (candidates.size > 1) throw new ConvexError("Enrollment history requires review");
+  const classId = [...candidates][0] ?? ((args.isActive || args.transferredOut) ? args.currentClassId : null);
+  return { classId, narrativeIssue, gradedIssue };
+}
+
+// Legacy staff links specify a pupil and period but no class. Return only the
+// verified class and mode; never return draft contents through this selector.
+export const getStaffPeriodReportMode = query({
+  args: period,
+  returns: v.union(v.object({ classId: v.id("classes"), mode: v.union(v.literal("graded"), v.literal("narrative")) }), v.null()),
+  handler: async (ctx, args) => {
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.isArchived) throw new ConvexError("Student not found");
+    const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId: student.schoolId, capability: "academic.report_cards.preview" });
+    if (!auth.isSchoolAdmin && auth.role !== "teacher") throw new ConvexError("Staff access required");
+    const [session, term] = await Promise.all([ctx.db.get(args.sessionId), ctx.db.get(args.termId)]);
+    if (!session || session.schoolId !== auth.schoolId || !term || term.schoolId !== auth.schoolId || term.sessionId !== session._id)
+      throw new ConvexError("Invalid report selection");
+    const { classId, narrativeIssue, gradedIssue } = await resolvePeriodClass(ctx, {
+      schoolId: auth.schoolId, studentId: student._id, sessionId: session._id, termId: term._id,
+      currentClassId: student.classId, isActive: session.isActive,
+      graduatingClassId: student.graduatingClassId, graduatingSessionId: student.graduatingSessionId,
+      transferredOut: student.enrollmentStatus === "transferred_out",
+    });
+    if (!classId) return null;
+    const classDoc = await ctx.db.get(classId);
+    if (!classDoc || classDoc.schoolId !== auth.schoolId) throw new ConvexError("Invalid report selection");
+    if (!auth.isSchoolAdmin) {
+      const historical = await ctx.db.query("classSessionFormTeachers")
+        .withIndex("by_class_and_session", q => q.eq("classId", classId).eq("sessionId", session._id)).unique();
+      if (!(historical?.schoolId === auth.schoolId && historical.formTeacherId === auth.userId) &&
+          !(await teacherHasClassAccess(ctx, auth.userId, auth.schoolId, classId)))
+        throw new ConvexError("Not assigned to this class");
+    }
+    return { classId, mode: narrativeIssue ? "narrative" as const : gradedIssue ? "graded" as const :
+      await modeFor(ctx, classId, session._id) ? "narrative" as const : "graded" as const };
+  },
+});
+
+// Resolve before either the portal or staff touches a graded report builder.
 export async function resolveAuthorizedPortalReportSelection(ctx: QueryCtx, args: {
   studentId: Id<"students">; sessionId: Id<"academicSessions">; termId: Id<"academicTerms">;
 }) {
     const { student, schoolId, session, issued } = await portalSelection(ctx, args);
-    const gradedIssue = issued ? null : await ctx.db.query("issuedReportCards")
-      .withIndex("by_student_session_term", q => q.eq("studentId", student._id)
-        .eq("sessionId", session._id).eq("termId", args.termId)).first();
-    if (gradedIssue && (gradedIssue.schoolId !== schoolId || gradedIssue.studentId !== student._id ||
-        gradedIssue.sessionId !== session._id || gradedIssue.termId !== args.termId))
-      throw new ConvexError("Invalid report selection");
-    let classId = issued?.classId ?? gradedIssue?.classId;
-    if (!classId) {
-      const [arrivals, departures] = await Promise.all([
-        ctx.db.query("studentPromotions").withIndex("by_student_and_to_session", q =>
-          q.eq("studentId", student._id).eq("toSessionId", session._id)).take(101),
-        ctx.db.query("studentPromotions").withIndex("by_student_and_from_session", q =>
-          q.eq("studentId", student._id).eq("fromSessionId", session._id)).take(101),
-      ]);
-      if (arrivals.length > 100 || departures.length > 100) throw new ConvexError("Enrollment history requires review");
-      const candidates = [...arrivals.filter(p => p.schoolId === schoolId).map(p => p.toClassId),
-        ...departures.filter(p => p.schoolId === schoolId).map(p => p.fromClassId)];
-      if (new Set(candidates).size > 1) throw new ConvexError("Enrollment history requires review");
-      // A cross-school transfer preserves its original student row and class as
-      // historical membership, even when that session has no promotion/issue.
-      // Never use the current class of an ordinary pupil for an inactive session.
-      classId = candidates[0] ?? (session.isActive ? student.classId : undefined) ??
-        (student.graduatingSessionId === session._id ? student.graduatingClassId : undefined) ??
-        (student.enrollmentStatus === "transferred_out" ? student.classId : undefined);
-    }
+    const { classId, gradedIssue } = await resolvePeriodClass(ctx, {
+      schoolId, studentId: student._id, sessionId: session._id, termId: args.termId,
+      currentClassId: student.classId, isActive: session.isActive,
+      graduatingClassId: student.graduatingClassId, graduatingSessionId: student.graduatingSessionId,
+      transferredOut: student.enrollmentStatus === "transferred_out",
+    });
     if (!classId) throw new ConvexError("Student has no enrollment in this session");
     const classDoc = await ctx.db.get(classId);
     if (!classDoc || classDoc.schoolId !== schoolId || issued && issued.classId !== classId)

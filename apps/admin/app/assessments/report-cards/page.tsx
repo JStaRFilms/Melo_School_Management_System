@@ -131,20 +131,25 @@ function AdminReportCardPageContent() {
     touchStartDistanceRef.current = null;
   };
 
-  const mode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+  const inferred = useQuery("functions/academic/narrativeReports:getStaffPeriodReportMode" as never,
+    !classIdParam && studentId && sessionId && termId
+      ? { studentId, sessionId, termId } as never : "skip") as { classId: string; mode: "graded" | "narrative" } | null | undefined;
+  const selectedClassId = classIdParam ?? inferred?.classId ?? null;
+  const explicitMode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
     classIdParam && sessionId ? { classId: classIdParam, sessionId } as never : "skip") as "graded" | "narrative" | undefined;
+  const mode = classIdParam ? explicitMode : inferred?.mode;
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    studentId && sessionId && termId && classIdParam && mode === "graded"
+    studentId && sessionId && termId && selectedClassId && mode === "graded"
       ? ({
           studentId,
           sessionId,
           termId,
-          ...(classIdParam ? { classId: classIdParam } : {}),
+          classId: selectedClassId,
         } as never)
       : ("skip" as never)
   ) as ReportCardSheetData | undefined | null;
-  const resolvedClassId = classIdParam ?? (reportCard && typeof reportCard === 'object' ? reportCard.classId : null) ?? null;
+  const resolvedClassId = selectedClassId;
 
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
@@ -204,10 +209,11 @@ function AdminReportCardPageContent() {
     return <ReportCardLauncher />;
   }
 
-  if (!classIdParam) return <div className="mx-auto max-w-3xl p-6 text-slate-700">Select a class before opening or printing a report. <Link href="/assessments/report-cards" className="underline">Choose a student and class</Link>.</div>;
+  if (!classIdParam && inferred === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (!selectedClassId) return <div className="mx-auto max-w-3xl p-6 text-slate-700">No verified class was found for this period. <Link href="/assessments/report-cards" className="underline">Choose a student and class</Link>.</div>;
   if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
-  if (mode === "narrative" && isPrintClassMode) return <NarrativeClassPrint key={`${classIdParam}-${sessionId}-${termId}`} classId={classIdParam} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
-  if (mode === "narrative" && classIdParam) return <NarrativeReview key={`${studentId}-${sessionId}-${termId}-${classIdParam}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={classIdParam} />;
+  if (mode === "narrative" && isPrintClassMode) return <NarrativeClassPrint key={`${selectedClassId}-${sessionId}-${termId}`} classId={selectedClassId} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
+  if (mode === "narrative") return <NarrativeReview key={`${studentId}-${sessionId}-${termId}-${selectedClassId}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={selectedClassId} />;
   if (reportCard === undefined) {
     return <ReportCardPageFallback message="Loading student report card..." />;
   }

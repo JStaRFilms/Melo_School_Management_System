@@ -9,7 +9,7 @@ export function LiveNarrativeEntry({ selection }: { selection: SelectionState })
   const sessions = useQuery("functions/academic/adminSelectors:getAdminSessions" as never, {} as never) as { id: string; name: string }[] | undefined;
   const terms = useQuery("functions/academic/adminSelectors:getTermsBySession" as never, selection.sessionId ? { sessionId: selection.sessionId } as never : "skip") as { id: string; name: string }[] | undefined;
   const classes = useQuery("functions/academic/adminSelectors:getAllClasses" as never, {} as never) as { id: string; name: string }[] | undefined;
-  const subjects = useQuery("functions/academic/adminSelectors:getSubjectsByClass" as never, selection.classId ? { classId: selection.classId } as never : "skip") as { id: string; name: string }[] | undefined;
+  const subjects = useQuery("functions/academic/narrativeEntrySheet:getSubjectOptions" as never, selection.classId && selection.sessionId && selection.termId ? { classId: selection.classId, sessionId: selection.sessionId, termId: selection.termId } as never : "skip") as { id: string; name: string }[] | undefined;
   const validSubject = subjects === undefined || subjects.some(s => s.id === selection.subjectId);
   const ready = selection.sessionId && selection.termId && selection.classId && selection.subjectId && validSubject;
   const rows = useQuery("functions/academic/narrativeEntrySheet:getSheet" as never, ready ? { sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, subjectId: selection.subjectId } as never : "skip") as CommentRow[] | undefined;

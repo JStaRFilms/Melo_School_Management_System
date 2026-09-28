@@ -122,6 +122,73 @@ describe("issued class narrative batch", () => {
   });
 });
 
+describe("legacy links and historical period resolution", () => {
+  it("restores verified graded staff deep links without classId and rejects unrelated staff", async () => {
+    const { t, ids, as, selection } = await fixture();
+    const period = { studentId: ids.studentId, sessionId: ids.sessionId, termId: ids.termId };
+    expect(await as("admin").query(fn.getStaffPeriodReportMode, period)).toEqual({ classId: ids.classId, mode: "graded" });
+    expect(await as("teacher").query(fn.getStaffPeriodReportMode, period)).toEqual({ classId: ids.classId, mode: "graded" });
+    await expect(as("parent").query(fn.getStaffPeriodReportMode, period)).rejects.toThrow();
+    await expect(as("admin").query(fn.getStaffPeriodReportMode, { ...period, studentId: ids.foreignClassId as unknown as typeof ids.studentId })).rejects.toThrow();
+    await t.run(ctx => ctx.db.patch(ids.secondStudentId, { classId: ids.otherClassId }));
+    await expect(as("teacher").query(fn.getStaffPeriodReportMode, { ...period, studentId: ids.secondStudentId })).rejects.toThrow("Not assigned");
+    expect(await as("admin").query(api.functions.academic.reportCards.getStudentReportCard, selection)).toMatchObject({ classId: ids.classId });
+  });
+  it("routes an unpublished narrative class without classId to narrative mode, never a graded draft", async () => {
+    const { ids, as, selection, enable } = await fixture();
+    await enable();
+    await as("admin").mutation(fn.saveDraft, { ...selection, subjectId: ids.subjectId, comment: "Private note" });
+    const period = { studentId: ids.studentId, sessionId: ids.sessionId, termId: ids.termId };
+    expect(await as("admin").query(fn.getStaffPeriodReportMode, period)).toEqual({ classId: ids.classId, mode: "narrative" });
+    expect(JSON.stringify(await as("teacher").query(fn.getStaffPeriodReportMode, period))).not.toContain("Private note");
+    const workspace = await as("parent").query(api.functions.portal.getWorkspaceData, period);
+    expect(workspace.selectedReportMode).toBe("narrative");
+    expect(workspace.selectedReportCard).toBeNull();
+    expect(workspace.selectedNarrativeReport).toBeNull();
+  });
+  it("uses period subject selections when there are no marks and refuses conflicting class evidence", async () => {
+    const { t, ids, as } = await fixture();
+    await t.run(async ctx => {
+      await ctx.db.patch(ids.sessionId, { isActive: false });
+      await ctx.db.patch(ids.studentId, { classId: ids.otherClassId });
+      await ctx.db.insert("studentSubjectSelections", { schoolId: ids.schoolId, studentId: ids.studentId,
+        classId: ids.classId, sessionId: ids.sessionId, subjectId: ids.subjectId, createdAt: 1, updatedAt: 1 });
+    });
+    const period = { studentId: ids.studentId, sessionId: ids.sessionId, termId: ids.termId };
+    expect(await as("admin").query(fn.getStaffPeriodReportMode, period)).toEqual({ classId: ids.classId, mode: "graded" });
+    expect((await as("parent").query(fn.getPortalReportSelection, period)).classId).toBe(ids.classId);
+    await t.run(ctx => ctx.db.insert("studentSubjectSelections", { schoolId: ids.schoolId, studentId: ids.studentId,
+      classId: ids.otherClassId, sessionId: ids.sessionId, subjectId: ids.secondSubjectId, createdAt: 1, updatedAt: 1 }));
+    await expect(as("admin").query(fn.getStaffPeriodReportMode, period)).rejects.toThrow("Enrollment history requires review");
+    await expect(as("parent").query(fn.getPortalReportSelection, period)).rejects.toThrow("Enrollment history requires review");
+  });
+  it("restores inactive legacy graded history using same-school period records, but not draft narrative fallback", async () => {
+    const { t, ids, as, enable } = await fixture();
+    await t.run(async ctx => {
+      await ctx.db.patch(ids.sessionId, { isActive: false });
+      await ctx.db.insert("assessmentRecords", { schoolId: ids.schoolId, classId: ids.classId,
+        sessionId: ids.sessionId, termId: ids.termId, subjectId: ids.subjectId,
+        studentId: ids.studentId, ca1: 10, ca2: 10, ca3: 10, examRawScore: 50,
+        examScaledScore: 50, total: 80, gradeLetter: "A", remark: "Legacy work",
+        examInputModeSnapshot: "raw", examRawMaxSnapshot: 100, status: "draft",
+        enteredBy: ids.adminId, updatedBy: ids.adminId, createdAt: 1, updatedAt: 1 });
+      await ctx.db.patch(ids.studentId, { classId: ids.otherClassId });
+    });
+    const period = { studentId: ids.studentId, sessionId: ids.sessionId, termId: ids.termId };
+    expect(await as("admin").query(fn.getStaffPeriodReportMode, period)).toEqual({ classId: ids.classId, mode: "graded" });
+    const graded = await as("parent").query(api.functions.portal.getWorkspaceData, period);
+    expect(graded.selectedReportMode).toBe("graded");
+    expect(graded.history.find(item => item.termId === ids.termId)?.mode).toBe("graded");
+    await enable();
+    const narrative = await as("parent").query(api.functions.portal.getWorkspaceData, period);
+    expect(narrative.selectedReportMode).toBe("narrative");
+    expect(narrative.selectedReportCard).toBeNull();
+    expect(narrative.selectedNarrativeReport).toBeNull();
+    expect(narrative.history.find(item => item.termId === ids.termId)).toMatchObject({ mode: "narrative", issued: false });
+    expect(JSON.stringify(narrative)).not.toContain("Legacy work");
+  });
+});
+
 describe("portal narrative access", () => {
   it("keeps default graded selections on the existing graded path", async () => {
     const { ids, as } = await fixture();
@@ -265,6 +332,39 @@ describe("narrative subject reports", () => {
           issuedAt: i, issuedBy: ids.adminId, snapshot });
     });
     expect(await as("admin").query(api.functions.academic.narrativeEntrySheet.getSheet, sheet)).toHaveLength(103);
+  });
+
+  it("offers stale explicit selections to admin and only assigned teachers after an offering is removed", async () => {
+    const { t, ids, as, selection, enable } = await fixture();
+    await enable();
+    await t.run(async ctx => {
+      await ctx.db.insert("studentSubjectSelections", { schoolId: ids.schoolId, studentId: ids.studentId,
+        classId: ids.classId, sessionId: ids.sessionId, subjectId: ids.subjectId, createdAt: 1, updatedAt: 1 });
+      const offering = await ctx.db.query("classSubjects").withIndex("by_class_and_subject", q =>
+        q.eq("classId", ids.classId).eq("subjectId", ids.subjectId)).unique();
+      await ctx.db.delete(offering!._id);
+    });
+    const period = { classId: ids.classId, sessionId: ids.sessionId, termId: ids.termId };
+    const options = api.functions.academic.narrativeEntrySheet.getSubjectOptions;
+    expect((await as("admin").query(options, period)).map(option => option.id)).toContain(ids.subjectId);
+    expect((await as("teacher").query(options, period)).map(option => option.id)).toContain(ids.subjectId);
+    expect((await as("other-teacher").query(options, period)).map(option => option.id)).not.toContain(ids.subjectId);
+    expect((await as("teacher").query(api.functions.academic.narrativeEntrySheet.getSheet, { ...period, subjectId: ids.subjectId })).map(row => row.studentId)).toEqual([ids.studentId]);
+    await as("teacher").mutation(fn.saveDraft, { ...selection, subjectId: ids.subjectId, comment: "Still selected" });
+    expect((await as("admin").query(fn.getStaffPreview, selection)).snapshot.subjects).toMatchObject([{ subjectId: ids.subjectId, comment: "Still selected" }]);
+    await t.run(async ctx => {
+      const assignment = await ctx.db.query("teacherAssignments").withIndex("by_class", q =>
+        q.eq("classId", ids.classId)).filter(q => q.eq(q.field("subjectId"), ids.subjectId)).first();
+      if (assignment) await ctx.db.delete(assignment._id);
+    });
+    expect((await as("teacher").query(options, period)).map(option => option.id)).not.toContain(ids.subjectId);
+    expect((await as("admin").query(options, period)).map(option => option.id)).toContain(ids.subjectId);
+    await expect(as("teacher").mutation(fn.saveDraft, { ...selection, subjectId: ids.subjectId, comment: "Forbidden" })).rejects.toThrow("Not assigned");
+    await as("admin").mutation(fn.saveDraft, { ...selection, subjectId: ids.subjectId, comment: "Admin can finish" });
+    const review = await as("admin").query(fn.getStaffPreview, selection);
+    expect(review.snapshot.subjects).toMatchObject([{ subjectId: ids.subjectId, comment: "Admin can finish" }]);
+    expect((await as("admin").mutation(fn.publish, { ...selection, reviewedKey: review.reviewedKey! })).snapshot.subjects)
+      .toMatchObject([{ subjectId: ids.subjectId, comment: "Admin can finish" }]);
   });
 
   it("defaults to graded, bounds modes by tenant and session, and blocks empty subject publish", async () => {

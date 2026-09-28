@@ -23,6 +23,7 @@ export function NarrativeSubjectEntry({ selection, sessions, terms, classes, sub
   return <main className="mx-auto max-w-4xl space-y-6 p-4 pb-24 sm:p-8">
     <h1 className="text-2xl font-bold">Subject comments</h1>
     <p className="text-sm text-slate-600">Save one comment for each student in this subject. Drafts are not visible to families until an admin publishes the report.</p>
+    <p className="text-sm text-slate-600">If a selected subject is missing, ask a school admin to restore its class offering and teacher assignment, or update the pupil's subject selections in Academic / Students.</p>
     <div className="grid gap-4 sm:grid-cols-2">{fields.map(field => <label key={field.key} className="block text-sm font-semibold">{field.label}
       <select className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white p-2 focus-visible:ring-2 focus-visible:ring-slate-900" value={selection[field.key] ?? ""} onChange={e => { if (dirtyIds.length && !window.confirm("Discard unsaved comments and change selection?")) return; setDirtyIds([]); onSelect(field.key, e.target.value); }}>
         <option value="">Select {field.label.toLowerCase()}</option>{field.options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}

@@ -6,6 +6,51 @@ import { getReadableUserName } from "./studentNameCompat";
 import { deriveNarrativeSubjectSelectionIds } from "./subjectAggregationSelectionHelpers";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
 
+// Class offerings can be removed after a pupil explicitly selected a subject.
+// Those selections remain applicable to publication and must remain reachable
+// from entry. Return subject names only, never another pupil's selections.
+export const getSubjectOptions = query({
+  args: { schoolId: v.optional(v.id("schools")), classId: v.id("classes"), sessionId: v.id("academicSessions"), termId: v.id("academicTerms") },
+  returns: v.array(v.object({ id: v.id("subjects"), name: v.string() })),
+  handler: async (ctx, args) => {
+    const auth = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.preview" });
+    const [classDoc, session, term] = await Promise.all([ctx.db.get(args.classId), ctx.db.get(args.sessionId), ctx.db.get(args.termId)]);
+    if (!classDoc || classDoc.schoolId !== auth.schoolId || classDoc.isArchived || !session || session.schoolId !== auth.schoolId ||
+        !term || term.schoolId !== auth.schoolId || term.sessionId !== args.sessionId)
+      throw new ConvexError("Invalid sheet selection");
+    if (!auth.isSchoolAdmin && auth.role !== "teacher") throw new ConvexError("Staff access required");
+    const mode = await ctx.db.query("classSessionReportModes").withIndex("by_classId_and_sessionId", q =>
+      q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (!mode) throw new ConvexError("This class uses graded reports");
+    const [offerings, selections, aggregations] = await Promise.all([
+      ctx.db.query("classSubjects").withIndex("by_class", q => q.eq("classId", args.classId)).take(101),
+      ctx.db.query("studentSubjectSelections").withIndex("by_class_and_session", q =>
+        q.eq("classId", args.classId).eq("sessionId", args.sessionId)).take(2001),
+      listActiveClassSubjectAggregations(ctx, { schoolId: auth.schoolId, classId: args.classId }),
+    ]);
+    if (offerings.length > 100 || selections.length > 2000) throw new ConvexError("Subject options exceed supported size; contact the school admin");
+    const ids = deriveNarrativeSubjectSelectionIds({
+      explicitSubjectIds: [...offerings, ...selections].filter(row => row.schoolId === auth.schoolId).map(row => String(row.subjectId)),
+      aggregations,
+    });
+    if (ids.size > 200) throw new ConvexError("Subject options exceed supported size; contact the school admin");
+    const subjects = await Promise.all([...ids].map(id => ctx.db.get(id as Id<"subjects">)));
+    const visible = [];
+    for (const subject of subjects) {
+      if (!subject || subject.schoolId !== auth.schoolId || subject.isArchived) continue;
+      if (!auth.isSchoolAdmin) {
+        try { await assertTeacherAssignment(ctx, auth.userId, args.classId, subject._id); }
+        catch (error) {
+          if (error instanceof ConvexError && error.data === "Not assigned to this class-subject") continue;
+          throw error;
+        }
+      }
+      visible.push({ id: subject._id, name: subject.name });
+    }
+    return visible.sort((a, b) => a.name.localeCompare(b.name) || String(a.id).localeCompare(String(b.id)));
+  },
+});
+
 // A bounded sheet for the selected subject. Authorization and applicability are
 // repeated at saveDraft, so a stale roster cannot authorize a write.
 export const getSheet = query({

@@ -12,7 +12,7 @@ afterEach(cleanup);
 it("prints only issued snapshots with skipped count and page-safe long comments", () => {
   const { container } = render(<NarrativeClassPrint classId="class" sessionId="session" termId="term" onExit={() => {}} />);
   expect(screen.getByText(/1 issued reports ready. 1 students skipped/)).toBeTruthy();
-  expect(screen.getByText(/Former class · 2025/)).toBeTruthy();
+  expect(screen.getByText(/Former class | 2025/)).toBeTruthy();
   expect(container.querySelectorAll(".batch-sheet")).toHaveLength(1);
   expect(container.querySelector(".batch-sheet section p")?.textContent).toContain("A long comment.\nA long comment.");
   const css = container.querySelector("style")!.textContent!;

@@ -41,8 +41,8 @@ export function NarrativeClassPrint({ classId, sessionId, termId, onExit }: { cl
       <header className="border-b pb-4">
         <p className="text-sm font-semibold">Progress report</p>
         <h1 className="text-2xl font-bold">{report.snapshot.schoolName}</h1>
-        <p>{report.snapshot.studentName} · {report.snapshot.admissionNumber}</p>
-        <p>{report.snapshot.className} · {report.snapshot.sessionName} · {report.snapshot.termName}</p>
+        <p>{report.snapshot.studentName} | {report.snapshot.admissionNumber}</p>
+        <p>{report.snapshot.className} | {report.snapshot.sessionName} | {report.snapshot.termName}</p>
         <p>Issued {new Date(report.issuedAt).toLocaleDateString("en-GB")}</p>
       </header>
       {report.snapshot.subjects.slice().sort((a, b) => a.order - b.order).map(subject => <section key={subject.subjectId} className="border-b py-4">

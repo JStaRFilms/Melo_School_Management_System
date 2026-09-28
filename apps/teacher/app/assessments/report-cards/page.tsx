@@ -48,21 +48,27 @@ function TeacherReportCardPageContent() {
   const printRaf1Ref = useRef<number | null>(null);
   const printRaf2Ref = useRef<number | null>(null);
 
-  const mode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+  const inferred = useQuery("functions/academic/narrativeReports:getStaffPeriodReportMode" as never,
+    !classIdParam && studentId && sessionId && termId
+      ? ({ studentId, sessionId, termId } as never) : ("skip" as never)
+  ) as { classId: string; mode: "graded" | "narrative" } | null | undefined;
+  const selectedClassId = classIdParam ?? inferred?.classId ?? null;
+  const explicitMode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
     classIdParam && sessionId ? ({ classId: classIdParam, sessionId } as never) : ("skip" as never)
   ) as "graded" | "narrative" | undefined;
+  const mode = classIdParam ? explicitMode : inferred?.mode;
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    studentId && sessionId && termId && classIdParam && mode === "graded"
+    studentId && sessionId && termId && selectedClassId && mode === "graded"
       ? ({
           studentId,
           sessionId,
           termId,
-          ...(classIdParam ? { classId: classIdParam } : {}),
+          classId: selectedClassId,
         } as never)
       : ("skip" as never)
   ) as ReportCardSheetData | undefined;
-  const resolvedClassId = classIdParam ?? reportCard?.classId ?? null;
+  const resolvedClassId = selectedClassId;
   const extrasHref = buildReportCardExtrasHref({
     studentId,
     sessionId,
@@ -171,8 +177,10 @@ function TeacherReportCardPageContent() {
     );
   }
 
-  if (!classIdParam) return <div className="mx-auto max-w-3xl p-6 text-slate-700">Select a class before opening or printing a report. <Link href="/assessments/exams/entry" className="underline">Go to subject entry</Link></div>;
-  if (mode === "narrative") return <div className="mx-auto max-w-3xl p-6 text-slate-700">This class uses subject comments. Graded report printing is unavailable. <Link href={`/assessments/exams/entry?sessionId=${sessionId}&termId=${termId}&classId=${classIdParam}`} className="underline">Open subject comments</Link>.</div>;
+  if (!classIdParam && inferred === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (!selectedClassId) return <div className="mx-auto max-w-3xl p-6 text-slate-700">No verified class was found for this period. <Link href="/assessments/exams/entry" className="underline">Go to subject entry</Link></div>;
+  if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (mode === "narrative") return <div className="mx-auto max-w-3xl p-6 text-slate-700">This class uses subject comments. Graded report printing is unavailable. <Link href={`/assessments/exams/entry?sessionId=${sessionId}&termId=${termId}&classId=${selectedClassId}`} className="underline">Open subject comments</Link>.</div>;
   if (reportCard === undefined) {
     return (
       <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>

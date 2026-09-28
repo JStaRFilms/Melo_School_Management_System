@@ -4,8 +4,8 @@ This branch is based on `origin/master` at `23c4880`. The new report mode is per
 
 ## Checks performed before PR
 
-- Convex full suite: 63 files, 484 tests passed.
-- Admin narrative tests: 3 files, 4 tests passed. Portal narrative tests: 2 files, 4 tests passed.
+- Convex full suite: 63 files, 489 tests passed after the post-commit graded-link and historical-class fixes.
+- Admin narrative tests: 3 files, 4 tests passed; admin graded deep-link tests: 3 passed. Teacher graded deep-link tests: 2 passed. Portal narrative tests: 2 files, 4 tests passed.
 - Convex, shared, admin, teacher and portal typechecks passed; `git diff --cached --check` clean.
 - Narrative print smoke rendered long portal report over three A4 pages and a two-student batch over four; printed heading was dark on white. Theme audit was informational; direct colors classified in `portal-integration.md`.
 - Independent reviewer passes R1/R2/R3 found and closed tenant purge, historical roster, subject aggregation, class term index, graded transfer history, snapshot size and print issues. R3 found no remaining confirmed FR-023 code blocker. Full authenticated browser flow and production deployment were not run.
