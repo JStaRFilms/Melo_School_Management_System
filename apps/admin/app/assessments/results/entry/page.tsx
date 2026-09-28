@@ -1,7 +1,10 @@
 "use client";
 
+import { scoreRowPolicy } from "@school/shared/exam-recording";
+
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { isConvexConfigured } from "@/convex-runtime";
+import { useAuth } from "@/AuthProvider";
 import {
 countErrors,
 hasAnyErrors,
@@ -16,7 +19,6 @@ mockSubjectsByClass,
 mockTermsBySession,
 } from "@/mock-data";
 import type {
-DraftScores,
 ExamEntrySheetResponse,
 Id,
 ScoreField,
@@ -27,6 +29,7 @@ ValidationErrors,
 } from "@/types";
 import type { ExamInputMode } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { scoreSheetDraftKey, useScoreSheetDraft, readScoreSheetPolicyStamp, writeScoreSheetPolicyStamp } from "@school/shared/drafts";
 import { useMutation,useQuery } from "convex/react";
 import { ChevronLeft } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -69,6 +72,9 @@ function getClearedScoreMessage(field: ScoreField): string {
 
 export default function AdminScoreEntryPage() {
   const searchParams = useSearchParams();
+  const { session, workspaceAccess } = useAuth();
+  const draftScope = `${workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId : "preview"}:${session?.user.id ?? "anonymous"}`;
+  const studentId = searchParams.get("studentId");
   const selection = useMemo(
     () => ({
       sessionId:
@@ -81,16 +87,18 @@ export default function AdminScoreEntryPage() {
   );
 
   if (!isConvexConfigured()) {
-    return <MockAdminScoreEntryPage selection={selection} />;
+    return <MockAdminScoreEntryPage selection={selection} draftScope={draftScope} />;
   }
 
-  return <LiveAdminScoreEntryPage selection={selection} />;
+  return <LiveAdminScoreEntryPage selection={selection} studentId={studentId} draftScope={draftScope} />;
 }
 
 function LiveAdminScoreEntryPage({
-  selection,
+  selection, studentId, draftScope,
 }: {
   selection: SelectionState;
+  studentId: string | null;
+  draftScope: string;
 }) {
   const sessions = useQuery(
     "functions/academic/adminSelectors:getAdminSessions" as never
@@ -132,6 +140,11 @@ function LiveAdminScoreEntryPage({
         } as never)
       : ("skip" as never)
   ) as ExamEntrySheetResponse | undefined;
+  useEffect(() => {
+    if (sheetData && studentId && sheetData.roster.some(row => row.studentId === studentId)) {
+      document.getElementById(`student-${studentId}`)?.scrollIntoView({ block: "center" });
+    }
+  }, [sheetData, studentId]);
   const upsertAssessmentRecordsBulk = useMutation(
     "functions/academic/assessmentRecords:upsertAssessmentRecordsBulk" as never
   );
@@ -157,6 +170,7 @@ function LiveAdminScoreEntryPage({
   return (
     <AdminScoreEntryContent
       selection={selection}
+      draftScope={draftScope}
       sessions={sessions ?? []}
       terms={terms ?? []}
       classes={classes ?? []}
@@ -173,9 +187,10 @@ function LiveAdminScoreEntryPage({
 }
 
 function MockAdminScoreEntryPage({
-  selection,
+  selection, draftScope,
 }: {
   selection: SelectionState;
+  draftScope: string;
 }) {
   const terms = selection.sessionId
     ? mockTermsBySession[selection.sessionId] ?? []
@@ -229,6 +244,7 @@ function MockAdminScoreEntryPage({
   return (
     <AdminScoreEntryContent
       selection={selection}
+      draftScope={draftScope}
       sessions={mockSessions}
       terms={terms}
       classes={mockClasses}
@@ -243,6 +259,7 @@ function MockAdminScoreEntryPage({
 
 interface AdminScoreEntryContentProps {
   selection: SelectionState;
+  draftScope: string;
   sessions: SelectorOption[];
   terms: SelectorOption[];
   classes: SelectorOption[];
@@ -259,6 +276,7 @@ interface AdminScoreEntryContentProps {
 
 function AdminScoreEntryContent({
   selection,
+  draftScope,
   sessions,
   terms,
   classes,
@@ -279,10 +297,15 @@ function AdminScoreEntryContent({
       selection.subjectId
   );
 
-  const [draftScores, setDraftScores] = useState<DraftScores>(new Map());
+  const draftKey = scoreSheetDraftKey(draftScope, selection.sessionId, selection.termId, selection.classId, selection.subjectId);
+  const [draftScores, setDraftScores] = useScoreSheetDraft<Id<"students">, ScoreField>(draftKey);
+  const hasUnsavedChanges = draftScores.size > 0;
+  const policyStamp = `${sheetData?.settings?.sessionPolicyVersion ?? 0}:${sheetData?.settings?.examRawMax ?? sheetData?.settings?.examInputMode ?? "raw40"}`;
+  const [reviewedPolicyStamp, setReviewedPolicyStamp] = useState<string | null>(null);
+  const savedPolicyStamp = readScoreSheetPolicyStamp(draftKey);
+  const policyChanged = hasUnsavedChanges && savedPolicyStamp !== null && savedPolicyStamp !== policyStamp && reviewedPolicyStamp !== policyStamp;
   const [validationErrors, setValidationErrors] =
     useState<ValidationErrors>(new Map());
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showErrorBanner, setShowErrorBanner] = useState(false);
   const [extraErrorSummaries, setExtraErrorSummaries] = useState<
     Array<{ studentName: string; message: string }>
@@ -294,9 +317,8 @@ function AdminScoreEntryContent({
   );
 
   useEffect(() => {
-    setDraftScores(new Map());
     setValidationErrors(new Map());
-    setHasUnsavedChanges(false);
+    setReviewedPolicyStamp(null);
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
   }, [
@@ -330,15 +352,19 @@ function AdminScoreEntryContent({
         return next;
       });
 
-      setHasUnsavedChanges(true);
+      if (draftKey && !readScoreSheetPolicyStamp(draftKey)) {
+        writeScoreSheetPolicyStamp(draftKey, policyStamp);
+      }
       setShowErrorBanner(false);
       setExtraErrorSummaries([]);
 
       const examInputMode: ExamInputMode =
         sheetData?.settings?.examInputMode ?? "raw40";
+      const scorePolicy = sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
+      const rowPolicy = scoreRowPolicy(examInputMode, scorePolicy, rosterEntry?.assessmentRecord);
       const error = isClearingSavedScore
         ? getClearedScoreMessage(field)
-        : validateField(field, value, examInputMode);
+        : validateField(field, value, examInputMode, rowPolicy);
 
       setValidationErrors((prev) => {
         const next = new Map(prev);
@@ -360,7 +386,7 @@ function AdminScoreEntryContent({
         return next;
       });
     },
-    [rosterById, sheetData]
+    [rosterById, sheetData, draftKey, policyStamp, setDraftScores]
   );
 
   const clearedScoreCount = useMemo(() => {
@@ -394,7 +420,6 @@ function AdminScoreEntryContent({
         if (Object.keys(rest).length > 0) next.set(studentId, rest);
         else next.delete(studentId);
       }
-      setHasUnsavedChanges(next.size > 0);
       return next;
     });
     setValidationErrors((prev) => {
@@ -404,7 +429,7 @@ function AdminScoreEntryContent({
       }
       return next;
     });
-  }, [rosterById, sheetData]);
+  }, [rosterById, sheetData, setDraftScores]);
 
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
@@ -413,6 +438,10 @@ function AdminScoreEntryContent({
         description: "Complete the selectors, then try saving again.",
       });
       throw createHandledSaveError("Complete the selectors before saving.");
+    }
+
+    if (policyChanged) {
+      throw createHandledSaveError("Review this draft against the current scoring policy before saving.");
     }
 
     if (!sheetData.editingState.canEdit) {
@@ -425,9 +454,11 @@ function AdminScoreEntryContent({
 
     const examInputMode: ExamInputMode =
       sheetData.settings?.examInputMode ?? "raw40";
+    const scorePolicy = sheetData.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
     const allErrors: ValidationErrors = new Map();
 
     for (const [studentId, scores] of draftScores.entries()) {
+      const rowPolicy = scoreRowPolicy(examInputMode, scorePolicy, rosterById.get(studentId)?.assessmentRecord);
       const studentErrors: Partial<Record<ScoreField, string>> = {};
 
       for (const field of [
@@ -443,7 +474,7 @@ function AdminScoreEntryContent({
 
         const error = value === null
           ? getClearedScoreMessage(field)
-          : validateField(field, value, examInputMode);
+          : validateField(field, value, examInputMode, rowPolicy);
         if (error) {
           studentErrors[field] = error;
         }
@@ -534,7 +565,6 @@ function AdminScoreEntryContent({
 
       setDraftScores(nextDraftScores);
       setValidationErrors(nextValidationErrors);
-      setHasUnsavedChanges(nextDraftScores.size > 0);
       setShowErrorBanner(true);
       setExtraErrorSummaries(
         result.errors.map((error) => ({
@@ -563,8 +593,8 @@ function AdminScoreEntryContent({
     }
 
     setDraftScores(new Map());
+    writeScoreSheetPolicyStamp(draftKey, null);
     setValidationErrors(new Map());
-    setHasUnsavedChanges(false);
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
     return result;
@@ -575,15 +605,16 @@ function AdminScoreEntryContent({
     selection,
     rosterById,
     sheetData,
+    policyChanged, draftKey, setDraftScores,
   ]);
 
   const handleCancel = useCallback(() => {
     setDraftScores(new Map());
+    writeScoreSheetPolicyStamp(draftKey, null);
     setValidationErrors(new Map());
-    setHasUnsavedChanges(false);
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
-  }, []);
+  }, [draftKey, setDraftScores]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -684,6 +715,8 @@ function AdminScoreEntryContent({
               </div>
             )}
 
+            {policyChanged && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">The scoring policy changed while this draft was unsaved. Check every score against the new limits before saving. <button type="button" className="underline font-bold" onClick={() => setReviewedPolicyStamp(policyStamp)}>I reviewed this draft</button></div>}
+
             {editingState && editingState.hasPolicy && (
                <div className={`rounded-lg border px-5 py-3 flex items-center justify-between ${
                 editingState.canEdit ? "border-slate-100 bg-slate-50/50" : "border-amber-100 bg-amber-50/50"
@@ -724,6 +757,7 @@ function AdminScoreEntryContent({
                 roster={roster}
                 examInputMode={examInputMode}
                 gradingBands={sheetData?.gradingBands ?? []}
+                policy={sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined}
                 draftScores={draftScores}
                 validationErrors={validationErrors}
                 sheetLabel={sheetLabel}

@@ -1,6 +1,24 @@
-# Exam Recording v1
+# Exam recording
 
 **Status:** Implemented
+
+## Session-scoped scoring policies
+
+The original v1 contract below is historical. Its fixed 20/20/20/40 weights and school-wide exam modes describe the legacy fallback, not the current only-supported configurations. For sessions with no explicit policy, legacy reads use recorded raw-exam maximum and available imported policy snapshots. Without a snapshot, legacy weights default to CA 20/20/20 and exam contribution 40. An empty session cannot recover its original school exam mode, so it uses the current effective school setting. Conflicting legacy snapshots in one session are mixed evidence, not a reliable session policy. Rows retain their own recorded exam maximum until an administrator applies an explicit policy.
+
+An administrator can set a policy for an academic session, editing all five maxima: `ca1Max`, `ca2Max`, `ca3Max`, `examRawMax`, and `examContributionMax`. The three starter presets are:
+
+- CA 20/20/20, exam raw /40 contributing /40
+- CA 20/20/20, exam raw /60 contributing /40
+- CA 20/20/10, exam raw /50 contributing /50
+
+Presets are starters, not restrictions. Each maximum can be edited; valid policies have a total contribution of 100. Every maximum must be finite, between 0 and 100 with at most two decimal places; `examRawMax` must be greater than zero. Scores must be finite and within zero and their corresponding raw maximum. The exam contribution is `round(examRawScore / examRawMax * examContributionMax, 2)`, and total is the three CAs plus that contribution, rounded to two decimal places. Grading bands remain separate and must cover the resulting total.
+
+Policy changes affect only the selected session. The admin flow scans all existing rows first, then permits confirmation only when the complete scan is ready and valid. A row above any proposed maximum blocks application and reports actionable class/subject examples; invalid scans hold the session guard until cancelled. Applying starts a guarded, batched regrade. It is not complete until polling reports `complete`; the final transaction publishes the policy version and audit event with the exact updated-row count. The guard blocks assessment entry, report reads/prints, certification, reviewed imports, and other assessment readers during scan/regrade. Failed batches stay guarded and can be resumed. Other sessions remain available.
+
+Regrades preserve raw scores and record who changed the policy. Issued report payloads remain unchanged. Printing an issued report warns when its certified version predates the completed scoring policy. This warning is not a replacement certification workflow: administrators still need a recertification process, which has not been implemented. Newly prepared unissued reports do not carry this stale-issued-report warning.
+
+Tests cover policy validity/calculation, 101-row regrades, multi-batch invalid counts and references, mixed raw40/raw60 legacy reads, explicit reconciliation, failure/resume, cancellation, governance changes, guarded reads and writes, tenant isolation, stale versions, legacy fallback, and issued-report warnings. See the session task backend handoff for API sequencing and operational details.
 
 ## Goal
 
@@ -99,7 +117,7 @@ This v1 is intentionally narrow so the team can ship a reliable core before addi
 
 ## Assessment Settings
 
-Each school has one active exam input mode for this v1.
+Historical v1 behavior used one active school exam input mode. New session-scoped policies are described above.
 
 ### Supported Modes
 
@@ -110,7 +128,7 @@ Each school has one active exam input mode for this v1.
   - Teacher enters exam out of `60`
   - System converts it into the `40`-point exam contribution
 
-### Fixed Weighting In v1
+### Legacy default weighting
 
 - `CA1` max: `20`
 - `CA2` max: `20`
@@ -339,15 +357,14 @@ This v1 stores scores per `studentId + classId + subjectId + termId + sessionId`
 
 ### Regrading
 
-This v1 stores derived values at write time. If schools later change grading bands or exam mode rules, a separate regrade tool should be introduced instead of silently mutating historical records.
+The historical v1 recommendation was to introduce a separate regrade tool rather than silently changing stored derived values. The current session-scoped flow implements a guarded scan and batched regrade, with audit history and issued-report payload preservation. See the section above.
 
 ## Acceptance Criteria
 
 - Teachers can open a bulk exam-entry sheet for an assigned class-subject within their school.
 - Admins can open a bulk exam-entry sheet for any class-subject within their school.
 - Users can enter `CA1`, `CA2`, `CA3`, and `Exam` values in one roster grid.
-- The system supports school-wide exam input mode of either `raw40` or `raw60_scaled_to_40`.
-- When exam mode is `raw60_scaled_to_40`, the system converts the raw exam score into the `40`-point exam contribution and rounds to `2` decimals.
+- Legacy sessions use the school exam input modes `raw40` or `raw60_scaled_to_40` as fallback behavior where applicable. Explicit session policies allow editable raw and contribution maxima.
 - The system computes `total`, `gradeLetter`, and `remark` automatically.
 - Admins can manage school grading bands.
 - Invalid score ranges and invalid grading bands are blocked with clear validation.

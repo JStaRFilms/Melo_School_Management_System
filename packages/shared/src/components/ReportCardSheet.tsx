@@ -4,6 +4,8 @@ import { deriveSchoolTheme } from "../theme/themeDerivation";
 
 export type ReportCardSheetData = {
   certifiedAt?: number;
+  /** Screen-only notice for an issued report predating a completed session regrade. */
+  scoringPolicyWarning?: string;
   gradingPolicy?: { version: number; source: "current" | "snapshot" | "historical_missing"; bands: Array<{gradeLetter:string;minScore:number;maxScore:number;remark:string;colorHex?:string}> };
   schoolName: string;
   schoolAddress?: string | null;

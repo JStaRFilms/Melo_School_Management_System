@@ -20,6 +20,7 @@ export { ReportCardSheet } from "./components/ReportCardSheet";
 export type { ReportCardSheetData } from "./components/ReportCardSheet";
 export { ReportCardPreview } from "./components/ReportCardPreview";
 export { ReportCardToolbar, ReportCardPrintBlockedNotice } from "./components/ReportCardToolbar";
+export { ReportScoringPrintWarning } from "./components/ReportScoringPrintWarning";
 export { ReportCardBatchNavigator } from "./components/ReportCardBatchNavigator";
 export type { ReportCardBatchStudent } from "./components/ReportCardBatchNavigator";
 export { ReportCardPrintStack } from "./components/ReportCardPrintStack";

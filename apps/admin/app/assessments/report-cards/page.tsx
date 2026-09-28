@@ -10,6 +10,7 @@ import {
   ReportCardPreview,
   ReportCardToolbar,
   ReportCardPrintBlockedNotice,
+  ReportScoringPrintWarning,
   buildReportCardExtrasHref,
   type ReportCardBatchStudent,
   type ReportCardSheetData,
@@ -53,6 +54,7 @@ function AdminReportCardPageContent() {
   const initialTouchScaleRef = useRef<number>(0.75);
 
   const [previewScale, setPreviewScale] = useState<number>(0.75);
+  const [printWarning, setPrintWarning] = useState<string | null>(null);
 
   const calculateFitScale = useCallback(() => {
     if (typeof window === "undefined") return 0.65;
@@ -158,6 +160,11 @@ function AdminReportCardPageContent() {
   const blockedClassPrintCount =
     classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;
   const isClassPrintBlocked = blockedClassPrintCount > 0;
+  const batchWarning = classReportCards?.find(card => card.scoringPolicyWarning)?.scoringPolicyWarning ?? null;
+  const handleSinglePrint = () => {
+    if (reportCard?.scoringPolicyWarning) setPrintWarning(reportCard.scoringPolicyWarning);
+    else window.print();
+  };
 
   const handleSelectStudent = (nextStudentId: string) => {
     const params = new URLSearchParams(searchParamsString);
@@ -181,13 +188,15 @@ function AdminReportCardPageContent() {
   const handleBatchReady = useCallback(() => {
     if (isClassPrintBlocked || hasTriggeredClassPrintRef.current) return;
     hasTriggeredClassPrintRef.current = true;
+    if (batchWarning) { setPrintWarning(batchWarning); return; }
     window.setTimeout(() => {
       window.print();
     }, 250);
-  }, [isClassPrintBlocked]);
+  }, [isClassPrintBlocked, batchWarning]);
 
   useEffect(() => {
     hasTriggeredClassPrintRef.current = false;
+    setPrintWarning(null);
   }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
 
   useEffect(() => {
@@ -243,6 +252,7 @@ function AdminReportCardPageContent() {
   if (isPrintClassMode) {
     return (
       <>
+        {printWarning && <ReportScoringPrintWarning message={printWarning} onCancel={() => { setPrintWarning(null); exitFullClassPrint(); }} onContinue={() => { setPrintWarning(null); window.setTimeout(() => window.print(), 250); }} />}
         {classReportCards === undefined ? (
           <ReportCardPageFallback message="Preparing full class batch print..." />
         ) : classReportCards.length === 0 ? (
@@ -288,6 +298,7 @@ function AdminReportCardPageContent() {
 
   return (
     <div className="min-h-full lg:h-full lg:min-h-0 flex flex-col bg-slate-100/60">
+      {printWarning && <ReportScoringPrintWarning message={printWarning} onCancel={() => setPrintWarning(null)} onContinue={() => { setPrintWarning(null); window.print(); }} />}
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden lg:min-h-0">
         {/* Sidebar Bucket - Management & Navigation */}
         <aside className="w-full lg:w-[460px] lg:h-full lg:overflow-y-auto border-b lg:border-b-0 lg:border-r border-slate-200/60 bg-white custom-scrollbar flex flex-col lg:order-1 pt-4 sm:pt-6 pb-6 lg:pb-24 shrink-0">
@@ -327,6 +338,7 @@ function AdminReportCardPageContent() {
                 <ReportCardToolbar
                   studentName={reportCard.student.name}
                   backHref={backHref}
+                  onPrint={handleSinglePrint}
                 />
               </div>
 
@@ -381,6 +393,7 @@ function AdminReportCardPageContent() {
             className="flex-1 min-h-0 overflow-auto custom-scrollbar p-4 sm:p-6 lg:p-8 flex items-start justify-center touch-pan-x touch-pan-y"
           >
             <div className="my-auto py-4 flex flex-col items-center max-w-full">
+              {reportCard.scoringPolicyWarning && <div className="rc-no-print mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{reportCard.scoringPolicyWarning}</div>}
               {hasIncompleteCumulativeResults(reportCard) && (
                 <div className="mb-4 w-full max-w-[794px]">
                   <ReportCardPrintBlockedNotice />

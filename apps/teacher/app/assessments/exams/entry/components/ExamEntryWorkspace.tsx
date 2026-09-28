@@ -1,5 +1,7 @@
 "use client";
 
+import { scoreRowPolicy } from "@school/shared/exam-recording";
+
 import {
 countErrors,
 hasAnyErrors,
@@ -7,7 +9,6 @@ validateField,
 } from "@/lib/exam-helpers";
 import { humanNameFinalStrict } from "@/lib/human-name";
 import type {
-DraftScores,
 ExamEntrySheetResponse,
 Id,
 ScoreField,
@@ -18,6 +19,7 @@ ValidationErrors,
 } from "@/lib/types";
 import type { ExamInputMode } from "@school/shared";
 import { appToast } from "@school/shared/toast";
+import { scoreSheetDraftKey, useScoreSheetDraft, readScoreSheetPolicyStamp, writeScoreSheetPolicyStamp } from "@school/shared/drafts";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { EmptyRoster } from "./EmptyRoster";
 import { LoadingSkeleton } from "./LoadingSkeleton";
@@ -59,6 +61,7 @@ function getClearedScoreMessage(field: ScoreField): string {
 
 interface ExamEntryWorkspaceProps {
   selection: SelectionState;
+  schoolId?: string;
   sessions: SelectorOption[];
   terms: SelectorOption[];
   classes: SelectorOption[];
@@ -75,6 +78,7 @@ interface ExamEntryWorkspaceProps {
 
 export function ExamEntryWorkspace({
   selection,
+  schoolId = "preview",
   sessions,
   terms,
   classes,
@@ -95,10 +99,15 @@ export function ExamEntryWorkspace({
       selection.subjectId
   );
 
-  const [draftScores, setDraftScores] = useState<DraftScores>(new Map());
+  const draftKey = scoreSheetDraftKey(schoolId, selection.sessionId, selection.termId, selection.classId, selection.subjectId);
+  const [draftScores, setDraftScores] = useScoreSheetDraft<Id<"students">, ScoreField>(draftKey);
+  const hasUnsavedChanges = draftScores.size > 0;
+  const policyStamp = `${sheetData?.settings?.sessionPolicyVersion ?? 0}:${sheetData?.settings?.examRawMax ?? sheetData?.settings?.examInputMode ?? "raw40"}`;
+  const [reviewedPolicyStamp, setReviewedPolicyStamp] = useState<string | null>(null);
+  const savedPolicyStamp = readScoreSheetPolicyStamp(draftKey);
+  const policyChanged = hasUnsavedChanges && savedPolicyStamp !== null && savedPolicyStamp !== policyStamp && reviewedPolicyStamp !== policyStamp;
   const [validationErrors, setValidationErrors] =
     useState<ValidationErrors>(new Map());
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showErrorBanner, setShowErrorBanner] = useState(false);
   const [extraErrorSummaries, setExtraErrorSummaries] = useState<
     Array<{ studentName: string; message: string }>
@@ -110,9 +119,8 @@ export function ExamEntryWorkspace({
   );
 
   useEffect(() => {
-    setDraftScores(new Map());
     setValidationErrors(new Map());
-    setHasUnsavedChanges(false);
+    setReviewedPolicyStamp(null);
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
   }, [
@@ -146,14 +154,18 @@ export function ExamEntryWorkspace({
         return next;
       });
 
-      setHasUnsavedChanges(true);
+      if (draftKey && !readScoreSheetPolicyStamp(draftKey)) {
+        writeScoreSheetPolicyStamp(draftKey, policyStamp);
+      }
       setExtraErrorSummaries([]);
 
       const examInputMode: ExamInputMode =
         sheetData?.settings?.examInputMode ?? "raw40";
+      const scorePolicy = sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
+      const rowPolicy = scoreRowPolicy(examInputMode, scorePolicy, rosterEntry?.assessmentRecord);
       const error = isClearingSavedScore
         ? getClearedScoreMessage(field)
-        : validateField(field, value, examInputMode);
+        : validateField(field, value, examInputMode, rowPolicy);
 
       setValidationErrors((prev) => {
         const next = new Map(prev);
@@ -175,7 +187,7 @@ export function ExamEntryWorkspace({
         return next;
       });
     },
-    [rosterById, sheetData]
+    [rosterById, sheetData, draftKey, policyStamp, setDraftScores]
   );
 
   const clearedScoreCount = useMemo(() => {
@@ -209,7 +221,6 @@ export function ExamEntryWorkspace({
         if (Object.keys(rest).length > 0) next.set(studentId, rest);
         else next.delete(studentId);
       }
-      setHasUnsavedChanges(next.size > 0);
       return next;
     });
     setValidationErrors((prev) => {
@@ -219,7 +230,7 @@ export function ExamEntryWorkspace({
       }
       return next;
     });
-  }, [rosterById, sheetData]);
+  }, [rosterById, sheetData, setDraftScores]);
 
   const handleSave = useCallback(async () => {
     if (!isSheetReady || !sheetData) {
@@ -228,6 +239,10 @@ export function ExamEntryWorkspace({
         description: "Complete the selectors, then try saving again.",
       });
       throw createHandledSaveError("Complete the selectors before saving.");
+    }
+
+    if (policyChanged) {
+      throw createHandledSaveError("Review this draft against the current scoring policy before saving.");
     }
 
     if (!sheetData.editingState.canEdit) {
@@ -240,9 +255,11 @@ export function ExamEntryWorkspace({
 
     const examInputMode: ExamInputMode =
       sheetData.settings?.examInputMode ?? "raw40";
+    const scorePolicy = sheetData.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
     const allErrors: ValidationErrors = new Map();
 
     for (const [studentId, scores] of draftScores.entries()) {
+      const rowPolicy = scoreRowPolicy(examInputMode, scorePolicy, rosterById.get(studentId)?.assessmentRecord);
       const studentErrors: Partial<Record<ScoreField, string>> = {};
 
       for (const field of [
@@ -258,7 +275,7 @@ export function ExamEntryWorkspace({
 
         const error = value === null
           ? getClearedScoreMessage(field)
-          : validateField(field, value, examInputMode);
+          : validateField(field, value, examInputMode, rowPolicy);
         if (error) {
           studentErrors[field] = error;
         }
@@ -345,7 +362,6 @@ export function ExamEntryWorkspace({
 
       setDraftScores(nextDraftScores);
       setValidationErrors(nextValidationErrors);
-      setHasUnsavedChanges(nextDraftScores.size > 0);
       setExtraErrorSummaries(
         result.errors.map((error) => ({
           studentName:
@@ -376,20 +392,20 @@ export function ExamEntryWorkspace({
     }
 
     setDraftScores(new Map());
+    writeScoreSheetPolicyStamp(draftKey, null);
     setValidationErrors(new Map());
-    setHasUnsavedChanges(false);
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
     return result;
-  }, [draftScores, isSheetReady, onSaveRecords, rosterById, selection, sheetData]);
+  }, [draftScores, isSheetReady, onSaveRecords, rosterById, selection, sheetData, policyChanged, draftKey, setDraftScores]);
 
   const handleCancel = useCallback(() => {
     setDraftScores(new Map());
+    writeScoreSheetPolicyStamp(draftKey, null);
     setValidationErrors(new Map());
-    setHasUnsavedChanges(false);
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
-  }, []);
+  }, [draftKey, setDraftScores]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -449,6 +465,8 @@ export function ExamEntryWorkspace({
         onBeforeSelectionChange={handleBeforeSelectionChange}
       />
 
+      {policyChanged && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">The scoring policy changed while this draft was unsaved. Check every score against the new limits before saving. <button type="button" className="underline font-bold" onClick={() => setReviewedPolicyStamp(policyStamp)}>I reviewed this draft</button></div>}
+
       {editingState?.hasPolicy ? (
         <div
           className={`rounded-lg border px-4 py-3 text-sm font-medium ${
@@ -475,6 +493,7 @@ export function ExamEntryWorkspace({
           roster={roster}
           examInputMode={examInputMode}
           gradingBands={sheetData?.gradingBands ?? []}
+                policy={sheetData?.settings?.sessionPolicyVersion && sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined}
           draftScores={draftScores}
           validationErrors={validationErrors}
           sessionId={selection.sessionId ?? ""}

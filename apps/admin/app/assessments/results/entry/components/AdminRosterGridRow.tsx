@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ExamInputMode } from "@school/shared";
+import { scoreRowPolicy, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
 import type {
   StudentRosterEntry,
@@ -17,6 +18,9 @@ import { humanNameFinalStrict } from "@/human-name";
 interface AdminRosterGridRowProps {
   student: StudentRosterEntry;
   examInputMode: ExamInputMode;
+  policy?: SessionScoringPolicy;
+  showScaledColumn?: boolean;
+  showRowLimits?: boolean;
   gradingBands: GradingBandResponse[];
   draftScores: DraftScores;
   validationErrors: ValidationErrors;
@@ -34,6 +38,9 @@ interface AdminRosterGridRowProps {
 export function AdminRosterGridRow({
   student,
   examInputMode,
+  policy,
+  showScaledColumn = false,
+  showRowLimits = false,
   gradingBands,
   draftScores,
   validationErrors,
@@ -43,7 +50,7 @@ export function AdminRosterGridRow({
   isEditable,
   onScoreChange,
 }: AdminRosterGridRowProps) {
-  const showScaledColumn = examInputMode === "raw60_scaled_to_40";
+  const rowPolicy = scoreRowPolicy(examInputMode, policy, student.assessmentRecord);
   const displayStudentName = humanNameFinalStrict(student.studentName);
 
   const ca1 = getEffectiveValue(student.studentId, "ca1", draftScores, [student]);
@@ -74,7 +81,8 @@ export function AdminRosterGridRow({
     ca3,
     examRaw,
     examInputMode,
-    gradingBands
+    gradingBands,
+    rowPolicy
   );
 
   const studentErrors = validationErrors.get(student.studentId) ?? {};
@@ -95,23 +103,26 @@ export function AdminRosterGridRow({
           value={value ?? ""}
           min={0}
           max={max}
-          step={1}
+          step="0.01"
           disabled={!isEditable}
           onChange={(e) => {
             onScoreChange(student.studentId, field, parseScoreValue(e.target.value));
           }}
           placeholder="--"
           title={error ?? undefined}
+          aria-label={`${displayStudentName} ${field === "examRawScore" ? "exam" : field.toUpperCase()} score out of ${max}`}
+          aria-invalid={Boolean(error)}
           className={`score-input ${isExam ? "score-input-exam" : ""} ${error ? "error" : ""} ${
             !isEditable ? "cursor-not-allowed opacity-60" : ""
           }`}
         />
+        {showRowLimits && <span className="text-[10px] text-slate-500">/{max}</span>}
       </div>
     );
   };
 
   return (
-    <tr className="group hover:bg-slate-50/50 transition-all cursor-pointer">
+    <tr id={`student-${student.studentId}`} className="group hover:bg-slate-50/50 transition-all cursor-pointer">
       <td className="sticky-column pl-6">
         <div className="flex flex-col">
           <span className="font-bold text-slate-950 text-sm tracking-tight">
@@ -137,26 +148,27 @@ export function AdminRosterGridRow({
           </div>
         </div>
       </td>
-      <td className="text-center">{renderScoreInput("ca1", ca1, 20)}</td>
-      <td className="text-center">{renderScoreInput("ca2", ca2, 20)}</td>
-      <td className="text-center">{renderScoreInput("ca3", ca3, 20)}</td>
+      <td className="text-center">{renderScoreInput("ca1", ca1, rowPolicy.ca1Max)}</td>
+      <td className="text-center">{renderScoreInput("ca2", ca2, rowPolicy.ca2Max)}</td>
+      <td className="text-center">{renderScoreInput("ca3", ca3, rowPolicy.ca3Max)}</td>
       <td className="text-center">
         {renderScoreInput(
           "examRawScore",
           examRaw,
-          examInputMode === "raw40" ? 40 : 60,
+          rowPolicy.examRawMax,
           true
         )}
       </td>
       {showScaledColumn && (
         <td className="text-center font-bold text-indigo-600">
           {derived.examScaledScore !== null
-            ? derived.examScaledScore.toFixed(1)
+            ? derived.examScaledScore.toFixed(2)
             : "--"}
+          {showRowLimits && <span className="block text-[10px]">/{rowPolicy.examContributionMax}</span>}
         </td>
       )}
       <td className="text-center font-black text-white bg-slate-950 border-r border-white/10 tabular-nums">
-        {derived.total !== null ? derived.total.toFixed(0) : "--"}
+        {derived.total !== null ? derived.total.toFixed(2) : "--"}
       </td>
       <td className="text-center">
         <span

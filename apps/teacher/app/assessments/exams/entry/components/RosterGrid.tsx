@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ExamInputMode } from "@school/shared";
+import { scoreRowPolicy, scoreRosterHasScaledColumn, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
 import type {
   StudentRosterEntry,
@@ -22,6 +23,7 @@ import {
 interface RosterGridProps {
   roster: StudentRosterEntry[];
   examInputMode: ExamInputMode;
+  policy?: SessionScoringPolicy;
   gradingBands: GradingBandResponse[];
   draftScores: DraftScores;
   validationErrors: ValidationErrors;
@@ -48,6 +50,7 @@ function getInitials(name: string): string {
 export function RosterGrid({
   roster,
   examInputMode,
+  policy,
   gradingBands,
   draftScores,
   validationErrors,
@@ -57,12 +60,9 @@ export function RosterGrid({
   isEditable = true,
   onScoreChange,
 }: RosterGridProps) {
-  const showScaledColumn = examInputMode === "raw60_scaled_to_40";
-  const examLabel = examInputMode === "raw40" ? "Exam /40" : "Exam /60";
-  const examColHeader =
-    examInputMode === "raw40"
-      ? 'Exam <span class="text-amber-500 font-normal">/40</span>'
-      : 'Exam <span class="text-amber-500 font-normal">/60</span>';
+  const showScaledColumn = scoreRosterHasScaledColumn(examInputMode, policy, roster);
+  const mixedLegacy = !policy && roster.some(row => { const weights = scoreRowPolicy(examInputMode, policy, row.assessmentRecord); return weights.examRawMax !== scoreRowPolicy(examInputMode).examRawMax || weights.ca1Max !== 20 || weights.ca2Max !== 20 || weights.ca3Max !== 20 || weights.examContributionMax !== 40; });
+  const examLabel = mixedLegacy ? "Exam /row limit" : `Exam /${policy?.examRawMax ?? (examInputMode === "raw40" ? 40 : 60)}`;
 
   return (
     <div className="space-y-6">
@@ -73,17 +73,19 @@ export function RosterGrid({
             Score Entry
           </h2>
           <p className="text-obsidian-500 font-medium font-body italic text-sm">
-            {examInputMode === "raw40"
+            {policy ? `Exam raw /${policy.examRawMax} contributes /${policy.examContributionMax} to the total.` : mixedLegacy ? "Legacy rows have different exam maxima. Check the limit shown on each row." : examInputMode === "raw40"
               ? "Direct entry into final exam contribution. No scaling column."
               : "Input out of 60; system displays read-only /40 contribution for total calculation."}
           </p>
         </div>
-        <ExamModeIndicator examInputMode={examInputMode} />
+        {!policy && !mixedLegacy && <ExamModeIndicator examInputMode={examInputMode} />}
       </div>
 
       {/* ============ MOBILE: Card layout (exact match from mobile mockup) ============ */}
       <div className="md:hidden space-y-4">
         {roster.map((student) => {
+          const rowPolicy = scoreRowPolicy(examInputMode, policy, student.assessmentRecord);
+          const rowExamMax = rowPolicy.examRawMax;
           const ca1 = getEffectiveValue(student.studentId, "ca1", draftScores, [
             student,
           ]);
@@ -105,7 +107,8 @@ export function RosterGrid({
             ca3,
             examRaw,
             examInputMode,
-            gradingBands
+            gradingBands,
+            rowPolicy
           );
           const studentErrors =
             validationErrors.get(student.studentId) ?? {};
@@ -162,21 +165,22 @@ export function RosterGrid({
               {/* Score inputs - exact 4-column grid from mobile mockup */}
               <div className="grid grid-cols-4 gap-2">
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
-                    CA1 /20
+                  <label htmlFor={`mobile-${student.studentId}-ca1`} className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
+                    CA1 /{rowPolicy.ca1Max}
                   </label>
                   <input
+                    id={`mobile-${student.studentId}-ca1`}
                     type="number"
                     value={ca1 ?? ""}
                     min={0}
-                    max={20}
-                    step={1}
+                    max={rowPolicy.ca1Max}
+                    step="0.01"
                     disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
                           ? null
-                          : parseInt(e.target.value, 10);
+                          : Number(e.target.value);
                       onScoreChange(
                         student.studentId,
                         "ca1",
@@ -188,21 +192,22 @@ export function RosterGrid({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
-                    CA2 /20
+                  <label htmlFor={`mobile-${student.studentId}-ca2`} className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
+                    CA2 /{rowPolicy.ca2Max}
                   </label>
                   <input
+                    id={`mobile-${student.studentId}-ca2`}
                     type="number"
                     value={ca2 ?? ""}
                     min={0}
-                    max={20}
-                    step={1}
+                    max={rowPolicy.ca2Max}
+                    step="0.01"
                     disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
                           ? null
-                          : parseInt(e.target.value, 10);
+                          : Number(e.target.value);
                       onScoreChange(
                         student.studentId,
                         "ca2",
@@ -214,21 +219,22 @@ export function RosterGrid({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
-                    CA3 /20
+                  <label htmlFor={`mobile-${student.studentId}-ca3`} className="text-[8px] font-black editorial-spacing text-center block text-obsidian-400">
+                    CA3 /{rowPolicy.ca3Max}
                   </label>
                   <input
+                    id={`mobile-${student.studentId}-ca3`}
                     type="number"
                     value={ca3 ?? ""}
                     min={0}
-                    max={20}
-                    step={1}
+                    max={rowPolicy.ca3Max}
+                    step="0.01"
                     disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
                           ? null
-                          : parseInt(e.target.value, 10);
+                          : Number(e.target.value);
                       onScoreChange(
                         student.studentId,
                         "ca3",
@@ -240,21 +246,22 @@ export function RosterGrid({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[8px] font-black editorial-spacing text-center block text-amber-700">
-                    {examLabel}
+                  <label htmlFor={`mobile-${student.studentId}-exam`} className="text-[8px] font-black editorial-spacing text-center block text-amber-700">
+                    {mixedLegacy ? `Exam /${rowExamMax}` : examLabel}
                   </label>
                   <input
+                    id={`mobile-${student.studentId}-exam`}
                     type="number"
                     value={examRaw ?? ""}
                     min={0}
-                    max={examInputMode === "raw40" ? 40 : 60}
-                    step={1}
+                    max={rowExamMax}
+                    step="0.01"
                     disabled={!isEditable}
                     onChange={(e) => {
                       const v =
                         e.target.value === ""
                           ? null
-                          : parseInt(e.target.value, 10);
+                          : Number(e.target.value);
                       onScoreChange(
                         student.studentId,
                         "examRawScore",
@@ -269,12 +276,12 @@ export function RosterGrid({
 
               {/* Read-only calculation bar - exact match from mobile mockup */}
               <div className="bg-obsidian-50 rounded-lg py-2 px-3 space-y-1.5">
-                {showScaledColumn && (
+                {rowPolicy.examRawMax !== rowPolicy.examContributionMax && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Calculator className="w-3 h-3 text-obsidian-400" />
                       <span className="text-xs font-bold text-obsidian-500 uppercase tracking-tighter">
-                        Scaled Score (/40)
+                        Scaled Score (/{rowPolicy.examContributionMax})
                       </span>
                     </div>
                     <span className="text-sm font-black text-indigo-600">
@@ -323,22 +330,22 @@ export function RosterGrid({
             <tr>
               <th className="sticky-column">Student Profile</th>
               <th>
-                CA1 <span className="text-obsidian-300 font-normal">/20</span>
+                CA1 <span className="text-obsidian-300 font-normal">{mixedLegacy ? "/row limit" : `/${policy?.ca1Max ?? 20}`}</span>
               </th>
               <th>
-                CA2 <span className="text-obsidian-300 font-normal">/20</span>
+                CA2 <span className="text-obsidian-300 font-normal">{mixedLegacy ? "/row limit" : `/${policy?.ca2Max ?? 20}`}</span>
               </th>
               <th>
-                CA3 <span className="text-obsidian-300 font-normal">/20</span>
+                CA3 <span className="text-obsidian-300 font-normal">{mixedLegacy ? "/row limit" : `/${policy?.ca3Max ?? 20}`}</span>
               </th>
               <th
                 className="bg-amber-50/50 text-amber-900"
-                dangerouslySetInnerHTML={{ __html: examColHeader }}
-              />
+              >Exam <span className="font-normal">{mixedLegacy ? "/row limit" : `/${policy?.examRawMax ?? (examInputMode === "raw40" ? 40 : 60)}`}</span>
+              </th>
               {showScaledColumn && (
                 <th className="bg-indigo-50/50 text-indigo-700">
                   Scaled{" "}
-                  <span className="text-indigo-400 font-normal">/40</span>
+                  <span className="text-indigo-400 font-normal">{mixedLegacy ? "/row limit" : `/${policy?.examContributionMax ?? 40}`}</span>
                 </th>
               )}
               <th>
@@ -356,6 +363,9 @@ export function RosterGrid({
                 student={student}
                 examInputMode={examInputMode}
                 gradingBands={gradingBands}
+                policy={policy}
+                showScaledColumn={showScaledColumn}
+                showRowLimits={mixedLegacy}
                 draftScores={draftScores}
                 validationErrors={validationErrors}
                 sessionId={sessionId}

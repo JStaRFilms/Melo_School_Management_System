@@ -7,8 +7,9 @@ import {
   assertTeacherAssignment,
 } from "./auth";
 import {
-  validateScoreRanges,
-  deriveAssessmentFields,
+  deriveForSessionPolicy,
+  validateScoresForPolicy,
+  sessionScoringSnapshotMode,
 } from "@school/shared/exam-recording";
 import type { ExamInputMode, GradingBand } from "@school/shared/exam-recording";
 import {
@@ -22,14 +23,22 @@ import {
   getAssessmentEditingPolicy,
   getAssessmentEditingState,
 } from "./assessmentEditingPolicyHelpers";
-import { resolveEffectiveAcademicPolicy } from "./settings";
+import { resolveSessionScoringPolicy } from "./sessionScoring";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 
-function withoutImportPolicySnapshots(record: NonNullable<Doc<"assessmentRecords">>) {
-  const result = { ...record };
-  delete result.assessmentPolicySnapshot;
-  delete result.gradingPolicySnapshot;
-  return result;
+function entrySheetRecord(record: Doc<"assessmentRecords">) {
+  const { assessmentPolicySnapshot, gradingPolicySnapshot: _gradingPolicySnapshot, ...result } = record;
+  // The entry UI needs historical CA and exam weights, not import governance or grading evidence.
+  return {
+    ...result,
+    ...(assessmentPolicySnapshot ? { assessmentPolicySnapshot: {
+      ca1Max: assessmentPolicySnapshot.ca1Max,
+      ca2Max: assessmentPolicySnapshot.ca2Max,
+      ca3Max: assessmentPolicySnapshot.ca3Max,
+      examContributionMax: assessmentPolicySnapshot.examContributionMax,
+      examRawMax: assessmentPolicySnapshot.examRawMax,
+    } } : {}),
+  };
 }
 
 function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>(
@@ -86,6 +95,14 @@ export const getExamEntrySheet = query({
             remark: v.string(),
             examInputModeSnapshot: v.string(),
             examRawMaxSnapshot: v.number(),
+            sessionScoringPolicyVersion: v.optional(v.number()),
+            assessmentPolicySnapshot: v.optional(v.object({
+              ca1Max: v.number(),
+              ca2Max: v.number(),
+              ca3Max: v.number(),
+              examContributionMax: v.number(),
+              examRawMax: v.number(),
+            })),
             status: v.literal("draft"),
             enteredBy: v.id("users"),
             updatedBy: v.id("users"),
@@ -105,22 +122,27 @@ export const getExamEntrySheet = query({
       ca2Max: v.number(),
       ca3Max: v.number(),
       examContributionMax: v.number(),
+      examRawMax: v.number(),
+      sessionPolicyVersion: v.number(),
     }),
-    gradingBands: v.array(
-      v.object({
-        _id: v.id("gradingBands"),
-        _creationTime: v.number(),
-        schoolId: v.id("schools"),
-        minScore: v.number(),
-        maxScore: v.number(),
-        gradeLetter: v.string(),
-        remark: v.string(),
-        isActive: v.boolean(),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        updatedBy: v.id("users"),
-      })
-    ),
+    gradingBands: v.array(v.object({
+      _id: v.id("gradingBands"),
+      _creationTime: v.number(),
+      schoolId: v.id("schools"),
+      minScore: v.number(),
+      maxScore: v.number(),
+      gradeLetter: v.string(),
+      remark: v.string(),
+      gradePoints: v.optional(v.number()),
+      colorHex: v.optional(v.string()),
+      color: v.optional(v.string()),
+      luminanceContrast: v.optional(v.number()),
+      isActive: v.boolean(),
+      version: v.optional(v.number()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      updatedBy: v.id("users"),
+    })),
     editingState: assessmentEditingStateReturnValidator,
   }),
   handler: async (ctx, args) => {
@@ -169,7 +191,7 @@ export const getExamEntrySheet = query({
     }
 
     const [effectiveSettings, editingPolicy] = await Promise.all([
-      resolveEffectiveAcademicPolicy(ctx, schoolId),
+      resolveSessionScoringPolicy(ctx, schoolId, args.sessionId),
       getAssessmentEditingPolicy(ctx, {
         schoolId,
         sessionId: args.sessionId,
@@ -285,7 +307,7 @@ export const getExamEntrySheet = query({
 
           const storedRecord = recordMap.get(String(student._id));
           const assessmentRecord = storedRecord
-            ? withoutImportPolicySnapshots(storedRecord)
+            ? entrySheetRecord(storedRecord)
             : null;
           return {
             studentId: student._id,
@@ -298,11 +320,13 @@ export const getExamEntrySheet = query({
     return {
       roster,
       settings: {
-        examInputMode: effectiveSettings.examInputMode,
-        ca1Max: effectiveSettings.ca1Max,
-        ca2Max: effectiveSettings.ca2Max,
-        ca3Max: effectiveSettings.ca3Max,
-        examContributionMax: effectiveSettings.examContributionMax,
+        examInputMode: effectiveSettings.policy.examRawMax === 60 ? "raw60_scaled_to_40" as const : "raw40" as const,
+        ca1Max: effectiveSettings.policy.ca1Max,
+        ca2Max: effectiveSettings.policy.ca2Max,
+        ca3Max: effectiveSettings.policy.ca3Max,
+        examContributionMax: effectiveSettings.policy.examContributionMax,
+        examRawMax: effectiveSettings.policy.examRawMax,
+        sessionPolicyVersion: effectiveSettings.version,
       },
       gradingBands: sortedBands,
       editingState,
@@ -409,7 +433,7 @@ export const upsertAssessmentRecordsBulk = mutation({
       throw new ConvexError(editingState.message);
     }
 
-    const settings = await resolveEffectiveAcademicPolicy(ctx, schoolId);
+    const settings = await resolveSessionScoringPolicy(ctx, schoolId, args.sessionId);
 
     // Use the same effective local/inherited policy as previews and issued reports.
     const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
@@ -433,9 +457,10 @@ export const upsertAssessmentRecordsBulk = mutation({
         updatedBy: band.updatedBy,
       }));
 
-    const examInputMode: ExamInputMode = settings.examInputMode;
-    const examRawMaxSnapshot =
-      examInputMode === "raw40" ? 40 : 60;
+    const examInputMode: ExamInputMode = settings.policy.examRawMax === 60 ? "raw60_scaled_to_40" : "raw40";
+    const examRawMaxSnapshot = settings.policy.examRawMax;
+    const recordedMode = settings.source === "session"
+      ? sessionScoringSnapshotMode(settings.policy) : examInputMode;
 
     let updated = 0;
     let created = 0;
@@ -465,14 +490,25 @@ export const upsertAssessmentRecordsBulk = mutation({
         continue;
       }
 
-      // Validate score ranges
-      const validationErrors = validateScoreRanges(
-        record.ca1,
-        record.ca2,
-        record.ca3,
-        record.examRawScore,
-        examInputMode
-      );
+      // Look up the row before validation: a legacy session may contain both
+      // raw40 and raw60 records. Editing one must use its own recorded maximum.
+      const existingRecord = await ctx.db
+        .query("assessmentRecords")
+        .withIndex("by_student_sheet", (q: any) =>
+          q.eq("schoolId", schoolId).eq("sessionId", args.sessionId)
+            .eq("termId", args.termId).eq("classId", args.classId)
+            .eq("subjectId", args.subjectId).eq("studentId", record.studentId)
+        )
+        .collect()
+        .then((docs: any[]) => pickMostRecentDoc(docs));
+      const rowPolicy = settings.source === "legacy" && existingRecord
+        ? { ca1Max: existingRecord.assessmentPolicySnapshot?.ca1Max ?? 20,
+            ca2Max: existingRecord.assessmentPolicySnapshot?.ca2Max ?? 20,
+            ca3Max: existingRecord.assessmentPolicySnapshot?.ca3Max ?? 20,
+            examRawMax: existingRecord.examRawMaxSnapshot,
+            examContributionMax: existingRecord.assessmentPolicySnapshot?.examContributionMax ?? 40 }
+        : settings.policy;
+      const validationErrors = validateScoresForPolicy(record, rowPolicy);
 
       if (validationErrors.length > 0) {
         // Add all validation errors for this record
@@ -487,29 +523,10 @@ export const upsertAssessmentRecordsBulk = mutation({
       }
 
       // Compute derived fields
-      const derived = deriveAssessmentFields(
-        record.ca1,
-        record.ca2,
-        record.ca3,
-        record.examRawScore,
-        examInputMode,
-        sortedBands
-      );
-
-      // Look up existing record
-      const existingRecord = await ctx.db
-        .query("assessmentRecords")
-        .withIndex("by_student_sheet", (q: any) =>
-          q
-            .eq("schoolId", schoolId)
-            .eq("sessionId", args.sessionId)
-            .eq("termId", args.termId)
-            .eq("classId", args.classId)
-            .eq("subjectId", args.subjectId)
-            .eq("studentId", record.studentId)
-        )
-        .collect()
-        .then((docs: any[]) => pickMostRecentDoc(docs));
+      const derived = deriveForSessionPolicy(record, rowPolicy, sortedBands);
+      const rowRecordedMode = settings.source === "legacy" && existingRecord
+        ? existingRecord.examInputModeSnapshot : recordedMode;
+      const rowRawMax = rowPolicy.examRawMax;
 
       const now = Date.now();
 
@@ -524,6 +541,12 @@ export const upsertAssessmentRecordsBulk = mutation({
           total: derived.total,
           gradeLetter: derived.gradeLetter,
           remark: derived.remark,
+          examInputModeSnapshot: rowRecordedMode,
+          examRawMaxSnapshot: rowRawMax,
+          sessionScoringPolicyVersion: settings.source === "session" ? settings.version : undefined,
+          // An edited row no longer represents the reviewed import's raw evidence.
+          assessmentPolicySnapshot: undefined,
+          gradingPolicySnapshot: undefined,
           updatedBy: userId,
           updatedAt: now,
         });
@@ -545,8 +568,9 @@ export const upsertAssessmentRecordsBulk = mutation({
           total: derived.total,
           gradeLetter: derived.gradeLetter,
           remark: derived.remark,
-          examInputModeSnapshot: examInputMode,
+          examInputModeSnapshot: recordedMode,
           examRawMaxSnapshot,
+          sessionScoringPolicyVersion: settings.source === "session" ? settings.version : undefined,
           status: "draft",
           enteredBy: userId,
           updatedBy: userId,

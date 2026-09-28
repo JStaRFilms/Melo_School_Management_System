@@ -11,7 +11,7 @@ PortalWorkspaceData,
 } from "@/portal-types";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
-import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar } from "@school/shared";
+import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar,ReportScoringPrintWarning } from "@school/shared";
 import { buildPortalHref, formatDate, formatMoney, formatScore, getGreeting } from "./format";
 import { useAction,useQuery } from "convex/react";
 import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
@@ -446,7 +446,7 @@ function DashboardView({
 /*  Report Card Layout (PRESERVED — approved in prior session) */
 /* ──────────────────────────────────────────────────────────── */
 
-function PortalReportCardLayout({
+export function PortalReportCardLayout({
   workspace,
   onSelectHistoryItem,
   onSelectStudent,
@@ -456,6 +456,8 @@ function PortalReportCardLayout({
   onSelectStudent: (studentId: string) => void;
 }) {
   const selectedReportCard = workspace.selectedReportCard;
+  const [printWarning, setPrintWarning] = useState(false);
+  useEffect(() => { setPrintWarning(false); }, [selectedReportCard]);
 
   return (
     <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-surface-200">
@@ -552,12 +554,15 @@ function PortalReportCardLayout({
           <div className="mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
             {selectedReportCard ? (
               <>
+                {selectedReportCard.scoringPolicyWarning && <p className="rc-no-print mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="status">{selectedReportCard.scoringPolicyWarning} Ask the school to review this issued copy. Printing does not recertify it.</p>}
                 <ReportCardToolbar
                   studentName={selectedReportCard.student.name}
+                  onPrint={() => selectedReportCard.scoringPolicyWarning ? setPrintWarning(true) : window.print()}
                   backHref={buildPortalHref("/results", {
                     studentId: workspace.selectedStudentId,
                   })}
                 />
+                {printWarning && selectedReportCard.scoringPolicyWarning && <ReportScoringPrintWarning message={selectedReportCard.scoringPolicyWarning} onCancel={() => setPrintWarning(false)} onContinue={() => { setPrintWarning(false); window.print(); }} />}
                 <ReportCardPreview
                   reportCard={selectedReportCard}
                   backHref={buildPortalHref("/results", {

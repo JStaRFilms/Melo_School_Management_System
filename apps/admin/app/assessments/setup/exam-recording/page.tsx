@@ -14,8 +14,7 @@ import { useDepartureGuard, useDirtyForm } from "@school/shared/drafts";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
 import { ExamModeSelector } from "./components/ExamModeSelector";
-import { WeightDistribution } from "./components/WeightDistribution";
-import { ProtocolBlueprint } from "./components/ProtocolBlueprint";
+import { SessionScoringEditor } from "./components/SessionScoringEditor";
 import { SettingsActionBar } from "./components/SettingsActionBar";
 import { AssessmentEditingPolicy, getEditingWindowError } from "./components/AssessmentEditingPolicyCard";
 import { ProtocolTimeline } from "./components/ProtocolTimeline";
@@ -245,6 +244,7 @@ function LiveExamSettingsPage() {
       onPolicyDateChange={handlePolicyDateChange}
       onSave={handleSave}
       onDiscard={handleDiscard}
+      sessionScoringSessionId={policyDraft.sessionId}
     />
   );
 }
@@ -381,6 +381,7 @@ interface ExamSettingsContentProps {
   ) => void;
   onSave: () => Promise<void>;
   onDiscard: () => void;
+  sessionScoringSessionId?: Id<"academicSessions"> | null;
 }
 
 function ExamSettingsContent({
@@ -398,6 +399,7 @@ function ExamSettingsContent({
   onPolicyDateChange,
   onSave,
   onDiscard,
+  sessionScoringSessionId,
 }: ExamSettingsContentProps) {
   const policyDateError = getEditingWindowError(policyDraft);
 
@@ -416,6 +418,7 @@ function ExamSettingsContent({
             </div>
 
             <div className="space-y-12">
+              <p className="text-xs text-slate-600">School-wide legacy mode. An explicit session scoring policy takes precedence for its session.</p>
               <ExamModeSelector
                 currentMode={currentMode}
                 onModeChange={onModeChange}
@@ -505,11 +508,11 @@ function ExamSettingsContent({
                 endsAt={policyDraft.editingEndsAt} 
                 isEnabled={policyDraft.restrictionsEnabled}
               />
-              <WeightDistribution />
+              <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">School-wide legacy exam input mode and the term editing window are separate from session scoring. Use the session policy below for new weights.</div>
             </div>
 
-            {/* The Blueprint Projection Piece */}
-            <ProtocolBlueprint />
+            {sessionScoringSessionId && <SessionScoringEditor key={sessionScoringSessionId} sessionId={sessionScoringSessionId} />}
+
           </div>
         </main>
       </div>

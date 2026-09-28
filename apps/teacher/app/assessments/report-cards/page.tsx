@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import {
@@ -9,6 +9,7 @@ import {
   ReportCardPreview,
   ReportCardToolbar,
   ReportCardPrintBlockedNotice,
+  ReportScoringPrintWarning,
   buildReportCardExtrasHref,
   type ReportCardBatchStudent,
   type ReportCardSheetData,
@@ -46,6 +47,7 @@ function TeacherReportCardPageContent() {
   const hasTriggeredClassPrintRef = useRef(false);
   const printRaf1Ref = useRef<number | null>(null);
   const printRaf2Ref = useRef<number | null>(null);
+  const [printWarning, setPrintWarning] = useState<string | null>(null);
 
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
@@ -80,6 +82,11 @@ function TeacherReportCardPageContent() {
   const blockedClassPrintCount =
     classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;
   const isClassPrintBlocked = blockedClassPrintCount > 0;
+  const batchWarning = classReportCards?.find(card => card.scoringPolicyWarning)?.scoringPolicyWarning ?? null;
+  const handleSinglePrint = () => {
+    if (reportCard?.scoringPolicyWarning) setPrintWarning(reportCard.scoringPolicyWarning);
+    else window.print();
+  };
 
   const exitFullClassPrint = useCallback(() => {
     const params = new URLSearchParams(searchParamsString);
@@ -123,16 +130,18 @@ function TeacherReportCardPageContent() {
     }
 
     hasTriggeredClassPrintRef.current = true;
+    if (batchWarning) { setPrintWarning(batchWarning); return; }
     printRaf1Ref.current = requestAnimationFrame(() => {
       printRaf2Ref.current = requestAnimationFrame(() => {
         window.print();
       });
     });
-  }, [isPrintClassMode, isClassPrintBlocked]);
+  }, [isPrintClassMode, isClassPrintBlocked, batchWarning, setPrintWarning]);
 
   // Reset the print trigger guard when context changes
   useEffect(() => {
     hasTriggeredClassPrintRef.current = false;
+    setPrintWarning(null);
   }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
 
   useEffect(() => {
@@ -178,6 +187,7 @@ function TeacherReportCardPageContent() {
   if (isPrintClassMode) {
     return (
       <>
+        {printWarning && <ReportScoringPrintWarning message={printWarning} onCancel={() => { setPrintWarning(null); exitFullClassPrint(); }} onContinue={() => { setPrintWarning(null); requestAnimationFrame(() => requestAnimationFrame(() => window.print())); }} />}
         <div className="rc-no-print mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
           <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
             <div>
@@ -235,7 +245,10 @@ function TeacherReportCardPageContent() {
         onSelectStudent={handleSelectStudent}
         onPrintFullClass={handlePrintFullClass}
       />
+      {printWarning && <ReportScoringPrintWarning message={printWarning} onCancel={() => setPrintWarning(null)} onContinue={() => { setPrintWarning(null); window.print(); }} />}
+      {reportCard.scoringPolicyWarning && <div className="rc-no-print rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{reportCard.scoringPolicyWarning}</div>}
       <ReportCardToolbar
+        onPrint={handleSinglePrint}
         studentName={reportCard.student.name}
         backHref="/assessments/exams/entry"
       />

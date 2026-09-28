@@ -28,6 +28,7 @@ import {
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 import { finishFormDraft, recordFormDraftProvisionedAuth, releaseFormDraftReservation, reserveFormDraft } from "./drafts";
 import { resolveDomainSetting } from "./groupSettings";
+import { assertSessionScoringAvailable } from "./sessionScoring";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -1053,6 +1054,7 @@ export const getSessionActivationWarnings = query({
       };
     }
 
+    await assertSessionScoringAvailable(ctx, schoolId, activeSession._id);
     const [selectionRecord, assessmentRecord] = await Promise.all([
       ctx.db
         .query("studentSubjectSelections")

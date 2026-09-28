@@ -1,6 +1,7 @@
 import { internalAction, internalMutation, internalQuery } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
+import { assertSessionScoringAvailable } from "./sessionScoring";
 import type { Id, TableNames } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import {
@@ -36,6 +37,8 @@ export const DUPLICATION_TIERS: string[][] = [
     "teacherAssignments",
     "classSessionFormTeachers",
     "assessmentEditingPolicies",
+    "sessionScoringPolicies",
+    "sessionScoringPolicyEvents",
     "classSubjectAggregations",
     "reportCardExtraBundles",
     "reportCardTermSettingGroups",
@@ -214,6 +217,9 @@ export const SCHOOL_PURGE_TABLES = [
   "schoolEvents",
   "schoolAssessmentSettings",
   "assessmentEditingPolicies",
+  "sessionScoringPolicies",
+  "sessionScoringPolicyEvents",
+  "sessionScoringRegradeJobs",
   "gradingBands",
   "assessmentRecords",
   "historicalTermTotals",
@@ -305,6 +311,14 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
     { field: "archivedBy", targetTable: "users" },
   ],
   schoolAssessmentSettings: [
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  sessionScoringPolicies: [
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  sessionScoringPolicyEvents: [
+    { field: "sessionId", targetTable: "academicSessions" },
     { field: "updatedBy", targetTable: "users" },
   ],
   gradingBands: [
@@ -569,6 +583,11 @@ export const initBranchSplit = internalMutation({
     }
 
     const sourceSchoolId = sourceSchool._id;
+    for (const phase of ["scanning", "failed_scanning", "invalid", "ready", "regrading", "failed_regrading"] as const) {
+      const job = await ctx.db.query("sessionScoringRegradeJobs")
+        .withIndex("by_school_and_phase", q => q.eq("schoolId", sourceSchoolId).eq("phase", phase)).first();
+      if (job) throw new ConvexError("Finish or cancel the session scoring job before splitting the school.");
+    }
 
     // Check or create Ruga school
     let rugaSchool = await ctx.db
@@ -799,6 +818,10 @@ export const duplicateBatch = internalMutation({
     const fkDefs = FK_DEFINITIONS[currentTable] || [];
 
     for (const doc of page.page) {
+      if (currentTable === "assessmentRecords") {
+        await assertSessionScoringAvailable(ctx, sourceSchoolId, doc.sessionId);
+        await assertSessionScoringAvailable(ctx, targetSchoolId, idMaps.academicSessions?.[String(doc.sessionId)] as Id<"academicSessions"> ?? doc.sessionId);
+      }
       const oldId = doc._id as string;
       // If already duplicated in previous attempt, skip
       if (idMaps[currentTable][oldId]) {
@@ -1088,7 +1111,10 @@ export const cascadeDeleteWrongBranchData = internalMutation({
         .query("assessmentRecords")
         .withIndex("by_student_and_session", (q) => q.eq("schoolId", schoolId).eq("studentId", studentId))
         .collect();
-      for (const a of assessments) await ctx.db.delete(a._id);
+      for (const a of assessments) {
+        await assertSessionScoringAvailable(ctx, schoolId, a.sessionId);
+        await ctx.db.delete(a._id);
+      }
 
       // Promotions & graduations
       const promos = await ctx.db
@@ -1771,6 +1797,7 @@ export const runSplitIntegrityCheck = internalQuery({
 
     const allAssessments = await ctx.db.query("assessmentRecords").collect();
     for (const a of allAssessments) {
+      await assertSessionScoringAvailable(ctx, a.schoolId, a.sessionId);
       const s = await ctx.db.get(a.studentId);
       if (s && s.schoolId !== a.schoolId) {
         anomalies.push(`Assessment ${a._id} schoolId (${a.schoolId}) !== student.schoolId (${s.schoolId})`);

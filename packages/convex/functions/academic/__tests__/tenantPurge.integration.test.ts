@@ -18,6 +18,25 @@ const purgeBatch = makeFunctionReference<"mutation">(
   "functions/academic/tenantPurge:purgeTenantBatchInternal",
 );
 
+it("refuses to split or purge a school with an invalid locked scoring scan", async () => {
+  const t = convexTest(schema, modules);
+  const schoolId = await t.run(async ctx => {
+    const schoolId = await ctx.db.insert("schools", { name: "Source", slug: "olive-blessed", status: "active", createdAt: 1, updatedAt: 1 });
+    const sessionId = await ctx.db.insert("academicSessions", { schoolId, name: "Session", startDate: 1, endDate: 2, isActive: true, createdAt: 1, updatedAt: 1 });
+    const updatedBy = await ctx.db.insert("users", { schoolId, authId: "admin", name: "Admin", email: "admin@test.invalid", role: "admin", createdAt: 1, updatedAt: 1 });
+    const policy = { ca1Max: 20, ca2Max: 20, ca3Max: 20, examRawMax: 40, examContributionMax: 40 };
+    await ctx.db.insert("sessionScoringRegradeJobs", { schoolId, sessionId, phase: "invalid", policy, before: policy,
+      expectedVersion: 0, scanned: 1, batchSize: 40, invalidCount: 1, invalidExamples: [], updated: 0,
+      startedAt: 1, updatedAt: 1, updatedBy });
+    return schoolId;
+  });
+  const split = makeFunctionReference<"mutation">("functions/academic/branchSplitV2:initBranchSplit");
+  await expect(t.mutation(split, {})).rejects.toThrow(/Finish or cancel the session scoring job/);
+  await expect(t.mutation(purgeBatch, { schoolId, schoolSlug: "olive-blessed" }))
+    .rejects.toThrow(/Complete or cancel the session scoring job/);
+  expect(await t.run(ctx => ctx.db.get(schoolId))).toMatchObject({ status: "active" });
+});
+
 it("registers admissions and administrator-email records in tenant lifecycle boundaries", () => {
   expect(TENANT_SCHOOL_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies", "schoolAdminEmailUpdateReservations"]));
   expect(SCHOOL_PURGE_TABLES).toEqual(expect.arrayContaining(["admissionsDocumentUploadIntents", "admissionsDocumentAccessGrants", "admissionsRetentionPolicies", "schoolAdminEmailUpdateReservations", "schoolEnrollmentCounts"]));

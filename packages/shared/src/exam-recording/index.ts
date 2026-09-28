@@ -28,6 +28,10 @@ export {
 // Validation functions
 export { validateScoreRanges, validateGradingBands } from "./validation";
 
+export { SESSION_SCORING_PRESETS, sessionScoringSnapshotMode, validateSessionScoringPolicy, validateScoresForPolicy, deriveForSessionPolicy } from "./session-policy";
+export type { SessionScoringPolicy } from "./session-policy";
+export { scoreRowPolicy, scoreRosterHasScaledColumn } from "./row-policy";
+
 // Editing policy helpers
 export { resolveAssessmentEditingState } from "./editing-policy";
 
