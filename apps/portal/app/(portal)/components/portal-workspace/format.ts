@@ -1,7 +1,6 @@
 import {
   formatDateGBDay,
   formatMoneyMajor,
-  formatScoreOrDash,
 } from "@school/shared/format";
 
 export function buildPortalHref(
@@ -20,7 +19,8 @@ export function buildPortalHref(
 }
 
 export function formatScore(value: number | null) {
-  return formatScoreOrDash(value);
+  if (value === null) return "—";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 export function formatDate(value: number) {

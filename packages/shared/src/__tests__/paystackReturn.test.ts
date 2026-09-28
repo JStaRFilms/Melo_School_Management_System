@@ -13,6 +13,13 @@ describe("extractPaystackReference", () => {
     expect(extractPaystackReference({ payment_ref: "c" })).toBe("c");
   });
 
+  it("skips empty and whitespace-only references and trims the selected value", () => {
+    expect(extractPaystackReference({ reference: "", trxref: " trx-1 ", payment_ref: "pay-1" })).toBe("trx-1");
+    expect(extractPaystackReference({ reference: "  ", trxref: "\t", payment_ref: " pay-1 " })).toBe("pay-1");
+    expect(extractPaystackReference({ reference: "  ref-1  ", trxref: "trx-1" })).toBe("ref-1");
+    expect(extractPaystackReference({ reference: " ", trxref: "\t", payment_ref: "\n" })).toBe("");
+  });
+
   it("returns empty string for missing params", () => {
     expect(extractPaystackReference({})).toBe("");
     expect(extractPaystackReference(null)).toBe("");

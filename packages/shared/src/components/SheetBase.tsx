@@ -39,6 +39,23 @@ export interface SheetBaseProps {
   children: ReactNode;
 }
 
+let activeSheetLocks = 0;
+let priorBodyOverflow = "";
+
+function lockBodyScroll() {
+  if (activeSheetLocks === 0) {
+    priorBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  activeSheetLocks += 1;
+  return () => {
+    activeSheetLocks -= 1;
+    if (activeSheetLocks === 0) {
+      document.body.style.overflow = priorBodyOverflow;
+    }
+  };
+}
+
 const DEFAULT_FRAME_CLASS =
   "fixed inset-0 z-[9999] flex items-end justify-center sm:items-center sm:p-4 transition-all duration-500 ease-out";
 const DEFAULT_OVERLAY_CLASS =
@@ -95,7 +112,6 @@ export function SheetBase({
   const [mounted, setMounted] = useState(false);
   const [shouldRender, setShouldRender] = useState(open);
   const [isAnimating, setIsAnimating] = useState(false);
-  const prevOverflowRef = useRef("");
   const panelRef = useRef<HTMLDivElement | null>(null);
   const autoTitleId = useId();
   const autoDescriptionId = useId();
@@ -108,20 +124,16 @@ export function SheetBase({
 
   useEffect(() => {
     if (open) {
-      prevOverflowRef.current = document.body.style.overflow;
+      const unlockBodyScroll = lockBodyScroll();
       setShouldRender(true);
       const timer = setTimeout(() => setIsAnimating(true), 20);
-      document.body.style.overflow = "hidden";
       return () => {
         clearTimeout(timer);
-        document.body.style.overflow = prevOverflowRef.current;
+        unlockBodyScroll();
       };
     }
     setIsAnimating(false);
-    const timer = setTimeout(() => {
-      setShouldRender(false);
-      document.body.style.overflow = prevOverflowRef.current;
-    }, exitMs);
+    const timer = setTimeout(() => setShouldRender(false), exitMs);
     return () => clearTimeout(timer);
   }, [open, exitMs]);
 

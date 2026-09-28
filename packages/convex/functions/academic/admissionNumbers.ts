@@ -1155,7 +1155,10 @@ async function requireManualOverrideAuthority(
   try {
     return await requireCapability(ctx, schoolId, "enrollment.admissions.override_number");
   } catch (error) {
-    if (!isUnauthenticated(error) || !requestedByUserId) throw error;
+    if (!(error instanceof ConvexError) ||
+        typeof error.data !== "object" || error.data === null ||
+        (error.data as { code?: unknown }).code !== "UNAUTHENTICATED" ||
+        !requestedByUserId || await ctx.auth.getUserIdentity() !== null) throw error;
     const requester = await ctx.db.get(requestedByUserId);
     if (!requester || requester.schoolId !== schoolId || requester.isArchived) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Forbidden: persisted requester is not in this school" });
@@ -1211,14 +1214,6 @@ async function requireManualOverrideAuthority(
       personName: person?.name,
     };
   }
-}
-
-function isUnauthenticated(error: unknown) {
-  if (!(error instanceof ConvexError)) return false;
-  const data = error.data as unknown;
-  if (typeof data === "object" && data !== null && (data as { code?: unknown }).code === "UNAUTHENTICATED") return true;
-  const message = error.message ?? "";
-  return message.includes("Sign in required") || message.includes("UNAUTHENTICATED");
 }
 
 export async function commitManualAdmissionNumberHelper(

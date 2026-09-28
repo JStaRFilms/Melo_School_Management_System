@@ -239,6 +239,16 @@ it("completes a governed manual-number conversion through the scheduler path", a
   expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(1);
 });
 
+it("does not use a persisted authorized requester when an authenticated worker lacks override authority", async () => {
+  const f = await fixture();
+  await f.t.run((ctx) => ctx.db.insert("admissionNumberPolicies", { schoolId: f.schoolId, pattern: "{SEQ}", schoolCode: "ADM", campusCode: "MAIN", currentSequence: 0, createdAt: Date.now(), updatedAt: Date.now() }));
+  const requested = await f.staff.mutation(conversionRef, { schoolId: f.schoolId, applicationId: f.applicationId, idempotencyKey: "authenticated-worker-denied", classId: f.classId, admissionNumber: "GOV/003", familyResolution: { kind: "create" as const }, overrideConfirmed: true, overrideReason: "Board-approved legacy number", overrideCounterDecision: "keep" });
+  await f.limited.mutation(processConversionRef, { conversionId: requested.conversionId });
+  expect(await f.t.run((ctx) => ctx.db.get(requested.conversionId))).toMatchObject({ state: "failed_retryable", errorCode: "CONVERSION_RETRY_REQUIRED" });
+  expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(0);
+  expect(await f.t.run((ctx) => ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", f.schoolId).eq("number", "GOV/003")).unique())).toBeNull();
+});
+
 it("rejects scheduler-path governed conversion from a cross-tenant or unauthorized persisted requester", async () => {
   for (const name of ["cross-tenant", "revoked-capability", "mislinked-identity", "duplicate-membership", "legacy-shadow-duplicate"] as const) {
     const f = await fixture();

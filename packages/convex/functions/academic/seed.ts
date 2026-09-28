@@ -371,6 +371,7 @@ export const startDemoSeedRunInternal = internalMutation({
       }
       await validateResetStorage(ctx, op, storageIds);
       const schoolId = await ctx.db.insert("schools", { name: profile.schoolName, slug: profile.schoolSlug, status: "active", logoStorageId: args.logoStorageId, logoFileName: `${profile.schoolSlug}-crest.png`, logoContentType: "image/png", logoUpdatedAt: profile.createdAt, createdAt: profile.createdAt, updatedAt: profile.createdAt });
+      await initializeSchoolEnrollmentCount(ctx, schoolId);
       const runId = await ctx.db.insert("demoSeedRuns", { schoolId, status: "running", phase: "foundation", studentCursor: 0, assessmentCursor: 0, billingCursor: 0, authIssuer: issuer.origin, adminAuthId: args.adminAuthId, teacherAuthId: args.teacherAuthId, portalAuthId: args.portalAuthId, logoStorageId: args.logoStorageId, portraitStorageIds: args.portraitStorageIds, seedProfile: profile.key, createdAt: Date.now(), updatedAt: Date.now() });
       await ctx.db.patch(op._id, { status: "seeding", newSchoolId: schoolId, newRunId: runId });
       return runId;

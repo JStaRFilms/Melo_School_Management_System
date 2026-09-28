@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { SheetBase } from "@school/shared/components/SheetBase";
 import { AdminSheet } from "@/components/ui/AdminSheet";
@@ -20,6 +20,38 @@ describe("shared SheetBase (consolidation P18)", () => {
     expect(screen.getByText("Sheet title")).toBeDefined();
     expect(screen.getByText("Desc")).toBeDefined();
     expect(screen.getByText("Body")).toBeDefined();
+  });
+
+  it("keeps the scroll lock while another sheet is open and restores prior overflow", () => {
+    vi.useFakeTimers();
+    const priorOverflow = document.body.style.overflow;
+    document.body.style.overflow = "scroll";
+    const onClose = vi.fn();
+    const sheets = (firstOpen: boolean, secondOpen: boolean) => (
+      <>
+        <SheetBase open={firstOpen} onClose={onClose} title="First" exitMs={100}>First body</SheetBase>
+        <SheetBase open={secondOpen} onClose={onClose} title="Second" exitMs={100}>Second body</SheetBase>
+        <SheetBase open={false} onClose={onClose} title="Never opened" exitMs={100}>Unused</SheetBase>
+      </>
+    );
+    try {
+      const { rerender, unmount } = render(sheets(true, true));
+      expect(document.body.style.overflow).toBe("hidden");
+      act(() => vi.advanceTimersByTime(100)); // The never-opened sheet's exit timer fires.
+      expect(document.body.style.overflow).toBe("hidden");
+      rerender(sheets(false, true));
+      act(() => vi.advanceTimersByTime(100));
+      expect(screen.queryByText("First body")).toBeNull();
+      expect(document.body.style.overflow).toBe("hidden");
+      rerender(sheets(false, false));
+      act(() => vi.advanceTimersByTime(100));
+      expect(document.body.style.overflow).toBe("scroll");
+      unmount();
+      expect(document.body.style.overflow).toBe("scroll");
+    } finally {
+      document.body.style.overflow = priorOverflow;
+      vi.useRealTimers();
+    }
   });
 
   it("closes on Escape and overlay click unless dismissal is disabled", () => {

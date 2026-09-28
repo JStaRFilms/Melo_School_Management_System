@@ -43,9 +43,11 @@ export function usePaystackReturnVerification<TRaw, TMapped extends PaystackVeri
   const [result, setResult] = useState<TMapped | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const autoVerifiedReferenceRef = useRef<string | null>(null);
+  const trimmedReference = reference.trim();
 
   const runVerification = useCallback(async () => {
-    if (!reference) {
+    if (!trimmedReference) {
+      setResult(null);
       setState("failed");
       setErrorMessage(missingReferenceMessage);
       return;
@@ -55,26 +57,33 @@ export function usePaystackReturnVerification<TRaw, TMapped extends PaystackVeri
     setErrorMessage(null);
 
     try {
-      const mapped = mapResult(await verify(reference));
+      const mapped = mapResult(await verify(trimmedReference));
       setResult(mapped);
       setState(isPaystackVerificationRecorded(mapped) ? "verified" : "failed");
     } catch (error) {
       setState("failed");
       setErrorMessage(getUserFacingErrorMessage(error, verifyErrorMessage));
     }
-  }, [reference, verify, mapResult, missingReferenceMessage, verifyErrorMessage]);
+  }, [trimmedReference, verify, mapResult, missingReferenceMessage, verifyErrorMessage]);
 
   useEffect(() => {
-    if (!reference || autoVerifiedReferenceRef.current === reference) {
+    if (!trimmedReference) {
+      autoVerifiedReferenceRef.current = null;
+      setResult(null);
+      setState("failed");
+      setErrorMessage(missingReferenceMessage);
       return;
     }
+    if (autoVerifiedReferenceRef.current === trimmedReference) return;
 
-    autoVerifiedReferenceRef.current = reference;
+    autoVerifiedReferenceRef.current = trimmedReference;
     void runVerification();
-  }, [reference, runVerification]);
+  }, [trimmedReference, missingReferenceMessage, runVerification]);
 
   const retryVerification = useCallback(() => {
-    if (!reference) {
+    if (!trimmedReference) {
+      autoVerifiedReferenceRef.current = null;
+      setState("failed");
       setErrorMessage(missingReferenceMessage);
       return;
     }
@@ -82,12 +91,12 @@ export function usePaystackReturnVerification<TRaw, TMapped extends PaystackVeri
     // Claim the single-fire slot before invoking directly: the reset would
     // otherwise let the auto effect fire a second verification. (The original
     // clients double-invoked on every retry for this reason.)
-    autoVerifiedReferenceRef.current = reference;
+    autoVerifiedReferenceRef.current = trimmedReference;
     setResult(null);
     setState("idle");
     setErrorMessage(null);
     void runVerification();
-  }, [reference, runVerification, missingReferenceMessage]);
+  }, [trimmedReference, runVerification, missingReferenceMessage]);
 
   return { state, result, errorMessage, retryVerification };
 }

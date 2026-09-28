@@ -44,6 +44,12 @@ async function ready() {
   for (let i = 0; i < 6; i++) await t.mutation(internal.functions.academic.seed.populateDemoAssessmentsBatchInternal, { runId });
   for (let i = 0; i < 3; i++) await t.mutation(internal.functions.academic.seed.populateDemoBillingBatchInternal, { runId });
   await t.mutation(internal.functions.academic.seed.populateDemoKnowledgeAndFinalizeInternal, { runId });
+  const firstRun = await t.run(async (ctx) => {
+    const run = await ctx.db.get(runId);
+    return run && await ctx.db.query("schoolEnrollmentCounts")
+      .withIndex("by_school", (q) => q.eq("schoolId", run.schoolId)).unique();
+  });
+  expect(firstRun?.currentStudentCount).toBe(36);
   const prepared = await t.action(api.functions.academic.demoResetAction.prepareDemoReset, { operatorToken: gate.operatorToken, targetIdentity: gate.targetIdentity });
   const op = (await t.run((ctx) => ctx.db.get(prepared.operationId)))!;
   await t.mutation(internal.functions.academic.demoResetInventory.authorizeReviewedDemoResetInternal, {
@@ -64,6 +70,8 @@ async function ready() {
 
 test("public finish starts a ready operation and refuses wrong targets before START", async () => {
   const { t, op, args } = await ready();
+  expect(await t.run((ctx) => ctx.db.query("schoolEnrollmentCounts")
+    .withIndex("by_school", (q) => q.eq("schoolId", op.schoolId)).unique())).toBeNull();
   await expect(t.action(api.functions.academic.demoResetSeedAction.finishDemoReset, {
     ...args, targetIdentity: "other-target",
   })).rejects.toThrow("target gate");
@@ -77,6 +85,9 @@ test("public finish starts a ready operation and refuses wrong targets before ST
   expect(await t.run(async (ctx) => ctx.db.query("schools").take(1))).toEqual([]);
   const result = await t.action(api.functions.academic.demoResetSeedAction.finishDemoReset, args);
   expect(result).toMatchObject({ operationId: op._id, status: "complete", studentCount: 36, assessmentRecordCount: 756 });
+  expect(await t.run((ctx) => ctx.db.query("schoolEnrollmentCounts")
+    .withIndex("by_school", (q) => q.eq("schoolId", result.schoolId)).unique()))
+    .toMatchObject({ currentStudentCount: 36 });
   expect(await t.run((ctx) => ctx.db.get(result.runId))).toMatchObject({ status: "succeeded", phase: "complete" });
   expect(await verify()).toEqual({ cloudUrl: "https://test.convex.cloud", operationId: op._id, status: "complete",
     schoolId: result.schoolId, runId: result.runId, studentCount: 36, classCount: 3, invoiceCount: 36, assessmentRecordCount: 756 });

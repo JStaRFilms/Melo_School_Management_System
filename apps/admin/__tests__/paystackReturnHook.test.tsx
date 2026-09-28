@@ -44,19 +44,49 @@ describe("usePaystackReturnVerification (consolidation P15)", () => {
     expect(result.current.result?.message).toBe("Mismatch");
   });
 
-  it("stays idle without calling verify when the reference is missing", async () => {
+  it("fails without calling verify when the reference is missing", async () => {
     const verify = vi.fn(async () => summary());
     const { result } = renderHook(() =>
       usePaystackReturnVerification({ reference: "", verify, mapResult: (raw) => raw }),
     );
-    await act(async () => {});
-    expect(result.current.state).toBe("idle");
+    await waitFor(() => expect(result.current.state).toBe("failed"));
+    expect(result.current.errorMessage).toBe(MISSING_PAYSTACK_REFERENCE_MESSAGE);
     expect(verify).not.toHaveBeenCalled();
     act(() => {
       result.current.retryVerification();
     });
+    expect(result.current.state).toBe("failed");
     expect(result.current.errorMessage).toBe(MISSING_PAYSTACK_REFERENCE_MESSAGE);
     expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("treats whitespace as missing and verifies a later reference once", async () => {
+    const verify = vi.fn(async () => summary());
+    const { result, rerender } = renderHook(
+      ({ reference }) => usePaystackReturnVerification({ reference, verify, mapResult: (raw) => raw }),
+      { initialProps: { reference: "  " } },
+    );
+    expect(result.current.state).toBe("failed");
+    expect(result.current.errorMessage).toBe(MISSING_PAYSTACK_REFERENCE_MESSAGE);
+    expect(verify).not.toHaveBeenCalled();
+    rerender({ reference: " ref-1 " });
+    await waitFor(() => expect(result.current.state).toBe("verified"));
+    expect(verify).toHaveBeenCalledWith("ref-1");
+    expect(verify).toHaveBeenCalledTimes(1);
+  });
+
+  it("verifies again if a missing reference returns to the prior value", async () => {
+    const verify = vi.fn(async () => summary());
+    const { result, rerender } = renderHook(
+      ({ reference }) => usePaystackReturnVerification({ reference, verify, mapResult: (raw) => raw }),
+      { initialProps: { reference: "ref-1" } },
+    );
+    await waitFor(() => expect(result.current.state).toBe("verified"));
+    rerender({ reference: "" });
+    await waitFor(() => expect(result.current.state).toBe("failed"));
+    rerender({ reference: "ref-1" });
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(2));
+    expect(result.current.state).toBe("verified");
   });
 
   it("surfaces verify rejections, falling back for empty throws", async () => {
@@ -70,7 +100,6 @@ describe("usePaystackReturnVerification (consolidation P15)", () => {
     expect(result.current.errorMessage).toBe("Paystack timeout");
 
     const blankVerify = vi.fn(async (): Promise<PaystackReturnSummary> => {
-      // eslint-disable-next-line no-throw-literal
       throw "";
     });
     const fallback = renderHook(() =>

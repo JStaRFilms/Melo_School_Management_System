@@ -27,7 +27,9 @@ export type PaystackReturnSearchParams = {
 export function extractPaystackReference(
   params?: PaystackReturnSearchParams | null,
 ): string {
-  return params?.reference ?? params?.trxref ?? params?.payment_ref ?? "";
+  return [params?.reference, params?.trxref, params?.payment_ref]
+    .map((value) => value?.trim())
+    .find((value) => value) ?? "";
 }
 
 export function isPaystackVerificationRecorded(
