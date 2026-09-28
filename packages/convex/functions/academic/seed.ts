@@ -33,7 +33,7 @@ const profileKey = (value?: SchoolSeedProfileKey): SchoolSeedProfileKey => value
 // Children deliberately precede their parents. Every entry has an actual
 // `by_school` schema index (including rateLimitCounters); auth component and
 // platform tables are never part of a tenant reset.
-const DEMO_SCHOOL_TABLES = [
+export const DEMO_SCHOOL_TABLES = [
   "demoSeedRuns", "contentAuditEvents", "aiRunLogs", "rateLimitCounters",
   "assessmentBankItems", "assessmentBanks", "assessmentGenerationProfiles",
   "instructionArtifactSources", "instructionArtifactRevisions", "instructionArtifactDocuments", "instructionArtifacts", "instructionTemplates",
@@ -43,7 +43,7 @@ const DEMO_SCHOOL_TABLES = [
   "settlementLegs", "settlementLedgers", "subscriptionInvoices", "commercialContracts", "paymentMandates", "schoolSubscriptions",
   "usageProviderCosts", "usageEvents", "usageQuotaReservations", "usageMeterAllocations",
   "paymentAllocations", "billingPaymentAttempts", "paymentGatewayEvents", "billingPayments", "studentInvoices", "feePlanLifecycleRuns", "feePlanApplications", "feePlans", "schoolPaymentProviderSecrets", "schoolPaymentProviders", "schoolBillingSettings",
-  "issuedReportCards", "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
+  "issuedNarrativeReports", "narrativeReportDrafts", "classSessionReportModes", "issuedReportCards", "reportCardManualAdjustmentEvents", "reportCardManualAdjustments", "reportCardExtraStudentValues", "reportCardExtraClassAssignments", "reportCardExtraBundles", "reportCardExtraScaleTemplates", "reportCardComments", "reportCardAttendanceStudentValues", "reportCardAttendanceClassValues", "reportCardTermSettingGroups",
   "assessmentRecords", "historicalTermTotals", "assessmentEditingPolicies", "schoolAssessmentSettings", "gradingBands",
   "studentSubjectAggregationOptOuts", "studentSubjectSelections", "studentPromotions", "classSubjectAggregationComponents", "classSubjectAggregations", "teacherAssignments", "classSubjects",
   "academicTimelineAuditEvents", "academicTerms", "academicSessions", "schoolEvents",

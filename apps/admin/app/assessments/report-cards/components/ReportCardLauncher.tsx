@@ -59,6 +59,8 @@ export function ReportCardLauncher() {
   const [selectedClassId, setSelectedClassId] = useState<string>(
     searchParams.get("classId") || ""
   );
+  const reportMode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    selectedClassId && selectedSessionId ? ({ classId: selectedClassId, sessionId: selectedSessionId } as never) : "skip") as "graded" | "narrative" | undefined;
 
   useEffect(() => {
     if (!selectedClassId && rawClasses && rawClasses.length > 0) {
@@ -118,7 +120,7 @@ export function ReportCardLauncher() {
   };
 
   const handlePrintClass = () => {
-    if (!filteredStudents.length) return;
+    if (!filteredStudents.length || !reportMode) return;
     router.push(
       `/assessments/report-cards?sessionId=${selectedSessionId}&termId=${selectedTermId}&classId=${selectedClassId}&studentId=${filteredStudents[0].studentId}&printClass=1`
     );
@@ -254,7 +256,9 @@ export function ReportCardLauncher() {
                 <button
                   type="button"
                   onClick={handlePrintClass}
-                  className="h-9 px-4 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95 shrink-0"
+                  disabled={!reportMode}
+                  title={reportMode === "narrative" ? "Print issued progress reports only; unissued students are skipped." : undefined}
+                  className="h-9 px-4 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95 shrink-0"
                 >
                   <Printer size={13} />
                   Print Class Batch

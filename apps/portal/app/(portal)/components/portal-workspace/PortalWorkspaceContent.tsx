@@ -13,6 +13,7 @@ import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar } from "@school/shared";
 import { buildPortalHref, formatDate, formatMoney, formatScore, getGreeting } from "./format";
+import { NarrativeReport } from "./NarrativeReport";
 import { useAction,useQuery } from "convex/react";
 import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
 import Link from "next/link";
@@ -291,7 +292,11 @@ function DashboardView({
   activeHistoryItem: PortalHistoryItem | null;
   onSelectHistoryItem: (item: PortalHistoryItem) => void;
 }) {
-  const summary = workspace.selectedReportCard?.summary ?? activeHistoryItem;
+  const summary = workspace.selectedReportCard?.summary ?? (
+    workspace.selectedReportMode === "graded" && activeHistoryItem?.mode === "graded" &&
+    activeHistoryItem.sessionId === workspace.selectedSessionId && activeHistoryItem.termId === workspace.selectedTermId
+      ? activeHistoryItem : null
+  );
   const reportCard = workspace.selectedReportCard;
   const studentFirstName = workspace.selectedStudent?.name.split(" ")[0] ?? "Your child";
 
@@ -302,7 +307,9 @@ function DashboardView({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Term snapshot</h2>
-            {summary ? (
+            {workspace.selectedReportMode === "narrative" ? (
+              <p className="mt-2 text-sm text-slate-600">{workspace.selectedNarrativeReport ? "Progress report available." : "Report not ready. The school has not published this term's progress report yet."}</p>
+            ) : summary ? (
               <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
                 {studentFirstName} scored an average of{" "}
                 <span className="font-bold text-slate-900">{formatScore(summary.averageScore)}%</span>
@@ -322,7 +329,7 @@ function DashboardView({
               </p>
             )}
           </div>
-          {workspace.selectedReportCard && (
+          {(workspace.selectedReportCard || workspace.selectedNarrativeReport) && (
             <Link
               href={buildPortalHref("/report-cards", {
                 studentId: workspace.selectedStudentId,
@@ -381,7 +388,7 @@ function DashboardView({
         {/* Recent Results */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-slate-900">Recent results</h2>
+            <h2 className="text-lg font-bold text-slate-900">Recent reports</h2>
             <Link
               href={buildPortalHref("/results", { studentId: workspace.selectedStudentId })}
               className="text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
@@ -399,11 +406,11 @@ function DashboardView({
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600 group-hover:bg-slate-200 transition-colors tabular-nums">
-                    {formatScore(item.averageScore)}
+                    {item.mode === "narrative" ? (item.issued ? "✓" : "·") : formatScore(item.averageScore)}
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-800">{item.termName}</p>
-                    <p className="text-xs text-slate-500">{item.sessionName}</p>
+                    <p className="text-xs text-slate-500">{item.sessionName}{item.mode === "narrative" ? ` · ${item.issued ? "Report available" : "Report not ready"}` : ""}</p>
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
@@ -531,7 +538,7 @@ function PortalReportCardLayout({
                         <span className={`rounded-xl px-2.5 py-1 text-[11px] font-extrabold ${
                           isActive ? "bg-slate-200 text-slate-700" : "bg-slate-100 text-slate-500"
                         }`}>
-                          {formatScore(item.averageScore)}
+                          {item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                         </span>
                       </button>
                     );
@@ -550,7 +557,12 @@ function PortalReportCardLayout({
         {/* Main Content Bucket - The Report Card Sheet */}
         <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-12 lg:order-2">
           <div className="mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-            {selectedReportCard ? (
+            {workspace.selectedReportMode === "narrative" ? (
+              workspace.selectedNarrativeReport ? <>
+                <div className="mx-auto mb-4 flex justify-end" style={{ maxWidth: "210mm" }}><button type="button" className="rounded-lg bg-slate-900 px-4 py-2 text-white print:hidden" onClick={() => window.print()}>Print issued report</button></div>
+                <NarrativeReport report={workspace.selectedNarrativeReport} />
+              </> : <div className="mx-auto rounded-xl border border-slate-200 bg-white p-6 text-slate-700" style={{ maxWidth: "210mm" }}><h2 className="font-bold">Report not ready</h2><p className="mt-2">The school has not published this term&apos;s progress report yet.</p></div>
+            ) : selectedReportCard ? (
               <>
                 <ReportCardToolbar
                   studentName={selectedReportCard.student.name}
@@ -568,8 +580,8 @@ function PortalReportCardLayout({
               </>
             ) : (
               <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  Select a term to view the report card.
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                  Report not ready.
                 </div>
               </div>
             )}
@@ -604,7 +616,7 @@ function ResultsView({
             })}
             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer"
           >
-            Open report card
+            {activeHistoryItem?.mode === "narrative" ? "Open progress report" : "Open report card"}
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         )}
@@ -619,8 +631,8 @@ function ResultsView({
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Session</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Term</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Class</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Average</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Subjects</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">{workspace.history.some(item => item.mode === "graded") ? "Average / report" : "Report"}</th>
+                {workspace.history.some(item => item.mode === "graded") && <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Subjects</th>}
                 <th className="w-10 px-4 py-3" />
               </tr>
             </thead>
@@ -652,9 +664,9 @@ function ResultsView({
                     <td className="px-4 py-3 font-semibold text-slate-800">{item.termName}</td>
                     <td className="px-4 py-3 text-slate-600">{item.className}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
-                      {formatScore(item.averageScore)}
+                      {item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-500 tabular-nums">{item.totalSubjects}</td>
+                    {workspace.history.some(entry => entry.mode === "graded") && <td className="px-4 py-3 text-right text-slate-500 tabular-nums">{item.mode === "narrative" ? "" : item.totalSubjects}</td>}
                     <td className="px-4 py-3 text-right">
                       {isActive && (
                         <div className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -687,14 +699,14 @@ function ResultsView({
                       {item.termName} · {item.sessionName}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {item.className} · {item.totalSubjects} subjects
+                      {item.className}{item.mode === "graded" ? ` · ${item.totalSubjects} subjects` : ""}
                     </p>
                     {item.note && (
                       <p className="mt-1 text-xs font-medium text-amber-600">{item.note}</p>
                     )}
                   </div>
                   <span className="text-lg font-bold text-slate-900 tabular-nums">
-                    {formatScore(item.averageScore)}
+                    {item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                   </span>
                 </button>
               );

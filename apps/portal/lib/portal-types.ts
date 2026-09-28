@@ -18,7 +18,8 @@ export interface PortalStudentOption {
   enrollmentState: "active" | "historical";
 }
 
-export interface PortalHistoryItem {
+interface PortalHistoryContext {
+  issued: boolean;
   sessionId: string;
   termId: string;
   sessionName: string;
@@ -26,15 +27,20 @@ export interface PortalHistoryItem {
   classId: string;
   className: string;
   generatedAt: number;
+  href: string;
+  note: string | null;
+}
+export type PortalHistoryItem = PortalHistoryContext & (
+  { mode: "narrative" } |
+  { mode: "graded";
   totalSubjects: number;
   recordedSubjects: number;
   pendingSubjects: number;
   averageScore: number | null;
   totalScore: number;
   resultCalculationMode: "standalone" | "cumulative_annual";
-  href: string;
-  note: string | null;
-}
+  }
+);
 
 export interface PortalNotificationItem {
   id: string;
@@ -74,6 +80,21 @@ export interface PortalWorkspaceData {
     name: string;
   } | null;
   selectedReportCard: ReportCardSheetData | null;
+  selectedReportMode: "graded" | "narrative" | null;
+  selectedNarrativeReport: {
+    issuedAt: number;
+    snapshot: {
+      schoolName: string;
+      primaryColor?: string;
+      accentColor?: string;
+      studentName: string;
+      admissionNumber: string;
+      className: string;
+      sessionName: string;
+      termName: string;
+      subjects: Array<{ subjectId: string; name: string; order: number; comment: string }>;
+    };
+  } | null;
   history: PortalHistoryItem[];
   notifications: PortalNotificationItem[];
 }

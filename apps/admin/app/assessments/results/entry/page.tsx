@@ -32,6 +32,7 @@ import { ChevronLeft } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { AdminRosterGrid } from "./components/AdminRosterGrid";
+import { LiveNarrativeEntry } from "./components/LiveNarrativeEntry";
 import { AdminSaveActionBar } from "./components/AdminSaveActionBar";
 import { AdminSelectionBar } from "./components/AdminSelectionBar";
 
@@ -110,6 +111,8 @@ function LiveAdminScoreEntryPage({
       ? ({ classId: selection.classId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
+  const mode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    selection.classId && selection.sessionId ? { classId: selection.classId, sessionId: selection.sessionId } as never : "skip") as "graded" | "narrative" | undefined;
   const isSelectedSubjectAvailable =
     !selection.subjectId ||
     subjects === undefined ||
@@ -119,7 +122,7 @@ function LiveAdminScoreEntryPage({
       selection.termId &&
       selection.classId &&
       selection.subjectId &&
-      isSelectedSubjectAvailable
+      isSelectedSubjectAvailable && mode === "graded"
   );
   const sheetData = useQuery(
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
@@ -154,6 +157,8 @@ function LiveAdminScoreEntryPage({
     [upsertAssessmentRecordsBulk]
   );
 
+  if (selection.classId && selection.sessionId && mode === undefined) return <p role="status">Checking reporting mode...</p>;
+  if (mode === "narrative") return <LiveNarrativeEntry selection={selection} />;
   return (
     <AdminScoreEntryContent
       selection={selection}

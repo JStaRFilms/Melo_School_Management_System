@@ -150,6 +150,10 @@ export const getExamEntrySheet = query({
       throw new ConvexError("Cross-school access denied");
     }
 
+    const narrativeMode = await ctx.db.query("classSessionReportModes")
+      .withIndex("by_classId_and_sessionId", q => q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (narrativeMode) throw new ConvexError("This class uses narrative reports for this session");
+
     // Authorization check
     if (role === "teacher" && !isSchoolAdmin) {
       await assertTeacherAssignment(ctx, userId, args.classId, args.subjectId);
@@ -380,6 +384,10 @@ export const upsertAssessmentRecordsBulk = mutation({
     if (!termDoc || termDoc.schoolId !== schoolId) {
       throw new ConvexError("Cross-school access denied");
     }
+
+    const narrativeMode = await ctx.db.query("classSessionReportModes")
+      .withIndex("by_classId_and_sessionId", q => q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (narrativeMode) throw new ConvexError("This class uses narrative reports for this session");
 
     // Authorization check
     if (role === "teacher" && !isSchoolAdmin) {

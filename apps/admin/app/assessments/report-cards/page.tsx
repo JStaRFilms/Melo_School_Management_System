@@ -17,6 +17,8 @@ import {
 import { ZoomIn, ZoomOut } from "lucide-react";
 import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
 import { ReportCardLauncher } from "./components/ReportCardLauncher";
+import { NarrativeReview } from "./components/NarrativeReview";
+import { NarrativeClassPrint } from "./components/NarrativeClassPrint";
 
 export default function AdminReportCardPage() {
   return (
@@ -129,9 +131,11 @@ function AdminReportCardPageContent() {
     touchStartDistanceRef.current = null;
   };
 
+  const mode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    classIdParam && sessionId ? { classId: classIdParam, sessionId } as never : "skip") as "graded" | "narrative" | undefined;
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    studentId && sessionId && termId
+    studentId && sessionId && termId && classIdParam && mode === "graded"
       ? ({
           studentId,
           sessionId,
@@ -151,7 +155,7 @@ function AdminReportCardPageContent() {
 
   const classReportCards = useQuery(
     "functions/academic/reportCards:getClassReportCards" as never,
-    isPrintClassMode && sessionId && termId && resolvedClassId
+    isPrintClassMode && mode !== "narrative" && sessionId && termId && resolvedClassId
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
@@ -200,6 +204,10 @@ function AdminReportCardPageContent() {
     return <ReportCardLauncher />;
   }
 
+  if (!classIdParam) return <div className="mx-auto max-w-3xl p-6 text-slate-700">Select a class before opening or printing a report. <Link href="/assessments/report-cards" className="underline">Choose a student and class</Link>.</div>;
+  if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (mode === "narrative" && isPrintClassMode) return <NarrativeClassPrint key={`${classIdParam}-${sessionId}-${termId}`} classId={classIdParam} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
+  if (mode === "narrative" && classIdParam) return <NarrativeReview key={`${studentId}-${sessionId}-${termId}-${classIdParam}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={classIdParam} />;
   if (reportCard === undefined) {
     return <ReportCardPageFallback message="Loading student report card..." />;
   }

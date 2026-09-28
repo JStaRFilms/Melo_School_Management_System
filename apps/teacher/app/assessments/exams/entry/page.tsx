@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { ExamEntryWorkspace } from "./components/ExamEntryWorkspace";
+import { LiveNarrativeEntry } from "./components/LiveNarrativeEntry";
 import { isConvexConfigured } from "@/lib/convex-runtime";
 import {
   getMockSheet,
@@ -79,6 +80,8 @@ function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; s
       ? ({ schoolId, classId: selection.classId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
+  const mode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    selection.classId && selection.sessionId ? { classId: selection.classId, sessionId: selection.sessionId } as never : "skip") as "graded" | "narrative" | undefined;
   const isSelectedSubjectAvailable =
     !selection.subjectId ||
     subjects === undefined ||
@@ -88,7 +91,7 @@ function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; s
       selection.termId &&
       selection.classId &&
       selection.subjectId &&
-      isSelectedSubjectAvailable
+      isSelectedSubjectAvailable && mode === "graded"
   );
   const sheetData = useQuery(
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
@@ -132,6 +135,8 @@ function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; s
     [classes]
   );
 
+  if (selection.classId && selection.sessionId && mode === undefined) return <p role="status">Checking reporting mode...</p>;
+  if (mode === "narrative") return <LiveNarrativeEntry selection={selection} schoolId={schoolId} />;
   return (
     <ExamEntryWorkspace
       selection={selection}
