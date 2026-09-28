@@ -8,11 +8,11 @@ import type { Id } from "../../../../../../packages/convex/_generated/dataModel"
 
 const confirmation = "I reviewed this roster and understand that releasing it makes these reports visible to families.";
 type Selection = { sessionId: string; termId: string; classId: string };
-type Context = { school: string; session: string; term: string; klass: string; canRelease: boolean; canExclude: boolean };
+type Context = { school: string; session: string; term: string; klass: string; canRelease: boolean; canExclude: boolean; releasesPaused?: boolean };
 type Release = { releasedAt: number; releasedBy: string; eligibleCount: number; certifiedCount: number; excludedCount: number };
 const button = "min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-50";
 
-function ReviewDialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+export function ReviewDialog({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
@@ -61,7 +61,7 @@ export function ClassReleasePanel({ selection, context }: { selection: Selection
   const selected = readiness?.rows.find(r => r.studentId === studentId);
   const contextLabel = `${context.school} / ${context.klass} / ${context.session} / ${context.term}`;
   const reviewHref = (id: string) => `/assessments/report-cards?${new URLSearchParams({ ...selection, studentId: id })}`;
-  const needsAdmin = (reason: string | null) => /historical|enrollment|conflict|policy/i.test(reason ?? "");
+  const needsAdmin = (code: string | null) => code !== null && code !== "not_certified" && code !== "enrollment_status";
   return <section className="space-y-5" aria-label="Class release readiness">
     <p className="text-base font-semibold">{contextLabel}</p>
     <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
@@ -74,13 +74,13 @@ export function ClassReleasePanel({ selection, context }: { selection: Selection
         <div><span className="sm:hidden">Student: </span><strong>{row.name}</strong><span className="block text-sm text-slate-600">{row.admissionNumber}</span></div>
         <div><span className="sm:hidden">Status: </span>{row.status === "certified" ? "Certified" : row.status === "excluded" ? "Excluded" : "Needs attention"}</div>
         <div><span className="sm:hidden">Reason: </span>{row.reason ?? "None"}{row.approvedBy && <span className="block text-sm">Approved by {row.approvedBy}</span>}</div>
-        <div className="space-y-2">{row.status === "blocked" && (needsAdmin(row.reason) ? <span>Contact your school administrator for review</span> : <Link className="inline-flex min-h-11 items-center underline focus-visible:outline-2" href={reviewHref(row.studentId)}>Review report card</Link>)}
-          {context.canExclude && !released && row.status !== "excluded" && !needsAdmin(row.reason) && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setReason(""); setError(""); setDialog("exclude"); }}>Exclude student</button>}</div>
+        <div className="space-y-2">{row.status === "blocked" && (needsAdmin(row.reasonCode) ? <span>Contact your school administrator for review</span> : <Link className="inline-flex min-h-11 items-center underline focus-visible:outline-2" href={reviewHref(row.studentId)}>Review report card</Link>)}
+          {context.canExclude && !released && row.canExclude && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setReason(""); setError(""); setDialog("exclude"); }}>Exclude student</button>}</div>
       </li>)}</ul></>}
       {released && <p className="mt-4">Not included in this release. A reviewed amendment is required for later additions or corrections.</p>}
     </div>}
-    <footer className="space-y-2">{context.canRelease && !released && <><button type="button" className={button} disabled={!readiness?.ready || !readiness.reviewKey || !current || pending} onClick={() => { setOpenedKey(readiness?.reviewKey ?? null); setChecked(false); setError(""); setDialog("release"); }}>Review release</button>
-      {(!readiness?.ready || !current) && <p role="status">{!readiness ? "Loading readiness..." : !current ? "The roster changed. Review the updated list before releasing." : blocked ? `${blocked} students need attention.` : "Roster needs review."}</p>}</>}</footer>
+    <footer className="space-y-2">{(context.canRelease || context.releasesPaused) && !released && <><button type="button" className={button} disabled={!!context.releasesPaused || !context.canRelease || !readiness?.ready || !readiness.reviewKey || !current || pending} onClick={() => { setOpenedKey(readiness?.reviewKey ?? null); setChecked(false); setError(""); setDialog("release"); }}>Review release</button>
+      {(context.releasesPaused || !readiness?.ready || !current) && <p role="status">{context.releasesPaused ? "New class releases are paused for this school." : !readiness ? "Loading readiness..." : !current ? "The roster changed. Review the updated list before releasing." : blocked ? `${blocked} students need attention.` : "Roster needs review."}</p>}</>}</footer>
     <p role="status" aria-live="polite">{notice}</p>
     {dialog === "exclude" && selected && <ReviewDialog title="Exclude student?" onClose={close}><p>{selected.name} ({selected.admissionNumber}) from {contextLabel}</p><p>This student will not receive this class release, even if a report is certified. The decision is recorded for review.</p>
       <label className="block font-semibold">Reason<textarea className="mt-2 block w-full rounded border p-2" value={reason} onChange={e => setReason(e.target.value)} aria-invalid={!!error} aria-describedby={error ? "exclusion-error" : undefined} rows={4} /></label>
@@ -89,6 +89,6 @@ export function ClassReleasePanel({ selection, context }: { selection: Selection
     {dialog === "release" && readiness && <ReviewDialog title="Release class results?" onClose={close}><p>{contextLabel}</p><p>{readiness.eligibleCount} eligible, {readiness.certifiedCount} certified, {readiness.excludedCount} excluded.</p><p>Families of the eligible students will be able to see their certified reports. Excluded students will not receive this release. The released roster is frozen. Later admissions or corrections need a separate reviewed process.</p>
       <label className="flex gap-3"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />{confirmation}</label>
       {error && <p role="alert" className="text-rose-700">{error}</p>}
-      <div className="flex flex-wrap gap-3"><button type="button" className={button} disabled={pending} onClick={close}>Cancel</button><button type="button" className={button} disabled={!checked || !current || !readiness.ready || !readiness.reviewKey || pending} onClick={async () => { if (!readiness.reviewKey) return; setPending(true); setError(""); try { const result = await release({ ...args, reviewedKey: readiness.reviewKey, confirmation }); setSavedRelease(result); setDialog(null); setNotice("Released to families. The original release details are shown above."); window.setTimeout(() => releasedHeading.current?.focus(), 0); } catch (e) { const message = e instanceof Error ? e.message : "Release failed."; if (/roster changed|not ready|different review/i.test(message)) { setStaleKey(readiness.reviewKey); setChecked(false); setNotice("Review the updated roster before releasing."); } else setError(message); } finally { setPending(false); } }}>{pending ? "Releasing results..." : "Release class results"}</button></div></ReviewDialog>}
+      <div className="flex flex-wrap gap-3"><button type="button" className={button} disabled={pending} onClick={close}>Cancel</button><button type="button" className={button} disabled={!!context.releasesPaused || !context.canRelease || !checked || !current || !readiness.ready || !readiness.reviewKey || pending} onClick={async () => { if (!readiness.reviewKey) return; setPending(true); setError(""); try { const result = await release({ ...args, reviewedKey: readiness.reviewKey, confirmation }); setSavedRelease(result); setDialog(null); setNotice("Released to families. The original release details are shown above."); window.setTimeout(() => releasedHeading.current?.focus(), 0); } catch (e) { const message = e instanceof Error ? e.message : "Release failed."; if (/roster changed|not ready|different review/i.test(message)) { setStaleKey(readiness.reviewKey); setChecked(false); setNotice("Review the updated roster before releasing."); } else setError(message); } finally { setPending(false); } }}>{pending ? "Releasing results..." : "Release class results"}</button></div></ReviewDialog>}
   </section>;
 }

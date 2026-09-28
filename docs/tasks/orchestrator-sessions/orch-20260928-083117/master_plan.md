@@ -28,6 +28,10 @@ FR-023 narrative-report work lives in `/Users/toji/Documents/johnsax/Melo_School
 
 Exam officers with the existing publish-final capability may release. Only school admins may approve named, reasoned and audited exclusions; exam officers may release the reviewed roster. Release freezes eligible students; post-release additions require a separately reviewed process. Older reports without certifiable policy snapshots remain withheld. Ambiguous within-term class histories fail closed; family history lists released results only.
 
+## Reviewed safety limit
+
+Review round 1 found that legacy historical records lack a complete class-term enrollment roster. New releases are deliberately limited to the currently active session and term with bounded present-day class evidence; old terms remain withheld unless they were already frozen and released while active. A separate authoritative historical roster reconciliation is required to release older periods. The backend has an audited school-admin pause switch for new releases; it does not revoke already published copies. See `results/review-round-1.md`, `results/C1.md`, and `results/C2.md` for tests and index rollout dependencies.
+
 ## Acceptance criteria
 
 - Before release, family API returns no score-bearing values or derived metrics for the class/term, whether drafts are partially saved or cards certified; history and notifications cannot reveal them either.

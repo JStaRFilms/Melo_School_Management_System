@@ -54,7 +54,7 @@ async function fixture() {
       const issued = await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", ids.studentId).eq("sessionId", ids.sessionId).eq("termId", ids.oldTermId)).unique();
       if (!issued) throw new Error("Certification missing");
       const publicationId = await ctx.db.insert("classResultPublications", { schoolId: ids.schoolId, classId: ids.classId, sessionId: ids.sessionId, termId: ids.oldTermId, releasedAt: 1, releasedBy: ids.adminId, reviewKey: "fixture", eligibleCount: 1, certifiedCount: 1, excludedCount: 0 });
-      await ctx.db.insert("classResultPublicationStudents", { schoolId: ids.schoolId, publicationId, studentId: ids.studentId, issuedReportCardId: issued._id });
+      await ctx.db.insert("classResultPublicationStudents", { schoolId: ids.schoolId, publicationId, studentId: ids.studentId, sessionId: ids.sessionId, termId: ids.oldTermId, classId: ids.classId, releasedAt: 1, issuedReportCardId: issued._id });
     });
   };
   return { t, ids, parent, student, workspace, certify, release };
@@ -139,11 +139,66 @@ describe("family graded release gate", () => {
     expect(await f.workspace()).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
   });
 
-  it("fails closed rather than scanning an unbounded school history", async () => {
+  it("finds the student's release among more than 32 other class releases", async () => {
     const f = await fixture();
+    await f.certify();
+    await f.release();
     await f.t.run(async ctx => {
-      for (let i = 0; i < 255; i++) await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: `Term ${i}`, startDate: 10 + i, endDate: 100 + i, isActive: false, createdAt: 1, updatedAt: 1 });
+      for (let i = 0; i < 40; i++) {
+        const classId = await ctx.db.insert("classes", { schoolId: f.ids.schoolId, name: `Other ${i}`, level: "Junior", createdAt: 1, updatedAt: 1 });
+        await ctx.db.insert("classResultPublications", { schoolId: f.ids.schoolId, classId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, releasedAt: 2, releasedBy: f.ids.adminId, reviewKey: `other-${i}`, eligibleCount: 0, certifiedCount: 0, excludedCount: 0 });
+      }
+      const foreignClass = await ctx.db.insert("classes", { schoolId: f.ids.otherSchoolId, name: "Foreign", level: "Junior", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("classResultPublications", { schoolId: f.ids.otherSchoolId, classId: foreignClass, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, releasedAt: 2, releasedBy: f.ids.adminId, reviewKey: "foreign", eligibleCount: 0, certifiedCount: 0, excludedCount: 0 });
     });
-    await expect(f.workspace()).rejects.toThrow(/bounds/);
+    const result = await f.workspace();
+    expect(result.selectedResultState).toBe("released");
+    expect(result.history.map(row => row.termId)).toContain(f.ids.oldTermId);
+  });
+
+  it("keeps the selected old card when released history exceeds its own budget", async () => {
+    const f = await fixture();
+    await f.certify();
+    await f.release();
+    await f.t.run(async ctx => {
+      const issued = await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId)).unique();
+      for (let i = 0; i < 55; i++) {
+        const termId = await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: `Released ${i}`, startDate: 10 + i, endDate: 100 + i, isActive: false, createdAt: 1, updatedAt: 1 });
+        const copyId = await ctx.db.insert("issuedReportCards", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId, issuedAt: issued!.issuedAt, issuedBy: f.ids.adminId, report: { ...issued!.report, termName: `Released ${i}` } });
+        const publicationId = await ctx.db.insert("classResultPublications", { schoolId: f.ids.schoolId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId, releasedAt: i + 2, releasedBy: f.ids.adminId, reviewKey: `released-${i}`, eligibleCount: 1, certifiedCount: 1, excludedCount: 0 });
+        await ctx.db.insert("classResultPublicationStudents", { schoolId: f.ids.schoolId, publicationId, studentId: f.ids.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId, releasedAt: i + 2, issuedReportCardId: copyId });
+      }
+    });
+    const selected = await f.workspace(f.ids.oldTermId, 4);
+    expect(selected.selectedResultState).toBe("released");
+    expect(selected.selectedTermId).toBe(f.ids.oldTermId);
+    expect(selected.selectedReportCard?.termName).toBe("First");
+    expect(selected.history).toHaveLength(4);
+    expect(selected.history.every(row => row.termId !== f.ids.oldTermId)).toBe(true);
+  });
+
+  it("fails closed for two frozen classes in one term", async () => {
+    const f = await fixture();
+    await f.certify();
+    await f.release();
+    await f.t.run(async ctx => {
+      const original = await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId)).unique();
+      const secondId = await ctx.db.insert("issuedReportCards", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.nextClassId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, issuedAt: original!.issuedAt, issuedBy: f.ids.adminId, report: { ...original!.report, classId: f.ids.nextClassId } });
+      const publicationId = await ctx.db.insert("classResultPublications", { schoolId: f.ids.schoolId, classId: f.ids.nextClassId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, releasedAt: 2, releasedBy: f.ids.adminId, reviewKey: "second", eligibleCount: 1, certifiedCount: 1, excludedCount: 0 });
+      await ctx.db.insert("classResultPublicationStudents", { schoolId: f.ids.schoolId, publicationId, studentId: f.ids.studentId, classId: f.ids.nextClassId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, releasedAt: 2, issuedReportCardId: secondId });
+    });
+    expect(await f.workspace()).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+  });
+
+  it("keeps an older pinned card after hundreds of newer withheld terms", async () => {
+    const f = await fixture();
+    await f.certify();
+    await f.release();
+    await f.t.run(async ctx => {
+      for (let i = 0; i < 260; i++) await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: `Term ${i}`, startDate: 10 + i, endDate: 100 + i, isActive: false, createdAt: 1, updatedAt: 1 });
+    });
+    const selected = await f.workspace();
+    expect(selected.selectedResultState).toBe("released");
+    expect(selected.history.map(row => row.termId)).toContain(f.ids.oldTermId);
   });
 });

@@ -53,6 +53,10 @@ Verification: Convex `convex-test`/Vitest edge-runtime tests for draft (includin
 
 Acceptance means no family API returns scores, grades, totals, subject/pending counts, comments, draft-derived hints or report URLs for a withheld tuple. Released access yields only the correct immutable certified copy for an explicitly eligible student in the same school/class/session/term. Each release is explicit, authorized, scoped, readiness-checked, audited, idempotent and safe under retry/concurrency. Historical data receives no implicit release. A failed or rolled-back rollout never reopens draft access.
 
+## Reviewed scope correction for historical releases
+
+Review found that legacy data cannot prove a complete historic class-term roster when a former student has no score, selection, promotion, or issued copy. A new release therefore requires the currently active session and term and a fully reviewed, bounded present-day class roster. All inactive periods remain withheld for new releases until a separate authoritative historical reconciliation workflow exists. Reports released while active stay frozen and accessible after the class/term is archived. This tightens the earlier proposed historical release path rather than pretending partial evidence proves the denominator. A school-admin pause/resume control stops new release mutations without opening draft reads or revoking existing publications. See `results/review-round-1.md`, `results/C1.md`, and `results/C2.md`.
+
 ## FR-023 parallel-worktree integration note
 
 Read-only handoff: `/Users/toji/Documents/johnsax/Melo_School_Management_System-comment-progress/docs/tasks/orchestrator-sessions/orch-20260928-082626/portal-agent-handoff.md`. FR-023 owns narrative reporting, including its own issued-only parent gate. This worktree owns **graded** class/term release only. Do not edit FR-023's worktree, implement narrative policy here, or overwrite its typed portal payload during integration. Its proposal is not yet committed in the parallel worktree.

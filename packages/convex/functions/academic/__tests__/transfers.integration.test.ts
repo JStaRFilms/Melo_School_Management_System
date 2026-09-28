@@ -1935,8 +1935,9 @@ describe("U6 Portal canonical identity continuity", () => {
       ),
     ).rejects.toThrow("Active enrollment required");
     expect(sourceHistory.selectedStudent?.enrollmentState).toBe("historical");
-    expect(sourceHistory.history).toHaveLength(1);
-    expect(sourceHistory.history[0].sessionName).toBe("2025/26 Source History");
+    // Historical access alone does not publish the source school's results.
+    expect(sourceHistory.history).toHaveLength(0);
+    expect(sourceHistory.selectedReportCard).toBeNull();
     expect(sourceHistory.students).toHaveLength(2);
 
     const replay = await destination.mutation(

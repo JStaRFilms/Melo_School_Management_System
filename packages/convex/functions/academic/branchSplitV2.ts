@@ -136,6 +136,7 @@ export const SCHOOL_PURGE_TABLES = [
   "classResultPublicationStudents",
   "classResultExclusions",
   "classResultPublications",
+  "resultReleaseControls",
   "migrationFeatureSignals",
   "stagedImportRecords",
   "importWorkspaces",

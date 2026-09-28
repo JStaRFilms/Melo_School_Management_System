@@ -115,6 +115,16 @@ describe("graded result release", () => {
       await ctx.db.patch(f.ids.classId, { isArchived: true });
     });
     expect(await f.read()).toEqual(issued);
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.sessionId, { isArchived: true, isActive: false });
+      await ctx.db.patch(f.ids.termId, { isArchived: true, isActive: false });
+    });
+    const inspected = await f.admin.query(api.functions.academic.resultPublication.getClassReadiness, f.tuple);
+    expect(inspected.released?._id).toBeDefined();
+    expect(inspected.rows[0].status).toBe("certified");
+    expect((await f.admin.query(api.functions.academic.resultPublication.getReleaseContext, {})).classes)
+      .toContainEqual({ id: f.ids.classId, name: "JSS 1" });
+    expect(await f.read()).toEqual(issued);
     const late = await f.t.run(ctx => ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId,
       userId: f.ids.studentUserId, admissionNumber: "LATE", createdAt: 2, updatedAt: 2 }));
     expect(await f.t.run(ctx => getReleasedGradedReport(ctx, { ...f.tuple, schoolId: f.ids.schoolId, studentId: late }))).toBeNull();
@@ -208,19 +218,103 @@ describe("graded result release", () => {
     expect(await f.read()).toBeNull();
   });
 
-  it("blocks historical current-class inference and archived candidates", async () => {
+  it("blocks inactive terms and sessions even when an old no-evidence student is absent from the current class", async () => {
     const f = await fixture();
     await f.certify();
-    await f.t.run(ctx => ctx.db.patch(f.ids.sessionId, { isActive: false }));
-    expect((await f.readiness()).rows[0].reason).toBe("Historical enrollment needs review");
     await f.t.run(async ctx => {
-      await ctx.db.insert("studentPromotions", { schoolId: f.ids.schoolId, studentId: f.ids.studentId,
-        fromClassId: f.ids.classId, toClassId: f.ids.classId, fromSessionId: f.ids.sessionId,
-        toSessionId: f.ids.sessionId, subjectEnrollmentMode: "none", subjectEnrollmentCount: 0,
-        batchKey: "fixture", createdAt: 1, createdBy: f.ids.adminId });
-      await ctx.db.patch(f.ids.studentId, { isArchived: true, enrollmentStatus: "transferred_out" });
+      const oldClass = await ctx.db.insert("classes", { schoolId: f.ids.schoolId, name: "Former", level: "Junior", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: oldClass,
+        userId: f.ids.studentUserId, admissionNumber: "UNKNOWN-HISTORY", createdAt: 1, updatedAt: 1 });
+      await ctx.db.patch(f.ids.termId, { isActive: false });
     });
-    expect((await f.readiness()).rows[0].reason).toBe("Enrollment status needs review");
+    await expect(f.readiness()).rejects.toThrow("Historical roster needs authoritative reconciliation");
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: "forged", confirmation })).rejects.toThrow("Historical roster needs authoritative reconciliation");
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.termId, { isActive: true });
+      await ctx.db.patch(f.ids.sessionId, { isActive: false });
+    });
+    await expect(f.readiness()).rejects.toThrow("Historical roster needs authoritative reconciliation");
     expect(await f.read()).toBeNull();
+  });
+
+  it("blocks a no-score current student until an admin reviews an explicit exclusion", async () => {
+    const f = await fixture();
+    await f.certify();
+    const second = await f.t.run(async ctx => {
+      const studentId = await ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId,
+        userId: f.ids.studentUserId, admissionNumber: "NO-SCORE", createdAt: 1, updatedAt: 1 });
+      return studentId;
+    });
+    expect((await f.readiness()).rows.find(r => r.studentId === second))
+      .toMatchObject({ status: "blocked", canExclude: false });
+    await f.t.run(ctx => ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId,
+      studentId: second, classId: f.ids.classId, sessionId: f.ids.sessionId,
+      subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 }));
+    const blocked = await f.readiness();
+    expect(blocked.ready).toBe(false);
+    expect(blocked.rows.find(r => r.studentId === second)).toMatchObject({ status: "blocked", canExclude: true, reasonCode: "evidence_missing" });
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: blocked.reviewKey!, confirmation })).rejects.toThrow();
+    await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent,
+      { ...f.tuple, studentId: second, reason: "No scores after reviewed class enrollment" });
+    const ready = await f.readiness();
+    expect(ready).toMatchObject({ ready: true, eligibleCount: 1, excludedCount: 1 });
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    expect(await f.t.run(ctx => getReleasedGradedReport(ctx, { ...f.tuple, schoolId: f.ids.schoolId, studentId: second }))).toBeNull();
+  });
+
+  it("permits a small current class at a school with more than 512 students", async () => {
+    const f = await fixture();
+    const otherClass = await f.t.run(ctx => ctx.db.insert("classes", { schoolId: f.ids.schoolId,
+      name: "Other class", level: "Junior", createdAt: 1, updatedAt: 1 }));
+    for (let batch = 0; batch < 13; batch++) {
+      await f.t.run(async ctx => {
+        for (let i = 0; i < 40; i++) await ctx.db.insert("students", { schoolId: f.ids.schoolId,
+          classId: otherClass, userId: f.ids.studentUserId, admissionNumber: `O-${batch}-${i}`, createdAt: 1, updatedAt: 1 });
+      });
+    }
+    await f.certify();
+    const ready = await f.readiness();
+    expect(ready).toMatchObject({ ready: true, certifiedCount: 1 });
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    expect(await f.read()).not.toBeNull();
+  });
+
+  it("does not permit a new release for an archived tuple", async () => {
+    const f = await fixture();
+    await f.certify();
+    const ready = await f.readiness();
+    await f.t.run(ctx => ctx.db.patch(f.ids.classId, { isArchived: true }));
+    await expect(f.readiness()).rejects.toThrow("Archived class");
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow("Archived class");
+  });
+
+  it("audits admin pause and blocks direct new releases without hiding existing issued results", async () => {
+    const f = await fixture();
+    await f.certify();
+    const ready = await f.readiness();
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.setReleasesPaused,
+      { releasesPaused: true, reason: "Emergency school rollback" })).rejects.toThrow();
+    await f.admin.mutation(api.functions.academic.resultPublication.setReleasesPaused,
+      { releasesPaused: true, reason: "Emergency school rollback" });
+    expect((await f.officer.query(api.functions.academic.resultPublication.getReleaseContext, {})).canRelease).toBe(false);
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow("paused");
+    expect(await f.read()).toBeNull();
+    await f.admin.mutation(api.functions.academic.resultPublication.setReleasesPaused,
+      { releasesPaused: false, reason: "Rollback review completed" });
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    const issued = await f.read();
+    await f.admin.mutation(api.functions.academic.resultPublication.setReleasesPaused,
+      { releasesPaused: true, reason: "Stop further school releases" });
+    expect(await f.read()).toEqual(issued);
+    const events = await f.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect());
+    expect(events.filter(e => e.action === "result_release.pause")).toHaveLength(2);
+    expect(events.filter(e => e.action === "result_release.resume")).toHaveLength(1);
   });
 });

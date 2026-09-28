@@ -1950,6 +1950,14 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_session_term", ["schoolId", "sessionId", "termId"]),
 
+  resultReleaseControls: defineTable({
+    schoolId: v.id("schools"),
+    releasesPaused: v.boolean(),
+    reason: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"]),
+
   classResultPublications: defineTable({
     schoolId: v.id("schools"),
     sessionId: v.id("academicSessions"),
@@ -1982,8 +1990,14 @@ export default defineSchema({
     schoolId: v.id("schools"),
     publicationId: v.id("classResultPublications"),
     studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    releasedAt: v.number(),
     issuedReportCardId: v.id("issuedReportCards"),
   }).index("by_publication_and_student", ["publicationId", "studentId"])
+    .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
+    .index("by_school_and_student_and_released_at", ["schoolId", "studentId", "releasedAt"])
     .index("by_school", ["schoolId"]),
 
   issuedReportCards: defineTable({
@@ -2000,6 +2014,7 @@ export default defineSchema({
   })
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
     .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
+    .index("by_class_and_session_and_term", ["classId", "sessionId", "termId"])
     .index("by_school_logo_storage", ["schoolLogoStorageId"])
     .index("by_student_photo_storage", ["studentPhotoStorageId"])
     .index("by_school", ["schoolId"])
