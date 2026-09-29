@@ -64,7 +64,7 @@ async function assertAdmin(ctx: Context, schoolId: Id<"schools">) {
   if (!auth.isSchoolAdmin) throw new ConvexError("Admin access required");
   return auth;
 }
-async function assertStaff(ctx: Context, args: Selection) {
+async function assertStaff(ctx: Context, args: Selection, options?: { allowIssuedHistory?: boolean }) {
   const { classDoc, auth } = await schoolContext(ctx, args.classId);
   if (!auth.isSchoolAdmin) {
     if (auth.role !== "teacher") throw new ConvexError("Staff access required");
@@ -83,6 +83,18 @@ async function assertStaff(ctx: Context, args: Selection) {
       !term || term.schoolId !== auth.schoolId || term.sessionId !== session._id ||
       classDoc.schoolId !== auth.schoolId)
     throw new ConvexError("Invalid report selection");
+  if (options?.allowIssuedHistory) {
+    // An exact issued snapshot is enrollment evidence for historical staff reads
+    // only. Draft endpoints and new publication still require enrollment history.
+    const issued = await issuedFor(ctx, args);
+    if (issued) {
+      if (issued.schoolId !== auth.schoolId || issued.classId !== args.classId ||
+          issued.studentId !== student._id || issued.sessionId !== session._id ||
+          issued.termId !== term._id)
+        throw new ConvexError("Invalid issued report selection");
+      return { auth, classDoc, student, session, term };
+    }
+  }
   // Promotion records are explicit enrollment history. A current class alone is
   // not evidence that the pupil belonged to it in an earlier session.
   const [to, from] = await Promise.all([
@@ -100,8 +112,8 @@ async function assertStaff(ctx: Context, args: Selection) {
   if (!enrolled) throw new ConvexError("Student is not enrolled in this class and session");
   return { auth, classDoc, student, session, term };
 }
-async function assertNarrative(ctx: Context, args: Selection) {
-  const context = await assertStaff(ctx, args);
+async function assertNarrative(ctx: Context, args: Selection, options?: { allowIssuedHistory?: boolean }) {
+  const context = await assertStaff(ctx, args, options);
   if (!(await modeFor(ctx, args.classId, args.sessionId)))
     throw new ConvexError("This class uses graded reports for this session");
   return context;
@@ -263,11 +275,13 @@ async function draftFor(ctx: Context, args: Selection & { subjectId: Id<"subject
       q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId).eq("subjectId", args.subjectId)).unique();
 }
 async function preview(ctx: Context, args: Selection) {
-  const { auth, classDoc, student, session, term } = await assertNarrative(ctx, args);
+  const { auth, classDoc, student, session, term } = await assertNarrative(ctx, args, { allowIssuedHistory: true });
   const issued = await issuedFor(ctx, args);
   if (issued && issued.classId !== args.classId) throw new ConvexError("Report already issued for another class");
-  if (!auth.isSchoolAdmin) throw new ConvexError("Admin access required for full report preview");
   if (issued) return { issued, snapshot: issued.snapshot, reviewedKey: "" };
+  // Teachers assigned to the class may read an issued copy, never the full
+  // multi-subject draft preview (which contains other teachers' comments).
+  if (!auth.isSchoolAdmin) throw new ConvexError("Admin access required for full report preview");
   const subjects = await applicableSubjects(ctx, args, auth.schoolId);
   const drafts = await Promise.all(subjects.map(subject => draftFor(ctx, { ...args, subjectId: subject._id })));
   if (drafts.some(draft => draft && (draft.schoolId !== auth.schoolId || draft.classId !== args.classId)))

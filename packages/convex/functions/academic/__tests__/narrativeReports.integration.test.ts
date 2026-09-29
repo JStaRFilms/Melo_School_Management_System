@@ -575,6 +575,47 @@ describe("narrative subject reports", () => {
     await expect(as("parent").query(fn.getIssuedForPortal, { studentId: ids.secondStudentId, sessionId: ids.sessionId, termId: ids.termId })).rejects.toThrow();
   });
 
+  it("reads only an exact issued snapshot after class change without promotion history", async () => {
+    const { t, ids, as, selection, enable } = await fixture();
+    await enable();
+    await as("admin").mutation(fn.saveDraft, { ...selection, subjectId: ids.subjectId, comment: "Old Art" });
+    await as("admin").mutation(fn.saveDraft, { ...selection, subjectId: ids.secondSubjectId, comment: "Old Music" });
+    const ready = await as("admin").query(fn.getStaffPreview, selection);
+    const issued = await as("admin").mutation(fn.publish, { ...selection, reviewedKey: ready.reviewedKey! });
+    await t.run(async ctx => {
+      await ctx.db.patch(ids.sessionId, { isActive: false });
+      await ctx.db.patch(ids.studentId, { classId: ids.otherClassId });
+      await ctx.db.patch(ids.subjectId, { name: "Renamed Art" });
+      await ctx.db.insert("classSessionReportModes", { schoolId: ids.schoolId, classId: ids.otherClassId,
+        sessionId: ids.sessionId, mode: "narrative", updatedAt: 1, updatedBy: ids.adminId });
+      await ctx.db.insert("users", { schoolId: ids.foreignSchoolId, authId: "nar-foreign-admin",
+        authTokenIdentifier: identity("nar-foreign-admin").tokenIdentifier, name: "Foreign admin",
+        email: "nar-foreign-admin@test.local", role: "admin", createdAt: 1, updatedAt: 1 });
+    });
+    const deepLink = { studentId: ids.studentId, sessionId: ids.sessionId, termId: ids.termId };
+    expect(await as("admin").query(fn.getStaffPeriodReportMode, deepLink))
+      .toEqual({ classId: ids.classId, mode: "narrative" });
+    expect(await as("teacher").query(fn.getStaffPeriodReportMode, deepLink))
+      .toEqual({ classId: ids.classId, mode: "narrative" });
+    expect(await as("admin").query(fn.getStaffPreview, selection))
+      .toMatchObject({ status: "issued", snapshot: issued.snapshot, issuedAt: issued.issuedAt, reviewedKey: null });
+    expect((await as("admin").query(fn.getStaffPreview, selection)).snapshot.subjects)
+      .toEqual(issued.snapshot.subjects);
+    expect(await as("teacher").query(fn.getStaffPreview, selection))
+      .toMatchObject({ status: "issued", snapshot: issued.snapshot });
+    await expect(as("teacher").query(fn.getStaffPreview, { ...selection, termId: ids.secondTermId }))
+      .rejects.toThrow("not enrolled");
+    await expect(as("admin").query(fn.getStaffPreview, { ...selection, classId: ids.otherClassId }))
+      .rejects.toThrow("Invalid issued report selection");
+    await expect(as("admin").query(fn.getStaffPreview, { ...selection, termId: ids.secondTermId }))
+      .rejects.toThrow("not enrolled");
+    await expect(as("foreign-admin").query(fn.getStaffPreview, selection)).rejects.toThrow();
+    await expect(as("admin").mutation(fn.saveDraft, { ...selection, subjectId: ids.subjectId, comment: "Rewritten" }))
+      .rejects.toThrow("not enrolled");
+    await expect(as("admin").mutation(fn.saveDraft, { ...selection, termId: ids.secondTermId,
+      subjectId: ids.subjectId, comment: "Unissued" })).rejects.toThrow("not enrolled");
+  });
+
   it("explicit student selections replace class subjects and keep other students separate", async () => {
     const { t, ids, as, selection, enable } = await fixture();
     await enable();
