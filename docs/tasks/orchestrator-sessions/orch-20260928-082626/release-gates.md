@@ -4,7 +4,7 @@ This branch is based on `origin/master` at `23c4880`. The new report mode is per
 
 ## Checks performed before PR
 
-- Convex full suite: 65 files, 500 tests passed after PR review corrections, including numeric-write guards for comment-mode classes.
+- Convex full suite: 65 files, 501 tests passed after PR review corrections, including numeric-write guards and independent per-class drafts for midterm transfers.
 - Admin focused narrative/entry tests: 4 files, 9 passed; teacher entry tests: 5 passed. Portal narrative tests: 2 files, 5 passed. Earlier graded deep-link tests also passed.
 - Convex, shared, admin, teacher and portal typechecks passed; `git diff --cached --check` clean.
 - Chromium print smoke exercised the fixed-height workspace shell: long portal and staff review reports each span three A4 pages, and a two-student batch spans four. Navigation is hidden and last-page report text remains visible. Theme audit was informational; direct colors classified in `portal-integration.md`.

@@ -616,6 +616,63 @@ describe("narrative subject reports", () => {
       subjectId: ids.subjectId, comment: "Unissued" })).rejects.toThrow("not enrolled");
   });
 
+  it("keeps mid-term transfer drafts independent by class and issues only one class snapshot", async () => {
+    const { t, ids, as, selection, enable } = await fixture();
+    await enable();
+    await as("admin").mutation(fn.setClassModes, { sessionId: ids.sessionId,
+      classIds: [ids.otherClassId], mode: "narrative" });
+    await t.run(async ctx => {
+      await ctx.db.insert("classSubjects", { schoolId: ids.schoolId, classId: ids.otherClassId,
+        subjectId: ids.subjectId, createdAt: 1, updatedAt: 1 });
+      const destinationTeacher = await ctx.db.query("teacherAssignments").withIndex("by_class", q =>
+        q.eq("classId", ids.classId)).filter(q => q.eq(q.field("subjectId"), ids.secondSubjectId)).first();
+      await ctx.db.insert("teacherAssignments", { schoolId: ids.schoolId, classId: ids.otherClassId,
+        subjectId: ids.subjectId, teacherId: destinationTeacher!.teacherId, createdAt: 1, updatedAt: 1 });
+    });
+    await as("teacher").mutation(fn.saveDraft, { ...selection, subjectId: ids.subjectId, comment: "Source art" });
+    await t.run(async ctx => {
+      await ctx.db.insert("studentPromotions", { schoolId: ids.schoolId, studentId: ids.studentId,
+        fromClassId: ids.classId, toClassId: ids.otherClassId,
+        fromSessionId: ids.sessionId, toSessionId: ids.sessionId,
+        subjectEnrollmentMode: "all_target_class_subjects", subjectEnrollmentCount: 1,
+        batchKey: "mid-term-narrative", createdAt: 2, createdBy: ids.adminId });
+      await ctx.db.patch(ids.studentId, { classId: ids.otherClassId });
+    });
+    const destination = { ...selection, classId: ids.otherClassId };
+    await as("other-teacher").mutation(fn.saveDraft, { ...destination,
+      subjectId: ids.subjectId, comment: "Destination art" });
+    expect(await as("teacher").query(fn.getDraft, { ...selection, subjectId: ids.subjectId }))
+      .toEqual({ comment: "Source art", issued: false });
+    expect(await as("other-teacher").query(fn.getDraft, { ...destination, subjectId: ids.subjectId }))
+      .toEqual({ comment: "Destination art", issued: false });
+    await expect(as("teacher").query(fn.getDraft, { ...destination, subjectId: ids.subjectId }))
+      .rejects.toThrow("Not assigned");
+    await expect(as("other-teacher").query(fn.getDraft, { ...selection, subjectId: ids.subjectId }))
+      .rejects.toThrow("Not assigned");
+    await expect(as("parent").query(fn.getDraft, { ...destination, subjectId: ids.subjectId })).rejects.toThrow();
+    const before = await t.run(ctx => ctx.db.query("narrativeReportDrafts")
+      .withIndex("by_studentId_and_sessionId_and_termId_and_classId_and_subjectId", q =>
+        q.eq("studentId", ids.studentId).eq("sessionId", ids.sessionId).eq("termId", ids.termId)).take(10));
+    expect(before.map(row => [row.classId, row.comment])).toEqual([
+      [ids.classId, "Source art"], [ids.otherClassId, "Destination art"],
+    ]);
+    const reviewed = await as("admin").query(fn.getStaffPreview, destination);
+    const issued = await as("admin").mutation(fn.publish, { ...destination, reviewedKey: reviewed.reviewedKey! });
+    expect(issued).toMatchObject({ classId: ids.otherClassId, snapshot: { subjects: [{ comment: "Destination art" }] } });
+    await expect(as("admin").mutation(fn.saveDraft, { ...destination, subjectId: ids.subjectId,
+      comment: "Edited issued" })).rejects.toThrow("Published");
+    await expect(as("admin").mutation(fn.publish, { ...selection, reviewedKey: "old" })).rejects.toThrow("Invalid issued report selection");
+    expect((await as("admin").mutation(fn.publish, { ...destination, reviewedKey: "old" }))._id).toBe(issued._id);
+    await t.run(ctx => ctx.db.patch(ids.subjectId, { name: "Renamed after issue" }));
+    expect((await as("admin").query(fn.getStaffPreview, destination)).snapshot).toEqual(issued.snapshot);
+    expect((await t.run(ctx => ctx.db.query("narrativeReportDrafts")
+      .withIndex("by_studentId_and_sessionId_and_termId_and_classId_and_subjectId", q =>
+        q.eq("studentId", ids.studentId).eq("sessionId", ids.sessionId).eq("termId", ids.termId)).take(10)))
+      .map(row => [row.classId, row.comment])).toEqual(before.map(row => [row.classId, row.comment]));
+    expect(await t.run(ctx => ctx.db.query("issuedNarrativeReports").withIndex("by_studentId_and_sessionId_and_termId", q =>
+      q.eq("studentId", ids.studentId).eq("sessionId", ids.sessionId).eq("termId", ids.termId)).take(10))).toHaveLength(1);
+  });
+
   it("explicit student selections replace class subjects and keep other students separate", async () => {
     const { t, ids, as, selection, enable } = await fixture();
     await enable();

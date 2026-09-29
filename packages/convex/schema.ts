@@ -1973,7 +1973,7 @@ export default defineSchema({
     updatedAt: v.number(),
     updatedBy: v.id("users"),
   })
-    .index("by_studentId_and_sessionId_and_termId_and_subjectId", ["studentId", "sessionId", "termId", "subjectId"])
+    .index("by_studentId_and_sessionId_and_termId_and_classId_and_subjectId", ["studentId", "sessionId", "termId", "classId", "subjectId"])
     .index("by_classId_and_sessionId_and_termId_and_subjectId", ["classId", "sessionId", "termId", "subjectId"])
     .index("by_school", ["schoolId"]),
 

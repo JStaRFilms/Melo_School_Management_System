@@ -271,8 +271,9 @@ async function subjectAccess(ctx: Context, args: Selection & { subjectId: Id<"su
 }
 async function draftFor(ctx: Context, args: Selection & { subjectId: Id<"subjects"> }) {
   return ctx.db.query("narrativeReportDrafts")
-    .withIndex("by_studentId_and_sessionId_and_termId_and_subjectId", q =>
-      q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId).eq("subjectId", args.subjectId)).unique();
+    .withIndex("by_studentId_and_sessionId_and_termId_and_classId_and_subjectId", q =>
+      q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId)
+        .eq("classId", args.classId).eq("subjectId", args.subjectId)).unique();
 }
 async function preview(ctx: Context, args: Selection) {
   const { auth, classDoc, student, session, term } = await assertNarrative(ctx, args, { allowIssuedHistory: true });
