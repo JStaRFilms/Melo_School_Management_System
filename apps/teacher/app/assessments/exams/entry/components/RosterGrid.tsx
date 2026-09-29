@@ -62,7 +62,13 @@ export function RosterGrid({
   onScoreChange,
 }: RosterGridProps) {
   const showScaledColumn = scoreRosterHasScaledColumn(examInputMode, policy, roster);
-  const mixedLegacy = !policy && roster.some(row => { const weights = scoreRowPolicy(examInputMode, policy, row.assessmentRecord); return weights.examRawMax !== scoreRowPolicy(examInputMode).examRawMax || weights.ca1Max !== 20 || weights.ca2Max !== 20 || weights.ca3Max !== 20 || weights.examContributionMax !== 40; });
+  const sheetWeights = scoreRowPolicy(examInputMode, policy);
+  const mixedLegacy = roster.some(row => {
+    const weights = scoreRowPolicy(examInputMode, policy, row.assessmentRecord);
+    return weights.examRawMax !== sheetWeights.examRawMax || weights.ca1Max !== sheetWeights.ca1Max ||
+      weights.ca2Max !== sheetWeights.ca2Max || weights.ca3Max !== sheetWeights.ca3Max ||
+      weights.examContributionMax !== sheetWeights.examContributionMax;
+  });
   const examLabel = mixedLegacy ? "Exam /row limit" : `Exam /${policy?.examRawMax ?? (examInputMode === "raw40" ? 40 : 60)}`;
 
   return (
@@ -74,7 +80,7 @@ export function RosterGrid({
             Score Entry
           </h2>
           <p className="text-obsidian-500 font-medium font-body italic text-sm">
-            {policy ? `Exam raw /${policy.examRawMax} contributes /${policy.examContributionMax} to the total.` : mixedLegacy ? "Legacy rows have different exam maxima. Check the limit shown on each row." : examInputMode === "raw40"
+            {mixedLegacy ? "Legacy rows have different maxima. Check the limit shown on each row." : policy ? `Exam raw /${policy.examRawMax} contributes /${policy.examContributionMax} to the total.` : examInputMode === "raw40"
               ? "Direct entry into final exam contribution. No scaling column."
               : "Input out of 60; system displays read-only /40 contribution for total calculation."}
           </p>

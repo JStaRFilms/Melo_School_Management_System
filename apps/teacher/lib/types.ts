@@ -49,6 +49,7 @@ export interface AssessmentRecordResponse {
   remark: string;
   examInputModeSnapshot: string;
   examRawMaxSnapshot: number;
+  sessionScoringPolicyVersion?: number;
   assessmentPolicySnapshot?: Partial<import("@school/shared/exam-recording").SessionScoringPolicy>;
   status: "draft";
   enteredBy: Id<"users">;
