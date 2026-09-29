@@ -4,12 +4,13 @@ import { afterEach, expect, it, vi } from "vitest";
 import { NarrativeClassPrint } from "../app/assessments/report-cards/components/NarrativeClassPrint";
 import { deriveSchoolTheme } from "@school/shared/theme";
 
-vi.mock("convex/react", () => ({ useQuery: () => ({ skipped: 1, reports: [{ issuedAt: 1750000000000, snapshot: {
+const state = vi.hoisted(() => ({ empty: false }));
+vi.mock("convex/react", () => ({ useQuery: () => state.empty ? { skipped: 0, reports: [] } : { skipped: 1, reports: [{ issuedAt: 1750000000000, snapshot: {
   schoolName: "School", primaryColor: "#fefefe", accentColor: "#17324d", studentName: "Ada", admissionNumber: "A-1", className: "Former class",
   sessionName: "2025", termName: "First", subjects: [{ subjectId: "art", name: "Art", order: 0,
     comment: "A long comment.\n".repeat(120) }],
-} }] }) }));
-afterEach(cleanup);
+} }] } }));
+afterEach(() => { cleanup(); state.empty = false; });
 it("prints only issued snapshots with skipped count and page-safe long comments", () => {
   const { container } = render(<NarrativeClassPrint classId="class" sessionId="session" termId="term" onExit={() => {}} />);
   expect(screen.getByText(/1 issued reports ready. 1 students skipped/)).toBeTruthy();
@@ -32,4 +33,11 @@ it("prints only issued snapshots with skipped count and page-safe long comments"
   expect(css).toContain("orphans: 3; widows: 3");
   expect(css).toContain("page-break-after: always");
   expect(container.textContent).not.toMatch(/draft|grade|score|rank/i);
+});
+it("shows an empty issued batch safely without a paper or print action", () => {
+  state.empty = true;
+  const { container } = render(<NarrativeClassPrint classId="class" sessionId="session" termId="term" onExit={() => {}} />);
+  expect(screen.getByRole("status").textContent).toContain("0 issued reports ready. 0 students skipped");
+  expect(screen.queryByRole("button", { name: "Print issued class reports" })).toBeNull();
+  expect(container.querySelector(".batch-sheet")).toBeNull();
 });

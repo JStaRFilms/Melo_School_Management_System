@@ -153,14 +153,14 @@ function AdminReportCardPageContent() {
 
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
-    sessionId && termId && resolvedClassId
+    mode === "graded" && sessionId && termId && resolvedClassId
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardBatchStudent[] | undefined;
 
   const classReportCards = useQuery(
     "functions/academic/reportCards:getClassReportCards" as never,
-    isPrintClassMode && mode !== "narrative" && sessionId && termId && resolvedClassId
+    isPrintClassMode && mode === "graded" && sessionId && termId && resolvedClassId
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
@@ -205,6 +205,13 @@ function AdminReportCardPageContent() {
     return () => window.removeEventListener("afterprint", exitFullClassPrint);
   }, [exitFullClassPrint, isPrintClassMode]);
 
+  // Narrative class printing uses the issued-only backend batch, not a graded
+  // roster or a seed student. Keep the graded route's student requirement.
+  if (isPrintClassMode && classIdParam && sessionId && termId) {
+    if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+    if (mode === "narrative") return <NarrativeClassPrint key={`${classIdParam}-${sessionId}-${termId}`} classId={classIdParam} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
+  }
+
   if (!studentId || !sessionId || !termId) {
     return <ReportCardLauncher />;
   }
@@ -212,7 +219,6 @@ function AdminReportCardPageContent() {
   if (!classIdParam && inferred === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
   if (!selectedClassId) return <div className="mx-auto max-w-3xl p-6 text-slate-700">No verified class was found for this period. <Link href="/assessments/report-cards" className="underline">Choose a student and class</Link>.</div>;
   if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
-  if (mode === "narrative" && isPrintClassMode) return <NarrativeClassPrint key={`${selectedClassId}-${sessionId}-${termId}`} classId={selectedClassId} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
   if (mode === "narrative") return <NarrativeReview key={`${studentId}-${sessionId}-${termId}-${selectedClassId}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={selectedClassId} />;
   if (reportCard === undefined) {
     return <ReportCardPageFallback message="Loading student report card..." />;
