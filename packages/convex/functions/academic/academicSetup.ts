@@ -1278,6 +1278,8 @@ export const archiveSession = mutation({
       throw new ConvexError("Active sessions cannot be archived");
     }
 
+    await assertSessionScoringAvailable(ctx, schoolId, args.sessionId);
+
     const terms = await ctx.db
       .query("academicTerms")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))

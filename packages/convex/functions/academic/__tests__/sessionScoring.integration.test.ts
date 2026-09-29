@@ -93,6 +93,38 @@ it("uses the selected non-default branch for policy queries, scan and apply with
     policy, expectedVersion: 0, expectedPolicy: legacy, confirmRegrade: true })).rejects.toThrow();
 });
 
+it("blocks archiving an inactive session while a scoring job needs action, then permits completion", async () => {
+  const f = await fixture();
+  const archive = api.functions.academic.academicSetup.archiveSession;
+  await f.t.run(async ctx => { await ctx.db.patch(f.first, { isActive: false }); await ctx.db.patch(f.recordId, { ca3: 5 }); });
+  await scan(f);
+  const job = await f.viewer.query(endpoint.getSessionScoringJob, { sessionId: f.first });
+  if (!job) throw new Error("Missing scan job");
+  for (const phase of ["scanning", "failed_scanning", "invalid", "ready", "regrading", "failed_regrading"] as const) {
+    await f.t.run(ctx => ctx.db.patch(job._id, { phase }));
+    await expect(f.viewer.mutation(archive, { sessionId: f.first })).rejects.toThrow(/regrade is in progress/);
+    expect((await f.t.run(ctx => ctx.db.get(f.first)))?.isArchived).toBeUndefined();
+  }
+  await f.t.run(ctx => ctx.db.patch(job._id, { phase: "ready" }));
+  await f.viewer.mutation(endpoint.applySessionScoringChange, {
+    sessionId: f.first, policy, expectedVersion: 0, expectedPolicy: legacy, confirmRegrade: true,
+  });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.viewer.query(endpoint.getSessionScoringJob, { sessionId: f.first })).toMatchObject({ phase: "complete" });
+  await f.viewer.mutation(archive, { sessionId: f.first });
+  expect(await f.t.run(ctx => ctx.db.get(f.first))).toMatchObject({ isArchived: true });
+});
+
+it("does not expose another school's session through archive", async () => {
+  const f = await fixture();
+  const foreign = await f.t.run(async ctx => {
+    const schoolId = await ctx.db.insert("schools", { name: "Foreign", slug: "foreign-archive", status: "active", createdAt: 1, updatedAt: 1 });
+    return ctx.db.insert("academicSessions", { schoolId, name: "Foreign", startDate: 1, endDate: 2, isActive: false, createdAt: 1, updatedAt: 1 });
+  });
+  await expect(f.viewer.mutation(api.functions.academic.academicSetup.archiveSession, { sessionId: foreign })).rejects.toThrow();
+  expect((await f.t.run(ctx => ctx.db.get(foreign)))?.isArchived).toBeUndefined();
+});
+
 it("rejects over-limit scores atomically and leaves another session alone", async () => {
   const f = await fixture();
   await scan(f);

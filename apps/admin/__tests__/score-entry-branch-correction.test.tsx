@@ -21,6 +21,7 @@ vi.mock("convex/react", () => ({
     state.calls.push({ name, args });
     if (name.endsWith(":getSessionScoringPolicy")) return { policy: { ca1Max: 20, ca2Max: 20, ca3Max: 20, examRawMax: 40, examContributionMax: 40 }, version: 0, source: "legacy" };
     if (name.endsWith(":getSessionScoringJob")) return { phase: "invalid", policy: { ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80, examContributionMax: 50 },
+      before: { ca1Max: 20, ca2Max: 20, ca3Max: 20, examRawMax: 40, examContributionMax: 40 },
       expectedVersion: 0, scanned: 1, invalidCount: 1, updated: 0, invalidExamples: [{ recordId: "record1", studentId: "branch-student",
         termId: "branch-term", classId: "branch-class", subjectId: "branch-subject", field: "ca3", message: "Over limit" }] };
     if (name.endsWith(":getAdminSessions")) return [{ id: "branch-session", name: "Branch Session" }];

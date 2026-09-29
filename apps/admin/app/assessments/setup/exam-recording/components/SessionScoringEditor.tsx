@@ -15,12 +15,13 @@ const fields = [
 type Current = { policy: SessionScoringPolicy; version: number; source: "legacy" | "session" };
 type Phase = "scanning" | "failed_scanning" | "invalid" | "ready" | "regrading" | "failed_regrading" | "complete";
 type Job = {
-  phase: Phase; policy: SessionScoringPolicy; expectedVersion: number;
+  phase: Phase; policy: SessionScoringPolicy; before: SessionScoringPolicy; expectedVersion: number;
   scanned: number; invalidCount: number; updated: number; failureReason?: string;
   invalidExamples: Array<{ studentId: string; termId: string; classId: string; subjectId: string; recordId: string; field: string; message: string }>;
 };
 type Preview = { phase: Phase | "not_started"; count: number; invalidCount: number; invalidCountIsPartial: boolean; canApply: boolean; warning: string };
 const same = (a: SessionScoringPolicy, b: SessionScoringPolicy) => fields.every(([key]) => a[key] === b[key]);
+const sameCurrent = (a: Current, b: Current) => a.version === b.version && a.source === b.source && same(a.policy, b.policy);
 
 export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSessions"> }) {
   const current = useQuery("functions/academic/sessionScoring:getSessionScoringPolicy" as never, { sessionId } as never) as Current | undefined;
@@ -41,8 +42,8 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
   const validation = draft ? validateSessionScoringPolicy(draft) : [];
   if (incompleteInput) validation.push("Finish entering a valid weight before scanning.");
   const dirty = !!draft && !!baseline && (!same(draft, baseline.policy) || (baseline.source === "legacy" && pinLegacy));
-  const stale = !!current && !!baseline && current.version !== baseline.version;
-  const matching = !!job && !!draft && !!baseline && same(job.policy, draft) && job.expectedVersion === baseline.version;
+  const stale = !!current && !!baseline && !sameCurrent(current, baseline);
+  const matching = !!job && !!draft && !!baseline && same(job.policy, draft) && same(job.before, baseline.policy) && job.expectedVersion === baseline.version;
   const preview = useQuery("functions/academic/sessionScoring:previewSessionScoringChange" as never,
     draft && validation.length === 0 && !stale ? { sessionId, policy: draft } as never : "skip" as never) as Preview | undefined;
 
@@ -50,9 +51,10 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
     if (current && !baseline) {
       setBaseline(current);
       setDraft({ ...current.policy });
-    } else if (current && baseline && current.version !== baseline.version && !dirty) {
+    } else if (current && baseline && !sameCurrent(current, baseline) && !dirty) {
       setBaseline(current);
       setDraft({ ...current.policy });
+      setEditingField(null);
       setPinLegacy(false);
       setConfirmed(false);
     }
@@ -60,13 +62,13 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
   // The job is the durable copy of a scanned draft. Hydrate only while the local
   // draft is pristine, so a late query cannot replace an intentional edit.
   useEffect(() => {
-    if (!current || !baseline || !draft || !job || job.phase === "complete" || current.version !== job.expectedVersion || baseline.version !== job.expectedVersion || dirty) return;
+    if (!current || !baseline || !draft || !job || job.phase === "complete" || !sameCurrent(current, baseline) || !same(job.before, current.policy) || current.version !== job.expectedVersion || dirty) return;
     if (!same(draft, job.policy)) setDraft({ ...job.policy });
     else if (baseline.source === "legacy" && !pinLegacy) setPinLegacy(true);
   }, [current, baseline, draft, job, dirty, pinLegacy]);
   useEffect(() => { setConfirmed(false); }, [draft]);
   useDirtyForm({ name: "Session scoring policy", isDirty: dirty,
-    discard: () => { setDraft(current ? { ...current.policy } : null); setBaseline(current ?? null); setPinLegacy(false); setConfirmed(false); } });
+    discard: () => { setDraft(current ? { ...current.policy } : null); setBaseline(current ?? null); setEditingField(null); setPinLegacy(false); setConfirmed(false); } });
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true); setError(null);
@@ -104,7 +106,7 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
       </div>
       <p className="text-sm text-slate-700">CA and exam contributions total {Number.isFinite(total) ? total : "—"}/100. Exam contribution = round(raw ÷ {draft.examRawMax} × {draft.examContributionMax}, 2).</p>
       {validation.length > 0 && <ul role="alert" className="text-sm text-rose-800">{validation.map(message => <li key={message}>{message}</li>)}</ul>}
-      {stale && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p>Session policy changed to version {current.version} while you were editing. Your draft is intact. Review it against the new policy before starting a new scan.</p><button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Rebase draft on version {current.version}</button> <button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setDraft({ ...current.policy }); setPinLegacy(false); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Discard draft and load current policy</button></div>}
+      {stale && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p>Session policy or source changed (current version {current.version}) while you were editing. Your draft is intact. Review it against the new policy before starting a new scan.</p><button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Rebase draft on version {current.version}</button> <button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setDraft({ ...current.policy }); setEditingField(null); setPinLegacy(false); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Discard draft and load current policy</button></div>}
       {error && <p role="alert" className="text-sm text-rose-800">{error}</p>}
       {job && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
         <p>Job: {job.phase.replaceAll("_", " ")}. {job.phase === "scanning" || job.phase === "failed_scanning" ? "Partial counts: " : ""}{job.scanned} records scanned, {job.invalidCount} invalid records, {job.updated} regraded.</p>
