@@ -1964,6 +1964,7 @@ export default defineSchema({
   })
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
     .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
+    .index("by_class_and_session_and_term", { fields: ["classId", "sessionId", "termId"], staged: true })
     .index("by_school_logo_storage", ["schoolLogoStorageId"])
     .index("by_student_photo_storage", ["studentPhotoStorageId"])
     .index("by_school", ["schoolId"])
