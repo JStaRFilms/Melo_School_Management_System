@@ -17,6 +17,22 @@ it("does not clear a saved score during decimal typing", () => {
   expect(onChange).toHaveBeenCalledTimes(1);
 });
 
+it("emits a pasted previous score after adopting an upstream update while focused", () => {
+  const onChange = vi.fn();
+  const props = { field: "examRawScore" as const, studentName: "Ada", max: 80, onChange };
+  const { rerender } = render(<ScoreInput {...props} value={12} />);
+  const input = screen.getAllByRole("textbox", { name: "Ada exam score out of 80" })[0] as HTMLInputElement;
+  fireEvent.focus(input);
+  rerender(<ScoreInput {...props} value={20} />);
+  expect(input.value).toBe("20");
+  expect(screen.queryByRole("alert")).toBeNull();
+  fireEvent.change(input, { target: { value: "12" } });
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange).toHaveBeenCalledWith(12);
+  fireEvent.blur(input);
+  expect(onChange).toHaveBeenCalledTimes(1);
+});
+
 it("holds a dirty score when another teacher updates it while focused", () => {
   const onChange = vi.fn();
   const props = { field: "examRawScore" as const, studentName: "Ada", max: 80, onChange };

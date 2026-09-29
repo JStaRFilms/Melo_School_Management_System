@@ -24,6 +24,7 @@ export function ScoreNumberInput({ value, onScoreChange, onBlur, ...props }: Pro
       setConflict(true);
     } else if (editing && !dirty && !conflict) {
       setRaw(value === null ? "" : String(value));
+      lastEmitted.current = value;
     }
   }, [value, editing, dirty, conflict]);
 
