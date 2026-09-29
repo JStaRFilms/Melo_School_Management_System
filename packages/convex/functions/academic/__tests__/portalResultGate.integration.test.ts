@@ -212,13 +212,56 @@ describe("family graded release gate", () => {
       const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: "late-student", name: "Late", email: "late@gate.test", role: "student", createdAt: 2, updatedAt: 2 });
       return ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId, userId, familyId: existing!.familyId, admissionNumber: "LATE", createdAt: 2, updatedAt: 2 });
     });
-    expect(await f.parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: late, termId: f.ids.oldTermId })).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+    const lateResult = await f.parent.query(api.functions.portal.getWorkspaceData, { now: Date.now(), studentId: late, termId: f.ids.oldTermId });
+    expect(lateResult).toMatchObject({ selectedResultState: "no_eligible_record", selectedReportCard: null, history: [] });
+    expect(JSON.stringify(lateResult)).not.toMatch(/Reviewed exclusion|gradeLetter|averageScore/);
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, { studentId: late, termId: f.ids.recentTermId }))
+      .toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+    await f.t.run(ctx => ctx.db.patch(late, { createdAt: 0 }));
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, { studentId: late, termId: f.ids.oldTermId }))
+      .toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
     await f.t.run(async ctx => {
       const rows = await ctx.db.query("classResultPublicationStudents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect();
       await ctx.db.delete(rows[0]._id);
       await ctx.db.insert("classResultExclusions", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, reason: "Reviewed exclusion", approvedBy: f.ids.adminId, approvedAt: 2 });
     });
     expect(await f.workspace()).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+  });
+
+  it("distinguishes a frozen exclusion from an unreleased tuple without exposing its reason", async () => {
+    const f = await fixture();
+    const excluded = await f.t.run(async ctx => {
+      const original = await ctx.db.get(f.ids.studentId);
+      const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: "excluded-student", name: "Excluded", email: "excluded@gate.test", role: "student", createdAt: 1, updatedAt: 1 });
+      const studentId = await ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId, userId, familyId: original!.familyId, admissionNumber: "EX-1", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("classResultExclusions", { schoolId: f.ids.schoolId, studentId, classId: f.ids.classId,
+        sessionId: f.ids.sessionId, termId: f.ids.oldTermId, reason: "Private reviewed reason", approvedBy: f.ids.adminId, approvedAt: 1 });
+      return studentId;
+    });
+    const args = { studentId: excluded, sessionId: f.ids.sessionId, termId: f.ids.oldTermId };
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, args))
+      .toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+    await f.certify();
+    await f.release();
+    await f.t.run(async ctx => {
+      const publication = await ctx.db.query("classResultPublications")
+        .withIndex("by_school_and_session_and_term_and_class", q => q.eq("schoolId", f.ids.schoolId)
+          .eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId).eq("classId", f.ids.classId)).unique();
+      await ctx.db.patch(publication!._id, { excludedCount: 1 });
+    });
+    const result = await f.parent.query(api.functions.portal.getWorkspaceData, args);
+    expect(result).toMatchObject({ selectedResultState: "no_eligible_record", selectedReportCard: null, history: [] });
+    expect(JSON.stringify(result)).not.toMatch(/Private reviewed reason|gradeLetter|averageScore/);
+    await f.t.run(ctx => ctx.db.patch(excluded, { classId: f.ids.nextClassId }));
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, args))
+      .toMatchObject({ selectedResultState: "no_eligible_record", selectedReportCard: null, history: [] });
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, { ...args, termId: f.ids.recentTermId }))
+      .toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
+    await f.t.run(ctx => ctx.db.insert("classResultExclusions", { schoolId: f.ids.schoolId, studentId: excluded,
+      classId: f.ids.nextClassId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId,
+      reason: "Conflicting historical class", approvedBy: f.ids.adminId, approvedAt: 1 }));
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, args))
+      .toMatchObject({ selectedResultState: "withheld", selectedReportCard: null, history: [] });
   });
 
   it("finds the student's release among more than 32 other class releases", async () => {
@@ -236,6 +279,13 @@ describe("family graded release gate", () => {
     const result = await f.workspace();
     expect(result.selectedResultState).toBe("released");
     expect(result.history.map(row => row.termId)).toContain(f.ids.oldTermId);
+    const late = await f.t.run(async ctx => {
+      const original = await ctx.db.get(f.ids.studentId);
+      const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: "many-classes-late", name: "Late", email: "many-late@gate.test", role: "student", createdAt: 2, updatedAt: 2 });
+      return ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId, userId, familyId: original!.familyId, admissionNumber: "MANY-LATE", createdAt: 2, updatedAt: 2 });
+    });
+    expect(await f.parent.query(api.functions.portal.getWorkspaceData, { studentId: late, termId: f.ids.oldTermId }))
+      .toMatchObject({ selectedResultState: "no_eligible_record", selectedReportCard: null, history: [] });
   });
 
   it("keeps the selected old card when released history exceeds its own budget", async () => {

@@ -301,6 +301,49 @@ async function releasedPortalReport(
     student: { ...frozen.report.student, photoUrl: await safeImage(frozen.studentPhotoStorageId) } };
 }
 
+// A published class does not by itself prove a student's historical class.
+// Return only a score-free availability state after checking exact, indexed
+// frozen evidence. Missing or conflicting evidence keeps the privacy default.
+async function hasReleasedTupleWithoutEligibleRecord(
+  ctx: QueryCtx,
+  schoolId: Id<"schools">,
+  student: Doc<"students">,
+  session: Doc<"academicSessions">,
+  term: Doc<"academicTerms">,
+) {
+  if (student.schoolId !== schoolId || student.isArchived ||
+      session.schoolId !== schoolId || term.schoolId !== schoolId || term.sessionId !== session._id) return false;
+  const [included, excluded] = await Promise.all([
+    ctx.db.query("classResultPublicationStudents")
+      .withIndex("by_school_and_student_and_session_and_term", q => q.eq("schoolId", schoolId)
+        .eq("studentId", student._id).eq("sessionId", session._id).eq("termId", term._id)).take(2),
+    ctx.db.query("classResultExclusions")
+      .withIndex("by_school_and_student_and_session_and_term", q => q.eq("schoolId", schoolId)
+        .eq("studentId", student._id).eq("sessionId", session._id).eq("termId", term._id)).take(2),
+  ]);
+  if (included.length || excluded.length > 1) return false;
+  const exclusion = excluded[0];
+  // Only an exclusion frozen before release proves historical membership.
+  // Mutable current class is evidence solely for a late active-term entrant.
+  if (!exclusion && ((student.enrollmentStatus && student.enrollmentStatus !== "active") ||
+      !session.isActive || !term.isActive)) return false;
+  const classId = exclusion?.classId ?? student.classId;
+  const [klass, releases, issued] = await Promise.all([
+    ctx.db.get(classId),
+    ctx.db.query("classResultPublications")
+      .withIndex("by_school_and_session_and_term_and_class", q => q.eq("schoolId", schoolId)
+        .eq("sessionId", session._id).eq("termId", term._id).eq("classId", classId)).take(2),
+    ctx.db.query("issuedReportCards")
+      .withIndex("by_student_session_term", q => q.eq("studentId", student._id)
+        .eq("sessionId", session._id).eq("termId", term._id)).take(2),
+  ]);
+  if (!klass || klass.schoolId !== schoolId || releases.length !== 1 ||
+      issued.length > 1 || issued.some(row => row.schoolId !== schoolId || row.classId !== classId)) return false;
+  const release = releases[0];
+  if (exclusion) return release.excludedCount > 0 && exclusion.approvedAt <= release.releasedAt;
+  return !klass.isArchived && student.createdAt > release.releasedAt;
+}
+
 export const getWorkspaceData = query({
   args: {
     studentId: v.optional(v.union(v.id("students"), v.null())),
@@ -439,9 +482,12 @@ export const getWorkspaceData = query({
     const selectedReportCard = selectedStudent && selectedSessionId && selectedTermId
       ? await releasedPortalReport(ctx, schoolId, selectedStudent._id, selectedSessionId, selectedTermId)
       : null;
+    const noEligibleRecord = !selectedReportCard && selectedStudent && selectedSession && selectedTerm
+      ? await hasReleasedTupleWithoutEligibleRecord(ctx, schoolId, selectedStudent, selectedSession, selectedTerm)
+      : false;
     const selectedResultState = selectedReportCard ? "released" as const
-      : selectedStudent && selectedSessionId && selectedTermId ? "withheld" as const
-      : "no_eligible_record" as const;
+      : noEligibleRecord || !selectedStudent || !selectedSessionId || !selectedTermId
+        ? "no_eligible_record" as const : "withheld" as const;
 
     const historyLimit = Number.isFinite(args.historyLimit) ? Math.max(1, Math.min(Math.floor(args.historyLimit!), 12)) : 4;
     // Filter for released rows first; a run of withheld recent terms must not

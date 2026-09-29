@@ -36,6 +36,8 @@ describe("report card launcher branch options", () => {
     const schoolId = "branch-b" as Id<"schools">;
     const view = render(<ReportCardLauncher key="branch-a" schoolId={"branch-a" as Id<"schools">} />);
     expect(screen.getByText("Branch A Student")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Term Defaults & Remarks/ }).getAttribute("href"))
+      .toContain("schoolId=branch-a");
     mocks.query.mockClear();
     view.rerender(<ReportCardLauncher key={schoolId} schoolId={schoolId} />);
     expect(screen.queryByText("Branch A Student")).not.toBeInTheDocument();
@@ -52,6 +54,8 @@ describe("report card launcher branch options", () => {
       schoolId, sessionId: "session-b", termId: "term-b", classId: "class-b",
     }));
     expect(screen.getByText("Branch B Student")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Term Defaults & Remarks/ }).getAttribute("href"))
+      .toContain("schoolId=branch-b");
     expect(screen.queryByText("Session A")).not.toBeInTheDocument();
   });
 });

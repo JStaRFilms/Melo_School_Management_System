@@ -10,26 +10,54 @@ AppWindow,
 BookOpen,
 CalendarDays,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/AuthProvider";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { Id } from "../../../../../packages/convex/_generated/dataModel";
 import { ExtrasSelectionBar } from "./components/ExtrasSelectionBar";
 import { ExtrasWorkspace } from "./components/ExtrasWorkspace";
 import type { ExtrasEntry,ExtrasSelection,SelectorOption } from "./components/types";
 
 export default function AdminReportCardExtrasPage() {
-  const searchParams = useSearchParams();
   const { workspaceAccess } = useAuth();
-  const canEdit =
-    workspaceAccess?.state === "ready" &&
-    workspaceAccess.effectiveCapabilities.includes("academic.assessments.enter");
+  const schoolId = workspaceAccess?.state === "ready"
+    ? workspaceAccess.branch.schoolId as Id<"schools"> : null;
+  const [branch, setBranch] = useState<{ schoolId: Id<"schools"> | null; switched: boolean }>({ schoolId: null, switched: false });
+  if (schoolId && branch.schoolId !== schoolId)
+    setBranch({ schoolId, switched: branch.schoolId !== null || branch.switched });
+  return schoolId
+    ? <AdminReportCardExtrasContent key={schoolId} schoolId={schoolId}
+        resetTuple={branch.switched} canEdit={workspaceAccess?.state === "ready" && workspaceAccess.effectiveCapabilities.includes("academic.assessments.enter")} />
+    : <div role="status" className="p-6 text-slate-700">Loading report extras workspace...</div>;
+}
+
+function AdminReportCardExtrasContent({ schoolId, resetTuple, canEdit }: {
+  schoolId: Id<"schools">; resetTuple: boolean; canEdit: boolean;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
+  const [clearingTuple, setClearingTuple] = useState(resetTuple);
+  const linkedSchoolId = searchParams.get("schoolId");
+  const wrongBranch = linkedSchoolId !== null && linkedSchoolId !== schoolId;
+  const canQuery = !clearingTuple && !wrongBranch;
+  useEffect(() => {
+    if (!clearingTuple) return;
+    const clean = new URLSearchParams(searchParamsString);
+    for (const key of ["schoolId", "sessionId", "termId", "classId", "studentId", "returnTo"])
+      clean.delete(key);
+    if (clean.toString() !== searchParamsString)
+      router.replace(`/assessments/report-card-extras${clean.size ? `?${clean}` : ""}`);
+    else setClearingTuple(false);
+  }, [clearingTuple, router, searchParamsString]);
   const selection = useMemo<ExtrasSelection>(() => ({ sessionId: searchParams.get("sessionId"), termId: searchParams.get("termId"), classId: searchParams.get("classId"), studentId: searchParams.get("studentId") }), [searchParams]);
 
   const rawSessions = useQuery(
-    "functions/academic/adminSelectors:getAdminSessions" as never
+    "functions/academic/adminSelectors:getAdminSessions" as never,
+    canQuery ? ({ schoolId } as never) : ("skip" as never)
   ) as SelectorOption[] | undefined;
-  const rawTerms = useQuery("functions/academic/adminSelectors:getTermsBySession" as never, selection.sessionId ? ({ sessionId: selection.sessionId } as never) : ("skip" as never)) as SelectorOption[] | undefined;
-  const rawClasses = useQuery("functions/academic/adminSelectors:getAllClasses" as never) as SelectorOption[] | undefined;
+  const rawTerms = useQuery("functions/academic/adminSelectors:getTermsBySession" as never, canQuery && selection.sessionId ? ({ schoolId, sessionId: selection.sessionId } as never) : ("skip" as never)) as SelectorOption[] | undefined;
+  const rawClasses = useQuery("functions/academic/adminSelectors:getAllClasses" as never, canQuery ? ({ schoolId } as never) : ("skip" as never)) as SelectorOption[] | undefined;
   const sessions = rawSessions ?? [];
   const terms = rawTerms ?? [];
   const classes = rawClasses ?? [];
@@ -37,14 +65,14 @@ export default function AdminReportCardExtrasPage() {
   const classIsValid = !selection.classId || classes.some((option) => option.id === selection.classId);
   const rawStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
-    selection.sessionId && selection.termId && selection.classId && classIsValid
-      ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId } as never)
+    canQuery && selection.sessionId && selection.termId && selection.classId && classIsValid
+      ? ({ schoolId, sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId } as never)
       : ("skip" as never)
   ) as Array<{ studentId: string; studentName: string; admissionNumber: string; passportUrl?: string | null }> | undefined;
   const students = rawStudents?.map((student) => ({ id: student.studentId, name: `${student.studentName} (${student.admissionNumber})` })) ?? [];
   const studentIsValid = !selection.studentId || students.some((option) => option.id === selection.studentId);
 
-  const entry = useQuery("functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never, selection.sessionId && selection.termId && selection.classId && selection.studentId && classIsValid && studentIsValid ? ({ sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, studentId: selection.studentId } as never) : ("skip" as never)) as ExtrasEntry | undefined;
+  const entry = useQuery("functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never, canQuery && selection.sessionId && selection.termId && selection.classId && selection.studentId && classIsValid && studentIsValid ? ({ schoolId, sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, studentId: selection.studentId } as never) : ("skip" as never)) as ExtrasEntry | undefined;
   const visibleEntry = useMemo<ExtrasEntry | undefined>(
     () =>
       entry && !canEdit
@@ -64,7 +92,7 @@ export default function AdminReportCardExtrasPage() {
   );
   const saveEntry = useMutation("functions/academic/reportCardExtras:saveStudentReportCardExtrasEntry" as never);
 
-  const currentExtrasUrl = `/assessments/report-card-extras?sessionId=${selection.sessionId}&termId=${selection.termId}&classId=${selection.classId}&studentId=${selection.studentId}`;
+  const currentExtrasUrl = `/assessments/report-card-extras?${new URLSearchParams({ schoolId, sessionId: selection.sessionId ?? "", termId: selection.termId ?? "", classId: selection.classId ?? "", studentId: selection.studentId ?? "" })}`;
   const baseReportCardHref = buildReportCardHref({
     studentId: selection.studentId,
     sessionId: selection.sessionId,
@@ -72,13 +100,16 @@ export default function AdminReportCardExtrasPage() {
     classId: selection.classId,
   });
   const reportCardHref = baseReportCardHref
-    ? `${baseReportCardHref}&returnTo=${encodeURIComponent(currentExtrasUrl)}`
+    ? `${baseReportCardHref}&schoolId=${encodeURIComponent(schoolId)}&returnTo=${encodeURIComponent(currentExtrasUrl)}`
     : undefined;
   const hasSelection = Boolean(selection.sessionId && selection.termId && selection.classId && selection.studentId);
 
   const selectedSessionName = sessions.find(s => s.id === selection.sessionId)?.name;
   const selectedTermName = terms.find(t => t.id === selection.termId)?.name;
   const selectedClassName = classes.find(c => c.id === selection.classId)?.name;
+
+  if (clearingTuple) return <div role="status" className="p-6 text-slate-700">Loading report extras workspace...</div>;
+  if (wrongBranch) return <div role="status" className="p-6 text-slate-700">These report extras belong to a different branch. Select that branch before opening them.</div>;
 
   return (
     <div className="min-h-full lg:h-full lg:min-h-0 flex flex-col bg-slate-50/50">
@@ -88,6 +119,7 @@ export default function AdminReportCardExtrasPage() {
           <div className="p-4 py-6 md:p-8 space-y-6">
             <ExtrasSelectionBar
               selection={selection}
+              schoolId={schoolId}
               sessions={sessions}
               terms={terms}
               classes={classes}
@@ -144,7 +176,7 @@ export default function AdminReportCardExtrasPage() {
               hasStudents={students.length > 0}
               reportCardHref={reportCardHref}
               onSave={(bundleValues) =>
-                saveEntry({ ...(selection as Required<ExtrasSelection>), bundleValues } as never)
+                saveEntry({ ...(selection as Required<ExtrasSelection>), schoolId, bundleValues } as never)
               }
             />
           </div>

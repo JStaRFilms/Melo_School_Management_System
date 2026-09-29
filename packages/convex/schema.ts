@@ -1984,6 +1984,7 @@ export default defineSchema({
     approvedBy: v.id("users"),
     approvedAt: v.number(),
   }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+    .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
     .index("by_school", ["schoolId"]),
 
   classResultPublicationStudents: defineTable({

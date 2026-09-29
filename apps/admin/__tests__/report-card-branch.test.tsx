@@ -20,9 +20,9 @@ vi.mock("@/AuthProvider", () => ({
 }));
 vi.mock("convex/react", () => ({ useQuery: mocks.query, useMutation: () => mocks.certify }));
 vi.mock("@school/shared", () => ({
-  ReportCardBatchNavigator: () => null, ReportCardBatchPrintStackV2: () => null,
+  ReportCardBatchNavigator: ({ extrasHref }: { extrasHref?: string }) => <span data-testid="extras-href">{extrasHref}</span>, ReportCardBatchPrintStackV2: () => null,
   ReportCardPreview: () => null, ReportCardToolbar: () => null,
-  ReportCardPrintBlockedNotice: () => null, buildReportCardExtrasHref: () => "",
+  ReportCardPrintBlockedNotice: () => null, buildReportCardExtrasHref: () => "/assessments/report-card-extras?studentId=student-b",
 }));
 vi.mock("../app/assessments/report-cards/components/ReportCardLauncher", () => ({
   ReportCardLauncher: () => <p>Launcher</p>,
@@ -58,6 +58,11 @@ describe("report card branch handoff", () => {
       expect.objectContaining({ schoolId: selectedSchool, classId: "class-b" }));
     expect(mocks.query).toHaveBeenCalledWith("functions/academic/reportCards:getClassReportCards",
       expect.objectContaining({ schoolId: selectedSchool, classId: "class-b" }));
+  });
+
+  it("includes the branch in the report-card extras link", () => {
+    render(<ReportCardPage />);
+    expect(screen.getByTestId("extras-href")).toHaveTextContent("/assessments/report-card-extras?studentId=student-b&schoolId=branch-b");
   });
 
   it("does not request or display a tuple from a link to another branch", () => {

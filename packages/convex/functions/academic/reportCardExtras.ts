@@ -539,6 +539,7 @@ export const listSchoolReportCardExtraBundleAssignments = query({
 
 export const getStudentReportCardExtrasEntry = query({
   args: {
+    schoolId: v.optional(v.id("schools")),
     studentId: v.id("students"),
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
@@ -555,7 +556,7 @@ export const getStudentReportCardExtrasEntry = query({
     bundles: v.array(reportCardExtraEditorBundleValidator),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.preview" });
     const access = await getExtrasWorkspaceAccess(ctx, {
       userId,
       schoolId,
@@ -616,6 +617,7 @@ export const getStudentReportCardExtrasEntry = query({
 
 export const saveStudentReportCardExtrasEntry = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     studentId: v.id("students"),
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
@@ -625,6 +627,7 @@ export const saveStudentReportCardExtrasEntry = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, {
+      schoolId: args.schoolId,
       capability: "academic.assessments.enter",
     });
     const access = await getExtrasWorkspaceAccess(ctx, {

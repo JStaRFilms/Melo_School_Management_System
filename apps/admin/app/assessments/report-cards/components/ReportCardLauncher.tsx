@@ -154,9 +154,7 @@ export function ReportCardLauncher({ schoolId }: { schoolId: Id<"schools"> }) {
               Class result release
             </Link>
             <Link
-              href={`/assessments/report-card-extras${
-                sessionId ? `?sessionId=${sessionId}&termId=${termId}&classId=${classId}` : ""
-              }`}
+              href={`/assessments/report-card-extras?${new URLSearchParams({ schoolId, ...(sessionId ? { sessionId, termId, classId } : {}) })}`}
               className="h-10 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95"
             >
               <SlidersHorizontal size={14} className="text-slate-400" />

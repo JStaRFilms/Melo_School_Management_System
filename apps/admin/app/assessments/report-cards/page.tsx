@@ -268,6 +268,8 @@ function AdminReportCardPageContent({ schoolId, resetTuple }: { schoolId: Id<"sc
     );
   }
 
+  const extrasHref = buildReportCardExtrasHref({ studentId, sessionId, termId, classId: resolvedClassId });
+  const branchExtrasHref = extrasHref ? `${extrasHref}&schoolId=${encodeURIComponent(schoolId)}` : undefined;
   const baseReturnTo = searchParams.get("returnTo");
   const fallbackBackHref = `/assessments/report-cards?sessionId=${sessionId}&termId=${termId}&classId=${resolvedClassId ?? ""}`;
   const backHref =
@@ -338,7 +340,7 @@ function AdminReportCardPageContent({ schoolId, resetTuple }: { schoolId: Id<"sc
                 termName={reportCard.termName}
                 isLoading={Boolean(resolvedClassId) && batchStudents === undefined}
                 isPrintingFullClass={isPrintClassMode}
-                extrasHref={buildReportCardExtrasHref({ studentId, sessionId, termId, classId: resolvedClassId })}
+                extrasHref={branchExtrasHref}
                 onSelectStudent={handleSelectStudent}
                 onPrintFullClass={handlePrintFullClass}
               />
