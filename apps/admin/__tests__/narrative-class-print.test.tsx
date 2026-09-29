@@ -27,6 +27,12 @@ it("prints only issued snapshots with skipped count and page-safe long comments"
   const css = container.querySelector("style")!.textContent!;
   expect(css).toContain("size: A4");
   expect(css).toContain(".rc-no-print { display: none !important; }");
+  expect(css).toContain(".workspace-print-root:has(.narrative-batch) > aside { display: none !important; }");
+  for (const part of ["workspace-print-root", "workspace-print-pane", "workspace-print-scroll", "workspace-print-content"]) {
+    expect(css).toContain(part);
+  }
+  expect(css).toContain("overflow: visible !important;");
+  expect(css).toContain("height: auto !important;");
   expect(css).toContain(".batch-sheet * { color: #111827 !important; background: white !important; }");
   expect(css).toContain(".batch-sheet h2 { border-color: #111827 !important; }");
   expect(css).toContain("section { break-inside: auto; }");

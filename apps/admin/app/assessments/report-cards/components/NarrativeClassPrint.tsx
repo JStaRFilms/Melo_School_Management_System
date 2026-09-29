@@ -24,6 +24,15 @@ export function NarrativeClassPrint({ classId, sessionId, termId, onExit }: { cl
       @page { size: A4; margin: 14mm; }
       body { background: white !important; }
       .rc-no-print { display: none !important; }
+      .workspace-print-root:has(.narrative-batch) > aside { display: none !important; }
+      .workspace-print-root:has(.narrative-batch),
+      .workspace-print-root:has(.narrative-batch) > .workspace-print-pane,
+      .workspace-print-root:has(.narrative-batch) .workspace-print-scroll,
+      .workspace-print-root:has(.narrative-batch) .workspace-print-content {
+        display: block !important; position: static !important; height: auto !important;
+        max-height: none !important; min-height: 0 !important; overflow: visible !important;
+        width: auto !important; max-width: none !important; margin: 0 !important; padding: 0 !important;
+      }
       .narrative-batch .batch-controls { display: none !important; }
       .narrative-batch .batch-sheet { break-after: page; page-break-after: always; color: #111827 !important; background: white !important; }
       .narrative-batch .batch-sheet:last-child { break-after: auto; page-break-after: auto; }

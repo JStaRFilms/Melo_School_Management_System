@@ -29,6 +29,12 @@ describe("staff narrative print", () => {
     const css = view.container.querySelector("style")?.textContent;
     expect(css).toContain("size: A4");
     expect(css).toContain(".rc-no-print { display: none !important; }");
+    expect(css).toContain(".workspace-print-root:has(.narrative-review) > aside { display: none !important; }");
+    for (const part of ["workspace-print-root", "workspace-print-pane", "workspace-print-scroll", "workspace-print-content"]) {
+      expect(css).toContain(part);
+    }
+    expect(css).toContain("overflow: visible !important;");
+    expect(css).toContain("height: auto !important;");
     expect(css).toContain("main * { color: #111827 !important; background: white !important; }");
     expect(css).toContain("border-color: #111827 !important");
     state.issued = true;
