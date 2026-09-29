@@ -11,6 +11,7 @@ import {
   resolveActiveMembership,
 } from "./auth";
 import { getContextCapabilities } from "./rbac";
+import { getActiveSession } from "./sessionScope";
 import {
   formatClassDisplayName,
   normalizeClassGradeName,
@@ -28,6 +29,7 @@ import {
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 import { finishFormDraft, recordFormDraftProvisionedAuth, releaseFormDraftReservation, reserveFormDraft } from "./drafts";
 import { resolveDomainSetting } from "./groupSettings";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -1098,9 +1100,7 @@ export const updateSession = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     const nextStartDate = args.startDate ?? session.startDate;
     const nextEndDate = args.endDate ?? session.endDate;
@@ -1266,9 +1266,7 @@ export const archiveSession = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId);
 
     if (session.isArchived) {
       throw new ConvexError("Session is already archived");
@@ -1313,9 +1311,7 @@ export const restoreSession = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId);
 
     if (!session.isArchived) {
       throw new ConvexError("Session is not archived");
@@ -1370,9 +1366,7 @@ export const createTerm = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId);
 
     if (args.endDate <= args.startDate) {
       throw new ConvexError("End date must be after start date");
@@ -1436,9 +1430,7 @@ export const updateTermCalculationMode = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
-    if (!term || term.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(term, schoolId);
 
     await ctx.db.patch(args.termId, {
       reportCardCalculationMode: args.resultCalculationMode,
@@ -1666,9 +1658,7 @@ export const listTermsBySession = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId);
 
     const terms = await ctx.db
       .query("academicTerms")
@@ -1776,9 +1766,7 @@ export const updateSubject = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subject = await ctx.db.get(args.subjectId);
-    if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(subject, schoolId, { excludeArchived: true });
 
     // Check for duplicate code if changing
     if (args.code && args.code !== subject.code) {
@@ -1819,9 +1807,7 @@ export const archiveSubject = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subject = await ctx.db.get(args.subjectId);
-    if (!subject || subject.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(subject, schoolId);
 
     if (subject.isArchived) {
       throw new ConvexError("Subject is already archived");
@@ -1851,9 +1837,7 @@ export const restoreSubject = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const subject = await ctx.db.get(args.subjectId);
-    if (!subject || subject.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(subject, schoolId);
 
     if (!subject.isArchived) {
       throw new ConvexError("Subject is not archived");
@@ -1941,12 +1925,7 @@ export const createClass = mutation({
     // Resolve target session
     let targetSessionId = args.sessionId;
     if (!targetSessionId) {
-      const activeSession = await ctx.db
-        .query("academicSessions")
-        .withIndex("by_school_active", (q) =>
-          q.eq("schoolId", schoolId).eq("isActive", true)
-        )
-        .first();
+      const activeSession = await getActiveSession(ctx, schoolId);
       targetSessionId = activeSession?._id;
     }
 
@@ -2001,12 +1980,7 @@ export const listClasses = query({
       "enrollment.intakes.manage"
     );
 
-    const activeSession = await ctx.db
-      .query("academicSessions")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .first();
+    const activeSession = await getActiveSession(ctx, schoolId);
 
     const targetSessionId = args.sessionId ?? activeSession?._id;
 
@@ -2164,9 +2138,7 @@ export const updateClass = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     if (args.formTeacherId) {
       const teacher = await ctx.db.get(args.formTeacherId);
@@ -2198,12 +2170,7 @@ export const updateClass = mutation({
     });
 
     // Resolve target session
-    const activeSession = await ctx.db
-      .query("academicSessions")
-      .withIndex("by_school_active", (q) =>
-        q.eq("schoolId", schoolId).eq("isActive", true)
-      )
-      .first();
+    const activeSession = await getActiveSession(ctx, schoolId);
 
     const targetSessionId = args.sessionId ?? activeSession?._id;
     const isTargetSessionActive =
@@ -2296,9 +2263,7 @@ export const archiveClass = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId);
 
     if (classDoc.isArchived) {
       throw new ConvexError("Class is already archived");
@@ -2333,9 +2298,7 @@ export const restoreClass = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId);
 
     if (!classDoc.isArchived) {
       throw new ConvexError("Class is not archived");
@@ -2364,9 +2327,7 @@ export const setClassSubjects = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const nextSubjectIds = new Set(args.subjectIds.map((subjectId) => String(subjectId)));
 
@@ -2506,9 +2467,7 @@ export const getClassSubjects = query({
     );
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const offerings = await ctx.db
       .query("classSubjects")
@@ -2556,14 +2515,10 @@ export const assignTeacherToClassSubject = mutation({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const subject = await ctx.db.get(args.subjectId);
-    if (!subject || subject.schoolId !== schoolId || subject.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(subject, schoolId, { excludeArchived: true });
 
     const teacher = await ctx.db.get(args.teacherId);
     if (

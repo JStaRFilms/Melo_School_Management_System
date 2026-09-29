@@ -12,7 +12,7 @@ const modules = Object.fromEntries(
   ]),
 );
 
-it("resumes demo storage cleanup after the seed run row was already removed", async () => {
+it("refuses legacy reset without touching its seed run or logo", async () => {
   const t = convexTest(schema, modules);
   const { schoolId, logoStorageId } = await t.run(async (ctx) => {
     const now = Date.now();
@@ -44,28 +44,12 @@ it("resumes demo storage cleanup after the seed run row was already removed", as
     return { schoolId, logoStorageId };
   });
 
-  const interrupted = await t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {
+  await expect(t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {
     seedProfile: "demo",
-  });
-  expect(interrupted).toMatchObject({ complete: false, deletedCount: 1, storageIds: [logoStorageId] });
+  })).rejects.toThrow("disabled");
   expect(await t.run((ctx) => ctx.db.get(schoolId))).not.toBeNull();
   expect(await t.run(async (ctx) => Boolean(await ctx.storage.get(logoStorageId)))).toBe(true);
-
-  const resumed = await t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {
-    seedProfile: "demo",
-  });
-  expect(resumed).toMatchObject({ complete: true, deletedCount: 1 });
-  expect(await t.query(internal.functions.academic.seed.getPendingDemoStorageCleanupInternal, {
-    seedProfile: "demo",
-  })).toEqual([logoStorageId]);
-
-  await t.run((ctx) => ctx.storage.delete(logoStorageId));
-  await t.mutation(internal.functions.academic.seed.acknowledgeDemoStorageCleanupInternal, {
-    storageIds: [logoStorageId],
-  });
-  expect(await t.query(internal.functions.academic.seed.getPendingDemoStorageCleanupInternal, {
-    seedProfile: "demo",
-  })).toEqual([]);
+  expect(await t.run((ctx) => ctx.db.query("demoSeedRuns").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).first())).not.toBeNull();
 });
 
 it("captures issued-report snapshot storage fields for reset cleanup", async () => {
@@ -81,7 +65,7 @@ it("captures issued-report snapshot storage fields for reset cleanup", async () 
   ]);
 });
 
-it("deletes commercial snapshot children before completing a demo reset", async () => {
+it("blocks legacy reset of commercial snapshot children", async () => {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const now = Date.now();
@@ -177,18 +161,12 @@ it("deletes commercial snapshot children before completing a demo reset", async 
     return { schoolId, rateVersionId, contractId, invoiceId, invoiceStudentId };
   });
 
-  let complete = false;
-  for (let batch = 0; batch < 20 && !complete; batch += 1) {
-    const result = await t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {
-      seedProfile: "demo",
-    });
-    complete = result.complete;
-  }
-
-  expect(complete).toBe(true);
-  expect(await t.run((ctx) => ctx.db.get(ids.schoolId))).toBeNull();
-  expect(await t.run((ctx) => ctx.db.get(ids.contractId))).toBeNull();
-  expect(await t.run((ctx) => ctx.db.get(ids.invoiceId))).toBeNull();
-  expect(await t.run((ctx) => ctx.db.get(ids.invoiceStudentId))).toBeNull();
+  await expect(t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {
+    seedProfile: "demo",
+  })).rejects.toThrow("disabled");
+  expect(await t.run((ctx) => ctx.db.get(ids.schoolId))).not.toBeNull();
+  expect(await t.run((ctx) => ctx.db.get(ids.contractId))).not.toBeNull();
+  expect(await t.run((ctx) => ctx.db.get(ids.invoiceId))).not.toBeNull();
+  expect(await t.run((ctx) => ctx.db.get(ids.invoiceStudentId))).not.toBeNull();
   expect(await t.run((ctx) => ctx.db.get(ids.rateVersionId))).not.toBeNull();
 });

@@ -16,9 +16,11 @@ import {
 } from "../../_generated/server";
 import {
   getAuthenticatedSchoolMembership,
+} from "./auth";
+import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
-} from "./auth";
+} from "./teacherAccess";
 import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import {
   assertActiveKnowledgeSubjectTopicScope,
@@ -1438,8 +1440,6 @@ export const registerKnowledgeMaterialLink = mutation({
     };
   },
 });
-
-
 
 export const requestKnowledgeMaterialProviderOcr = mutation({
   args: { materialId: v.id("knowledgeMaterials") },

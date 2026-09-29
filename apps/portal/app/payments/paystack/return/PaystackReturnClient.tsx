@@ -1,20 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAction } from "convex/react";
 import { CheckCircle2, LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
-
-type PublicPaymentVerificationResult = {
-  reference: string;
-  verificationStatus: "verified" | "rejected" | "ignored";
-  invoiceNumber: string | null;
-  paymentRecorded: boolean;
-  message: string;
-};
-
-type VerificationState = "idle" | "verifying" | "verified" | "failed";
+import { type PaystackReturnSummary } from "@school/shared/paystackReturn";
+import { usePaystackReturnVerification } from "@school/shared/paystackReturn/client";
 
 export function PaystackReturnClient({
   reference,
@@ -26,58 +16,13 @@ export function PaystackReturnClient({
   const verifyPayment = useAction(
     "functions/billing:verifyPortalOnlinePaymentByReference" as never
   );
-  const [state, setState] = useState<VerificationState>("idle");
-  const [result, setResult] = useState<PublicPaymentVerificationResult | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const autoVerifiedReferenceRef = useRef<string | null>(null);
-
-  const runVerification = useCallback(async () => {
-    if (!reference) {
-      setState("failed");
-      setErrorMessage("No payment reference was provided in the return URL.");
-      return;
-    }
-
-    setState("verifying");
-    setErrorMessage(null);
-
-    try {
-      const verification = (await verifyPayment({ reference } as never)) as PublicPaymentVerificationResult;
-      setResult(verification);
-      setState(
-        verification.verificationStatus === "verified" && verification.paymentRecorded
-          ? "verified"
-          : "failed"
-      );
-    } catch (error) {
-      setState("failed");
-      setErrorMessage(
-        getUserFacingErrorMessage(error, "We could not confirm this payment yet.")
-      );
-    }
-  }, [reference, verifyPayment]);
-
-  useEffect(() => {
-    if (!reference || autoVerifiedReferenceRef.current === reference) {
-      return;
-    }
-
-    autoVerifiedReferenceRef.current = reference;
-    void runVerification();
-  }, [reference, runVerification]);
-
-  const retryVerification = async () => {
-    if (!reference) {
-      setErrorMessage("No payment reference was provided in the return URL.");
-      return;
-    }
-
-    autoVerifiedReferenceRef.current = null;
-    setResult(null);
-    setState("idle");
-    setErrorMessage(null);
-    void runVerification();
-  };
+  const { state, result, errorMessage, retryVerification } =
+    usePaystackReturnVerification({
+      reference,
+      verify: (ref) =>
+        verifyPayment({ reference: ref } as never) as Promise<PaystackReturnSummary>,
+      mapResult: (verification) => verification,
+    });
 
   const statusTone =
     state === "verified"

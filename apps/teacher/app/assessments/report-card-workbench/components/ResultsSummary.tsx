@@ -7,7 +7,7 @@ import type { ReportCardSheetData } from "@school/shared";
 
 function fmtScore(v: number | null) {
   if (v === null) return "-";
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+  return v.toFixed(2);
 }
 
 function isIncompleteCumulativeResult(
@@ -63,12 +63,12 @@ export function ResultsSummary({
           {isCumulativeAnnual ? "Sheet Avg:" : "Avg:"}{" "}
           <span className="font-bold">
             {summary.averageScore !== null
-              ? Number(summary.averageScore).toFixed(1)
+              ? Number(summary.averageScore).toFixed(2)
               : "-"}
           </span>{" "}
           &nbsp;&nbsp; {isCumulativeAnnual ? "Sheet Total:" : "Total:"}{" "}
           <span className="font-bold">
-            {summary.totalScore.toFixed(1)}
+            {summary.totalScore.toFixed(2)}
           </span>
         </div>
       </button>

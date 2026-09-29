@@ -1,3 +1,8 @@
+import {
+  formatDateGBDay,
+  formatMoneyMajor,
+} from "@school/shared/format";
+
 export function buildPortalHref(
   pathname: string,
   params: Record<string, string | null | undefined>
@@ -14,26 +19,16 @@ export function buildPortalHref(
 }
 
 export function formatScore(value: number | null) {
-  if (value === null) {
-    return "—";
-  }
+  if (value === null) return "—";
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 export function formatDate(value: number) {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  return formatDateGBDay(value);
 }
 
 export function formatMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatMoneyMajor(amount, currency);
 }
 
 export function getGreeting(): string {

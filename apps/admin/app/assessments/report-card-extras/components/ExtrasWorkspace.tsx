@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { Avatar } from "@school/shared";
 import {
   RotateCcw,
   Save,
@@ -135,24 +136,15 @@ export function ExtrasWorkspace({
       {/* Active Context Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-1">
         <div className="flex items-center gap-3">
-          {entry?.passportUrl ? (
-            <img
-              src={entry.passportUrl}
-              alt={entry.studentName}
-              className="h-11 w-11 rounded-xl object-cover border border-slate-200 shadow-xs"
-            />
-          ) : (
-            <div className="h-11 w-11 rounded-xl bg-indigo-50 border border-indigo-100/80 text-indigo-700 font-black text-xs flex items-center justify-center shadow-xs">
-              {entry?.studentName
-                ? entry.studentName
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((p) => p.charAt(0).toUpperCase())
-                    .join("")
-                : "ST"}
-            </div>
-          )}
+          <Avatar
+            name={entry?.studentName || "ST"}
+            src={entry?.passportUrl}
+            alt={entry?.studentName}
+            density="lg"
+            fallback=""
+            className="bg-indigo-50 border border-indigo-100/80 text-indigo-700 font-black text-xs shadow-xs"
+            imgClassName="border border-slate-200 shadow-xs"
+          />
           <div>
             <h2 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">{entry?.studentName}</h2>
             <div className="mt-1 flex items-center gap-2">

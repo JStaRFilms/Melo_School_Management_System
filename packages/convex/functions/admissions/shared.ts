@@ -8,6 +8,8 @@ import {
   normalizeCapability,
 } from "../academic/rbac";
 import { resolveActiveMembership } from "../academic/auth";
+import { normalizeEmailCase, isEmailAddress } from "../foundation/normalize";
+import { sanitizeAuditSummary } from "../academic/audit";
 
 export type AdmissionsContext = QueryCtx | MutationCtx;
 
@@ -117,8 +119,8 @@ export function normalizeSlug(value: string, label = "Slug"): string {
 }
 
 export function normalizeEmail(value: string): string {
-  const email = value.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 240) {
+  const email = normalizeEmailCase(value);
+  if (!isEmailAddress(email) || email.length > 240) {
     throw new ConvexError("A valid email address is required");
   }
   return email;
@@ -347,6 +349,74 @@ export async function requireAdmissionsStaff(
   };
 }
 
+/**
+ * Metadata keys that always hold PII/secrets: redact the whole value without
+ * probing (a bare guardian email has no key=value pattern for the generic
+ * rules to catch). Numeric NIN/account values are covered here too.
+ */
+const ADMISSIONS_AUDIT_PII_KEY =
+  /((password|passwd|secret|token|bearer|apikey|api_key|auth|nin|national|account|nuban|phone|mobile|email|passport|medical|health|safeguard|guardian|bank)|(Key|Reference)$)/i;
+/**
+ * Opaque correlation identifiers (Paystack providerEventId, Convex snapshot
+ * ids): digit-masking them breaks payment-event correlation, so masking-only
+ * changes are discarded and the exact value is kept. Secret markers still
+ * drop the value. Deliberately narrow (*Id only): *Key/*Reference keys fail
+ * closed into PII redaction above.
+ */
+const ADMISSIONS_AUDIT_ID_KEY = /(Id|_id)$/;
+
+/**
+ * Shared PII redaction for admissions audit writes (consolidation P1).
+ * The admissions audit table stays split from the canonical auditEvents table
+ * (different outcome enum with "blocked", per-application indexing, its own
+ * retention policy model), so only the sanitizer is shared, not the writer.
+ * Callers normalize first (length/required contract), then this helper
+ * redacts: validation never depends on secret content, and redaction itself
+ * never throws.
+ */
+export function sanitizeAdmissionsAuditFields(args: {
+  entityId: string;
+  reasonCode?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}): { entityId: string; reasonCode?: string; metadataJson?: string } {
+  // Sanitize each metadata VALUE before JSON.stringify: redacting the
+  // serialized string can drop quotes or replace the whole payload with a
+  // bare marker, producing metadataJson that no longer parses.
+  const sanitizeMetadataValue = (
+    key: string,
+    value: string | number | boolean | null,
+  ): string | number | boolean | null => {
+    if (typeof value !== "string") {
+      return ADMISSIONS_AUDIT_PII_KEY.test(key) ? "[REDACTED_SECRET]" : value;
+    }
+    if (ADMISSIONS_AUDIT_PII_KEY.test(key)) return "[REDACTED_SECRET]";
+    const probe = sanitizeAuditSummary(`${key}=${value}`);
+    if (probe === `${key}=${value}`) return value;
+    // A secret marker means the whole value is secret-bearing (multiword
+    // secrets redact word-by-word, leaving the tail exposed), so drop it
+    // entirely. Pure digit-masking keeps the triage-safe remainder, except
+    // under identifier keys where the exact value is the correlation key.
+    if (probe.includes("[REDACTED_SECRET]")) return "[REDACTED_SECRET]";
+    if (!probe.startsWith(`${key}=`)) return "[REDACTED_SECRET]";
+    return ADMISSIONS_AUDIT_ID_KEY.test(key)
+      ? value
+      : probe.slice(key.length + 1);
+  };
+  const sanitizedMetadata = args.metadata
+    ? Object.fromEntries(
+        Object.entries(args.metadata).map(([key, value]) => [
+          key,
+          sanitizeMetadataValue(key, value),
+        ]),
+      )
+    : undefined;
+  return {
+    entityId: sanitizeAuditSummary(args.entityId),
+    ...(args.reasonCode ? { reasonCode: sanitizeAuditSummary(args.reasonCode) } : {}),
+    ...(sanitizedMetadata ? { metadataJson: JSON.stringify(sanitizedMetadata) } : {}),
+  };
+}
+
 export async function recordAdmissionsAudit(
   ctx: MutationCtx,
   args: {
@@ -363,6 +433,16 @@ export async function recordAdmissionsAudit(
     metadata?: Record<string, string | number | boolean | null>;
   },
 ) {
+  // Normalize the caller's contract FIRST, then redact: validation must not
+  // depend on secret content (an overlong secret-bearing reason must fail the
+  // same length check as an overlong ordinary one).
+  const sanitized = sanitizeAdmissionsAuditFields({
+    entityId: normalizeRequiredText(args.entityId, "Audit entity ID", 200),
+    reasonCode: args.reasonCode
+      ? normalizeRequiredText(args.reasonCode, "Reason code", 120)
+      : undefined,
+    metadata: args.metadata,
+  });
   await ctx.db.insert("admissionsAuditEvents", {
     schoolId: args.schoolId,
     actorKind: args.actorKind,
@@ -370,13 +450,11 @@ export async function recordAdmissionsAudit(
     ...(args.actorUserId ? { actorUserId: args.actorUserId } : {}),
     action: normalizeRequiredText(args.action, "Audit action", 120),
     entityType: normalizeRequiredText(args.entityType, "Audit entity type", 80),
-    entityId: normalizeRequiredText(args.entityId, "Audit entity ID", 200),
+    entityId: sanitized.entityId,
     ...(args.applicationId ? { applicationId: args.applicationId } : {}),
     outcome: args.outcome ?? "success",
-    ...(args.reasonCode
-      ? { reasonCode: normalizeRequiredText(args.reasonCode, "Reason code", 120) }
-      : {}),
-    ...(args.metadata ? { metadataJson: JSON.stringify(args.metadata) } : {}),
+    ...(sanitized.reasonCode ? { reasonCode: sanitized.reasonCode } : {}),
+    ...(sanitized.metadataJson ? { metadataJson: sanitized.metadataJson } : {}),
     createdAt: Date.now(),
   });
 }

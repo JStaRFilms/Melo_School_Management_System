@@ -107,8 +107,7 @@ export function usePersistentFormDraft<K extends DraftFormKey>(
     }
     if (!beginInFlight.current) {
       const generation = scopeGeneration.current;
-      let request!: Promise<Id<"formDrafts">>;
-      request = begin({ ...scope, schemaVersion: 1 })
+      const request = begin({ ...scope, schemaVersion: 1 })
         .then(async (result) => {
           if (scopeGeneration.current !== generation) {
             await discard({

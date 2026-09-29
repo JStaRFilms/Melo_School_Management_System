@@ -10,20 +10,14 @@ import type {
   PaystackProviderModeState,
   SortDirection,
 } from "./types";
+import { formatDateTimeNG, formatMoneyMajor } from "@school/shared/format";
 
 export function formatMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatMoneyMajor(amount, currency);
 }
 
 export function formatDateTime(value: number) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
+  return formatDateTimeNG(value);
 }
 
 export function toQueryArgs(field: "classId" | "sessionId", value: string) {

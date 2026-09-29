@@ -2,16 +2,19 @@ import { convexTest } from "convex-test";
 import schema from "../../../schema";
 import { describe, expect, it } from "vitest";
 import type { Id, TableNames } from "../../../_generated/dataModel";
+import type { QueryCtx } from "../../../_generated/server";
 
 import {
   assertAdminForSchool,
   assertSchoolBoundary,
+  getAuthenticatedSchoolMembership,
+} from "../auth";
+import {
   assertTeacherAssignment,
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
   teacherHasClassAccess,
-  getAuthenticatedSchoolMembership,
-} from "../auth";
+} from "../teacherAccess";
 
 function asId<TableName extends TableNames>(value: string): Id<TableName> {
   return value as Id<TableName>;
@@ -239,7 +242,7 @@ function createCtx(options?: {
 
         return null;
       },
-    },
+    } as unknown as QueryCtx["db"],
   };
 }
 

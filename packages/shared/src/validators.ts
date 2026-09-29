@@ -1,20 +1,18 @@
 import { z } from "zod";
+import { EXAM_INPUT_MODES } from "./exam-recording/types";
 
-// Exam Input Mode
-export const examInputModeSchema = z.union([
-  z.literal("raw40"),
-  z.literal("raw60_scaled_to_40"),
-]);
+// Exam Input Mode (single const shared with the band predicate)
+export const examInputModeSchema = z.enum(EXAM_INPUT_MODES);
 
 // School Assessment Settings
 export const saveSchoolAssessmentSettingsSchema = z.object({
   examInputMode: examInputModeSchema,
 });
 
-// Grading Band Input
+// Grading Band Input (whole numbers: the server predicate rejects fractions)
 export const gradingBandInputSchema = z.object({
-  minScore: z.number().min(0).max(100),
-  maxScore: z.number().min(0).max(100),
+  minScore: z.number().int().min(0).max(100),
+  maxScore: z.number().int().min(0).max(100),
   gradeLetter: z.string().min(1),
   remark: z.string().min(1),
 });
