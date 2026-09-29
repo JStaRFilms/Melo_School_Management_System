@@ -65,6 +65,51 @@ async function fixture() {
 }
 
 describe("graded result release", () => {
+  it("opens a non-default branch release blocker in staff preview and certifies only that branch", async () => {
+    const f = await fixture();
+    const foreignSchoolId = await f.t.run(async ctx => {
+      const now = 1;
+      const personId = await ctx.db.insert("persons", { authTokenIdentifier: adminIdentity.tokenIdentifier,
+        name: "Admin", email: "admin-default@test.invalid", status: "active", primarySchoolId: f.ids.otherSchoolId,
+        createdAt: now, updatedAt: now });
+      await ctx.db.insert("branchMemberships", { personId, schoolId: f.ids.schoolId,
+        status: "active", isDefaultBranch: false, legacyUserId: f.ids.adminId, joinedAt: now, updatedAt: now });
+      const otherUserId = await ctx.db.insert("users", { schoolId: f.ids.otherSchoolId,
+        authId: adminIdentity.subject, authTokenIdentifier: adminIdentity.tokenIdentifier,
+        name: "Admin Default", email: "admin-default@test.invalid", role: "admin", createdAt: now, updatedAt: now });
+      await ctx.db.insert("branchMemberships", { personId, schoolId: f.ids.otherSchoolId,
+        status: "active", isDefaultBranch: true, legacyUserId: otherUserId, joinedAt: now, updatedAt: now });
+      return await ctx.db.insert("schools", { name: "Foreign", slug: "foreign-preview",
+        status: "active", createdAt: now, updatedAt: now });
+    });
+    const args = { schoolId: f.ids.schoolId, ...f.tuple, studentId: f.ids.studentId };
+    expect((await f.officer.query(api.functions.academic.resultPublication.getClassReadiness,
+      { schoolId: f.ids.schoolId, ...f.tuple })).rows[0].status).toBe("blocked");
+    const report = await f.admin.query(api.functions.academic.reportCards.getStudentReportCard, args);
+    expect(report.student._id).toBe(f.ids.studentId);
+    expect(await f.admin.query(api.functions.academic.reportCards.getStudentsForReportCardBatch,
+      { schoolId: f.ids.schoolId, ...f.tuple })).toHaveLength(1);
+    expect(await f.admin.query(api.functions.academic.reportCards.getClassReportCards,
+      { schoolId: f.ids.schoolId, ...f.tuple })).toHaveLength(1);
+    await expect(f.admin.query(api.functions.academic.reportCards.getStudentReportCard,
+      { ...args, schoolId: f.ids.otherSchoolId })).rejects.toThrow();
+    await expect(f.admin.query(api.functions.academic.reportCards.getStudentsForReportCardBatch,
+      { ...f.tuple, schoolId: f.ids.otherSchoolId })).rejects.toThrow();
+    await expect(f.admin.query(api.functions.academic.reportCards.getClassReportCards,
+      { ...f.tuple, schoolId: foreignSchoolId })).rejects.toThrow();
+    const certifyArgs = { ...args, confirmation: "STU-1", reviewedKey: reportCardReviewKey(report) };
+    await expect(f.admin.mutation(api.functions.academic.reportCards.certifyStudentReportCard,
+      { ...certifyArgs, schoolId: f.ids.otherSchoolId })).rejects.toThrow();
+    await expect(f.admin.mutation(api.functions.academic.reportCards.certifyStudentReportCard,
+      { ...certifyArgs, schoolId: foreignSchoolId })).rejects.toThrow();
+    await f.admin.mutation(api.functions.academic.reportCards.certifyStudentReportCard, certifyArgs);
+    const ready = await f.officer.query(api.functions.academic.resultPublication.getClassReadiness,
+      { schoolId: f.ids.schoolId, ...f.tuple });
+    expect(ready.ready).toBe(true);
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { schoolId: f.ids.schoolId, ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    expect((await f.read())?.report.student._id).toBe(f.ids.studentId);
+  });
   it("binds selectors, pause, exclusions and release to a selected non-default branch", async () => {
     const f = await fixture();
     await f.certify();

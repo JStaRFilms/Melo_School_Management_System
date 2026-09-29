@@ -17,11 +17,13 @@ import {
 import { ZoomIn, ZoomOut } from "lucide-react";
 import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
 import { ReportCardLauncher } from "./components/ReportCardLauncher";
+import { useAuth } from "@/AuthProvider";
+import type { Id } from "../../../../../packages/convex/_generated/dataModel";
 
 export default function AdminReportCardPage() {
   return (
     <Suspense fallback={<ReportCardPageFallback message="Loading report card..." />}>
-      <AdminReportCardPageContent />
+      <SelectedBranchReportCardPage />
     </Suspense>
   );
 }
@@ -37,7 +39,21 @@ function hasIncompleteCumulativeResults(reportCard: ReportCardSheetData) {
   );
 }
 
-function AdminReportCardPageContent() {
+function SelectedBranchReportCardPage() {
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? workspaceAccess.branch.schoolId as Id<"schools"> : null;
+  const [branch, setBranch] = useState<{ schoolId: Id<"schools"> | null; switched: boolean }>({ schoolId: null, switched: false });
+  // Remount on a branch change, even if workspace access briefly enters loading.
+  if (schoolId && branch.schoolId !== schoolId)
+    setBranch({ schoolId, switched: branch.schoolId !== null || branch.switched });
+  return schoolId
+    ? <AdminReportCardPageContent key={schoolId} schoolId={schoolId}
+        resetTuple={branch.switched} />
+    : <ReportCardPageFallback message="Loading report card workspace..." />;
+}
+
+function AdminReportCardPageContent({ schoolId, resetTuple }: { schoolId: Id<"schools">; resetTuple: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -47,6 +63,18 @@ function AdminReportCardPageContent() {
   const classIdParam = searchParams.get("classId");
   const isPrintClassMode = searchParams.get("printClass") === "1";
   const searchParamsString = searchParams.toString();
+  const [clearingTuple, setClearingTuple] = useState(resetTuple);
+  const linkedSchoolId = searchParams.get("schoolId");
+  const wrongBranch = linkedSchoolId !== null && linkedSchoolId !== schoolId;
+  useEffect(() => {
+    if (!clearingTuple) return;
+    const clean = new URLSearchParams(searchParamsString);
+    for (const key of ["schoolId", "studentId", "sessionId", "termId", "classId", "printClass", "returnTo"])
+      clean.delete(key);
+    if (clean.toString() !== searchParamsString)
+      router.replace(`/assessments/report-cards${clean.size ? `?${clean}` : ""}`);
+    else setClearingTuple(false);
+  }, [clearingTuple, router, searchParamsString]);
   const hasTriggeredClassPrintRef = useRef(false);
   const mainContainerRef = useRef<HTMLDivElement>(null);
   const touchStartDistanceRef = useRef<number | null>(null);
@@ -131,8 +159,9 @@ function AdminReportCardPageContent() {
 
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    studentId && sessionId && termId
+    !clearingTuple && !wrongBranch && studentId && sessionId && termId
       ? ({
+          schoolId,
           studentId,
           sessionId,
           termId,
@@ -144,15 +173,15 @@ function AdminReportCardPageContent() {
 
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
-    sessionId && termId && resolvedClassId
-      ? ({ classId: resolvedClassId, sessionId, termId } as never)
+    !clearingTuple && !wrongBranch && sessionId && termId && resolvedClassId
+      ? ({ schoolId, classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardBatchStudent[] | undefined;
 
   const classReportCards = useQuery(
     "functions/academic/reportCards:getClassReportCards" as never,
-    isPrintClassMode && sessionId && termId && resolvedClassId
-      ? ({ classId: resolvedClassId, sessionId, termId } as never)
+    !clearingTuple && !wrongBranch && isPrintClassMode && sessionId && termId && resolvedClassId
+      ? ({ schoolId, classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
   const blockedClassPrintCount =
@@ -196,8 +225,16 @@ function AdminReportCardPageContent() {
     return () => window.removeEventListener("afterprint", exitFullClassPrint);
   }, [exitFullClassPrint, isPrintClassMode]);
 
+  if (clearingTuple) return <ReportCardPageFallback message="Loading report card workspace..." />;
+
+  if (wrongBranch) return (
+    <div role="status" className="p-6 text-slate-700">
+      This report belongs to a different branch. Select that branch before opening it.
+    </div>
+  );
+
   if (!studentId || !sessionId || !termId) {
-    return <ReportCardLauncher />;
+    return <ReportCardLauncher schoolId={schoolId} />;
   }
 
   if (reportCard === undefined) {
@@ -309,6 +346,7 @@ function AdminReportCardPageContent() {
 
             <div className="pt-6 border-t border-slate-100">
               <ReportCardAdminPanel
+                schoolId={schoolId}
                 studentId={studentId}
                 sessionId={sessionId}
                 termId={termId}

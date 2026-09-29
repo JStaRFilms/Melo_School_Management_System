@@ -340,15 +340,10 @@ export const getWorkspaceData = query({
     const eventTime = args.now;
     if (eventTime !== undefined && (!Number.isFinite(eventTime) || eventTime < 0))
       throw new ConvexError("Invalid current time");
-    const [requestedTerm, requestedSession, activeSessions, schoolEvents, notificationSetting] = await Promise.all([
+    const [requestedTerm, requestedSession, activeSessions, notificationSetting] = await Promise.all([
       args.termId ? ctx.db.get(args.termId) : Promise.resolve(null),
       args.sessionId ? ctx.db.get(args.sessionId) : Promise.resolve(null),
       ctx.db.query("academicSessions").withIndex("by_school_active", q => q.eq("schoolId", schoolId).eq("isActive", true)).take(2),
-      // Legacy Portal bundles do not send `now`. Without a client clock,
-      // omit event notices rather than guessing which events are upcoming.
-      eventTime === undefined ? Promise.resolve([]) : ctx.db.query("schoolEvents")
-        .withIndex("by_school_and_start", q => q.eq("schoolId", schoolId).gte("startDate", eventTime))
-        .order("asc").take(64),
       resolveDomainSetting(ctx, schoolId, "notification_preferences"),
     ]);
     if ((args.termId && (!requestedTerm || requestedTerm.schoolId !== schoolId)) ||
@@ -553,9 +548,21 @@ export const getWorkspaceData = query({
       }
     }
 
-    const upcomingEvents = notificationPreferences.showUpcomingEvents
-      ? schoolEvents.filter(event => !event.isArchived).slice(0, 3)
-      : [];
+    const upcomingEvents: Doc<"schoolEvents">[] = [];
+    // Without a client clock, legacy bundles omit time-based notices. Iterate
+    // in start-date order so archived rows cannot consume the three live slots.
+    // Stop after 512 indexed rows to bound the workspace read transaction.
+    if (notificationPreferences.showUpcomingEvents && eventTime !== undefined) {
+      let scanned = 0;
+      const futureEvents = ctx.db.query("schoolEvents")
+        .withIndex("by_school_and_start", q => q.eq("schoolId", schoolId).gte("startDate", eventTime))
+        .order("asc");
+      for await (const event of futureEvents) {
+        scanned++;
+        if (!event.isArchived) upcomingEvents.push(event);
+        if (upcomingEvents.length === 3 || scanned === 512) break;
+      }
+    }
 
     for (const event of upcomingEvents) {
       notifications.push({

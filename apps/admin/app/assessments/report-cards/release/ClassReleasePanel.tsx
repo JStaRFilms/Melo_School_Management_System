@@ -62,7 +62,7 @@ export function ClassReleasePanel({ schoolId, selection, context }: { schoolId: 
   const blocked = readiness ? readiness.rows.filter(r => r.status === "blocked").length : 0;
   const selected = readiness?.rows.find(r => r.studentId === studentId);
   const contextLabel = `${context.school} / ${context.klass} / ${context.session} / ${context.term}`;
-  const reviewHref = (id: string) => `/assessments/report-cards?${new URLSearchParams({ ...selection, studentId: id })}`;
+  const reviewHref = (id: string) => `/assessments/report-cards?${new URLSearchParams({ ...selection, studentId: id, schoolId })}`;
   const needsAdmin = (code: string | null) => code !== null && code !== "not_certified" && code !== "enrollment_status";
   return <section className="space-y-5" aria-label="Class release readiness">
     <p className="text-base font-semibold">{contextLabel}</p>

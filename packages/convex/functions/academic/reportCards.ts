@@ -1043,11 +1043,12 @@ export const getStudentReportCard = query({
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
     classId: v.optional(v.id("classes")),
+    schoolId: v.optional(v.id("schools")),
   },
   returns: reportCardResultValidator,
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.preview" });
     return await buildStudentReportCard(ctx, {
       userId,
       schoolId,
@@ -1066,11 +1067,12 @@ export const getStudentsForReportCardBatch = query({
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
+    schoolId: v.optional(v.id("schools")),
   },
   returns: v.array(reportCardBatchStudentValidator),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.preview" });
 
     await assertClassReportCardAccess(ctx, {
       userId,
@@ -1096,11 +1098,12 @@ export const getClassReportCards = query({
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
+    schoolId: v.optional(v.id("schools")),
   },
   returns: v.array(reportCardResultValidator),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.preview" });
 
     await assertClassReportCardAccess(ctx, {
       userId,
@@ -1145,6 +1148,7 @@ export const getClassReportCards = query({
 
 export const saveStudentReportCardComments = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     studentId: v.id("students"),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
@@ -1155,6 +1159,7 @@ export const saveStudentReportCardComments = mutation({
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
         capability: "academic.assessments.enter",
       });
     const [student, session, term, existingComment, assessmentRecords, issuedReport] =
@@ -1372,10 +1377,11 @@ export const certifyStudentReportCard = mutation({
     classId: v.id("classes"),
     confirmation: v.string(),
     reviewedKey: v.string(),
+    schoolId: v.optional(v.id("schools")),
   },
   handler: async (ctx, args) => {
     const { schoolId, userId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.publish_final" });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.report_cards.publish_final" });
     const auth = await requireCapability(
       ctx,
       schoolId,

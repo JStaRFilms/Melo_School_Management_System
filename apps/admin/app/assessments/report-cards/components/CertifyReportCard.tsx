@@ -5,27 +5,21 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import type { ReportCardSheetData } from "@school/shared";
-import { useAuth } from "@/AuthProvider";
 
 export function CertifyReportCard({
   reportCard,
   sessionId,
   termId,
+  schoolId,
 }: {
   reportCard: ReportCardSheetData;
   sessionId: string;
   termId: string;
+  schoolId: Id<"schools">;
 }) {
-  const { workspaceAccess } = useAuth();
-  const schoolId =
-    workspaceAccess?.state === "ready"
-      ? (workspaceAccess.branch.schoolId as Id<"schools">)
-      : undefined;
   const allowed = useQuery(
     api.functions.academic.rbac.hasViewerCapability,
-    schoolId
-      ? { schoolId, capability: "academic.report_cards.publish_final" }
-      : "skip",
+    { schoolId, capability: "academic.report_cards.publish_final" },
   );
   const certify = useMutation(
     api.functions.academic.reportCards.certifyStudentReportCard,
@@ -76,6 +70,7 @@ export function CertifyReportCard({
               setError("");
               try {
                 await certify({
+                  schoolId,
                   studentId: reportCard.student._id as Id<"students">,
                   classId: reportCard.classId as Id<"classes">,
                   sessionId: sessionId as Id<"academicSessions">,

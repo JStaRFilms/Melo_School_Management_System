@@ -93,6 +93,29 @@ describe("family graded release gate", () => {
       .toEqual([`event-${upcomingIds[1]}`]);
   });
 
+  it("finds a live school event after more than 64 archived future events", async () => {
+    const f = await fixture();
+    const now = Date.now();
+    const liveId = await f.t.run(async ctx => {
+      const event = (schoolId: typeof f.ids.schoolId, title: string, startDate: number, isArchived = false) => ({
+        schoolId, title, startDate, endDate: startDate + 1_000, isAllDay: false,
+        isArchived, createdAt: 1, updatedAt: 1, updatedBy: f.ids.adminId,
+      });
+      for (let i = 0; i < 75; i++) {
+        await ctx.db.insert("schoolEvents", event(f.ids.schoolId, `Archived ${i}`, now + 1_000 + i, true));
+      }
+      await ctx.db.insert("schoolEvents", event(f.ids.otherSchoolId, "Foreign event", now + 1_100));
+      return ctx.db.insert("schoolEvents", event(f.ids.schoolId, "Open day", now + 2_000));
+    });
+    const result = await f.parent.query(api.functions.portal.getWorkspaceData, {
+      studentId: f.ids.studentId, now,
+    });
+    expect(result.selectedReportCard).toBeNull();
+    expect(result.notifications.filter(notice => notice.id.startsWith("event-")).map(notice => notice.id))
+      .toEqual([`event-${liveId}`]);
+    expect(JSON.stringify(result.notifications)).not.toMatch(/Archived|Foreign event/);
+  });
+
   it("keeps legacy no-now requests callable without event notices or draft results", async () => {
     const f = await fixture();
     const now = Date.now();

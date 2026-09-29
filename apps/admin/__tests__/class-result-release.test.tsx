@@ -29,7 +29,7 @@ describe("class result release", () => {
     expect(screen.getByText("Not published")).toBeInTheDocument();
     expect(screen.getByText("Missing certification").nextElementSibling).toHaveTextContent("1");
     expect(screen.getByRole("button", { name: "Review release" })).toBeDisabled();
-    expect(screen.getByRole("link", { name: "Review report card" })).toHaveAttribute("href", "/assessments/report-cards?sessionId=session&termId=term&classId=class&studentId=b");
+    expect(screen.getByRole("link", { name: "Review report card" })).toHaveAttribute("href", "/assessments/report-cards?sessionId=session&termId=term&classId=class&studentId=b&schoolId=school");
   });
   it("respects server-derived role flags and names exclusions", () => {
     view({ excludedCount: 1, rows: [{ ...roster.rows[1], status: "excluded", reason: "Withdrawn after term close", reasonCode: "excluded", canExclude: false, approvedByName: "Ms Cole" }] });

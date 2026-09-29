@@ -16,63 +16,64 @@ import {
 } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { Avatar } from "@school/shared";
+import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 
 type SelectorOption = { id: string; name: string };
 
-export function ReportCardLauncher() {
+export function ReportCardLauncher({ schoolId }: { schoolId: Id<"schools"> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const rawSessions = useQuery(
-    "functions/academic/adminSelectors:getAdminSessions" as never
+    "functions/academic/adminSelectors:getAdminSessions" as never,
+    { schoolId } as never
   ) as SelectorOption[] | undefined;
 
   const [selectedSessionId, setSelectedSessionId] = useState<string>(
     searchParams.get("sessionId") || ""
   );
 
+  const sessionId = rawSessions?.some((s) => s.id === selectedSessionId) ? selectedSessionId : "";
   useEffect(() => {
-    if (!selectedSessionId && rawSessions && rawSessions.length > 0) {
-      setSelectedSessionId(rawSessions[0].id);
-    }
-  }, [rawSessions, selectedSessionId]);
+    if (rawSessions && !sessionId) setSelectedSessionId(rawSessions[0]?.id ?? "");
+  }, [rawSessions, sessionId]);
 
   const rawTerms = useQuery(
     "functions/academic/adminSelectors:getTermsBySession" as never,
-    selectedSessionId ? ({ sessionId: selectedSessionId } as never) : ("skip" as never)
+    sessionId ? ({ sessionId, schoolId } as never) : ("skip" as never)
   ) as SelectorOption[] | undefined;
 
   const [selectedTermId, setSelectedTermId] = useState<string>(
     searchParams.get("termId") || ""
   );
 
+  const termId = rawTerms?.some((t) => t.id === selectedTermId) ? selectedTermId : "";
   useEffect(() => {
-    if (!selectedTermId && rawTerms && rawTerms.length > 0) {
-      setSelectedTermId(rawTerms[0].id);
-    }
-  }, [rawTerms, selectedTermId]);
+    if (rawTerms && !termId) setSelectedTermId(rawTerms[0]?.id ?? "");
+  }, [rawTerms, termId]);
 
   const rawClasses = useQuery(
-    "functions/academic/adminSelectors:getAllClasses" as never
+    "functions/academic/adminSelectors:getAllClasses" as never,
+    { schoolId } as never
   ) as SelectorOption[] | undefined;
 
   const [selectedClassId, setSelectedClassId] = useState<string>(
     searchParams.get("classId") || ""
   );
 
+  const classId = rawClasses?.some((c) => c.id === selectedClassId) ? selectedClassId : "";
   useEffect(() => {
-    if (!selectedClassId && rawClasses && rawClasses.length > 0) {
-      setSelectedClassId(rawClasses[0].id);
-    }
-  }, [rawClasses, selectedClassId]);
+    if (rawClasses && !classId) setSelectedClassId(rawClasses[0]?.id ?? "");
+  }, [rawClasses, classId]);
 
   const rawStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
-    selectedSessionId && selectedTermId && selectedClassId
+    sessionId && termId && classId
       ? ({
-          sessionId: selectedSessionId,
-          termId: selectedTermId,
-          classId: selectedClassId,
+          sessionId,
+          termId,
+          classId,
+          schoolId,
         } as never)
       : ("skip" as never)
   ) as
@@ -86,17 +87,18 @@ export function ReportCardLauncher() {
 
   // Live URL sync as user changes dropdowns
   useEffect(() => {
-    if (!selectedSessionId) return;
+    if (!sessionId) return;
     const params = new URLSearchParams();
-    params.set("sessionId", selectedSessionId);
-    if (selectedTermId) params.set("termId", selectedTermId);
-    if (selectedClassId) params.set("classId", selectedClassId);
+    params.set("schoolId", schoolId);
+    params.set("sessionId", sessionId);
+    if (termId) params.set("termId", termId);
+    if (classId) params.set("classId", classId);
     const newQuery = params.toString();
     const currentQuery = searchParams.toString();
     if (newQuery !== currentQuery) {
       window.history.replaceState(null, "", `${window.location.pathname}?${newQuery}`);
     }
-  }, [selectedSessionId, selectedTermId, selectedClassId, searchParams]);
+  }, [schoolId, sessionId, termId, classId, searchParams]);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -113,14 +115,14 @@ export function ReportCardLauncher() {
 
   const handleOpenStudent = (studentId: string) => {
     router.push(
-      `/assessments/report-cards?sessionId=${selectedSessionId}&termId=${selectedTermId}&classId=${selectedClassId}&studentId=${studentId}`
+      `/assessments/report-cards?${new URLSearchParams({ schoolId, sessionId, termId, classId, studentId })}`
     );
   };
 
   const handlePrintClass = () => {
     if (!filteredStudents.length) return;
     router.push(
-      `/assessments/report-cards?sessionId=${selectedSessionId}&termId=${selectedTermId}&classId=${selectedClassId}&studentId=${filteredStudents[0].studentId}&printClass=1`
+      `/assessments/report-cards?${new URLSearchParams({ schoolId, sessionId, termId, classId, studentId: filteredStudents[0].studentId, printClass: "1" })}`
     );
   };
 
@@ -148,12 +150,12 @@ export function ReportCardLauncher() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <Link href={`/assessments/report-cards/release?${new URLSearchParams({ sessionId: selectedSessionId, termId: selectedTermId, classId: selectedClassId })}`} className="inline-flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 focus-visible:outline-2">
+            <Link href={`/assessments/report-cards/release?${new URLSearchParams({ schoolId, sessionId, termId, classId })}`} className="inline-flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 focus-visible:outline-2">
               Class result release
             </Link>
             <Link
               href={`/assessments/report-card-extras${
-                selectedSessionId ? `?sessionId=${selectedSessionId}&termId=${selectedTermId}&classId=${selectedClassId}` : ""
+                sessionId ? `?sessionId=${sessionId}&termId=${termId}&classId=${classId}` : ""
               }`}
               className="h-10 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95"
             >
@@ -173,7 +175,7 @@ export function ReportCardLauncher() {
                 Session
               </label>
               <select
-                value={selectedSessionId}
+                value={sessionId}
                 onChange={(e) => {
                   setSelectedSessionId(e.target.value);
                   setSelectedTermId("");
@@ -195,9 +197,9 @@ export function ReportCardLauncher() {
                 Term
               </label>
               <select
-                value={selectedTermId}
+                value={termId}
                 onChange={(e) => setSelectedTermId(e.target.value)}
-                disabled={!selectedSessionId || !rawTerms?.length}
+                disabled={!sessionId || !rawTerms?.length}
                 className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-slate-400 disabled:opacity-50"
               >
                 {(rawTerms ?? []).map((t) => (
@@ -215,7 +217,7 @@ export function ReportCardLauncher() {
                 Class
               </label>
               <select
-                value={selectedClassId}
+                value={classId}
                 onChange={(e) => setSelectedClassId(e.target.value)}
                 className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-slate-400"
               >
