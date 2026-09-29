@@ -498,8 +498,9 @@ async function requireActiveGroupBranch(
   groupId: Id<"schoolGroups">,
   schoolId: Id<"schools">,
 ): Promise<GroupBranch> {
-  const [school, link] = await Promise.all([
+  const [school, group, link] = await Promise.all([
     ctx.db.get(schoolId),
+    ctx.db.get(groupId),
     ctx.db
       .query("schoolGroupBranches")
       .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
@@ -508,6 +509,8 @@ async function requireActiveGroupBranch(
   if (
     !school ||
     school.status !== "active" ||
+    !group ||
+    group.status !== "active" ||
     !link ||
     link.groupId !== groupId
   )

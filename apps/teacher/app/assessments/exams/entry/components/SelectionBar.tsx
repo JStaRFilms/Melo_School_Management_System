@@ -3,6 +3,10 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import type { SelectionState, SelectorOption, Id } from "@/lib/types";
+import {
+  buildSelectionQueryParams,
+  type SelectionParamKey,
+} from "@school/shared/examSelection";
 
 interface SelectionBarProps {
   sessions: SelectorOption[];
@@ -34,38 +38,23 @@ export function SelectionBar({
 
   const updateSelection = useCallback(
     (key: string, value: string | null) => {
-      const params = new URLSearchParams(searchParams.toString());
-
-      if (value) {
-        params.set(key, value);
-      } else {
-        params.delete(key);
-      }
-
-      // Clear downstream selectors when upstream changes
-      if (key === "sessionId") {
-        params.delete("termId");
-        params.delete("classId");
-        params.delete("subjectId");
-      } else if (key === "termId") {
-        params.delete("classId");
-        params.delete("subjectId");
-      } else if (key === "classId") {
-        params.delete("subjectId");
-      }
+      const { query, next } = buildSelectionQueryParams(
+        searchParams.toString(),
+        key as SelectionParamKey,
+        value
+      );
 
       const nextSelection: SelectionState = {
-        sessionId: (params.get("sessionId") as Id<"academicSessions">) ?? null,
-        termId: (params.get("termId") as Id<"academicTerms">) ?? null,
-        classId: (params.get("classId") as Id<"classes">) ?? null,
-        subjectId: (params.get("subjectId") as Id<"subjects">) ?? null,
+        sessionId: next.sessionId as Id<"academicSessions"> | null,
+        termId: next.termId as Id<"academicTerms"> | null,
+        classId: next.classId as Id<"classes"> | null,
+        subjectId: next.subjectId as Id<"subjects"> | null,
       };
 
       if (onBeforeSelectionChange && !onBeforeSelectionChange(nextSelection)) {
         return;
       }
 
-      const query = params.toString();
       router.replace(query ? `?${query}` : "?", { scroll: false });
     },
     [onBeforeSelectionChange, router, searchParams]

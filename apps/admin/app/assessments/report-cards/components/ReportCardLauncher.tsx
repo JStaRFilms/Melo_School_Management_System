@@ -16,6 +16,7 @@ import {
   Search,
 } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { Avatar } from "@school/shared";
 
 type SelectorOption = { id: string; name: string };
 
@@ -279,14 +280,6 @@ export function ReportCardLauncher() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredStudents.map((student) => {
-                const initials =
-                  student.studentName
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((p) => p.charAt(0).toUpperCase())
-                    .join("") || "ST";
-
                 return (
                   <button
                     key={student.studentId}
@@ -295,17 +288,13 @@ export function ReportCardLauncher() {
                     className="p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 bg-white hover:border-slate-300 hover:shadow-md transition-all text-left flex items-center justify-between group active:scale-[0.99]"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      {student.passportUrl ? (
-                        <img
-                          src={student.passportUrl}
-                          alt={student.studentName}
-                          className="w-10 h-10 rounded-xl object-cover border border-slate-200 shadow-xs shrink-0"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100/80 text-indigo-700 text-xs font-black flex items-center justify-center shrink-0 shadow-xs">
-                          {initials}
-                        </div>
-                      )}
+                      <Avatar
+                        name={student.studentName}
+                        src={student.passportUrl}
+                        density="md"
+                        className="bg-indigo-50 border border-indigo-100/80 text-indigo-700 font-black shrink-0 shadow-xs"
+                        imgClassName="border border-slate-200 shrink-0 shadow-xs"
+                      />
                       <div className="space-y-0.5 min-w-0">
                         <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate block">
                           {student.studentName}

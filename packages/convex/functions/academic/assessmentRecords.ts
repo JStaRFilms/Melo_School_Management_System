@@ -4,8 +4,8 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import {
   getAuthenticatedSchoolMembership,
-  assertTeacherAssignment,
 } from "./auth";
+import { assertTeacherAssignment } from "./teacherAccess";
 import {
   deriveForSessionPolicy,
   validateScoresForPolicy,
@@ -25,6 +25,8 @@ import {
 } from "./assessmentEditingPolicyHelpers";
 import { resolveSessionScoringPolicy } from "./sessionScoring";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { pickMostRecentDoc } from "./docSelection";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 function entrySheetRecord(record: Doc<"assessmentRecords">) {
   const { assessmentPolicySnapshot, gradingPolicySnapshot: _gradingPolicySnapshot, ...result } = record;
@@ -39,20 +41,6 @@ function entrySheetRecord(record: Doc<"assessmentRecords">) {
       examRawMax: assessmentPolicySnapshot.examRawMax,
     } } : {}),
   };
-}
-
-function pickMostRecentDoc<T extends { updatedAt?: number; createdAt?: number }>(
-  docs: T[]
-) {
-  return docs.reduce<T | null>((latest, doc) => {
-    if (latest === null) {
-      return doc;
-    }
-
-    const latestTimestamp = latest.updatedAt ?? latest.createdAt ?? 0;
-    const docTimestamp = doc.updatedAt ?? doc.createdAt ?? 0;
-    return docTimestamp > latestTimestamp ? doc : latest;
-  }, null);
 }
 
 /**
@@ -150,27 +138,19 @@ export const getExamEntrySheet = query({
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     // Verify subject belongs to user's school
     const subjectDoc = await ctx.db.get(args.subjectId);
-    if (!subjectDoc || subjectDoc.schoolId !== schoolId || subjectDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(subjectDoc, schoolId, { excludeArchived: true });
 
     // Verify session belongs to user's school
     const sessionDoc = await ctx.db.get(args.sessionId);
-    if (!sessionDoc || sessionDoc.schoolId !== schoolId || sessionDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(sessionDoc, schoolId, { excludeArchived: true });
 
     // Verify term belongs to user's school
     const termDoc = await ctx.db.get(args.termId);
-    if (!termDoc || termDoc.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(termDoc, schoolId);
 
     // Authorization check
     if (role === "teacher" && !isSchoolAdmin) {
@@ -383,27 +363,19 @@ export const upsertAssessmentRecordsBulk = mutation({
 
     // Verify class belongs to user's school
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     // Verify subject belongs to user's school
     const subjectDoc = await ctx.db.get(args.subjectId);
-    if (!subjectDoc || subjectDoc.schoolId !== schoolId || subjectDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(subjectDoc, schoolId, { excludeArchived: true });
 
     // Verify session belongs to user's school
     const sessionDoc = await ctx.db.get(args.sessionId);
-    if (!sessionDoc || sessionDoc.schoolId !== schoolId || sessionDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(sessionDoc, schoolId, { excludeArchived: true });
 
     // Verify term belongs to user's school
     const termDoc = await ctx.db.get(args.termId);
-    if (!termDoc || termDoc.schoolId !== schoolId) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(termDoc, schoolId);
 
     // Authorization check
     if (role === "teacher" && !isSchoolAdmin) {

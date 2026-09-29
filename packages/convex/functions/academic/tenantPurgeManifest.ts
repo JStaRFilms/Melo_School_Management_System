@@ -292,6 +292,7 @@ export const tenantSchoolTableValidator = v.union(
   v.literal("schoolCapabilityGrants"),
   v.literal("schoolDomains"),
   v.literal("schoolEmailDomains"),
+  v.literal("schoolEnrollmentCounts"),
   v.literal("schoolEvents"),
   v.literal("schoolGroupBranches"),
   v.literal("schoolPaymentProviderSecrets"),

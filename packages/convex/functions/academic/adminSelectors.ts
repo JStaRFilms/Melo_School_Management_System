@@ -8,6 +8,7 @@ import {
 } from "./auth";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 export const getAdminSessions = query({
   args: { schoolId: v.optional(v.id("schools")) },
@@ -41,9 +42,7 @@ export const getTermsBySession = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     const terms = await ctx.db
       .query("academicTerms")
@@ -96,9 +95,7 @@ export const getSubjectsByClass = query({
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const [offerings, derivedUmbrellaIds] = await Promise.all([
       ctx.db

@@ -289,10 +289,9 @@ Historical v1 behavior used one active school exam input mode. New session-scope
 ## Live Seed Data
 
 - Live testing uses the operator-gated Convex action at `functions/academic/seedRunner:seedDemoSchool` (the old `seedExamRecordingData` export is only a deprecated alias).
-- This is a **destructive reset** scoped permanently to the tenant slug `demo-school`; it does not merely return existing IDs.
-- Before running it, configure `DEMO_SEED_OPERATOR_TOKEN`, `DEMO_SEED_DEPLOYMENT_IDENTITY`, and `DEMO_SEED_DEPLOYMENT_ENV` on the exact target deployment. The caller must supply matching values and the confirmation phrase `RESET demo-school`.
-- Production additionally requires the temporary deployment flag `DEMO_SEED_ALLOW_PRODUCTION=true` and caller phrase `RESET demo-school IN PRODUCTION`. Remove the operator token and production flag after use.
-- The runner preflights and reconciles Better Auth users before deletion, then repopulates the school in bounded, restart-safe phases with academics, families, reports, billing, events, knowledge, and stored profile artwork.
+- The demo action is first-run-only on an explicitly selected, empty, disposable development deployment. Populated reset and production use are disabled. The confirmation phrase remains `RESET demo-school`, but it does not authorize deletion.
+- Follow the [demo-school operator runbook](DemoSchoolOperatorRunbook.md) for the CLI selector, server operator gate, matching app URLs, and preflight. Any existing school, demo credential, or pending cleanup blocks the first run.
+- Better Auth and Convex seed writes are separate transactions. If the first run is interrupted, abandon and replace the disposable dev deployment. Do not retry blindly or reset shared dev. A successful first run populates academics, families, reports, billing, events, knowledge, and stored profile artwork.
 - Demo credentials are:
   - Admin: `admin@demo-academy.school` / `Admin123!Pass`
   - Teacher: `teacher@demo-academy.school` / `Teacher123!Pass`
@@ -307,7 +306,7 @@ Historical v1 behavior used one active school exam input mode. New session-scope
   - admin grading-band save
   - admin score-entry save
   - teacher score-entry save
-- It is designed to restore the changed demo values after each save so repeated verification does not drift the seeded tenant.
+- It restores changed demo values after each save. That is not a replacement for the first-run seed and does not make an interrupted seed safe to retry.
 
 ## Audit Fields
 

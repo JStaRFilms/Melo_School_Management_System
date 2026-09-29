@@ -5,11 +5,14 @@ import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import {
   getAuthenticatedSchoolMembership,
+} from "./auth";
+import {
   getTeacherAssignableClassIds,
   getTeacherAssignableSubjectIds,
-} from "./auth";
+} from "./teacherAccess";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelpers";
+import { assertBranchDoc } from "../foundation/tenantScope";
 
 export const getTeacherSessions = query({
   args: { schoolId: v.optional(v.id("schools")) },
@@ -38,9 +41,7 @@ export const getTermsBySession = query({
     const { schoolId } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: ACADEMIC_CONTEXT_CAPABILITIES });
     const session = await ctx.db.get(args.sessionId);
 
-    if (!session || session.schoolId !== schoolId || session.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(session, schoolId, { excludeArchived: true });
 
     const terms = await ctx.db
       .query("academicTerms")
@@ -168,9 +169,7 @@ export const getTeacherAssignableSubjectsByClass = query({
     const { schoolId, userId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: ACADEMIC_CONTEXT_CAPABILITIES });
     const classDoc = await ctx.db.get(args.classId);
 
-    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
-      throw new ConvexError("Cross-school access denied");
-    }
+    assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     if (isSchoolAdmin || role === "admin") {
       const [classOfferings, derivedUmbrellaIds] = await Promise.all([

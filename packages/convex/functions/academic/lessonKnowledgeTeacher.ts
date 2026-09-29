@@ -9,7 +9,13 @@ import {
 } from "../../_generated/server";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { buildMaterialSearchSeed, suggestKnowledgeMaterialLabels, normalizeKnowledgeMaterialText, canManageKnowledgeMaterial } from "./lessonKnowledgeIngestionHelpers";
-import { getAuthenticatedSchoolMembership, getTeacherAssignableClassIds, getTeacherAssignableSubjectIds } from "./auth";
+import {
+  getAuthenticatedSchoolMembership,
+} from "./auth";
+import {
+  getTeacherAssignableClassIds,
+  getTeacherAssignableSubjectIds,
+} from "./teacherAccess";
 import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import {
   canPromoteKnowledgeMaterial,

@@ -39,6 +39,19 @@ export async function requireAuthIdentityV1(ctx: FoundationReadCtx): Promise<Aut
   };
 }
 
+const MEMBERSHIP_SCAN_LIMIT = 100;
+
+/**
+ * Fail closed on identity ambiguity. A token that resolves to two live rows in
+ * one school, or to a scan too large to verify, has no single authorized
+ * identity, so the caller must reconcile before any capability is granted.
+ * Ambiguity is judged against the school the caller asked for, so a duplicate
+ * row in one tenant never revokes the token's access to another.
+ */
+function ambiguousMembership(message: string) {
+  return new ConvexError({ code: "RECONCILIATION_REQUIRED", message });
+}
+
 export async function resolveActiveSchoolMembershipsV1(
   ctx: FoundationReadCtx,
   identity: AuthIdentityV1
@@ -48,7 +61,7 @@ export async function resolveActiveSchoolMembershipsV1(
     .withIndex("by_auth_token_identifier", (q) =>
       q.eq("authTokenIdentifier", identity.tokenIdentifier)
     )
-    .take(100);
+    .take(MEMBERSHIP_SCAN_LIMIT + 1);
 
   // Compatibility mode only: existing rows have Better Auth's user id in authId.
   // Never write this fallback to a new ownership record implicitly.
@@ -57,7 +70,13 @@ export async function resolveActiveSchoolMembershipsV1(
     : await ctx.db
       .query("users")
       .withIndex("by_auth", (q) => q.eq("authId", identity.subject))
-      .take(100);
+      .take(MEMBERSHIP_SCAN_LIMIT + 1);
+
+  if (rows.length > MEMBERSHIP_SCAN_LIMIT) {
+    throw ambiguousMembership(
+      "Not authorized: membership scan hit its limit, so the identity cannot be verified"
+    );
+  }
 
   return rows
     .filter((row) => !row.isArchived)
@@ -75,7 +94,13 @@ export async function resolveSchoolMembershipV1(
 ): Promise<ActiveSchoolMembershipV1 | null> {
   const identity = await requireAuthIdentityV1(ctx);
   const memberships = await resolveActiveSchoolMembershipsV1(ctx, identity);
-  return memberships.find((membership) => membership.schoolId === schoolId) ?? null;
+  const scoped = memberships.filter(
+    (membership) => membership.schoolId === schoolId
+  );
+  if (scoped.length > 1) {
+    throw ambiguousMembership("Not authorized: ambiguous in-school membership");
+  }
+  return scoped[0] ?? null;
 }
 
 export type CapabilityGrantProjectionV1 = {

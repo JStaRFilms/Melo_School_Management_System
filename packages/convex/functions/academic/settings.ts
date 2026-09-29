@@ -4,8 +4,8 @@ import { v, ConvexError } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import {
   getAuthenticatedSchoolMembership,
-  assertAdminForSchool,
 } from "./auth";
+import { requireCapability } from "./rbac";
 import { resolveDomainSetting } from "./groupSettings";
 
 const ASSESSMENT_WEIGHTS = {
@@ -83,11 +83,11 @@ export const saveSchoolAssessmentSettings = mutation({
   },
   returns: v.id("schoolAssessmentSettings"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
+    const { userId, schoolId } = await getAuthenticatedSchoolMembership(
       ctx,
       { capability: "academic.grading_bands.manage" },
     );
-    await assertAdminForSchool(ctx, userId, schoolId, role);
+    await requireCapability(ctx, schoolId, "academic.grading_bands.manage");
     const effective = await resolveDomainSetting(ctx, schoolId, "academic_policy");
     if (effective.mode !== "legacy")
       throw new ConvexError(

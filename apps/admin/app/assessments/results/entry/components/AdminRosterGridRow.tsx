@@ -40,7 +40,7 @@ export function AdminRosterGridRow({
   student,
   examInputMode,
   policy,
-  showScaledColumn = false,
+  showScaledColumn = examInputMode === "raw60_scaled_to_40",
   showRowLimits = false,
   gradingBands,
   draftScores,

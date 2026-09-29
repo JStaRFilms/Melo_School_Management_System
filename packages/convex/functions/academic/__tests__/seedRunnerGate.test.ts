@@ -8,26 +8,29 @@ const base = {
   confirmation: "RESET demo-school",
   operatorToken: "operator-token",
   targetIdentity: "local-test",
-  deploymentEnvironment: "preview" as const,
+  deploymentEnvironment: "development" as const,
 };
 
 describe("demo seed operator gates", () => {
   test("requires matching explicit deployment identity and environment", () => {
     process.env.DEMO_SEED_OPERATOR_TOKEN = "operator-token";
     process.env.DEMO_SEED_DEPLOYMENT_IDENTITY = "local-test";
-    process.env.DEMO_SEED_DEPLOYMENT_ENV = "preview";
+    process.env.DEMO_SEED_DEPLOYMENT_ENV = "development";
+    process.env.DEMO_SEED_EXPECTED_CLOUD_URL = "https://dev.convex.cloud";
+    process.env.CONVEX_CLOUD_URL = "https://dev.convex.cloud";
     expect(() => assertOperatorGate(base)).not.toThrow();
+    process.env.CONVEX_CLOUD_URL = "https://other.convex.cloud";
+    expect(() => assertOperatorGate(base)).toThrow("cloud URL");
     expect(() => assertOperatorGate({ ...base, targetIdentity: "wrong" })).toThrow("target identity");
   });
 
-  test("requires both dedicated production gates", () => {
+  test("rejects production even with a confirmation and an opt-in", () => {
     process.env.DEMO_SEED_OPERATOR_TOKEN = "operator-token";
     process.env.DEMO_SEED_DEPLOYMENT_IDENTITY = "production-test";
     process.env.DEMO_SEED_DEPLOYMENT_ENV = "production";
     const production = { ...base, targetIdentity: "production-test", deploymentEnvironment: "production" as const, productionConfirmation: "RESET demo-school IN PRODUCTION" };
-    expect(() => assertOperatorGate(production)).toThrow("DEMO_SEED_ALLOW_PRODUCTION");
     process.env.DEMO_SEED_ALLOW_PRODUCTION = "true";
-    expect(() => assertOperatorGate(production)).not.toThrow();
+    expect(() => assertOperatorGate(production)).toThrow("development deployment");
   });
 
   test("recognizes already-deleted storage objects for idempotent cleanup", () => {

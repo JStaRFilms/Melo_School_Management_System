@@ -1,145 +1,39 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAction } from "convex/react";
 import { CheckCircle2, LoaderCircle, RefreshCw, ShieldAlert, Printer, ArrowLeft } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
-
-type PublicPaymentVerificationResult = {
-  reference: string;
-  verificationStatus: "verified" | "rejected" | "ignored";
-  invoiceNumber: string | null;
-  amountPaid: number | null;
-  currency: string | null;
-  paymentMethod: string | null;
-  payerName: string | null;
-  payerEmail: string | null;
-  paidAt: number | null;
-  balanceRemaining: number | null;
-  paymentRecorded: boolean;
-  message: string;
-};
-
-type AdminPaymentVerificationResponse = {
-  event: {
-    reference: string;
-    verificationStatus: "verified" | "rejected" | "ignored";
-    invoiceNumber?: string | null;
-    verificationMessage?: string | null;
-  };
-  invoice: {
-    invoiceNumber: string;
-    currency: string;
-    balanceDue: number;
-  } | null;
-  payment: {
-    amountReceived: number;
-    paymentMethod: string;
-    payerName: string | null;
-    payerEmail: string | null;
-    receivedAt: number;
-  } | null;
-};
-
-type VerificationState = "idle" | "verifying" | "verified" | "failed";
+import {
+  mapAdminPaystackVerification,
+  type AdminPaystackVerificationResponse,
+} from "@school/shared/paystackReturn";
+import { usePaystackReturnVerification } from "@school/shared/paystackReturn/client";
+import { formatDateTimeNG, formatMoneyMajor } from "@school/shared/format";
 
 function formatMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatMoneyMajor(amount, currency);
 }
 
 function formatDateTime(value: number) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(value);
+  return formatDateTimeNG(value);
 }
 
 export function PaystackReturnClient({ reference }: { reference: string }) {
   const verifyPayment = useAction(
     "functions/billing:verifyOnlinePaymentByReference" as never
   );
-  const [state, setState] = useState<VerificationState>("idle");
-  const [result, setResult] = useState<PublicPaymentVerificationResult | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { state, result, errorMessage, retryVerification } =
+    usePaystackReturnVerification({
+      reference,
+      verify: (ref) =>
+        verifyPayment({ reference: ref } as never) as Promise<AdminPaystackVerificationResponse>,
+      mapResult: mapAdminPaystackVerification,
+    });
   const [receiptGeneratedAt, setReceiptGeneratedAt] = useState<string>("");
-  const autoVerifiedReferenceRef = useRef<string | null>(null);
-
-  const runVerification = useCallback(async () => {
-    if (!reference) {
-      setState("failed");
-      setErrorMessage("No payment reference was provided in the return URL.");
-      return;
-    }
-
-    setState("verifying");
-    setErrorMessage(null);
-
-    try {
-      const verification = (await verifyPayment({
-        reference,
-      } as never)) as AdminPaymentVerificationResponse;
-      const mappedResult: PublicPaymentVerificationResult = {
-        reference: verification.event.reference,
-        verificationStatus: verification.event.verificationStatus,
-        invoiceNumber:
-          verification.invoice?.invoiceNumber ?? verification.event.invoiceNumber ?? null,
-        amountPaid: verification.payment?.amountReceived ?? null,
-        currency: verification.invoice?.currency ?? null,
-        paymentMethod: verification.payment?.paymentMethod ?? null,
-        payerName: verification.payment?.payerName ?? null,
-        payerEmail: verification.payment?.payerEmail ?? null,
-        paidAt: verification.payment?.receivedAt ?? null,
-        balanceRemaining: verification.invoice?.balanceDue ?? null,
-        paymentRecorded: verification.payment !== null,
-        message:
-          verification.event.verificationMessage ??
-          (verification.payment !== null
-            ? "Payment verified successfully"
-            : "Payment verification completed"),
-      };
-      setResult(mappedResult);
-      setState(
-        mappedResult.verificationStatus === "verified" && mappedResult.paymentRecorded
-          ? "verified"
-          : "failed"
-      );
-    } catch (error) {
-      setState("failed");
-      setErrorMessage(
-        getUserFacingErrorMessage(error, "We could not confirm this payment yet.")
-      );
-    }
-  }, [reference, verifyPayment]);
 
   useEffect(() => {
     setReceiptGeneratedAt(new Date().toLocaleString());
   }, []);
-
-  useEffect(() => {
-    if (!reference || autoVerifiedReferenceRef.current === reference) {
-      return;
-    }
-
-    autoVerifiedReferenceRef.current = reference;
-    void runVerification();
-  }, [reference, runVerification]);
-
-  const retryVerification = async () => {
-    if (!reference) {
-      setErrorMessage("No payment reference was provided in the return URL.");
-      return;
-    }
-
-    autoVerifiedReferenceRef.current = null;
-    setResult(null);
-    setState("idle");
-    setErrorMessage(null);
-    void runVerification();
-  };
 
   const statusConfig = {
     verifying: {

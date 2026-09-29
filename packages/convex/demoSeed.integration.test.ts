@@ -1,9 +1,26 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
-import { internal } from "./_generated/api";
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+afterEach(() => vi.unstubAllEnvs());
+import { api, internal } from "./_generated/api";
+import "./functions/auth";
 import { DEMO_STUDENTS } from "./functions/academic/demoData";
 import schema from "./schema";
+
+// The cohort seed mutations accept existing auth IDs. Stub only the component
+// lookup so the read-only inspector can verify their matching credential owners.
+vi.mock("./betterAuth", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./betterAuth")>(),
+  createAuth: () => ({ $context: Promise.resolve({ internalAdapter: {
+    findUserByEmail: async (email: string) => {
+      const index = ["admin@demo-academy.school", "teacher@demo-academy.school", "parent@demo-academy.school"].indexOf(email);
+      if (index < 0) return null;
+      const id = ["auth-admin-demo", "auth-teacher-demo", "auth-portal-demo"][index];
+      return { user: { id }, accounts: [{ providerId: "credential", accountId: id }] };
+    },
+  } }) }),
+}));
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -18,7 +35,7 @@ async function assets(t: TestConvex) {
 
 async function start(t: TestConvex, seedProfile: "demo" | "judge" = "demo") {
   const runId = await t.mutation(internal.functions.academic.seed.startDemoSeedRunInternal, {
-    seedProfile, adminAuthId: `auth-admin-${seedProfile}`, teacherAuthId: `auth-teacher-${seedProfile}`, portalAuthId: `auth-portal-${seedProfile}`, ...(await assets(t)),
+    seedProfile, authIssuer: "https://seed-auth.test", adminAuthId: `auth-admin-${seedProfile}`, teacherAuthId: `auth-teacher-${seedProfile}`, portalAuthId: `auth-portal-${seedProfile}`, ...(await assets(t)),
   });
   await t.mutation(internal.functions.academic.seed.populateDemoFoundationInternal, { runId });
   return runId;
@@ -32,7 +49,24 @@ async function finish(t: TestConvex, runId: Awaited<ReturnType<typeof start>>) {
 }
 
 describe("demo-school phased seed integration", () => {
-  test("reset traversal preserves another tenant", async () => {
+  test("completed single-school cohort passes bounded read-only inspection", async () => {
+    vi.stubEnv("DEMO_SEED_OPERATOR_TOKEN", "preflight-test-token");
+    vi.stubEnv("DEMO_SEED_DEPLOYMENT_IDENTITY", "test-target");
+    vi.stubEnv("DEMO_SEED_DEPLOYMENT_ENV", "development");
+    vi.stubEnv("CONVEX_CLOUD_URL", "https://test.convex.cloud");
+    const t = convexTest(schema, modules);
+    await finish(t, await start(t));
+    const result = await t.action(api.functions.academic.demoPreflightAction.inspectDemoSchool, {
+      operatorToken: "preflight-test-token", targetIdentity: "test-target",
+    });
+    expect(result.ready).toBe(true);
+    expect(result.blockers).toEqual([]);
+    expect(result.tables.find((table) => table.name === "demoSeedRunsVerified")).toMatchObject({ count: 1, truncated: false });
+    expect(result.tables.find((table) => table.name === "branchMembershipsVerified")).toMatchObject({ count: 3, truncated: false });
+    expect(result.tables.find((table) => table.name === "usageBranchPoolAllocations")).toMatchObject({ count: 0, truncated: false });
+    expect(result.tables.every((table) => !table.truncated)).toBe(true);
+  });
+  test("legacy demo reset refuses to touch a populated tenant or another school", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       const demoSchoolId = await ctx.db.insert("schools", { name: "Demo", slug: "demo-school", status: "active", createdAt: 1, updatedAt: 1 });
@@ -41,8 +75,8 @@ describe("demo-school phased seed integration", () => {
       await ctx.db.insert("users", { schoolId: otherSchoolId, authId: "other", name: "Other", email: "other@example.test", role: "admin", createdAt: 1, updatedAt: 1 });
       await ctx.db.insert("families", { schoolId: demoSchoolId, name: "Demo family", createdAt: 1, updatedAt: 1, createdBy: demoUserId, updatedBy: demoUserId });
     });
-    for (let attempt = 0; attempt < 10; attempt += 1) if ((await t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {})).complete) break;
-    expect((await t.run((ctx) => ctx.db.query("schools").collect())).map((school) => school.slug)).toEqual(["other-school"]);
+    await expect(t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {})).rejects.toThrow("disabled");
+    expect((await t.run((ctx) => ctx.db.query("schools").collect())).map((school) => school.slug)).toEqual(["demo-school", "other-school"]);
   });
 
   test("auth conflict inspection rejects an email attached to another tenant", async () => {
@@ -53,6 +87,19 @@ describe("demo-school phased seed integration", () => {
     });
     const inspection = await t.query(internal.functions.academic.seed.inspectDemoAuthUsageInternal, { authIds: ["external-auth"], emails: ["admin@demo-academy.school"] });
     expect(inspection.conflicts.join(" ")).toContain("other-school");
+  });
+
+  test("auth preflight catches orphan canonical credential emails", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const other = await ctx.db.insert("schools", { name: "Other", slug: "other-school", status: "active", createdAt: 1, updatedAt: 1 });
+      const personId = await ctx.db.insert("persons", { email: "admin@demo-academy.school", name: "Shared", status: "active", primarySchoolId: other, createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("branchMemberships", { personId, schoolId: other, status: "active", isDefaultBranch: true, joinedAt: 1, updatedAt: 1 });
+    });
+    const result = await t.query(internal.functions.academic.seed.inspectDemoAuthUsageInternal, {
+      authIds: [], emails: ["admin@demo-academy.school"], seedProfile: "demo",
+    });
+    expect(result.conflicts).toEqual([expect.stringContaining("canonical person")]);
   });
 
   test("storage cleanup consumes duplicate history sentinels and deduplicates retry acknowledgements", async () => {
@@ -71,16 +118,55 @@ describe("demo-school phased seed integration", () => {
     expect(await t.run((ctx) => ctx.db.query("demoSeedStorageCleanup").collect())).toEqual([]);
   });
 
-  test("persists cursors and safely restarts a partial run by reset", async () => {
+  test("persists cursors but refuses to reset an incomplete run", async () => {
     const t = convexTest(schema, modules);
     const runId = await start(t);
     const firstBatch = await t.mutation(internal.functions.academic.seed.populateDemoStudentsBatchInternal, { runId });
     expect(firstBatch).toMatchObject({ phase: "students", cursor: 12 });
     const persisted = await t.run((ctx) => ctx.db.get(runId));
     expect(persisted?.studentCursor).toBe(12);
-    for (let attempt = 0; attempt < 100; attempt += 1) if ((await t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {})).complete) break;
-    const rerun = await finish(t, await start(t));
-    expect(rerun).toMatchObject({ studentCount: 36, invoiceCount: 36, assessmentRecordCount: 756 });
+    await expect(t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, {})).rejects.toThrow("disabled");
+    expect(await t.run((ctx) => ctx.db.get(runId))).toMatchObject({ studentCursor: 12 });
+  });
+
+  test("rejects an invalid authentication issuer before starting a run", async () => {
+    const t = convexTest(schema, modules);
+    await expect(t.mutation(internal.functions.academic.seed.startDemoSeedRunInternal, {
+      seedProfile: "demo", authIssuer: "admin@demo-academy.school", adminAuthId: "admin", teacherAuthId: "teacher", portalAuthId: "parent", ...(await assets(t)),
+    })).rejects.toThrow("valid CONVEX_SITE_URL issuer");
+    expect(await t.run((ctx) => ctx.db.query("schools").take(1))).toEqual([]);
+  });
+
+  test("credential accounts resolve through canonical active memberships, not email or subject", async () => {
+    const t = convexTest(schema, modules);
+    const runId = await start(t);
+    const run = await t.run((ctx) => ctx.db.get(runId));
+    if (!run) throw new Error("Missing seed run");
+    for (const [role, authId] of [["admin", run.adminAuthId], ["teacher", run.teacherAuthId], ["parent", run.portalAuthId]] as const) {
+      const tokenIdentifier = `${run.authIssuer}|${authId}`;
+      const access = await t.withIdentity({ issuer: run.authIssuer, subject: authId, tokenIdentifier }).query(api.functions.auth.getViewerAccess, {});
+      expect(access).toMatchObject({
+        state: "ready",
+        branch: { schoolId: run.schoolId },
+        membership: { personId: expect.any(String) },
+        compatibility: { mode: "canonical", legacyRole: role },
+      });
+      const links = await t.run(async (ctx) => {
+        const person = await ctx.db.query("persons").withIndex("by_token_identifier", (q) => q.eq("authTokenIdentifier", tokenIdentifier)).unique();
+        const membership = person && await ctx.db.query("branchMemberships").withIndex("by_person_and_school", (q) => q.eq("personId", person._id).eq("schoolId", run.schoolId)).unique();
+        const user = membership?.legacyUserId && await ctx.db.get(membership.legacyUserId);
+        return { person, membership, user };
+      });
+      expect(links.person).toMatchObject({ status: "active" });
+      expect(links.membership).toMatchObject({ status: "active", isDefaultBranch: true, personId: links.person?._id });
+      expect(links.user).toMatchObject({ role, personId: links.person?._id, authTokenIdentifier: tokenIdentifier });
+      if (access.state !== "ready") throw new Error("Expected ready access");
+      expect(access.membership?.membershipId).toBe(links.membership?._id);
+    }
+    for (const [issuer, tokenIdentifier] of [[run.authIssuer, `${run.authIssuer}|wrong-token`], ["https://other-auth.test", `https://other-auth.test|${run.adminAuthId}`]] as const) {
+      expect(await t.withIdentity({ issuer, subject: run.adminAuthId, tokenIdentifier, email: "admin@demo-academy.school" }).query(api.functions.auth.getViewerAccess, {}))
+        .not.toMatchObject({ state: "ready" });
+    }
   });
 
   test("phases create correct family, billing, and portal relationships", async () => {
@@ -101,6 +187,37 @@ describe("demo-school phased seed integration", () => {
     expect(counts.bindings).toHaveLength(12);
     expect(new Set(counts.bindings.map((binding) => binding.classId))).toEqual(new Set(counts.classes.slice(0, 2).map((classDoc) => classDoc._id)));
     expect(counts.run).toMatchObject({ status: "succeeded", phase: "complete" });
+  });
+
+  test("judge can seed again after bounded reset without leaving canonical accounts", async () => {
+    const t = convexTest(schema, modules);
+    for (let run = 0; run < 2; run += 1) {
+      const seeded = await finish(t, await start(t, "judge"));
+      const accounts = await t.run(async (ctx) => ({
+        users: await ctx.db.query("users").withIndex("by_school", (q) => q.eq("schoolId", seeded.schoolId)).take(80),
+        persons: await ctx.db.query("persons").take(4),
+        memberships: await ctx.db.query("branchMemberships").take(4),
+      }));
+      expect(accounts.users).toHaveLength(58);
+      for (const [authId, role] of [["auth-admin-judge", "admin"], ["auth-teacher-judge", "teacher"], ["auth-portal-judge", "parent"]] as const) {
+        const matches = accounts.users.filter((user) => user.authId === authId);
+        expect(matches).toHaveLength(1);
+        expect(matches[0]).toMatchObject({ role });
+        expect(matches[0]).not.toHaveProperty("personId");
+        expect(matches[0]).not.toHaveProperty("authTokenIdentifier");
+      }
+      expect(accounts.persons).toEqual([]);
+      expect(accounts.memberships).toEqual([]);
+      if (run === 0) {
+        let complete = false;
+        for (let attempt = 0; attempt < 120; attempt += 1) {
+          const batch = await t.mutation(internal.functions.academic.seed.clearDemoSchoolBatchInternal, { seedProfile: "judge" });
+          if (batch.complete) { complete = true; break; }
+        }
+        expect(complete).toBe(true);
+        expect(await t.run((ctx) => ctx.db.query("schools").take(2))).toEqual([]);
+      }
+    }
   });
 
   test("judge profile creates a full school plus the curriculum demo journey", async () => {
