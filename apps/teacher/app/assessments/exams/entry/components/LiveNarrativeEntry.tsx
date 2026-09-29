@@ -10,11 +10,11 @@ export function LiveNarrativeEntry({ selection, schoolId }: { selection: Selecti
   const terms = useQuery("functions/academic/teacherSelectors:getTermsBySession" as never, selection.sessionId ? { schoolId, sessionId: selection.sessionId } as never : "skip") as { id: string; name: string }[] | undefined;
   const classes = useQuery("functions/academic/teacherSelectors:getTeacherAssignableClasses" as never, { schoolId } as never) as { _id: string; name: string }[] | undefined;
   const subjects = useQuery("functions/academic/narrativeEntrySheet:getSubjectOptions" as never, selection.classId && selection.sessionId && selection.termId ? { schoolId, classId: selection.classId, sessionId: selection.sessionId, termId: selection.termId } as never : "skip") as { id: string; name: string }[] | undefined;
-  const validSubject = subjects === undefined || subjects.some(s => s.id === selection.subjectId);
+  const validSubject = subjects?.some(s => s.id === selection.subjectId) ?? false;
   const ready = selection.sessionId && selection.termId && selection.classId && selection.subjectId && validSubject;
   const rows = useQuery("functions/academic/narrativeEntrySheet:getSheet" as never, ready ? { schoolId, sessionId: selection.sessionId, termId: selection.termId, classId: selection.classId, subjectId: selection.subjectId } as never : "skip") as CommentRow[] | undefined;
   const save = useMutation("functions/academic/narrativeReports:saveDraft" as never);
-  return <NarrativeSubjectEntry selection={selection} sessions={sessions?.map(s => ({ id: s._id, name: s.name })) ?? []} terms={terms ?? []} classes={classes?.map(c => ({ id: c._id, name: c.name })) ?? []} subjects={subjects ?? []} rows={ready ? rows : undefined} onSelect={(field, value) => {
+  return <NarrativeSubjectEntry selection={selection} sessions={sessions?.map(s => ({ id: s._id, name: s.name })) ?? []} terms={terms ?? []} classes={classes?.map(c => ({ id: c._id, name: c.name })) ?? []} subjects={subjects ?? []} rows={ready ? rows : undefined} subjectUnavailable={Boolean(selection.subjectId && subjects && !validSubject)} onSelect={(field, value) => {
     const params = new URLSearchParams(window.location.search);
     if (value) params.set(field, value); else params.delete(field);
     if (field === "sessionId") { params.delete("termId"); params.delete("classId"); params.delete("subjectId"); }

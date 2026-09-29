@@ -281,6 +281,10 @@ function PortalGreetingBar({
   );
 }
 
+function HistoricalReviewNotice() {
+  return <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">Historical report needs school review.</p>;
+}
+
 /* ─── Dashboard View ───────────────────────────────────────── */
 
 function DashboardView({
@@ -307,7 +311,9 @@ function DashboardView({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Term snapshot</h2>
-            {workspace.selectedReportMode === "narrative" ? (
+            {workspace.selectedReportNeedsReview ? (
+              <div className="mt-2"><HistoricalReviewNotice /></div>
+            ) : workspace.selectedReportMode === "narrative" ? (
               <p className="mt-2 text-sm text-slate-600">{workspace.selectedNarrativeReport ? "Progress report available." : "Report not ready. The school has not published this term's progress report yet."}</p>
             ) : summary ? (
               <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
@@ -406,11 +412,11 @@ function DashboardView({
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600 group-hover:bg-slate-200 transition-colors tabular-nums">
-                    {item.mode === "narrative" ? (item.issued ? "✓" : "·") : formatScore(item.averageScore)}
+                    {item.mode === "needs_review" ? "?" : item.mode === "narrative" ? (item.issued ? "✓" : "·") : formatScore(item.averageScore)}
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-800">{item.termName}</p>
-                    <p className="text-xs text-slate-500">{item.sessionName}{item.mode === "narrative" ? ` · ${item.issued ? "Report available" : "Report not ready"}` : ""}</p>
+                    <p className="text-xs text-slate-500">{item.sessionName}{item.mode === "needs_review" ? " · Needs school review" : item.mode === "narrative" ? ` · ${item.issued ? "Report available" : "Report not ready"}` : ""}</p>
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
@@ -532,13 +538,13 @@ function PortalReportCardLayout({
                             {item.sessionName} · {item.termName}
                           </p>
                           <p className="mt-0.5 text-xs text-slate-500">
-                            {item.className}
+                            {item.mode === "needs_review" ? item.note : item.className}
                           </p>
                         </div>
                         <span className={`rounded-xl px-2.5 py-1 text-[11px] font-extrabold ${
                           isActive ? "bg-slate-200 text-slate-700" : "bg-slate-100 text-slate-500"
                         }`}>
-                          {item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
+                          {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                         </span>
                       </button>
                     );
@@ -557,7 +563,9 @@ function PortalReportCardLayout({
         {/* Main Content Bucket - The Report Card Sheet */}
         <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-12 lg:order-2">
           <div className="mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-            {workspace.selectedReportMode === "narrative" ? (
+            {workspace.selectedReportNeedsReview ? (
+              <div className="mx-auto" style={{ maxWidth: "210mm" }}><HistoricalReviewNotice /></div>
+            ) : workspace.selectedReportMode === "narrative" ? (
               workspace.selectedNarrativeReport ? <>
                 <div className="mx-auto mb-4 flex justify-end" style={{ maxWidth: "210mm" }}><button type="button" className="rounded-lg bg-slate-900 px-4 py-2 text-white print:hidden" onClick={() => window.print()}>Print issued report</button></div>
                 <NarrativeReport report={workspace.selectedNarrativeReport} />
@@ -607,7 +615,7 @@ function ResultsView({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-lg font-bold text-slate-900">Academic history</h2>
-        {activeHistoryItem && (
+        {activeHistoryItem && activeHistoryItem.mode !== "needs_review" && (
           <Link
             href={buildPortalHref("/report-cards", {
               studentId: workspace.selectedStudentId,
@@ -622,6 +630,7 @@ function ResultsView({
         )}
       </div>
 
+      {workspace.selectedReportNeedsReview && <HistoricalReviewNotice />}
       {workspace.history.length > 0 ? (
         <div className="overflow-hidden rounded-xl border border-slate-200">
           {/* Desktop table */}
@@ -662,11 +671,11 @@ function ResultsView({
                       </button>
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-800">{item.termName}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.className}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.mode === "needs_review" ? "Not confirmed" : item.className}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
-                      {item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
+                      {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                     </td>
-                    {workspace.history.some(entry => entry.mode === "graded") && <td className="px-4 py-3 text-right text-slate-500 tabular-nums">{item.mode === "narrative" ? "" : item.totalSubjects}</td>}
+                    {workspace.history.some(entry => entry.mode === "graded") && <td className="px-4 py-3 text-right text-slate-500 tabular-nums">{item.mode === "graded" ? item.totalSubjects : ""}</td>}
                     <td className="px-4 py-3 text-right">
                       {isActive && (
                         <div className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -699,14 +708,14 @@ function ResultsView({
                       {item.termName} · {item.sessionName}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {item.className}{item.mode === "graded" ? ` · ${item.totalSubjects} subjects` : ""}
+                      {item.mode === "needs_review" ? "Not confirmed" : item.className}{item.mode === "graded" ? ` · ${item.totalSubjects} subjects` : ""}
                     </p>
                     {item.note && (
                       <p className="mt-1 text-xs font-medium text-amber-600">{item.note}</p>
                     )}
                   </div>
                   <span className="text-lg font-bold text-slate-900 tabular-nums">
-                    {item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
+                    {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                   </span>
                 </button>
               );

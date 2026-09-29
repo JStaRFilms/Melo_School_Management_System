@@ -10,6 +10,7 @@ export function NarrativeReport({ report }: { report: NonNullable<PortalWorkspac
     <style>{`@media print {
       @page { size: A4; margin: 14mm; }
       body { background: white !important; }
+      .rc-no-print { display: none !important; }
       body * { visibility: hidden; }
       .narrative-paper, .narrative-paper * { visibility: visible; }
       .narrative-paper { position: absolute; inset: 0; width: 100%; max-width: none !important; padding: 0 !important; box-shadow: none !important; color: #111827 !important; font-size: 11pt; }

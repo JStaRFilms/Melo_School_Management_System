@@ -30,7 +30,7 @@ interface PortalHistoryContext {
   href: string;
   note: string | null;
 }
-export type PortalHistoryItem = PortalHistoryContext & (
+export type PortalHistoryItem = (PortalHistoryContext & (
   { mode: "narrative" } |
   { mode: "graded";
   totalSubjects: number;
@@ -40,7 +40,17 @@ export type PortalHistoryItem = PortalHistoryContext & (
   totalScore: number;
   resultCalculationMode: "standalone" | "cumulative_annual";
   }
-);
+)) | {
+  mode: "needs_review";
+  issued: false;
+  sessionId: string;
+  termId: string;
+  sessionName: string;
+  termName: string;
+  generatedAt: number;
+  href: string;
+  note: string;
+};
 
 export interface PortalNotificationItem {
   id: string;
@@ -81,6 +91,7 @@ export interface PortalWorkspaceData {
   } | null;
   selectedReportCard: ReportCardSheetData | null;
   selectedReportMode: "graded" | "narrative" | null;
+  selectedReportNeedsReview: boolean;
   selectedNarrativeReport: {
     issuedAt: number;
     snapshot: {

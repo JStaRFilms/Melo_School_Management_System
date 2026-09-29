@@ -172,6 +172,43 @@ export const setClassModes = mutation({
   },
 });
 
+// Entry navigation is not a report preview. A stale class selector must be
+// able to learn the mode without granting teacher access to a subject or draft.
+export const getEntryClassMode = query({
+  args: { schoolId: v.optional(v.id("schools")), classId: selection.classId, sessionId: selection.sessionId },
+  returns: v.object({ mode: v.union(v.literal("graded"), v.literal("narrative")), canEnterNarrative: v.boolean() }),
+  handler: async (ctx, args) => {
+    const auth = await getAuthenticatedSchoolMembership(ctx, {
+      schoolId: args.schoolId, capability: "academic.assessments.enter",
+    });
+    if (!auth.isSchoolAdmin && auth.role !== "admin" && auth.role !== "teacher" && auth.role !== "staff")
+      throw new ConvexError("Staff access required");
+    // Legacy staff have no role-based assessment-entry fallback; require an
+    // explicit grant even before the school's permission migration.
+    if (auth.role === "staff") await requireCapability(ctx, auth.schoolId, "academic.assessments.enter");
+    const [classDoc, session] = await Promise.all([ctx.db.get(args.classId), ctx.db.get(args.sessionId)]);
+    if (!classDoc || classDoc.schoolId !== auth.schoolId || !session || session.schoolId !== auth.schoolId)
+      throw new ConvexError("Invalid entry selection");
+    const mode = await modeFor(ctx, args.classId, args.sessionId);
+    if (mode && mode.schoolId !== auth.schoolId) throw new ConvexError("Invalid entry selection");
+    if (!mode || classDoc.isArchived || (auth.role !== "teacher" && !auth.isSchoolAdmin))
+      return { mode: mode ? "narrative" as const : "graded" as const, canEnterNarrative: false };
+    let hasPreview = true;
+    try {
+      // Match the actual getSubjectOptions/getSheet permission gate. Do not
+      // infer narrative access from assessment-entry permission or admin title.
+      await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: auth.schoolId, capability: "academic.report_cards.preview",
+      });
+    } catch (error) {
+      if (!(error instanceof ConvexError) || error.data !== "Forbidden: Required operation capability is missing") throw error;
+      hasPreview = false;
+    }
+    const hasClassAccess = auth.isSchoolAdmin || await teacherHasClassAccess(ctx, auth.userId, auth.schoolId, args.classId);
+    return { mode: "narrative" as const, canEnterNarrative: hasPreview && hasClassAccess };
+  },
+});
+
 export const getClassMode = query({
   args: { classId: selection.classId, sessionId: selection.sessionId },
   returns: v.union(v.literal("graded"), v.literal("narrative")),
@@ -206,9 +243,11 @@ async function applicableSubjects(ctx: Context, args: Selection, schoolId: Id<"s
   });
   if (ids.size > 100) throw new ConvexError("Subject list exceeds supported size");
   const subjects = await Promise.all([...ids].map(id => ctx.db.get(id as Id<"subjects">)));
-  if (subjects.some(subject => !subject || subject.schoolId !== schoolId || subject.isArchived))
+  if (subjects.some(subject => !subject || subject.schoolId !== schoolId))
     throw new ConvexError("Invalid subject selection");
-  return subjects.filter((subject): subject is NonNullable<typeof subject> => subject !== null)
+  // Match getSubjectOptions: archived subjects have no entry sheet and must not
+  // become unfulfillable required comments. Issued reports retain their snapshot.
+  return subjects.filter((subject): subject is NonNullable<typeof subject> => subject !== null && !subject.isArchived)
     .sort((a, b) => a.name.localeCompare(b.name) || String(a._id).localeCompare(String(b._id)));
 }
 async function subjectAccess(ctx: Context, args: Selection & { subjectId: Id<"subjects"> }) {

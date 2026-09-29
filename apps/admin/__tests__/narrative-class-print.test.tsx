@@ -25,6 +25,7 @@ it("prints only issued snapshots with skipped count and page-safe long comments"
   expect(container.querySelector(".batch-sheet section p")?.textContent).toContain("A long comment.\nA long comment.");
   const css = container.querySelector("style")!.textContent!;
   expect(css).toContain("size: A4");
+  expect(css).toContain(".rc-no-print { display: none !important; }");
   expect(css).toContain(".batch-sheet * { color: #111827 !important; background: white !important; }");
   expect(css).toContain(".batch-sheet h2 { border-color: #111827 !important; }");
   expect(css).toContain("section { break-inside: auto; }");

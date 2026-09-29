@@ -61,6 +61,16 @@ const portalHistoryItemValidator = v.union(v.object({
   ...historyContext,
   mode: v.literal("narrative"),
   issued: v.boolean(),
+}), v.object({
+  mode: v.literal("needs_review"),
+  issued: v.literal(false),
+  sessionId: v.id("academicSessions"),
+  termId: v.id("academicTerms"),
+  sessionName: v.string(),
+  termName: v.string(),
+  generatedAt: v.number(),
+  href: v.string(),
+  note: v.string(),
 }));
 
 const portalNotificationValidator = v.object({
@@ -193,6 +203,7 @@ export const portalWorkspaceDataValidator = v.object({
   ),
   selectedReportCard: v.union(v.null(), reportCardResultValidator),
   selectedReportMode: v.union(v.null(), v.literal("graded"), v.literal("narrative")),
+  selectedReportNeedsReview: v.boolean(),
   selectedNarrativeReport: v.union(v.null(), portalNarrativeReportValidator),
   history: v.array(portalHistoryItemValidator),
   notifications: v.array(portalNotificationValidator),
@@ -294,6 +305,18 @@ async function tryBuildStudentReportCard(
     });
   } catch {
     return null;
+  }
+}
+
+// Only the precise enrollment ambiguity is safe to present as a review state.
+// Other failures keep the existing fail-closed behavior and reveal no report.
+async function resolvePortalSelectionForWorkspace(ctx: QueryCtx, args: {
+  studentId: Id<"students">; sessionId: Id<"academicSessions">; termId: Id<"academicTerms">;
+}) {
+  try {
+    return { selection: await resolveAuthorizedPortalReportSelection(ctx, args), needsReview: false };
+  } catch (error) {
+    return { selection: null, needsReview: error instanceof ConvexError && error.data === "Enrollment history requires review" };
   }
 }
 
@@ -470,11 +493,12 @@ export const getWorkspaceData = query({
 
     // Resolve the period's historical class and publication before touching live grades.
     // On missing or ambiguous enrollment, fail closed instead of trying today's class.
-    const selectedSelection = selectedStudent && selectedSessionId && selectedTermId
-      ? await resolveAuthorizedPortalReportSelection(ctx, {
+    const selectedResolution = selectedStudent && selectedSessionId && selectedTermId
+      ? await resolvePortalSelectionForWorkspace(ctx, {
           studentId: selectedStudent._id, sessionId: selectedSessionId, termId: selectedTermId,
-        }).catch(() => null)
-      : null;
+        })
+      : { selection: null, needsReview: false };
+    const selectedSelection = selectedResolution.selection;
     const selectedReportMode = selectedSelection?.mode ?? null;
     const selectedNarrativeReport = selectedSelection?.issued && selectedSelection.mode === "narrative"
       ? { snapshot: selectedSelection.issued.snapshot, issuedAt: selectedSelection.issued.issuedAt }
@@ -510,9 +534,21 @@ export const getWorkspaceData = query({
           continue;
         }
 
-        const selection = await resolveAuthorizedPortalReportSelection(ctx, {
+        const resolution = await resolvePortalSelectionForWorkspace(ctx, {
           studentId: selectedStudent._id, sessionId: session._id, termId: term._id,
-        }).catch(() => null);
+        });
+        const selection = resolution.selection;
+        if (resolution.needsReview) {
+          history.push({
+            mode: "needs_review", issued: false, sessionId: session._id, termId: term._id,
+            sessionName: normalizeHumanName(session.name), termName: normalizeHumanName(term.name),
+            generatedAt: term.startDate,
+            href: buildPortalHref("/report-cards", { studentId: String(selectedStudent._id),
+              sessionId: String(session._id), termId: String(term._id) }),
+            note: "Historical report needs school review.",
+          });
+          continue;
+        }
         // No verified class in this period means no report or history to return.
         if (!selection) continue;
         const href = buildPortalHref("/report-cards", {
@@ -730,6 +766,7 @@ export const getWorkspaceData = query({
         : null,
       selectedReportCard,
       selectedReportMode,
+      selectedReportNeedsReview: selectedResolution.needsReview,
       selectedNarrativeReport,
       history,
       notifications,

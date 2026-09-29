@@ -41,6 +41,25 @@ describe("portal report dispatch", () => {
     expect(screen.getByText(/The school has not published this term/)).toBeTruthy();
     expect(screen.queryByText(/scored an average/)).toBeNull();
   });
+  it("shows an ambiguous unissued period on dashboard, history, and report without a class or draft fallback", () => {
+    state.workspace = { ...base, selectedReportMode: null, selectedReportNeedsReview: true,
+      selectedReportCard: null, selectedNarrativeReport: null,
+      history: [{ mode: "needs_review", issued: false, sessionId: "session", termId: "term",
+        sessionName: "2025", termName: "Term 1", generatedAt: 1,
+        href: "/report-cards", note: "Historical report needs school review." }],
+    };
+    const view = render(<PortalWorkspaceContent mode="dashboard" />);
+    expect(screen.getByRole("status").textContent).toBe("Historical report needs school review.");
+    expect(screen.getByText(/Needs school review/)).toBeTruthy();
+    expect(screen.queryByText(/scored an average|Nursery|Private narrative draft|Graded sheet/)).toBeNull();
+    view.rerender(<PortalWorkspaceContent mode="results" />);
+    expect(screen.getByRole("status").textContent).toBe("Historical report needs school review.");
+    expect(screen.getAllByText("Needs school review").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Open report card|Open progress report|Graded sheet|Nursery/)).toBeNull();
+    view.rerender(<PortalWorkspaceContent mode="report-cards" />);
+    expect(screen.getByRole("status").textContent).toBe("Historical report needs school review.");
+    expect(screen.queryByText(/Graded sheet|Print issued report|Nursery|Private narrative draft/)).toBeNull();
+  });
   it("shows issued subject comments, while graded reports retain the existing sheet", () => {
     state.workspace = { ...base, history: [{ ...base.history[0], issued: true }], selectedNarrativeReport: {
       issuedAt: 1750000000000, snapshot: { schoolName: "School", studentName: "Ada", admissionNumber: "A-01",

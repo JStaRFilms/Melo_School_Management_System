@@ -20,6 +20,7 @@ describe("issued progress report paper", () => {
     expect(container.textContent?.indexOf("Art")).toBeLessThan(container.textContent!.indexOf("Music"));
     const css = container.querySelector("style")?.textContent;
     expect(css).toContain("@page { size: A4; margin: 14mm; }");
+    expect(css).toContain(".rc-no-print { display: none !important; }");
     expect(css).toContain(".narrative-paper, .narrative-paper * { color: #111827 !important; background: white !important; }");
     expect(css).toContain("section { break-inside: auto; }");
     expect(css).toContain("orphans: 3; widows: 3;");

@@ -23,6 +23,7 @@ export function NarrativeClassPrint({ classId, sessionId, termId, onExit }: { cl
     <style>{`@media print {
       @page { size: A4; margin: 14mm; }
       body { background: white !important; }
+      .rc-no-print { display: none !important; }
       .narrative-batch .batch-controls { display: none !important; }
       .narrative-batch .batch-sheet { break-after: page; page-break-after: always; color: #111827 !important; background: white !important; }
       .narrative-batch .batch-sheet:last-child { break-after: auto; page-break-after: auto; }

@@ -111,18 +111,18 @@ function LiveAdminScoreEntryPage({
       ? ({ classId: selection.classId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
-  const mode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
-    selection.classId && selection.sessionId ? { classId: selection.classId, sessionId: selection.sessionId } as never : "skip") as "graded" | "narrative" | undefined;
-  const isSelectedSubjectAvailable =
-    !selection.subjectId ||
-    subjects === undefined ||
-    subjects.some((subject) => subject.id === selection.subjectId);
+  const entryMode = useQuery("functions/academic/narrativeReports:getEntryClassMode" as never,
+    selection.classId && selection.sessionId ? { classId: selection.classId, sessionId: selection.sessionId } as never : "skip") as { mode: "graded" | "narrative"; canEnterNarrative: boolean } | undefined;
+  const isSelectedSubjectAvailable = Boolean(
+    selection.subjectId && subjects?.some((subject) => subject.id === selection.subjectId)
+  );
+  const subjectUnavailable = Boolean(selection.subjectId && subjects && !isSelectedSubjectAvailable);
   const isSheetReady = Boolean(
     selection.sessionId &&
       selection.termId &&
       selection.classId &&
       selection.subjectId &&
-      isSelectedSubjectAvailable && mode === "graded"
+      isSelectedSubjectAvailable && entryMode?.mode === "graded"
   );
   const sheetData = useQuery(
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
@@ -157,8 +157,10 @@ function LiveAdminScoreEntryPage({
     [upsertAssessmentRecordsBulk]
   );
 
-  if (selection.classId && selection.sessionId && mode === undefined) return <p role="status">Checking reporting mode...</p>;
-  if (mode === "narrative") return <LiveNarrativeEntry selection={selection} />;
+  if (selection.classId && selection.sessionId && entryMode === undefined) return <p role="status">Checking reporting mode...</p>;
+  if (entryMode?.mode === "narrative") return entryMode.canEnterNarrative
+    ? <LiveNarrativeEntry selection={selection} />
+    : <p role="alert" className="p-6">Subject comments are unavailable for your account or this class. Ask a school admin to check your report preview permission and class assignment.</p>;
   return (
     <AdminScoreEntryContent
       selection={selection}
@@ -172,6 +174,7 @@ function LiveAdminScoreEntryPage({
       isLoadingTerms={Boolean(selection.sessionId) && terms === undefined}
       isLoadingClasses={classes === undefined}
       isLoadingSubjects={Boolean(selection.classId) && subjects === undefined}
+      subjectUnavailable={subjectUnavailable}
       onSaveRecords={handleSaveRecords}
     />
   );
@@ -258,6 +261,7 @@ interface AdminScoreEntryContentProps {
   isLoadingTerms?: boolean;
   isLoadingClasses?: boolean;
   isLoadingSubjects?: boolean;
+  subjectUnavailable?: boolean;
   modeNotice?: string;
   onSaveRecords: (args: SaveArgs) => Promise<UpsertResponse>;
 }
@@ -274,6 +278,7 @@ function AdminScoreEntryContent({
   isLoadingTerms = false,
   isLoadingClasses = false,
   isLoadingSubjects = false,
+  subjectUnavailable = false,
   modeNotice,
   onSaveRecords,
 }: AdminScoreEntryContentProps) {
@@ -702,7 +707,11 @@ function AdminScoreEntryContent({
               </div>
             )}
 
-            {isLoadingSheet ? (
+            {subjectUnavailable ? (
+              <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-sm text-slate-700">Choose an available subject from the selector to load a score sheet.</p>
+            ) : isLoadingSubjects && selection.subjectId ? (
+              <p role="status" className="p-6 text-sm text-slate-600">Loading available subjects...</p>
+            ) : isLoadingSheet ? (
               <div className="flex flex-col items-center justify-center py-24 space-y-4">
                 <div className="w-10 h-10 border-4 border-slate-200 border-t-slate-950 rounded-full animate-spin" />
                 <p className="text-xs font-black uppercase tracking-widest text-slate-400">Loading Score Sheet...</p>

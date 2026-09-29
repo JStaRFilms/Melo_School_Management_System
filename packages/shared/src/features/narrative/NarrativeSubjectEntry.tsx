@@ -6,10 +6,11 @@ export type EntrySelection = { sessionId: string | null; termId: string | null; 
 export type EntryOption = { id: string; name: string };
 export type CommentRow = { studentId: string; studentName: string; comment: string; issued: boolean };
 
-export function NarrativeSubjectEntry({ selection, sessions, terms, classes, subjects, rows, onSelect, onSave }: {
+export function NarrativeSubjectEntry({ selection, sessions, terms, classes, subjects, rows, subjectUnavailable = false, onSelect, onSave }: {
   selection: EntrySelection;
   sessions: EntryOption[]; terms: EntryOption[]; classes: EntryOption[]; subjects: EntryOption[];
   rows?: CommentRow[];
+  subjectUnavailable?: boolean;
   onSelect: (field: keyof EntrySelection, value: string) => void;
   onSave: (studentId: string, comment: string) => Promise<void>;
 }) {
@@ -28,7 +29,7 @@ export function NarrativeSubjectEntry({ selection, sessions, terms, classes, sub
       <select className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white p-2 focus-visible:ring-2 focus-visible:ring-slate-900" value={selection[field.key] ?? ""} onChange={e => { if (dirtyIds.length && !window.confirm("Discard unsaved comments and change selection?")) return; setDirtyIds([]); onSelect(field.key, e.target.value); }}>
         <option value="">Select {field.label.toLowerCase()}</option>{field.options.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
       </select></label>)}</div>
-    {!selection.subjectId ? <p role="status">Choose a subject to load its student roster.</p> : rows === undefined ? <p role="status">Loading comments...</p> : rows.length === 0 ? <p role="status">No enrolled students are assigned this subject. Check class subject assignments and student selections.</p> :
+    {subjectUnavailable ? <p role="alert">Subject unavailable. Choose another subject from the list.</p> : !selection.subjectId ? <p role="status">Choose a subject to load its student roster.</p> : rows === undefined ? <p role="status">Loading comments...</p> : rows.length === 0 ? <p role="status">No enrolled students are assigned this subject. Check class subject assignments and student selections.</p> :
       <div className="space-y-4">{rows.map(row => <CommentEditor key={`${selection.sessionId}-${selection.termId}-${selection.classId}-${selection.subjectId}-${row.studentId}`} row={row} onSave={onSave} onDirtyChange={dirty => setDirtyIds(ids => dirty ? (ids.includes(row.studentId) ? ids : [...ids, row.studentId]) : ids.filter(id => id !== row.studentId))} />)}</div>}
   </main>;
 }

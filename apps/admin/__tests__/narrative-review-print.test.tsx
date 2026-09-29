@@ -28,6 +28,7 @@ describe("staff narrative print", () => {
     expect(screen.getByText("Art").getAttribute("style")).toContain("var(--school-accent)");
     const css = view.container.querySelector("style")?.textContent;
     expect(css).toContain("size: A4");
+    expect(css).toContain(".rc-no-print { display: none !important; }");
     expect(css).toContain("main * { color: #111827 !important; background: white !important; }");
     expect(css).toContain("border-color: #111827 !important");
     state.issued = true;

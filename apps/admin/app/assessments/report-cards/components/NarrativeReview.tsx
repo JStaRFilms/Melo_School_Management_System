@@ -14,7 +14,7 @@ export function NarrativeReview({ studentId, classId, sessionId, termId }: { stu
   const publish = useMutation("functions/academic/narrativeReports:publish" as never);
   const missing = preview?.snapshot.subjects.filter(s => !s.comment.trim()) ?? [];
   return <main className="mx-auto max-w-3xl space-y-6 p-4 pb-24 sm:p-8 print:max-w-none print:p-0">
-    <style>{`@media print { @page { size: A4; margin: 14mm; } body { background: white !important; } main, main * { color: #111827 !important; background: white !important; } main section { break-inside: auto; } main h2 { break-after: avoid; border-color: #111827 !important; } main section p { orphans: 3; widows: 3; } }`}</style>
+    <style>{`@media print { @page { size: A4; margin: 14mm; } body { background: white !important; } .rc-no-print { display: none !important; } main, main * { color: #111827 !important; background: white !important; } main section { break-inside: auto; } main h2 { break-after: avoid; border-color: #111827 !important; } main section p { orphans: 3; widows: 3; } }`}</style>
     <Link href={`/assessments/report-cards?sessionId=${sessionId}&termId=${termId}&classId=${classId}`} className="print:hidden underline">Back to student selection</Link>
     {!preview ? <p role="status">Loading report review...</p> : <>
       <div className="narrative-review-paper rounded-xl border bg-white p-6 print:rounded-none print:border-0 print:p-0 print:text-black" style={deriveSchoolTheme(preview.snapshot.primaryColor, preview.snapshot.accentColor) as CSSProperties}>
