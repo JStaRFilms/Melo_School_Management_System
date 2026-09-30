@@ -3485,6 +3485,7 @@ export default defineSchema({
     draftMode: v.optional(assessmentDraftModeValidator),
     sourceSelectionSnapshot: v.optional(v.string()),
     effectiveGenerationSettings: v.optional(assessmentGenerationSettingsValidator),
+    draftRevision: v.optional(v.number()),
     bankStatus: knowledgeArtifactStatusValidator,
     title: v.string(),
     description: v.optional(v.string()),
@@ -3657,6 +3658,7 @@ export default defineSchema({
     .index("by_window_expires_at", ["windowExpiresAt"]),
 
   aiRunLogs: defineTable({
+    attemptId: v.optional(v.id("usageOperationAttempts")),
     schoolId: v.id("schools"),
     actorUserId: v.id("users"),
     actorRole: knowledgeOwnerRoleValidator,
@@ -4248,8 +4250,8 @@ export default defineSchema({
     startAt: v.number(), endAt: v.number(), status: v.union(v.literal("active"), v.literal("closed")), createdAt: v.number(),
     closedAt: v.optional(v.number()), reconciliationNote: v.optional(v.string()),
   }).index("by_school", ["schoolId"])
-    .index("by_school_and_status", { fields: ["schoolId", "status"], staged: true })
-    .index("by_school_and_startAt", { fields: ["schoolId", "startAt"], staged: true }),
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_startAt", ["schoolId", "startAt"]),
   usageCycleMeterSnapshots: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType,
     allocatedUnits: v.number(), baseUnits: v.number(), graceUnits: v.number(), topUpUnits: v.number(), exceptionUnits: v.number(), poolUnits: v.number(),
@@ -4287,13 +4289,22 @@ export default defineSchema({
   usageOperationAttempts: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), idempotencyKey: v.string(), task: heavyUsageTask,
     meterType: usageMeterType, itemCount: v.number(), estimatedUnits: v.number(), modelProfile: v.string(),
-    status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable")),
+    status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("needs_reconciliation"), v.literal("settled")),
     actorTokenIdentifier: v.string(), createdAt: v.number(), updatedAt: v.number(),
+    requestDigest: v.optional(v.string()), modelId: v.optional(v.string()),
+    requestArgs: v.optional(v.string()),
+    expiresAt: v.optional(v.number()), actualUnits: v.optional(v.number()), inputTokens: v.optional(v.number()), outputTokens: v.optional(v.number()),
+    outcome: v.optional(v.string()), evidence: v.optional(v.string()), overage: v.optional(v.boolean()), overageReviewedAt: v.optional(v.number()), resultId: v.optional(v.string()),
   }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"])
     .index("by_school", ["schoolId"])
-    .index("by_school_and_status_and_updatedAt", { fields: ["schoolId", "status", "updatedAt"], staged: true }),
+    .index("by_school_and_status_and_updatedAt", ["schoolId", "status", "updatedAt"]),
+  // Private generated content staged for settlement/save recovery. Never part of the accounting ledger.
+  aiGenerationResults: defineTable({
+    attemptId: v.id("usageOperationAttempts"), aiRunLogId: v.optional(v.id("aiRunLogs")),
+    payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string(), createdAt: v.number(),
+  }).index("by_attempt", ["attemptId"]),
   usageOperationTransitions: defineTable({
-    attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled")), createdAt: v.number(),
+    attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled"), v.literal("needs_reconciliation"), v.literal("settled")), createdAt: v.number(),
   }).index("by_attempt", ["attemptId"]),
 
   // --- Usage Metering & Threshold Protection (H8 / MX-13) ---
@@ -4310,6 +4321,8 @@ export default defineSchema({
     // `consumedUnits` remains the quota total; buckets show where the bytes
     // currently reside without counting a storage object twice.
     consumedUnits: v.number(),
+    aiOverageRequiresReview: v.optional(v.boolean()),
+    aiOutstandingOverageCount: v.optional(v.number()),
     activeStorageBytes: v.optional(v.number()),
     trashStorageBytes: v.optional(v.number()),
     tempStorageBytes: v.optional(v.number()),

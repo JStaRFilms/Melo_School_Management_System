@@ -1,7 +1,7 @@
 import { ConvexError, v, type Infer } from "convex/values";
 
 export const usageMeterType = v.union(v.literal("ai_tokens"), v.literal("ocr_pages"), v.literal("storage_bytes"));
-export const heavyUsageTask = v.union(v.literal("teacher_lesson_plan"), v.literal("provider_ocr"), v.literal("knowledge_upload"), v.literal("curriculum_generation"), v.literal("ai_import"));
+export const heavyUsageTask = v.union(v.literal("teacher_lesson_plan"), v.literal("teacher_assessment"), v.literal("provider_ocr"), v.literal("knowledge_upload"), v.literal("curriculum_generation"), v.literal("ai_import"));
 export const usageEntitlement = v.object({
   allowances: v.array(v.object({ meterType: usageMeterType, baseUnits: v.number(), graceUnits: v.number() })),
   warningPercent: v.number(), criticalPercent: v.number(), hardStopPercent: v.number(),
