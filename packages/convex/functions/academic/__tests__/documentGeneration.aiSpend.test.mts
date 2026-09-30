@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { api, internal } from "../../../_generated/api";
-import { internalMutation } from "../../../_generated/server";
+import { internalMutation, mutation } from "../../../_generated/server";
 import { v } from "convex/values";
 import { NoObjectGeneratedError } from "ai";
 import { convexTest } from "convex-test";
@@ -172,6 +172,110 @@ for (const editTiming of ["during_provider", "before_recovery"] as const) {
     expect(mock.generate).toHaveBeenCalledTimes(1);
   });
 }
+for (const scenario of [
+  { draftMode: "practice_quiz" as const, mix: { multiple_choice: 3, short_answer: 4, essay: 1, true_false: 1, fill_in_the_blank: 1 }, outputCap: 4256 },
+  { draftMode: "exam_draft" as const, mix: { multiple_choice: 16, short_answer: 0, essay: 0, true_false: 2, fill_in_the_blank: 2 }, outputCap: 7104 },
+]) {
+  it(`budgets a normal ${scenario.draftMode} mix and uses its confirmed output cap`, async () => {
+    const f = await setup();
+    const count = Object.values(scenario.mix).reduce((sum, value) => sum + value, 0);
+    const settings = { profileId: f.assessmentProfileId, questionStyle: "balanced" as const, totalQuestions: count,
+      questionMix: scenario.mix, allowTeacherOverrides: true };
+    const questions = Array.from({ length: count }, (_, index) => ({ number: index + 1, prompt: `Question ${index + 1}`,
+      answer: "Answer", explanation: "Explanation with working", difficulty: "easy", marks: 2, tags: ["algebra"] }));
+    const common = { title: "Algebra questions", subject: "Mathematics", level: "JSS 1", topic: "Algebra",
+      answerKeyNotes: "Review answers", sourceNotes: ["Source"] };
+    const object = scenario.draftMode === "exam_draft"
+      ? { ...common, examMode: "class exam", timeLimitMinutes: 40, instructions: ["Answer all"],
+        sections: [{ title: "Questions", instructions: ["Work carefully"], questions }] }
+      : { ...common, blueprint: "Mixed questions", questions };
+    mock.generate.mockResolvedValueOnce({ object, usage: { inputTokens: 40, outputTokens: 50 }, response: { id: "mixed-response" } });
+    const quoted = await f.teacher.action(api.functions.academic.documentGeneration.quoteTeacherAssessmentDraft,
+      { draftMode: scenario.draftMode, sourceIds: [f.sourceId], targetTopicLabel: "Algebra",
+        effectiveGenerationSettings: settings, idempotencyKey: `mixed-${scenario.draftMode}` });
+    await f.confirm(quoted.attemptId, quoted.estimate);
+    const saved = await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft,
+      { attemptId: quoted.attemptId }) as { itemCount: number };
+    expect(saved.itemCount).toBe(count);
+    expect(mock.generate).toHaveBeenCalledTimes(1);
+    const call = mock.generate.mock.calls[0][0];
+    expect(call).toMatchObject({ maxOutputTokens: scenario.outputCap, maxRetries: 0 });
+    const schema = JSON.stringify(await call.schema.jsonSchema);
+    const inputBytes = new TextEncoder().encode(call.system + call.prompt + schema).length;
+    expect(quoted.estimate).toBeGreaterThanOrEqual(inputBytes * 16 + scenario.outputCap + 2048);
+    expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ consumedUnits: 90, reservedUnits: 0 });
+  });
+}
+it("refuses an oversized AI assessment before quote or provider while manual saves still work", async () => {
+  const f = await setup();
+  const settings = { profileId: f.assessmentProfileId, questionStyle: "balanced" as const, totalQuestions: 60,
+    questionMix: { multiple_choice: 0, short_answer: 0, essay: 60, true_false: 0, fill_in_the_blank: 0 }, allowTeacherOverrides: true };
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.quoteTeacherAssessmentDraft,
+    { draftMode: "class_test", sourceIds: [f.sourceId], targetTopicLabel: "Algebra",
+      effectiveGenerationSettings: settings, idempotencyKey: "oversize-ai-001" })).rejects.toThrow("Reduce the question mix");
+  expect(mock.generate).not.toHaveBeenCalled();
+  expect(await f.t.run(ctx => ctx.db.query("usageOperationAttempts").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5))).toHaveLength(0);
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ consumedUnits: 0, reservedUnits: 0 });
+  const manual = await f.teacher.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft,
+    { bankId: null, draftMode: "class_test", title: "Manually edited test", sourceIds: [f.sourceId],
+      sourceSelectionSnapshot: "manual", effectiveGenerationSettings: settings, subjectId: f.subjectId,
+      level: "JSS 1", topicLabel: "Algebra", items: [{ questionType: "essay", difficulty: "easy",
+        promptText: "Write an explanation", answerText: "Worked answer", explanationText: "Working", marks: 2, tags: ["algebra"] }] });
+  expect(manual.bankId).toBeTruthy();
+});
+it("immediately releases a rate-denied reservation without any provider charge", async () => {
+  const f = await setup();
+  for (let i = 0; i < 10; i += 1) {
+    const admitted = await f.teacher.mutation(api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit, {});
+    expect(admitted.allowed).toBe(true);
+  }
+  const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft,
+    { attemptId: quoted.attemptId })).rejects.toThrow("Rate limit exceeded");
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+    .toMatchObject({ status: "cancelled", actualUnits: null });
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 0 });
+  expect(await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5))).toHaveLength(0);
+  expect(mock.generate).not.toHaveBeenCalled();
+});
+it("cannot cancel another caller's claimed attempt while handling pre-dispatch denial", async () => {
+  const f = await setup();
+  const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+  const attempt = await f.t.run(ctx => ctx.db.get(quoted.attemptId));
+  if (!attempt?.requestDigest || !attempt.modelId) throw new Error("missing bound attempt");
+  await f.teacher.mutation(internal.functions.academic.aiSpend.claim,
+    { attemptId: quoted.attemptId, digest: attempt.requestDigest, modelId: attempt.modelId });
+  await expect(f.teacher.mutation(api.functions.academic.aiSpend.cancel,
+    { attemptId: quoted.attemptId })).rejects.toThrow("cannot be cancelled");
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+    .toMatchObject({ status: "dispatch_started" });
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate, consumedUnits: 0 });
+});
+it("keeps a concurrent caller's claimed hold when the denying rate check races cancellation", async () => {
+  const key = "./functions/academic/lessonKnowledgeRateLimits.ts";
+  let attemptId: Id<"usageOperationAttempts">;
+  let digest = "";
+  let modelId = "";
+  const override = { ...modules, [key]: async () => ({
+    ...await (modules[key] as () => Promise<object>)(),
+    consumeTeacherLessonPlanGenerationLimit: mutation({ args: {}, handler: async ctx => {
+      await ctx.runMutation(internal.functions.academic.aiSpend.claim, { attemptId, digest, modelId });
+      return { allowed: false, action: "teacher_lesson_plan_generation", limit: 10, remaining: 0,
+        resetAt: Date.now() + 60_000, retryAfterMs: 60_000 };
+    } }),
+  }) };
+  const f = await setup(override);
+  const quoted = await f.quote(); attemptId = quoted.attemptId;
+  const attempt = await f.t.run(ctx => ctx.db.get(attemptId));
+  if (!attempt?.requestDigest || !attempt.modelId) throw new Error("missing bound attempt");
+  digest = attempt.requestDigest; modelId = attempt.modelId;
+  await f.confirm(attemptId, quoted.estimate);
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft,
+    { attemptId })).rejects.toThrow("Rate limit exceeded");
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId })).toMatchObject({ status: "dispatch_started" });
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate, consumedUnits: 0 });
+  expect(mock.generate).not.toHaveBeenCalled();
+});
 it("denies unauthorized requests and insufficient allowance before a provider call", async () => {
   const f = await setup();
   await expect(f.other.action(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft, { ...f.request, idempotencyKey: "foreign-request" })).rejects.toThrow();

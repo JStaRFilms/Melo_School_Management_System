@@ -32,6 +32,17 @@ import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import type { Id } from "../../_generated/dataModel";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
+const LESSON_OUTPUT_CAP = 2048;
+const MAX_ASSESSMENT_OUTPUT_CAP = 16_384;
+// Reviewed single-call JSON allowance per item: prompt, answer, explanation,
+// difficulty, marks, tags and schema framing. This is not a token measurement.
+const ASSESSMENT_ITEM_OUTPUT_CAP = {
+  multiple_choice: 320,
+  short_answer: 384,
+  essay: 512,
+  true_false: 224,
+  fill_in_the_blank: 256,
+} as const;
 
 type AssessmentDraftMode = "practice_quiz" | "class_test" | "exam_draft";
 type AssessmentOutputType = Extract<DocumentOutputType, "question_bank_draft" | "cbt_draft">;
@@ -601,7 +612,8 @@ async function callGenerateObject(
   model: ReturnType<typeof createDocumentModel>,
   schema: unknown,
   system: string | undefined,
-  prompt: string
+  prompt: string,
+  outputCap: number
 ): Promise<unknown> {
   return await generateObject({
     model,
@@ -612,7 +624,7 @@ async function callGenerateObject(
       : never,
     ...(system ? { system } : {}),
     prompt,
-    maxOutputTokens: 2048,
+    maxOutputTokens: outputCap,
     maxRetries: 0,
   });
 }
@@ -674,6 +686,7 @@ function normalizeMix(mix: QuestionMix): QuestionMix {
 function normalizeSettingsForAction(
   settings: EffectiveGenerationSettings
 ): EffectiveGenerationSettings {
+  if (Object.values(settings.questionMix).some(value => !Number.isFinite(value))) throw new ConvexError("Question mix must contain finite counts.");
   const questionMix = normalizeMix(settings.questionMix);
   const totalQuestions = Object.values(questionMix).reduce((sum, value) => sum + value, 0);
   if (totalQuestions < 1) {
@@ -1131,32 +1144,41 @@ const assessmentArgs = v.object({
 type LessonArgs = typeof lessonArgs.type;
 type AssessmentArgs = typeof assessmentArgs.type;
 type PreparedLesson = {
-  kind: "lesson"; args: LessonArgs; workspace: LessonPlanWorkspace; excerpts: SourceExcerptBundle;
+  kind: "lesson"; args: LessonArgs; workspace: LessonPlanWorkspace; excerpts: SourceExcerptBundle; outputCap: number;
   sourceIds: Array<Id<"knowledgeMaterials">>; subjectId: Id<"subjects">; level: string; topic: string;
   prompt: { system: string; prompt: string }; modelId: string; digest: string; minimumUnits: number;
 };
 type PreparedAssessment = {
-  kind: "assessment"; args: AssessmentArgs; workspace: AssessmentWorkspace; settings: EffectiveGenerationSettings;
+  kind: "assessment"; args: AssessmentArgs; workspace: AssessmentWorkspace; settings: EffectiveGenerationSettings; outputCap: number;
   sourceIds: Array<Id<"knowledgeMaterials">>; subjectId: Id<"subjects">; level: string; topic: string | null;
   outputType: AssessmentOutputType; prompt: { system: string; prompt: string }; modelId: string; digest: string; minimumUnits: number;
 };
+function assessmentOutputCap(settings: EffectiveGenerationSettings, outputType: AssessmentOutputType): number {
+  const base = outputType === "cbt_draft" ? 1024 : 768;
+  const cap = (Object.entries(ASSESSMENT_ITEM_OUTPUT_CAP) as Array<[QuestionTypeKey, number]>)
+    .reduce((sum, [type, units]) => sum + settings.questionMix[type] * units, base);
+  if (!Number.isSafeInteger(cap) || cap > MAX_ASSESSMENT_OUTPUT_CAP) {
+    throw new ConvexError("This assessment is too large for one reviewed AI call. Reduce the question mix, especially essays, or generate smaller drafts. Manual assessment editing remains available.");
+  }
+  return cap;
+}
 function schemaForOutput(outputType: DocumentOutputType): Schema<unknown> {
   // Keep Zod's recursive types opaque here; the same converter runs at quote and dispatch.
   const raw: unknown = outputType === "lesson_plan" || outputType === "student_note" || outputType === "assignment"
     ? templateBoundInstructionDraftSchema : outputType === "cbt_draft" ? cbtDraftSchema : questionBankDraftSchema;
   return zodSchema<unknown>(raw as Parameters<typeof zodSchema<unknown>>[0]);
 }
-async function boundRequest(kind: string, args: LessonArgs | AssessmentArgs, outputType: DocumentOutputType, modelId: string, prompt: { system: string; prompt: string }, context: unknown) {
+async function boundRequest(kind: string, args: LessonArgs | AssessmentArgs, outputType: DocumentOutputType, modelId: string, outputCap: number, prompt: { system: string; prompt: string }, context: unknown) {
   // Use the SDK's own schema serialization for the quote and the provider call.
   const schema = JSON.stringify(await schemaForOutput(outputType).jsonSchema);
   const knownBytes = Buffer.byteLength(prompt.system, "utf8") + Buffer.byteLength(prompt.prompt, "utf8") + Buffer.byteLength(schema, "utf8");
   if (knownBytes > 16_000) throw new ConvexError("Prepared AI request exceeds the reviewed size limit. Select fewer sources.");
-  const request = JSON.stringify({ policy: "school-document-single-call-v2", kind, args, modelId, prompt, schema, context });
+  const request = JSON.stringify({ policy: "school-document-single-call-v3", kind, args, modelId, outputCap, prompt, schema, context });
   // 16 units per serialized input byte is a conservative reviewed hold, plus
-  // the 2048 output cap and 2048 for SDK/provider framing. OpenRouter can add
+  // the bound output cap and 2048 for SDK/provider framing. OpenRouter can add
   // unseen tokens: this is NOT a guaranteed token maximum. Full verified
   // overage is recorded and blocks new quotes pending Platform review.
-  return { digest: createHash("sha256").update(request).digest("hex"), minimumUnits: knownBytes * 16 + 4096 };
+  return { digest: createHash("sha256").update(request).digest("hex"), minimumUnits: knownBytes * 16 + outputCap + 2048 };
 }
 function checkedSources(sourceIds: Array<Id<"knowledgeMaterials">>) {
   const normalized = normalizeSourceIds(sourceIds.map(String)) as Array<Id<"knowledgeMaterials">>;
@@ -1198,8 +1220,9 @@ async function prepareLesson(ctx: ActionCtx, args: LessonArgs): Promise<Prepared
   };
   const prompt = buildPromptForLessonPlanOutputType(args.outputType, context);
   const modelId = resolveDocumentModelId(args.outputType);
-  const bound = await boundRequest("lesson", args, args.outputType, modelId, prompt, { workspace, excerpts });
-  return { kind: "lesson", args, workspace, excerpts, sourceIds, subjectId, level, topic, prompt, modelId, ...bound };
+  const outputCap = LESSON_OUTPUT_CAP;
+  const bound = await boundRequest("lesson", args, args.outputType, modelId, outputCap, prompt, { workspace, excerpts });
+  return { kind: "lesson", args, workspace, excerpts, sourceIds, subjectId, level, topic, prompt, modelId, outputCap, ...bound };
 }
 async function prepareAssessment(ctx: ActionCtx, args: AssessmentArgs): Promise<PreparedAssessment> {
   await requireStaffGenerationContext(ctx);
@@ -1212,6 +1235,7 @@ async function prepareAssessment(ctx: ActionCtx, args: AssessmentArgs): Promise<
   const requested = args.effectiveGenerationSettings ?? workspace.draft.effectiveGenerationSettings;
   if (!requested) throw new ConvexError("Assessment generation settings are required.");
   const settings = resolveEffectiveGenerationSettingsForAction({ requested, profiles: workspace.profiles });
+  const outputCap = assessmentOutputCap(settings, outputType);
   const topic = normalizeAssessmentSnapshotTopicLabel({ workspace, targetTopicLabel: args.targetTopicLabel?.trim() || null });
   if (args.draftMode !== "exam_draft" && !topic) throw new ConvexError("Add a target topic before generation.");
   const subjectId = assessmentSubjectId(workspace);
@@ -1229,8 +1253,8 @@ async function prepareAssessment(ctx: ActionCtx, args: AssessmentArgs): Promise<
   };
   const prompt = buildPromptForAssessmentOutputType(outputType, context);
   const modelId = resolveDocumentModelId(outputType);
-  const bound = await boundRequest("assessment", args, outputType, modelId, prompt, { workspace, settings });
-  return { kind: "assessment", args, workspace, settings, sourceIds, subjectId, level, topic, outputType, prompt, modelId, ...bound };
+  const bound = await boundRequest("assessment", args, outputType, modelId, outputCap, prompt, { workspace, settings });
+  return { kind: "assessment", args, workspace, settings, sourceIds, subjectId, level, topic, outputType, prompt, modelId, outputCap, ...bound };
 }
 async function quotePrepared(ctx: ActionCtx, prepared: PreparedLesson | PreparedAssessment, key: string): Promise<{ attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string; availableUnits: number; remainingAfterHold: number }> {
   const viewer = await requireStaffGenerationContext(ctx);
@@ -1286,10 +1310,18 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
     await ctx.runMutation(api.functions.academic.aiSpend.cancel, { attemptId });
     throw error;
   }
-  const rate = await ctx.runMutation(kind === "lesson"
-    ? api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit
-    : api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit, {});
-  enforceRateLimit(rate);
+  try {
+    const rate = await ctx.runMutation(kind === "lesson"
+      ? api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit
+      : api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit, {});
+    enforceRateLimit(rate);
+  } catch (error) {
+    // Before this action claims anything, release its hold immediately. If a
+    // concurrent caller already claimed it, cancel refuses atomically and must
+    // not undo that caller's provider work.
+    await ctx.runMutation(api.functions.academic.aiSpend.cancel, { attemptId }).catch(() => {});
+    throw error;
+  }
   await ctx.runMutation(internal.functions.academic.aiSpend.claim, { attemptId, digest: bound.digest, modelId: bound.modelId });
   let usage: ReturnType<typeof measured> | undefined;
   let outcome: "succeeded" | "failed" = "failed";
@@ -1297,7 +1329,7 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
   try {
     const result = await callGenerateObject(createDocumentModel(bound.kind === "lesson" ? bound.args.outputType : bound.outputType),
       schemaForOutput(bound.kind === "lesson" ? bound.args.outputType : bound.outputType),
-      bound.prompt.system, bound.prompt.prompt);
+      bound.prompt.system, bound.prompt.prompt, bound.outputCap);
     usage = measured(result, attemptId); // Capture before validating object or saving a draft.
     generation = (result as { object: unknown }).object;
     if (kind === "lesson") {
