@@ -153,7 +153,7 @@ export function InstructionTemplateStudioScreen({ subjects, levelOptions, templa
     onToggleSectionRequired: (index: number, required: boolean) => updateSection(index, { required, minimumWordCount: required && !draft.sections[index].minimumWordCount ? "80" : draft.sections[index].minimumWordCount }),
   };
   const workspace = <div className="mx-auto max-w-[1150px] space-y-6 pb-32">
-    <AdminHeader label="Knowledge Hub" title="Lesson/Notes Templates" description="Configure the structures used for school-owned teaching drafts." actions={<StatGroup variant="wrap" stats={[
+    <AdminHeader className="lg:flex-wrap" label="Knowledge Hub" title="Lesson/Notes Templates" description="Configure the structures used for school-owned teaching drafts." actions={<StatGroup variant="wrap" stats={[
       { label: "Total", value: summary.total, icon: <BookOpenText className="h-3 w-3" /> },
       { label: "Active", value: summary.active, icon: <ShieldCheck className="h-3 w-3" /> },
       { label: "Default", value: summary.defaultCount, icon: <Layers3 className="h-3 w-3" /> },
