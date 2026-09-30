@@ -64,7 +64,104 @@ async function fixture() {
   return { t, ids, admin, officer, tuple, read, readiness, certify };
 }
 
+async function multiSubjectClass() {
+  const f = await fixture();
+  await f.certify();
+  const studentIds = await f.t.run(async ctx => {
+    const snapshot = (await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q =>
+      q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.termId)).unique())!;
+    const assessment = (await ctx.db.query("assessmentRecords").withIndex("by_student_and_session", q =>
+      q.eq("schoolId", f.ids.schoolId).eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId)).first())!;
+    const { _id: _recordId, _creationTime: _recordTime, ...record } = assessment;
+    const { _id: _snapshotId, _creationTime: _snapshotTime, ...issued } = snapshot;
+    const subjectIds = [f.ids.subjectId];
+    for (let i = 1; i < 11; i++) {
+      const subjectId = await ctx.db.insert("subjects", { schoolId: f.ids.schoolId,
+        name: `Subject ${i}`, code: `SUB${i}`, createdAt: 1, updatedAt: 1 });
+      subjectIds.push(subjectId);
+      await ctx.db.insert("classSubjects", { schoolId: f.ids.schoolId, classId: f.ids.classId,
+        subjectId, createdAt: 1, updatedAt: 1 });
+    }
+    const students = [f.ids.studentId];
+    for (let i = 1; i < 50; i++) {
+      const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: `capacity-${i}`,
+        name: `Student ${i}`, email: `capacity-${i}@test.invalid`, role: "student", createdAt: 1, updatedAt: 1 });
+      students.push(await ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId,
+        userId, admissionNumber: `CAP-${i}`, createdAt: 1, updatedAt: 1 }));
+    }
+    for (const [i, studentId] of students.entries()) {
+      for (const [j, subjectId] of subjectIds.entries()) {
+        if (i === 0 && j === 0) continue;
+        await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId,
+          classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId, createdAt: 1, updatedAt: 1 });
+        await ctx.db.insert("assessmentRecords", { ...record, studentId, subjectId });
+      }
+      const report = { ...issued.report,
+        student: { ...issued.report.student, _id: studentId, admissionNumber: i ? `CAP-${i}` : "STU-1" },
+        results: subjectIds.map((subjectId, j) => ({ ...issued.report.results[0], subjectId,
+          subjectName: `Subject ${j}`, subjectCode: `SUB${j}` })),
+        summary: { ...issued.report.summary, totalSubjects: 11, recordedSubjects: 11,
+          totalScore: 770, averageScore: 70, pendingSubjects: 0 },
+      };
+      if (i === 0) await ctx.db.patch(snapshot._id, { report });
+      else await ctx.db.insert("issuedReportCards", { ...issued, studentId, report });
+    }
+    return students;
+  });
+  return { ...f, studentIds };
+}
+
 describe("graded result release", () => {
+  it("reviews and releases 50 certified students with 550 rows per subject evidence source", async () => {
+    const f = await multiSubjectClass();
+    const ready = await f.readiness();
+    expect(ready).toMatchObject({ ready: true, eligibleCount: 50, certifiedCount: 50 });
+    const published = await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    expect(published.eligibleCount).toBe(50);
+    expect(await f.t.run(ctx => ctx.db.query("classResultPublicationStudents")
+      .withIndex("by_publication_and_student", q => q.eq("publicationId", published._id)).take(81)))
+      .toHaveLength(50);
+  });
+
+  it("checks candidates beyond subject row 512 and refuses a stale or oversized unique roster", async () => {
+    const f = await multiSubjectClass();
+    const ready = await f.readiness();
+    await f.t.run(async ctx => {
+      const outsideClass = await ctx.db.insert("classes", { schoolId: f.ids.schoolId,
+        name: "Other active class", level: "Junior", createdAt: 1, updatedAt: 1 });
+      for (let i = 0; i < 31; i++) {
+        const studentId = await ctx.db.insert("students", { schoolId: f.ids.schoolId,
+          classId: outsideClass, userId: f.ids.studentUserId, admissionNumber: `LATE-EVIDENCE-${i}`,
+          createdAt: 1, updatedAt: 1 });
+        await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId,
+          classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 2, updatedAt: 2 });
+      }
+    });
+    await expect(f.readiness()).rejects.toThrow("Roster exceeds atomic review limit");
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow("Roster exceeds atomic review limit");
+    expect(await f.t.run(ctx => ctx.db.query("classResultPublications").withIndex("by_school", q =>
+      q.eq("schoolId", f.ids.schoolId)).take(2))).toHaveLength(0);
+    expect(await f.t.run(ctx => ctx.db.query("classResultPublicationStudents").withIndex("by_school", q =>
+      q.eq("schoolId", f.ids.schoolId)).take(2))).toHaveLength(0);
+  });
+
+  it("keeps a separate subject-evidence budget without publishing a truncated class", async () => {
+    const f = await fixture();
+    await f.certify();
+    const ready = await f.readiness();
+    await f.t.run(async ctx => {
+      for (let i = 0; i < 4096; i++) await ctx.db.insert("studentSubjectSelections", {
+        schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.classId,
+        sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1,
+      });
+    });
+    await expect(f.readiness()).rejects.toThrow("Class subject evidence exceeds the atomic read budget");
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow("Class subject evidence exceeds the atomic read budget");
+    expect(await f.read()).toBeNull();
+  });
   it("opens a non-default branch release blocker in staff preview and certifies only that branch", async () => {
     const f = await fixture();
     const foreignSchoolId = await f.t.run(async ctx => {

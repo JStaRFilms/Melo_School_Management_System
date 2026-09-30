@@ -10,6 +10,9 @@ import { recordAuditEventHelper } from "./audit";
 // in one transaction. Oversized or uncertain rosters need reviewed reconciliation.
 const MAX_ROSTER = 80;
 const MAX_EVIDENCE = 512;
+// Subject-level rows are not students. Keep an independent transaction budget
+// while checking the unique roster across the complete indexed evidence range.
+const MAX_CLASS_SUBJECT_EVIDENCE = 4096;
 const HISTORICAL_RECONCILIATION = "Historical roster needs authoritative reconciliation before release";
 type Ctx = QueryCtx | MutationCtx;
 type Tuple = {
@@ -65,6 +68,22 @@ function bounded<T>(rows: T[], limit: number): T[] {
   return rows;
 }
 
+async function readClassSubjectEvidence<T extends { studentId: Id<"students"> }>(
+  source: AsyncIterable<T>,
+  candidates: Set<Id<"students">>,
+  budget: { remaining: number },
+): Promise<void> {
+  for await (const row of source) {
+    if (budget.remaining-- <= 0) {
+      throw new ConvexError("Class subject evidence exceeds the atomic read budget; reconcile before release");
+    }
+    candidates.add(row.studentId);
+    if (candidates.size > MAX_ROSTER) {
+      throw new ConvexError("Roster exceeds atomic review limit; reconcile before release");
+    }
+  }
+}
+
 function validIssued(report: Doc<"issuedReportCards">, tuple: Tuple, studentId: Id<"students">) {
   const r = report.report;
   return report.schoolId === tuple.schoolId && report.studentId === studentId &&
@@ -81,29 +100,36 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
   // Legacy rows have no authoritative historical denominator. A zero-evidence
   // former student cannot be discovered from assessments or promotions alone.
   if (!session.isActive || !term.isActive) throw new ConvexError(HISTORICAL_RECONCILIATION);
-  const [students, promotedTo, promotedFrom, selections, records, issued, exclusions] = await Promise.all([
+  const [students, promotedTo, promotedFrom, issued, exclusions] = await Promise.all([
     ctx.db.query("students").withIndex("by_class", q => q.eq("classId", tuple.classId)).take(MAX_ROSTER + 1),
     ctx.db.query("studentPromotions").withIndex("by_to_class_and_to_session", q => q.eq("toClassId", tuple.classId).eq("toSessionId", tuple.sessionId)).take(MAX_EVIDENCE + 1),
     ctx.db.query("studentPromotions").withIndex("by_from_class_and_from_session", q => q.eq("fromClassId", tuple.classId).eq("fromSessionId", tuple.sessionId)).take(MAX_EVIDENCE + 1),
-    ctx.db.query("studentSubjectSelections").withIndex("by_class_and_session", q => q.eq("classId", tuple.classId).eq("sessionId", tuple.sessionId)).take(MAX_EVIDENCE + 1),
-    ctx.db.query("assessmentRecords").withIndex("by_sheet", q => q.eq("schoolId", tuple.schoolId).eq("sessionId", tuple.sessionId).eq("termId", tuple.termId).eq("classId", tuple.classId)).take(MAX_EVIDENCE + 1),
+
     ctx.db.query("issuedReportCards").withIndex("by_class_and_session_and_term", q => q.eq("classId", tuple.classId).eq("sessionId", tuple.sessionId).eq("termId", tuple.termId)).take(MAX_ROSTER + 1),
     ctx.db.query("classResultExclusions").withIndex("by_school_and_session_and_term_and_class", q => q.eq("schoolId", tuple.schoolId).eq("sessionId", tuple.sessionId).eq("termId", tuple.termId).eq("classId", tuple.classId)).take(MAX_ROSTER + 1),
   ]);
   bounded(students, MAX_ROSTER);
   bounded(promotedTo, MAX_EVIDENCE);
   bounded(promotedFrom, MAX_EVIDENCE);
-  bounded(selections, MAX_EVIDENCE);
-  bounded(records, MAX_EVIDENCE);
   bounded(issued, MAX_ROSTER);
   bounded(exclusions, MAX_ROSTER);
   const candidates = new Set<Id<"students">>(students.map(s => s._id));
   for (const promotion of [...promotedTo, ...promotedFrom]) candidates.add(promotion.studentId);
-  for (const selection of selections) candidates.add(selection.studentId);
-  for (const record of records) candidates.add(record.studentId);
   for (const report of issued) candidates.add(report.studentId);
   for (const exclusion of exclusions) candidates.add(exclusion.studentId);
   if (candidates.size > MAX_ROSTER) throw new ConvexError("Roster exceeds atomic review limit; reconcile before release");
+  const budget = { remaining: MAX_CLASS_SUBJECT_EVIDENCE };
+  await readClassSubjectEvidence(
+    ctx.db.query("studentSubjectSelections").withIndex("by_class_and_session", q =>
+      q.eq("classId", tuple.classId).eq("sessionId", tuple.sessionId)),
+    candidates, budget,
+  );
+  await readClassSubjectEvidence(
+    ctx.db.query("assessmentRecords").withIndex("by_sheet", q =>
+      q.eq("schoolId", tuple.schoolId).eq("sessionId", tuple.sessionId)
+        .eq("termId", tuple.termId).eq("classId", tuple.classId)),
+    candidates, budget,
+  );
 
   const rows: Row[] = [];
   for (const studentId of [...candidates].sort()) {
