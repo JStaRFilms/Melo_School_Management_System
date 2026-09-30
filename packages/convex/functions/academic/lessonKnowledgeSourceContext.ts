@@ -27,7 +27,7 @@ export function getLessonSourceContextIssue(args: {
   if (!planningContext) return null;
 
   if (
-    String(source.subjectId) !== String(planningContext.subjectId) ||
+    (source.subjectId && String(source.subjectId) !== String(planningContext.subjectId)) ||
     !levelMatchesLessonKnowledgeScope(source.level, planningContext.level)
   ) {
     return "The selected source does not match the current subject or level.";
