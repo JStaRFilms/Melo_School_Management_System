@@ -1,0 +1,23 @@
+{
+  "source": "User-supplied ChatGPT image-generation outputs; backend/model not independently verified",
+  "background_original": "E:/Downloads/ChatGPT Image Sep 30, 2026, 06_29_29 AM.png",
+  "cutout_original": "E:/Downloads/ChatGPT Image Sep 30, 2026, 06_29_23 AM.png",
+  "source_sha256": {
+    "hero-background-source.png": "fa9ef1fca0af7ac767cf4094b3a58b2b83ec21d75b6f0af96d723c5f6dd8ec87",
+    "hero-cutout-source.png": "ced5b7c8c5838e1c218faf155a3021c77cb22960a816dbaca4714b6d16fc810b"
+  },
+  "processing": "Original background-version RGB; supplied alpha remapped at 12/240; one-pixel mask inset; empty top cropped with 16px clearance",
+  "crop": [
+    0,
+    305,
+    1448,
+    1086
+  ],
+  "dimensions": [
+    1448,
+    781
+  ],
+  "output": "hero-cutout.webp",
+  "bytes": 148756,
+  "publication_status": "Private prototype. Imagined artwork, not real facilities or pupil work."
+}
