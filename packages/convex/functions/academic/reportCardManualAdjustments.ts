@@ -158,6 +158,9 @@ export const saveManualAdjustmentsBulk = mutation({
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "academic.assessments.adjust" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
     await assertAdjustmentContext(ctx, { ...args, schoolId });
+    const narrativeMode = await ctx.db.query("classSessionReportModes")
+      .withIndex("by_classId_and_sessionId", q => q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (narrativeMode) throw new ConvexError("This class uses narrative reports for this session; numeric adjustments cannot be saved");
 
     if (args.entries.length === 0) {
       throw new ConvexError("Select at least one subject adjustment to save");
