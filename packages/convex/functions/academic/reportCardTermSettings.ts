@@ -234,6 +234,7 @@ export async function resolveEffectiveReportCardTermSettings(
 export const getTermReportCardSettings = query({
   args: {
     termId: v.id("academicTerms"),
+    schoolId: v.optional(v.id("schools")),
   },
   returns: v.object({
     termId: v.id("academicTerms"),
@@ -249,7 +250,7 @@ export const getTermReportCardSettings = query({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const [term, groups] = await Promise.all([
@@ -294,6 +295,7 @@ export const getTermReportCardSettings = query({
 
 export const saveTermReportCardDefaults = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     termId: v.id("academicTerms"),
     nextTermBegins: v.union(v.number(), v.null()),
     defaultTimesSchoolOpened: v.union(v.number(), v.null()),
@@ -305,7 +307,7 @@ export const saveTermReportCardDefaults = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -379,6 +381,7 @@ export const saveTermReportCardDefaults = mutation({
 
 export const saveTermReportCardSettingGroup = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     groupId: v.optional(v.union(v.id("reportCardTermSettingGroups"), v.null())),
     termId: v.id("academicTerms"),
     name: v.string(),
@@ -389,7 +392,7 @@ export const saveTermReportCardSettingGroup = mutation({
   returns: v.id("reportCardTermSettingGroups"),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const term = await ctx.db.get(args.termId);
@@ -501,12 +504,13 @@ export const saveTermReportCardSettingGroup = mutation({
 
 export const deleteTermReportCardSettingGroup = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     groupId: v.id("reportCardTermSettingGroups"),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.grading_bands.manage" });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: "academic.grading_bands.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const group = await ctx.db.get(args.groupId);

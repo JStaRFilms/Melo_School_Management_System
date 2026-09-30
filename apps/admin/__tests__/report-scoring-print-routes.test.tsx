@@ -8,8 +8,14 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: state.replace }),
   useSearchParams: () => new URLSearchParams(`studentId=${state.student}&sessionId=session1&termId=term1&classId=${state.classId}${state.batch ? "&printClass=1" : ""}`),
 }));
+vi.mock("@/AuthProvider", () => ({
+  useAuth: () => ({ workspaceAccess: { state: "ready", branch: { schoolId: "school1" },
+    effectiveCapabilities: ["academic.report_cards.preview"] } }),
+}));
 vi.mock("convex/react", () => ({
   useQuery: (name: string) => {
+    if (name.endsWith(":getClassMode")) return "graded";
+    if (name.endsWith(":getStaffPeriodReportMode")) return { classId: state.classId, mode: "graded" };
     const report = { student: { _id: state.student, name: "Student 1" }, classId: state.classId, className: "Class 1", sessionName: "Session 1", termName: "Term 1", results: [],
       scoringPolicyWarning: state.stale ? "Issued report predates the completed regrade." : undefined };
     if (name.endsWith(":getStudentReportCard")) return report;

@@ -321,10 +321,27 @@ describe("report card registered functions", () => {
       await ctx.db.patch(ids.schoolId, { logoStorageId: undefined });
       await ctx.db.patch(ids.studentId, { photoStorageId: undefined });
     });
-    const portal = await t.withIdentity({ subject: "report-student-auth",
-      tokenIdentifier: "https://auth.school.test|report-student-auth" })
-      .query(api.functions.portal.getWorkspaceData, { studentId: ids.studentId,
-        sessionId: ids.historicalSessionId, termId: ids.termId });
+    const portalStudent = t.withIdentity({ subject: "report-student-auth",
+      tokenIdentifier: "https://auth.school.test|report-student-auth" });
+    const portalArgs = { studentId: ids.studentId, sessionId: ids.historicalSessionId, termId: ids.termId };
+    const withheld = await portalStudent.query(api.functions.portal.getWorkspaceData, portalArgs);
+    expect(withheld.selectedReportCard).toBeNull();
+    expect(withheld.selectedResultState).toBe("withheld");
+    // Model a card released while its term was active. Certification alone
+    // never makes the issued copy or policy-change notice visible to families.
+    await t.run(async ctx => {
+      const publicationId = await ctx.db.insert("classResultPublications", {
+        schoolId: ids.schoolId, sessionId: ids.historicalSessionId, termId: ids.termId,
+        classId: ids.classId, releasedAt: 2, releasedBy: ids.adminId, reviewKey: "fixture-release",
+        eligibleCount: 1, certifiedCount: 1, excludedCount: 0,
+      });
+      await ctx.db.insert("classResultPublicationStudents", {
+        schoolId: ids.schoolId, publicationId, studentId: ids.studentId,
+        sessionId: ids.historicalSessionId, termId: ids.termId, classId: ids.classId,
+        releasedAt: 2, issuedReportCardId: issuedReportId,
+      });
+    });
+    const portal = await portalStudent.query(api.functions.portal.getWorkspaceData, portalArgs);
     expect(portal.selectedReportCard?.scoringPolicyWarning).toMatch(/issued report is unchanged/);
     expect(portal.selectedReportCard?.results).toEqual(issuedReport.results);
     const printWarning = await admin.query(api.functions.academic.reportCards.getIssuedReportScoringWarning, {
@@ -360,7 +377,11 @@ describe("report card registered functions", () => {
         tokenIdentifier: "https://auth.school.test|report-student-auth" })
         .query(api.functions.portal.getWorkspaceData, { studentId: ids.studentId,
           sessionId: ids.historicalSessionId, termId: ids.termId });
-      expect(lockedPortal.selectedReportCard).toBeNull();
+      // Regrading locks live staff previews, not the pinned, already released
+      // family copy. No newly recalculated draft marks enter this payload.
+      expect(lockedPortal.selectedResultState).toBe("released");
+      expect(lockedPortal.selectedReportCard?.results).toEqual(issuedReport.results);
+      expect(lockedPortal.selectedReportCard?.certifiedAt).toBe(issuedReport.certifiedAt);
       expect((await admin.query(api.functions.academic.reportCards.getStudentReportCard, otherArgs)).certifiedAt)
         .toBeUndefined();
     }

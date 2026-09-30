@@ -201,10 +201,7 @@ describe("legacy links and historical period resolution", () => {
     expect(workspace.selectedReportCard).toBeNull();
     expect(workspace.selectedNarrativeReport).toBeNull();
     const history = workspace.history.find(row => row.termId === ids.termId);
-    expect(history).toMatchObject({ mode: "needs_review", issued: false, note: "Historical report needs school review." });
-    expect(history).not.toHaveProperty("classId");
-    expect(history).not.toHaveProperty("className");
-    expect(history).not.toHaveProperty("averageScore");
+    expect(history).toBeUndefined();
     expect(JSON.stringify(workspace)).not.toContain("Private narrative draft");
   });
   it("keeps an issued graded report when other period evidence is ambiguous", async () => {
@@ -225,7 +222,7 @@ describe("legacy links and historical period resolution", () => {
     const workspace = await as("parent").query(api.functions.portal.getWorkspaceData, period);
     expect(workspace.selectedReportNeedsReview).toBe(false);
     expect(workspace.selectedReportMode).toBe("graded");
-    expect(workspace.history.find(row => row.termId === ids.termId)?.mode).toBe("graded");
+    expect(workspace.history.find(row => row.termId === ids.termId)).toBeUndefined();
   });
   it("restores inactive legacy graded history using same-school period records, but not draft narrative fallback", async () => {
     const { t, ids, as, enable } = await fixture();
@@ -243,13 +240,13 @@ describe("legacy links and historical period resolution", () => {
     expect(await as("admin").query(fn.getStaffPeriodReportMode, period)).toEqual({ classId: ids.classId, mode: "graded" });
     const graded = await as("parent").query(api.functions.portal.getWorkspaceData, period);
     expect(graded.selectedReportMode).toBe("graded");
-    expect(graded.history.find(item => item.termId === ids.termId)?.mode).toBe("graded");
+    expect(graded.history.find(item => item.termId === ids.termId)).toBeUndefined();
     await enable();
     const narrative = await as("parent").query(api.functions.portal.getWorkspaceData, period);
     expect(narrative.selectedReportMode).toBe("narrative");
     expect(narrative.selectedReportCard).toBeNull();
     expect(narrative.selectedNarrativeReport).toBeNull();
-    expect(narrative.history.find(item => item.termId === ids.termId)).toMatchObject({ mode: "narrative", issued: false });
+    expect(narrative.history.find(item => item.termId === ids.termId)).toBeUndefined();
     expect(JSON.stringify(narrative)).not.toContain("Legacy work");
   });
 });
@@ -262,7 +259,7 @@ describe("portal narrative access", () => {
     });
     expect(workspace.selectedReportMode).toBe("graded");
     expect(workspace.selectedNarrativeReport).toBeNull();
-    expect(workspace.history.find(item => item.termId === ids.termId)?.mode).toBe("graded");
+    expect(workspace.history.find(item => item.termId === ids.termId)).toBeUndefined();
   });
   it("gates every workspace read before publication, then returns only the issued copy", async () => {
     const { t, ids, as, selection, enable } = await fixture();
@@ -285,10 +282,8 @@ describe("portal narrative access", () => {
     expect(draft.selectedReportCard).toBeNull();
     expect(draft.selectedNarrativeReport).toBeNull();
     const draftTerm = draft.history.find(item => item.termId === ids.termId);
-    expect(draftTerm).toMatchObject({ mode: "narrative", issued: false });
-    expect(draftTerm).not.toHaveProperty("averageScore");
-    expect(draftTerm).not.toHaveProperty("pendingSubjects");
-    expect(draft.history.find(item => item.termId === ids.secondTermId)).toMatchObject({ mode: "narrative", issued: false });
+    expect(draftTerm).toBeUndefined();
+    expect(draft.history.find(item => item.termId === ids.secondTermId)).toBeUndefined();
     expect(draft.notifications.every(item => !/pending|comment|score|mark/i.test(item.title + item.body))).toBe(true);
     expect(JSON.stringify(draft)).not.toMatch(/Private paint note|Private music note|Old graded draft|still need marks/);
     const ready = await as("admin").query(fn.getStaffPreview, selection);
@@ -748,7 +743,7 @@ describe("narrative subject reports", () => {
     expect(await as("parent").query(fn.getPortalReportSelection, period)).toMatchObject({ classId: ids.classId, mode: "graded", issued: null });
     const portal = await as("parent").query(api.functions.portal.getWorkspaceData, period);
     expect(portal.selectedReportMode).toBe("graded");
-    expect(portal.history.find(item => item.termId === ids.termId)).toMatchObject({ classId: ids.classId, mode: "graded", issued: true });
+    expect(portal.history.find(item => item.termId === ids.termId)).toBeUndefined();
     await expect(as("second-student").query(fn.getPortalReportSelection, period)).rejects.toThrow();
   });
 

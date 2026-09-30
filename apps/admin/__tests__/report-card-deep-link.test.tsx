@@ -6,6 +6,7 @@ import AdminReportCardPage from "../app/assessments/report-cards/page";
 const state = vi.hoisted(() => ({ inferred: { classId: "class", mode: "graded" } as { classId: string; mode: "graded" | "narrative" } | null,
   params: "studentId=student&sessionId=session&termId=term", explicitMode: "narrative" as "graded" | "narrative" | undefined,
   calls: [] as Array<{ name: string; args: unknown }> }));
+vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: { state: "ready", branch: { schoolId: "school" } } }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }), usePathname: () => "/assessments/report-cards",
   useSearchParams: () => new URLSearchParams(state.params) }));
 vi.mock("convex/react", () => ({ useQuery: (name: string, args: unknown) => {

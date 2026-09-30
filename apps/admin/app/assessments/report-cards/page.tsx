@@ -18,13 +18,15 @@ import {
 import { ZoomIn, ZoomOut } from "lucide-react";
 import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
 import { ReportCardLauncher } from "./components/ReportCardLauncher";
+import { useAuth } from "@/AuthProvider";
+import type { Id } from "../../../../../packages/convex/_generated/dataModel";
 import { NarrativeReview } from "./components/NarrativeReview";
 import { NarrativeClassPrint } from "./components/NarrativeClassPrint";
 
 export default function AdminReportCardPage() {
   return (
     <Suspense fallback={<ReportCardPageFallback message="Loading report card..." />}>
-      <AdminReportCardPageContent />
+      <SelectedBranchReportCardPage />
     </Suspense>
   );
 }
@@ -40,7 +42,21 @@ function hasIncompleteCumulativeResults(reportCard: ReportCardSheetData) {
   );
 }
 
-function AdminReportCardPageContent() {
+function SelectedBranchReportCardPage() {
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? workspaceAccess.branch.schoolId as Id<"schools"> : null;
+  const [branch, setBranch] = useState<{ schoolId: Id<"schools"> | null; switched: boolean }>({ schoolId: null, switched: false });
+  // Remount on a branch change, even if workspace access briefly enters loading.
+  if (schoolId && branch.schoolId !== schoolId)
+    setBranch({ schoolId, switched: branch.schoolId !== null || branch.switched });
+  return schoolId
+    ? <AdminReportCardPageContent key={schoolId} schoolId={schoolId}
+        resetTuple={branch.switched} />
+    : <ReportCardPageFallback message="Loading report card workspace..." />;
+}
+
+function AdminReportCardPageContent({ schoolId, resetTuple }: { schoolId: Id<"schools">; resetTuple: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -50,6 +66,18 @@ function AdminReportCardPageContent() {
   const classIdParam = searchParams.get("classId");
   const isPrintClassMode = searchParams.get("printClass") === "1";
   const searchParamsString = searchParams.toString();
+  const [clearingTuple, setClearingTuple] = useState(resetTuple);
+  const linkedSchoolId = searchParams.get("schoolId");
+  const wrongBranch = linkedSchoolId !== null && linkedSchoolId !== schoolId;
+  useEffect(() => {
+    if (!clearingTuple) return;
+    const clean = new URLSearchParams(searchParamsString);
+    for (const key of ["schoolId", "studentId", "sessionId", "termId", "classId", "printClass", "returnTo"])
+      clean.delete(key);
+    if (clean.toString() !== searchParamsString)
+      router.replace(`/assessments/report-cards${clean.size ? `?${clean}` : ""}`);
+    else setClearingTuple(false);
+  }, [clearingTuple, router, searchParamsString]);
   const hasTriggeredClassPrintRef = useRef(false);
   const mainContainerRef = useRef<HTMLDivElement>(null);
   const touchStartDistanceRef = useRef<number | null>(null);
@@ -138,16 +166,17 @@ function AdminReportCardPageContent() {
   };
 
   const inferred = useQuery("functions/academic/narrativeReports:getStaffPeriodReportMode" as never,
-    !classIdParam && studentId && sessionId && termId
+    !clearingTuple && !wrongBranch && !classIdParam && studentId && sessionId && termId
       ? { studentId, sessionId, termId } as never : "skip") as { classId: string; mode: "graded" | "narrative" } | null | undefined;
   const selectedClassId = classIdParam ?? inferred?.classId ?? null;
   const explicitMode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
-    classIdParam && sessionId ? { classId: classIdParam, sessionId } as never : "skip") as "graded" | "narrative" | undefined;
+    !clearingTuple && !wrongBranch && classIdParam && sessionId ? { classId: classIdParam, sessionId } as never : "skip") as "graded" | "narrative" | undefined;
   const mode = classIdParam ? explicitMode : inferred?.mode;
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    studentId && sessionId && termId && selectedClassId && mode === "graded"
+    !clearingTuple && !wrongBranch && studentId && sessionId && termId && selectedClassId && mode === "graded"
       ? ({
+          schoolId,
           studentId,
           sessionId,
           termId,
@@ -159,15 +188,15 @@ function AdminReportCardPageContent() {
 
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
-    mode === "graded" && sessionId && termId && resolvedClassId
-      ? ({ classId: resolvedClassId, sessionId, termId } as never)
+    !clearingTuple && !wrongBranch && mode === "graded" && sessionId && termId && resolvedClassId
+      ? ({ schoolId, classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardBatchStudent[] | undefined;
 
   const classReportCards = useQuery(
     "functions/academic/reportCards:getClassReportCards" as never,
-    isPrintClassMode && mode === "graded" && sessionId && termId && resolvedClassId
-      ? ({ classId: resolvedClassId, sessionId, termId } as never)
+    !clearingTuple && !wrongBranch && isPrintClassMode && mode === "graded" && sessionId && termId && resolvedClassId
+      ? ({ schoolId, classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
   const blockedClassPrintCount =
@@ -247,21 +276,28 @@ function AdminReportCardPageContent() {
     return () => window.removeEventListener("afterprint", handleAfterPrint);
   }, [exitFullClassPrint, isPrintClassMode, batchContext]);
 
-  // Narrative class printing uses the issued-only backend batch, not a graded
-  // roster or a seed student. Keep the graded route's student requirement.
+  if (clearingTuple) return <ReportCardPageFallback message="Loading report card workspace..." />;
+
+  if (wrongBranch) return (
+    <div role="status" className="p-6 text-slate-700">
+      This report belongs to a different branch. Select that branch before opening it.
+    </div>
+  );
+
+  // Narrative class printing uses issued snapshots, not a graded roster.
   if (isPrintClassMode && classIdParam && sessionId && termId) {
     if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
-    if (mode === "narrative") return <NarrativeClassPrint key={`${classIdParam}-${sessionId}-${termId}`} classId={classIdParam} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
+    if (mode === "narrative") return <NarrativeClassPrint key={`${schoolId}-${classIdParam}-${sessionId}-${termId}`} classId={classIdParam} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
   }
 
   if (!studentId || !sessionId || !termId) {
-    return <ReportCardLauncher />;
+    return <ReportCardLauncher schoolId={schoolId} />;
   }
 
   if (!classIdParam && inferred === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
   if (!selectedClassId) return <div className="mx-auto max-w-3xl p-6 text-slate-700">No verified class was found for this period. <Link href="/assessments/report-cards" className="underline">Choose a student and class</Link>.</div>;
   if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
-  if (mode === "narrative") return <NarrativeReview key={`${studentId}-${sessionId}-${termId}-${selectedClassId}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={selectedClassId} />;
+  if (mode === "narrative") return <NarrativeReview key={`${schoolId}-${studentId}-${sessionId}-${termId}-${selectedClassId}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={selectedClassId} />;
   if (reportCard === undefined) {
     return <ReportCardPageFallback message="Loading student report card..." />;
   }
@@ -272,7 +308,7 @@ function AdminReportCardPageContent() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
           <h2 className="text-lg font-bold text-amber-900">Report Card Not Found</h2>
           <p className="mt-2 text-sm text-amber-800">
-            No published results or enrollment record was found for this student.
+            No report card preview or enrollment record was found for this student.
           </p>
           <div className="mt-4 flex gap-3">
             <a
@@ -293,6 +329,8 @@ function AdminReportCardPageContent() {
     );
   }
 
+  const extrasHref = buildReportCardExtrasHref({ studentId, sessionId, termId, classId: resolvedClassId });
+  const branchExtrasHref = extrasHref ? `${extrasHref}&schoolId=${encodeURIComponent(schoolId)}` : undefined;
   const baseReturnTo = searchParams.get("returnTo");
   const fallbackBackHref = `/assessments/report-cards?sessionId=${sessionId}&termId=${termId}&classId=${resolvedClassId ?? ""}`;
   const backHref =
@@ -385,7 +423,7 @@ function AdminReportCardPageContent() {
                 termName={reportCard.termName}
                 isLoading={Boolean(resolvedClassId) && batchStudents === undefined}
                 isPrintingFullClass={isPrintClassMode}
-                extrasHref={buildReportCardExtrasHref({ studentId, sessionId, termId, classId: resolvedClassId })}
+                extrasHref={branchExtrasHref}
                 onSelectStudent={handleSelectStudent}
                 onPrintFullClass={handlePrintFullClass}
               />
@@ -393,6 +431,7 @@ function AdminReportCardPageContent() {
 
             <div className="pt-6 border-t border-slate-100">
               <ReportCardAdminPanel
+                schoolId={schoolId}
                 studentId={studentId}
                 sessionId={sessionId}
                 termId={termId}

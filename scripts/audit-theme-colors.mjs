@@ -30,6 +30,7 @@ const themed = /--school-|deriveSchoolTheme|brand-(?:primary|accent|focus|progre
 
 console.log(`Theme colour audit (informational; comparison base: ${base})`);
 for (const file of changedFiles) {
+  if (!existsSync(file)) continue;
   const source = readFileSync(file, "utf8");
   const colours = [...new Set(source.match(directColor) ?? [])];
   if (!colours.length) continue;

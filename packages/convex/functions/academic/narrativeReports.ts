@@ -530,8 +530,7 @@ export const getStaffPeriodReportMode = query({
           !(await teacherHasClassAccess(ctx, auth.userId, auth.schoolId, classId)))
         throw new ConvexError("Not assigned to this class");
     }
-    return { classId, mode: narrativeIssue ? "narrative" as const : gradedIssue ? "graded" as const :
-      await modeFor(ctx, classId, session._id) ? "narrative" as const : "graded" as const };
+    return { classId, mode: narrativeIssue || await modeFor(ctx, classId, session._id) ? "narrative" as const : "graded" as const };
   },
 });
 
@@ -550,8 +549,7 @@ export async function resolveAuthorizedPortalReportSelection(ctx: QueryCtx, args
     const classDoc = await ctx.db.get(classId);
     if (!classDoc || classDoc.schoolId !== schoolId || issued && issued.classId !== classId)
       throw new ConvexError("Invalid report selection");
-    return { classId, classDoc, mode: issued ? "narrative" as const : gradedIssue ? "graded" as const :
-      await modeFor(ctx, classId, session._id) ? "narrative" as const : "graded" as const, issued };
+    return { classId, classDoc, mode: issued || await modeFor(ctx, classId, session._id) ? "narrative" as const : "graded" as const, issued };
 }
 
 export const getPortalReportSelection = query({

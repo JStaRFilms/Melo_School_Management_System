@@ -137,6 +137,10 @@ const RETAINED_SCHOOL_SLUGS = new Set(["obhis-fedrah", "obhis-ruga"]);
 // Every school-scoped table is listed so the non-retained-school purge cannot
 // leave records behind in newer feature areas. Children precede their parents.
 export const SCHOOL_PURGE_TABLES = [
+  "classResultPublicationStudents",
+  "classResultExclusions",
+  "classResultPublications",
+  "resultReleaseControls",
   "migrationFeatureSignals",
   "stagedImportRecords",
   "importWorkspaces",

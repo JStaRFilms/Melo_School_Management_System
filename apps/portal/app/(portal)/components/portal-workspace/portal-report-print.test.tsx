@@ -14,7 +14,9 @@ const print = vi.fn();
 beforeEach(() => { print.mockClear(); vi.stubGlobal("print", print); });
 afterEach(cleanup);
 const workspace = (warning?: string) => ({
-  selectedReportCard: { student: { name: "Ada" }, scoringPolicyWarning: warning, results: [] },
+  selectedReportCard: { student: { _id: "student1", name: "Ada" }, scoringPolicyWarning: warning, results: [] },
+  selectedReportMode: "graded", selectedResultState: "released",
+  selectedSessionId: "session1", selectedTermId: "term1",
   students: [], history: [], selectedStudentId: "student1",
 }) as never;
 
