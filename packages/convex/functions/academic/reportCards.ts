@@ -6,7 +6,7 @@ import { deriveGradeAndRemark, reportCardReviewKey } from "@school/shared/exam-r
 import { reportCardResultValidator } from "../foundation/reportCardContract";
 export { reportCardResultValidator } from "../foundation/reportCardContract";
 import { resolveEffectiveGradingBands } from "./gradingBands";
-import { resolveEffectiveAcademicPolicy } from "./settings";
+import { resolveSessionScoringPolicy, assertSessionScoringAvailable } from "./sessionScoring";
 import { requireCapability } from "./rbac";
 import { recordAuditEventHelper } from "./audit";
 import { mutation, query, type QueryCtx, type MutationCtx } from "../../_generated/server";
@@ -49,8 +49,6 @@ import {
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 import { pickMostRecentDoc } from "./docSelection";
 
-const DEFAULT_CA_MAX = 20;
-const DEFAULT_EXAM_MAX = 40;
 const MAX_COMMENT_LENGTH = 1000;
 
 async function getSafeReportImageUrl(
@@ -322,6 +320,7 @@ async function getStudentsForClassReportCardBatch(
     termId: Id<"academicTerms">;
   }
 ) {
+  await assertSessionScoringAvailable(ctx, args.schoolId, args.sessionId);
   const [sessionDoc, currentStudents, promotedIntoClass, selectionDocs, sessionRecords] =
     await Promise.all([
       ctx.db.get(args.sessionId),
@@ -477,6 +476,7 @@ export async function buildStudentReportCard(
     throw new ConvexError("School not found");
   }
 
+  await assertSessionScoringAvailable(ctx, args.schoolId, args.sessionId);
   const issued = await getIssuedReport(
     ctx,
     args.studentId,
@@ -588,8 +588,14 @@ export async function buildStudentReportCard(
     }
   }
 
-  if (issued) return {
+  if (issued) {
+    const changedPolicy = await ctx.db.query("sessionScoringPolicies")
+      .withIndex("by_school_and_sessionId", (q: any) => q.eq("schoolId", args.schoolId).eq("sessionId", args.sessionId)).unique();
+    return {
     ...issued.report,
+    ...(changedPolicy && changedPolicy.version > (issued.scoringPolicyVersion ?? 0) ? {
+      scoringPolicyWarning: "Session scores changed after certification. This issued report is unchanged. Replacement certification for an already issued report is not available; review current scores separately.",
+    } : {}),
     schoolLogoUrl: issued.schoolLogoStorageId
       ? await getSafeReportImageUrl(ctx, issued.schoolLogoStorageId)
       : null,
@@ -600,6 +606,7 @@ export async function buildStudentReportCard(
         : null,
     },
   };
+  }
   // Old output without an issued policy must not borrow today's thresholds.
   const historicalWithoutPolicy =
     !session.isActive || !term.isActive || term.endDate < Date.now();
@@ -629,7 +636,7 @@ export async function buildStudentReportCard(
       .query("classSubjects")
       .withIndex("by_class", (q: any) => q.eq("classId", reportCardClassId))
       .collect(),
-    resolveEffectiveAcademicPolicy(ctx, args.schoolId),
+    resolveSessionScoringPolicy(ctx, args.schoolId, args.sessionId),
     historicalWithoutPolicy ? Promise.resolve([]) : resolveEffectiveGradingBands(ctx, args.schoolId),
     ctx.db
       .query("reportCardComments")
@@ -780,10 +787,11 @@ export async function buildStudentReportCard(
       updatedBy: String(band.updatedBy),
     }));
   const assessmentConfig = {
-    ca1Max: settings?.ca1Max ?? DEFAULT_CA_MAX,
-    ca2Max: settings?.ca2Max ?? DEFAULT_CA_MAX,
-    ca3Max: settings?.ca3Max ?? DEFAULT_CA_MAX,
-    examMax: settings?.examContributionMax ?? DEFAULT_EXAM_MAX,
+    ca1Max: settings.policy.ca1Max,
+    ca2Max: settings.policy.ca2Max,
+    ca3Max: settings.policy.ca3Max,
+    examMax: settings.policy.examContributionMax,
+    examRawMax: settings.policy.examRawMax,
   };
   const currentTermIndex = getTermOrderForSession(sessionTerms, args.termId);
   const resultCalculationMode =
@@ -1000,6 +1008,7 @@ export async function buildStudentReportCard(
     className: buildClassName(classDoc),
     generatedAt: Date.now(),
     assessmentConfig,
+    sessionScoringPolicyVersion: settings.version,
     resultCalculationMode,
     student: {
       _id: student._id,
@@ -1036,6 +1045,28 @@ export async function buildStudentReportCard(
     headTeacherComment: reportCardComment?.headTeacherComment ?? null,
   };
 }
+
+// Query alongside an issued print. The issued payload is never mutated by a regrade.
+export const getIssuedReportScoringWarning = query({
+  args: { studentId: v.id("students"), sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"), classId: v.optional(v.id("classes")) },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role, isSchoolAdmin } =
+      await getAuthenticatedSchoolMembership(ctx, { capability: "academic.report_cards.preview" });
+    await buildStudentReportCard(ctx, {
+      userId, schoolId, role, isSchoolAdmin, studentId: args.studentId,
+      sessionId: args.sessionId, termId: args.termId, preferredClassId: args.classId,
+    });
+    const issued = await getIssuedReport(ctx, args.studentId, args.sessionId, args.termId);
+    if (!issued || issued.schoolId !== schoolId) return { stale: false, message: null };
+    const policy = await ctx.db.query("sessionScoringPolicies")
+      .withIndex("by_school_and_sessionId", q => q.eq("schoolId", schoolId).eq("sessionId", args.sessionId)).unique();
+    const stale = !!policy && policy.version > (issued.scoringPolicyVersion ?? 0);
+    return { stale, message: stale
+      ? "Session scores changed after this report was certified. The issued copy is unchanged. Replacement certification for an already issued report is not available; review current scores separately."
+      : null };
+  },
+});
 
 export const getStudentReportCard = query({
   args: {
@@ -1157,6 +1188,7 @@ export const saveStudentReportCardComments = mutation({
       await getAuthenticatedSchoolMembership(ctx, {
         capability: "academic.assessments.enter",
       });
+    await assertSessionScoringAvailable(ctx, schoolId, args.sessionId);
     const [student, session, term, existingComment, assessmentRecords, issuedReport] =
       await Promise.all([
         ctx.db.get(args.studentId),
@@ -1405,7 +1437,10 @@ export const certifyStudentReportCard = mutation({
       isSchoolAdmin,
       preferredClassId: args.classId,
     });
-    if (report.certifiedAt) return report.certifiedAt;
+    if (report.certifiedAt) {
+      if (report.scoringPolicyWarning) throw new ConvexError(report.scoringPolicyWarning);
+      return report.certifiedAt;
+    }
     if (report.gradingPolicy?.source !== "current")
       throw new ConvexError(
         "Historical reports without an issued policy cannot be certified using today's policy",
@@ -1436,6 +1471,7 @@ export const certifyStudentReportCard = mutation({
       classId: args.classId,
       issuedAt: now,
       issuedBy: userId,
+      scoringPolicyVersion: (await resolveSessionScoringPolicy(ctx, schoolId, args.sessionId)).version,
       schoolLogoStorageId: report.schoolLogoUrl
         ? (await ctx.db.get(schoolId))?.logoStorageId
         : undefined,

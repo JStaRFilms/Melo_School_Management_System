@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
@@ -10,6 +10,7 @@ import {
   ReportCardPreview,
   ReportCardToolbar,
   ReportCardPrintBlockedNotice,
+  ReportScoringPrintWarning,
   buildReportCardExtrasHref,
   type ReportCardBatchStudent,
   type ReportCardSheetData,
@@ -55,6 +56,11 @@ function AdminReportCardPageContent() {
   const initialTouchScaleRef = useRef<number>(0.75);
 
   const [previewScale, setPreviewScale] = useState<number>(0.75);
+  const [printWarning, setPrintWarning] = useState<
+    { kind: "single" | "batch"; context: string; message: string } | null
+  >(null);
+  const printTimeoutRef = useRef<number | null>(null);
+  const printedBatchRef = useRef<string | null>(null);
 
   const calculateFitScale = useCallback(() => {
     if (typeof window === "undefined") return 0.65;
@@ -167,8 +173,31 @@ function AdminReportCardPageContent() {
   const blockedClassPrintCount =
     classReportCards?.filter(hasIncompleteCumulativeResults).length ?? 0;
   const isClassPrintBlocked = blockedClassPrintCount > 0;
+  const batchWarning = classReportCards?.find(card => card.scoringPolicyWarning)?.scoringPolicyWarning ?? null;
+  const batchContext = `${sessionId}:${termId}:${resolvedClassId}:${studentId}`;
+  const batchPrintStateRef = useRef({ context: batchContext, ready: false });
+  const isBatchReady = isPrintClassMode && !isClassPrintBlocked && Boolean(classReportCards && reportCard?.student._id === studentId);
+  useLayoutEffect(() => {
+    batchPrintStateRef.current = { context: batchContext, ready: isBatchReady };
+  }, [batchContext, isBatchReady]);
+  const scheduleBatchPrint = useCallback((expectedContext: string) => {
+    if (printTimeoutRef.current !== null) window.clearTimeout(printTimeoutRef.current);
+    printTimeoutRef.current = window.setTimeout(() => {
+      printTimeoutRef.current = null;
+      if (batchPrintStateRef.current.context !== expectedContext || !batchPrintStateRef.current.ready) return;
+      printedBatchRef.current = expectedContext;
+      window.print();
+    }, 250);
+  }, []);
+  const handleSinglePrint = () => {
+    if (reportCard?.student._id !== studentId) return;
+    if (reportCard.scoringPolicyWarning) {
+      setPrintWarning({ kind: "single", context: studentId, message: reportCard.scoringPolicyWarning });
+    } else window.print();
+  };
 
   const handleSelectStudent = (nextStudentId: string) => {
+    setPrintWarning(null);
     const params = new URLSearchParams(searchParamsString);
     params.set("studentId", nextStudentId);
     router.replace(`${pathname}?${params.toString()}`);
@@ -190,20 +219,33 @@ function AdminReportCardPageContent() {
   const handleBatchReady = useCallback(() => {
     if (isClassPrintBlocked || hasTriggeredClassPrintRef.current) return;
     hasTriggeredClassPrintRef.current = true;
-    window.setTimeout(() => {
-      window.print();
-    }, 250);
-  }, [isClassPrintBlocked]);
+    if (batchWarning) {
+      setPrintWarning({ kind: "batch", context: batchContext, message: batchWarning });
+      return;
+    }
+    scheduleBatchPrint(batchContext);
+  }, [isClassPrintBlocked, batchWarning, batchContext, scheduleBatchPrint, setPrintWarning]);
 
   useEffect(() => {
     hasTriggeredClassPrintRef.current = false;
-  }, [isPrintClassMode, resolvedClassId, sessionId, termId]);
+    printedBatchRef.current = null;
+    setPrintWarning(null);
+    return () => {
+      if (printTimeoutRef.current !== null) window.clearTimeout(printTimeoutRef.current);
+      printTimeoutRef.current = null;
+    };
+  }, [isPrintClassMode, batchContext]);
 
   useEffect(() => {
     if (!isPrintClassMode) return;
-    window.addEventListener("afterprint", exitFullClassPrint);
-    return () => window.removeEventListener("afterprint", exitFullClassPrint);
-  }, [exitFullClassPrint, isPrintClassMode]);
+    const handleAfterPrint = () => {
+      if (printedBatchRef.current !== batchContext) return;
+      printedBatchRef.current = null;
+      exitFullClassPrint();
+    };
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => window.removeEventListener("afterprint", handleAfterPrint);
+  }, [exitFullClassPrint, isPrintClassMode, batchContext]);
 
   // Narrative class printing uses the issued-only backend batch, not a graded
   // roster or a seed student. Keep the graded route's student requirement.
@@ -263,6 +305,18 @@ function AdminReportCardPageContent() {
   if (isPrintClassMode) {
     return (
       <>
+        {printWarning?.kind === "batch" && printWarning.context === batchContext && (
+          <ReportScoringPrintWarning
+            message={printWarning.message}
+            onCancel={() => { setPrintWarning(null); exitFullClassPrint(); }}
+            onContinue={() => {
+              setPrintWarning(null);
+              if (batchPrintStateRef.current.context === batchContext && batchPrintStateRef.current.ready) {
+                scheduleBatchPrint(batchContext);
+              }
+            }}
+          />
+        )}
         {classReportCards === undefined ? (
           <ReportCardPageFallback message="Preparing full class batch print..." />
         ) : classReportCards.length === 0 ? (
@@ -308,6 +362,16 @@ function AdminReportCardPageContent() {
 
   return (
     <div className="min-h-full lg:h-full lg:min-h-0 flex flex-col bg-slate-100/60">
+      {printWarning?.kind === "single" && printWarning.context === studentId && (
+        <ReportScoringPrintWarning
+          message={printWarning.message}
+          onCancel={() => setPrintWarning(null)}
+          onContinue={() => {
+            setPrintWarning(null);
+            if (printWarning.context === studentId && reportCard.student._id === studentId) window.print();
+          }}
+        />
+      )}
       <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden lg:min-h-0">
         {/* Sidebar Bucket - Management & Navigation */}
         <aside className="w-full lg:w-[460px] lg:h-full lg:overflow-y-auto border-b lg:border-b-0 lg:border-r border-slate-200/60 bg-white custom-scrollbar flex flex-col lg:order-1 pt-4 sm:pt-6 pb-6 lg:pb-24 shrink-0">
@@ -347,6 +411,7 @@ function AdminReportCardPageContent() {
                 <ReportCardToolbar
                   studentName={reportCard.student.name}
                   backHref={backHref}
+                  onPrint={handleSinglePrint}
                 />
               </div>
 
@@ -401,6 +466,7 @@ function AdminReportCardPageContent() {
             className="flex-1 min-h-0 overflow-auto custom-scrollbar p-4 sm:p-6 lg:p-8 flex items-start justify-center touch-pan-x touch-pan-y"
           >
             <div className="my-auto py-4 flex flex-col items-center max-w-full">
+              {reportCard.scoringPolicyWarning && <div className="rc-no-print mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{reportCard.scoringPolicyWarning}</div>}
               {hasIncompleteCumulativeResults(reportCard) && (
                 <div className="mb-4 w-full max-w-[794px]">
                   <ReportCardPrintBlockedNotice />

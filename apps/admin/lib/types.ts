@@ -81,6 +81,8 @@ export interface AssessmentRecordResponse {
   remark: string;
   examInputModeSnapshot: string;
   examRawMaxSnapshot: number;
+  sessionScoringPolicyVersion?: number;
+  assessmentPolicySnapshot?: Partial<import("@school/shared/exam-recording").SessionScoringPolicy>;
   status: "draft";
   enteredBy: Id<"users">;
   updatedBy: Id<"users">;
@@ -98,6 +100,8 @@ export interface SchoolSettingsResponse {
   ca2Max: number;
   ca3Max: number;
   examContributionMax: number;
+  examRawMax?: number;
+  sessionPolicyVersion?: number;
   isActive: boolean;
   createdAt: number;
   updatedAt: number;

@@ -22,6 +22,18 @@ const ready: Extract<WorkspaceAccessSummary, { state: "ready" }> = {
   teacherAssignments: { source: "domain_checks_required", legacyTeacherId: null },
 };
 
+describe("selected branch session scoring route", () => {
+  it("admits only a member with grading policy capability", () => {
+    const access = { ...ready, branch: { ...ready.branch, schoolId: "branch" },
+      membership: { personId: "person", membershipId: "membership", displayTitle: null, isProprietor: false },
+      effectiveCapabilities: ["academic.grading_bands.manage"] } as Extract<WorkspaceAccessSummary, { state: "ready" }>;
+    expect(isWorkspaceBranchScopedRoute("admin", "/assessments/setup/exam-recording")).toBe(true);
+    expect(getBranchScopedWorkspaceAccess("admin", "/assessments/setup/exam-recording", access).state).toBe("allowed");
+    expect(getBranchScopedWorkspaceAccess("admin", "/assessments/setup/exam-recording",
+      { ...access, effectiveCapabilities: [] }).state).toBe("forbidden");
+  });
+});
+
 describe("legacy workspace authority", () => {
   it("keeps legacy admin access without requiring principal baseline parity", () => {
     expect(getLegacyWorkspaceAccess("admin", ready).state).toBe("allowed");

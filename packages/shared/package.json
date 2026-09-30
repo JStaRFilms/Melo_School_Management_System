@@ -25,7 +25,8 @@
     "./subject-aggregation": "./src/subject-aggregation.ts",
     "./migration": "./src/migration/index.ts",
     "./theme": "./src/theme/index.ts",
-    "./drafts": "./src/drafts/index.ts"
+    "./drafts": "./src/drafts/index.ts",
+    "./drafts/scoreRowBaseline": "./src/drafts/scoreRowBaseline.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

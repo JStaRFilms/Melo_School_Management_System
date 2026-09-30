@@ -86,6 +86,7 @@ const BRANCH_SCOPED_ROUTES = {
     "/admin/settings/admission-numbering",
     "/admin/settings/email-domains",
     "/assessments/setup/grading-bands",
+    "/assessments/setup/exam-recording",
   ],
   teacher: [
     "/assessments/exams/entry",

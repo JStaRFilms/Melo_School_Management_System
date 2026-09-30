@@ -71,6 +71,8 @@ it("mounts narrative entry for a teacher assigned to the class", () => {
   state.entry = { mode: "narrative", canEnterNarrative: true };
   render(<ExamEntryPage />);
   expect(screen.getByText("Subject comments")).toBeTruthy();
+  expect(state.calls).toContainEqual({ name: "functions/academic/narrativeEntrySheet:getSubjectOptions", args: { schoolId: "school", classId: "class", sessionId: "session", termId: "term" } });
+  expect(state.calls).toContainEqual({ name: "functions/academic/narrativeEntrySheet:getSheet", args: { schoolId: "school", classId: "class", sessionId: "session", termId: "term", subjectId: "art" } });
   expect(state.calls.some(call => call.name.endsWith("getSheet") && call.args !== "skip")).toBe(true);
   expect(state.calls.some(call => call.name.endsWith("getExamEntrySheet") && call.args !== "skip")).toBe(false);
 });

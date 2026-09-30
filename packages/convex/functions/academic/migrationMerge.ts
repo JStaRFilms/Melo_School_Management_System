@@ -13,10 +13,12 @@ import {
 import { recordAuditEventHelper } from "./audit";
 import { adjustSchoolEnrollmentCount } from "./studentEnrollmentCounts";
 import {
-  deriveAssessmentFields,
-  validateScoreRanges,
+  deriveForSessionPolicy,
+  validateScoresForPolicy,
+  sessionScoringSnapshotMode,
   type GradingBand,
 } from "@school/shared/exam-recording";
+import { resolveSessionScoringPolicy } from "./sessionScoring";
 
 function validateBatchSize(value: number | undefined): number {
   const batchSize = value ?? 25;
@@ -708,7 +710,17 @@ export const commitImportWorkspace = mutation({
       const ca1 = record.parsedData.ca1 ?? 0;
       const ca2 = record.parsedData.ca2 ?? 0;
       const exam = record.parsedData.exam ?? 0;
-      const scoreErrors = validateScoreRanges(ca1, ca2, 0, exam, assessmentPolicy.examInputMode);
+      const currentPolicy = await resolveSessionScoringPolicy(ctx, args.schoolId, record.selectedSessionId);
+      if (assessmentPolicy.examInputMode !== sessionScoringSnapshotMode(currentPolicy.policy) ||
+        assessmentPolicy.ca1Max !== currentPolicy.policy.ca1Max ||
+        assessmentPolicy.ca2Max !== currentPolicy.policy.ca2Max ||
+        assessmentPolicy.ca3Max !== currentPolicy.policy.ca3Max ||
+        assessmentPolicy.examRawMax !== currentPolicy.policy.examRawMax ||
+        assessmentPolicy.examContributionMax !== currentPolicy.policy.examContributionMax ||
+        (currentPolicy.source === "session" && assessmentPolicy.sessionScoringPolicyVersion !== currentPolicy.version)) {
+        throw new ConvexError(`Grade row #${record.rowNumber} has stale scoring policy evidence. Review it again.`);
+      }
+      const scoreErrors = validateScoresForPolicy({ ca1, ca2, ca3: 0, examRawScore: exam }, currentPolicy.policy);
       if (scoreErrors.length) {
         throw new ConvexError(`Grade row #${record.rowNumber} has invalid canonical scores: ${scoreErrors.map(error => error.message).join("; ")}`);
       }
@@ -720,14 +732,7 @@ export const commitImportWorkspace = mutation({
         updatedAt: now,
         updatedBy: String(auth.userId),
       }));
-      const derived = deriveAssessmentFields(
-        ca1,
-        ca2,
-        0,
-        exam,
-        assessmentPolicy.examInputMode,
-        gradingBands,
-      );
+      const derived = deriveForSessionPolicy({ ca1, ca2, ca3: 0, examRawScore: exam }, currentPolicy.policy, gradingBands);
       if (derived.total < 0 || derived.total > 100) {
         throw new ConvexError(`Grade row #${record.rowNumber} total is outside 0–100`);
       }
@@ -746,8 +751,9 @@ export const commitImportWorkspace = mutation({
         total: derived.total,
         gradeLetter: derived.gradeLetter,
         remark: derived.remark,
-        examInputModeSnapshot: assessmentPolicy.examInputMode,
+        examInputModeSnapshot: sessionScoringSnapshotMode(currentPolicy.policy),
         examRawMaxSnapshot: assessmentPolicy.examRawMax,
+        sessionScoringPolicyVersion: assessmentPolicy.sessionScoringPolicyVersion,
         assessmentPolicySnapshot: assessmentPolicy,
         gradingPolicySnapshot: gradingPolicy,
         status: "draft",
