@@ -778,7 +778,7 @@ async function loadSources(
 
   const subjectMap = await fetchSubjectsById(ctx, [...subjectIds].map((id) => id as Id<"subjects">));
 
-  const selectedSources = accessibleRows.filter((row) => row.subjectId !== null).map((row) => {
+  const selectedSources = accessibleRows.map((row) => {
     const subject = row.subjectId ? subjectMap.get(String(row.subjectId)) : null;
     return {
       ...row,
@@ -1671,7 +1671,9 @@ export const getTeacherInstructionWorkspace = query({
 
     if (sourceBundle.selectedSources.length > 1) {
       const subjectKeys = new Set(
-        sourceBundle.selectedSources.map((source) => `${String(source.subjectId)}::${source.level.toLowerCase()}`)
+        sourceBundle.selectedSources
+          .filter((source) => source.subjectId !== null)
+          .map((source) => `${String(source.subjectId)}::${source.level.toLowerCase()}`)
       );
       if (subjectKeys.size > 1) {
         warnings.push(
