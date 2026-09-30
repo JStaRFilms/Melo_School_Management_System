@@ -1,6 +1,8 @@
 # Result publication index preparation
 
-This PR only declares `issuedReportCards.by_class_and_session_and_term` as a staged index on an existing table. It does not query the index, publish results, or alter parent visibility. Staging lets Convex backfill it without blocking a large schema deployment.
+This PR declares `issuedReportCards.by_class_and_session_and_term` as a staged index on an existing table. It does not query the index, publish results, or alter parent visibility. Staging lets Convex backfill it without blocking a large schema deployment.
+
+During source merge preparation, master incorporated narrative PR #89. Its two modules still imported teacher authorization helpers from the older `auth` location, and its three schema tables were missing from the schema coverage registry. This preparation branch fixes those imports to the existing `teacherAccess` helpers and classifies only those three table validators. Narrative authorization and report behavior are unchanged. Both master's staged narrative lookup index and this staged graded lookup index are retained. No reset, data migration or backend deployment is run by these compatibility fixes.
 
 ## Dependency for graded result release
 

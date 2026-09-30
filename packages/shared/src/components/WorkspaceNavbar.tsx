@@ -446,7 +446,7 @@ export function WorkspaceNavbar({
           else window.location.assign(anchor.href);
         });
       }}
-      className="flex h-screen w-full overflow-hidden overscroll-none bg-slate-50 font-sans supports-[height:100dvh]:h-[100dvh]"
+      className="workspace-print-root flex h-screen w-full overflow-hidden overscroll-none bg-slate-50 font-sans supports-[height:100dvh]:h-[100dvh]"
       style={{
         ...themeTokens,
       } as React.CSSProperties}
@@ -619,7 +619,7 @@ export function WorkspaceNavbar({
       </aside>
 
       {/* ═══ RIGHT SIDE (Header + Main) ════════════════════════ */}
-      <div className="flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
+      <div className="workspace-print-pane flex flex-col flex-1 min-w-0 min-h-0 h-full relative">
         
         {/* ── TOP HEADER (Pinned — flex sibling of the scroll area, never scrolls away) ── */}
         <header className="rc-no-print sticky top-0 z-40 flex h-14 w-full shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-3 backdrop-blur-md sm:h-16 sm:gap-4 sm:px-6 lg:px-8">
@@ -750,13 +750,13 @@ export function WorkspaceNavbar({
 
         {/* ── MAIN SCROLL AREA (the only scroller — header stays pinned above it) ── */}
         <main
-          className={`relative min-h-0 w-full flex-1 overscroll-contain custom-scrollbar scrollbar-hide [overflow-anchor:none] ${
+          className={`workspace-print-scroll relative min-h-0 w-full flex-1 overscroll-contain custom-scrollbar scrollbar-hide [overflow-anchor:none] ${
             fullBleed
               ? "h-full overflow-y-auto"
               : "overflow-y-auto overflow-x-hidden px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 sm:p-6 lg:p-8"
           }`}
         >
-          <div className={fullBleed ? "w-full min-h-full lg:h-full lg:min-h-0" : "mx-auto max-w-[1600px]"}>
+          <div className={`workspace-print-content ${fullBleed ? "w-full min-h-full lg:h-full lg:min-h-0" : "mx-auto max-w-[1600px]"}`}>
             {children}
           </div>
         </main>
