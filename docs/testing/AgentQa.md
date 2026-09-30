@@ -71,7 +71,15 @@ Inactive QA templates remain marked by their run ID. No generic purge or automat
 
 ## Backend updates
 
-A backend update is a separately approved operation. Never run a generic `convex dev --once` as part of QA preparation. In the installed CLI, a project-scoped development selector can resolve to the user's default dev deployment instead of the deployment name written in an env file. Prove the effective deployment credential and URL before any code/schema push. See [the milestone incident record](AgentQaVerification.md) before attempting the isolated update.
+A backend update is a separately approved maintenance operation. Ordinary QA commands do not deploy. In Convex CLI 1.34.1, a project-scoped `CONVEX_DEPLOYMENT` selector can resolve to the user's default dev deployment instead of the deployment name written in an env file. The CLI authorization endpoint also returns the broad login token, which can access both development backends; it is not a deployment-specific credential.
+
+Use the management API's documented `create_deploy_key` endpoint for `content-poodle-172` with a named, short-lived key and limited deployment permissions. Keep its value in a private ignored profile containing one unquoted literal `CONVEX_DEPLOY_KEY=<key>` assignment and optional blank/comment lines. Additional lines, colon assignments, duplicates, and other dotenv syntax are refused rather than silently skipped. OAuth-derived keys may reuse a broad grant, so test scope rather than trusting a name or prefix alone.
+
+The maintenance-only `scripts/qa/deployment-target.mjs` helpers reject other targets, project selectors, URL overrides, and broad unprefixed credentials. They attest the key through protected configuration reads: it must succeed on the isolated cloud URL and receive an authentication denial on normal development. A network failure is not scope proof. These helpers do not mint keys or push code.
+
+Before an approved push, use the installed CLI's `dev --once --skip-push --codegen disable --env-file <private deployment-key profile>` path, and verify the effective cloud/site URLs and deployment name written in this worktree. Keep credentials out of CLI argument values. Then perform the one-shot push using the same verified profile, with typecheck enabled, codegen disabled, and no `--run` step. Capture code/schema fingerprints for normal development before and after to establish that the corrective operation did not change it. Revoke the temporary key afterward and confirm that it is denied.
+
+This procedure succeeded for the first milestone. See [the verification and incident record](AgentQaVerification.md). Preserve the distinction between correcting the isolated backend and establishing the full effects of the earlier normal-dev incident.
 
 ## Offline verification
 
