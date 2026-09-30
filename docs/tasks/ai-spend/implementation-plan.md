@@ -1,6 +1,6 @@
 # School AI spend activation plan
 
-Baseline: `origin/master` at `5eaa434`. This plan is for teacher lesson-plan, student-note, assignment and assessment-draft generation only. No product code, live provider call, deploy or commit is part of G1.
+Baseline: `origin/master` at `5eaa434`. This plan covers teacher lesson-plan, student-note, assignment and assessment-draft generation only. G1 was planning; B1 now implements a single-call route. See [verification.md](./verification.md) for checks and remaining activation limits. No live provider call or deployment was part of B1.
 
 ## Decision and boundaries
 

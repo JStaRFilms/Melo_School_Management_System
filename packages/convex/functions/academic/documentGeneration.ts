@@ -1,15 +1,15 @@
 "use node";
 
 import { ConvexError, v } from "convex/values";
-import { assertPaidUsageAvailable } from "../foundation/paidUsageGate";
-import { generateObject, NoObjectGeneratedError, type GenerateObjectResult } from "ai";
+import { createHash } from "node:crypto";
+import { makeFunctionReference } from "convex/server";
+import { generateObject, NoObjectGeneratedError } from "ai";
 import {
   buildAssignmentPrompt,
   buildCbtDraftPrompt,
   buildLessonPlanPrompt,
   buildQuestionBankDraftPrompt,
   buildStudentNotePrompt,
-  buildTemplateRepairPrompt,
   cbtDraftSchema,
   createDocumentModel,
   documentDifficultyLevels,
@@ -33,10 +33,8 @@ import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import type { Id } from "../../_generated/dataModel";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
-const MAX_PROVIDER_RETRY_ATTEMPTS = 1;
-const MAX_TEMPLATE_REPAIR_ATTEMPTS = 1;
-const MAX_FAILED_RESPONSE_REPAIR_CHARS = 8000;
-const MAX_SCHEMA_REPAIR_INPUT_CHARS = 24_000;
+const spendMutation = (name: string) => makeFunctionReference<"mutation">(`functions/academic/aiSpend:${name}`);
+const spendQuery = (name: string) => makeFunctionReference<"query">(`functions/academic/aiSpend:${name}`);
 
 type AssessmentDraftMode = "practice_quiz" | "class_test" | "exam_draft";
 type AssessmentOutputType = Extract<DocumentOutputType, "question_bank_draft" | "cbt_draft">;
@@ -559,24 +557,6 @@ function normalizeGeneratedTemplateDraft(
   };
 }
 
-function promptClassForOutputType(outputType: LessonPlanOutputType): string {
-  switch (outputType) {
-    case "lesson_plan":
-      return "teacher.lesson-plan.generation";
-    case "student_note":
-      return "teacher.student-note.generation";
-    case "assignment":
-      return "teacher.assignment.generation";
-  }
-}
-
-function promptClassForDraftMode(
-  draftMode: AssessmentDraftMode,
-  questionStyle?: string
-): string {
-  return `teacher.question-bank.${draftMode}${questionStyle ? `.${questionStyle}` : ""}`;
-}
-
 function sourcePromptMaterialsFromLessonPlan(
   workspace: LessonPlanWorkspace,
   excerpts: SourceExcerptSummary[]
@@ -608,10 +588,6 @@ function sourcePromptMaterialsFromAssessment(
   }));
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 // Indirection wrapper around `generateObject` to avoid a TypeScript "Type
 // instantiation is excessively deep" error. The `ai` v6 SDK has deeply
 // overloaded call signatures, and the Zod schemas we pass contain recursive
@@ -638,29 +614,9 @@ async function callGenerateObject(
       : never,
     ...(system ? { system } : {}),
     prompt,
+    maxOutputTokens: 2048,
+    maxRetries: 0,
   });
-}
-
-function isSchemaMismatchNoObjectError(
-  error: unknown
-): error is NoObjectGeneratedError & { text: string } {
-  if (!NoObjectGeneratedError.isInstance(error)) {
-    return false;
-  }
-  const candidate = error as NoObjectGeneratedError & { text?: unknown };
-  return (
-    candidate.message.includes("response did not match schema") &&
-    typeof candidate.text === "string" &&
-    candidate.text.trim().length > 0
-  );
-}
-
-function getRetryDelayMs(
-  attempt: number,
-  kind: "rate_limit" | "transient_provider"
-): number {
-  const base = kind === "rate_limit" ? 2_000 : 1_000;
-  return Math.min(30_000, base * 2 ** Math.max(0, attempt - 1));
 }
 
 function providerStatusCode(error: unknown): number | undefined {
@@ -705,104 +661,6 @@ function getConvexFriendlyErrorMessage(
   }
 
   return message || "Generation failed.";
-}
-
-async function generateTemplateObject(
-  model: ReturnType<typeof createDocumentModel>,
-  prompt: { system?: string; prompt?: string }
-): Promise<GenerateObjectResult<TemplateBoundInstructionDraft>> {
-  const system = prompt.system;
-  const promptText = prompt.prompt ?? "";
-
-  for (let attempt = 0; attempt <= MAX_PROVIDER_RETRY_ATTEMPTS; attempt += 1) {
-    try {
-      const result = await callGenerateObject(
-        model,
-        templateBoundInstructionDraftSchema,
-        system,
-        promptText
-      );
-      return result as GenerateObjectResult<TemplateBoundInstructionDraft>;
-    } catch (error) {
-      const statusCode = providerStatusCode(error);
-      const retryable = statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500);
-      if (attempt < MAX_PROVIDER_RETRY_ATTEMPTS && retryable) {
-        const kind: "rate_limit" | "transient_provider" =
-          statusCode === 429 ? "rate_limit" : "transient_provider";
-        await sleep(getRetryDelayMs(attempt + 1, kind));
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw new Error("Generation failed after provider retry.");
-}
-
-async function generateAssessmentObject(
-  outputType: AssessmentOutputType,
-  model: ReturnType<typeof createDocumentModel>,
-  prompt: { system?: string; prompt?: string }
-): Promise<GenerateObjectResult<QuestionBankDraft | CbtDraft>> {
-  const system = prompt.system;
-  const promptText = prompt.prompt ?? "";
-  const schema = outputType === "question_bank_draft" ? questionBankDraftSchema : cbtDraftSchema;
-
-  for (let attempt = 0; attempt <= MAX_PROVIDER_RETRY_ATTEMPTS; attempt += 1) {
-    try {
-      const result = await callGenerateObject(model, schema, system, promptText);
-      return result as GenerateObjectResult<QuestionBankDraft | CbtDraft>;
-    } catch (error) {
-      const statusCode = providerStatusCode(error);
-      const retryable = statusCode === 429 || (typeof statusCode === "number" && statusCode >= 500);
-      if (attempt < MAX_PROVIDER_RETRY_ATTEMPTS && retryable) {
-        const kind: "rate_limit" | "transient_provider" =
-          statusCode === 429 ? "rate_limit" : "transient_provider";
-        await sleep(getRetryDelayMs(attempt + 1, kind));
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw new Error("Generation failed after provider retry.");
-}
-
-async function generateAssessmentObjectWithRepair(
-  outputType: AssessmentOutputType,
-  model: ReturnType<typeof createDocumentModel>,
-  prompt: { system?: string; prompt?: string }
-): Promise<GenerateObjectResult<QuestionBankDraft | CbtDraft>> {
-  try {
-    return await generateAssessmentObject(outputType, model, prompt);
-  } catch (error) {
-    if (!isSchemaMismatchNoObjectError(error)) {
-      throw error;
-    }
-    const repairSystem = [
-      prompt.system,
-      "You are repairing a prior AI response for strict JSON schema validation. Return only valid structured data.",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    const repairPrompt = [
-      "Repair the failed structured-generation response so it exactly matches the requested JSON schema.",
-      "Do not add new questions or change educational intent unless required to satisfy the schema.",
-      "Coerce obvious type issues only, such as numeric strings to numbers, missing arrays to arrays, and enum casing to valid values.",
-      "Return only the repaired object for the schema. No markdown or commentary.",
-      `Output type: ${outputType}`,
-      "",
-      "Original generation prompt:",
-      typeof prompt.prompt === "string" ? prompt.prompt : "",
-      "",
-      "Failed response to repair:",
-      error.text.slice(0, MAX_SCHEMA_REPAIR_INPUT_CHARS),
-    ].join("\n\n");
-    return await generateAssessmentObject(outputType, model, {
-      system: repairSystem,
-      prompt: repairPrompt,
-    });
-  }
 }
 
 function normalizeMix(mix: QuestionMix): QuestionMix {
@@ -1248,13 +1106,6 @@ async function requireStaffGenerationContext(ctx: ActionCtx) {
   };
 }
 
-function ensureAiRunLogId(value: Id<"aiRunLogs"> | null): Id<"aiRunLogs"> {
-  if (!value) {
-    throw new ConvexError("AI run log was not created");
-  }
-  return value;
-}
-
 function enforceRateLimit(result: RateLimitResult): void {
   if (!result.allowed) {
     const retryAfterSeconds = Math.max(1, Math.ceil(result.retryAfterMs / 1000));
@@ -1264,639 +1115,292 @@ function enforceRateLimit(result: RateLimitResult): void {
   }
 }
 
-export const generateTeacherLessonPlanDraft = action({
-  args: {
-    outputType: lessonPlanOutputTypeValidator,
-    sourceIds: v.array(v.id("knowledgeMaterials")),
-    targetTopicLabel: v.optional(v.string()),
-    planningContext: planningContextValidator,
-  },
-  returns: lessonPlanGenerationResultValidator,
-  handler: async (ctx, args): Promise<LessonPlanGenerationResultShape> => {
-    await requireStaffGenerationContext(ctx);
-    assertPaidUsageAvailable();
-
-    const requestedSourceIds = normalizeSourceIds(args.sourceIds.map((id) => String(id)));
-    if (requestedSourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
-      throw new ConvexError(
-        `Select at most ${MAX_GENERATION_SOURCE_COUNT} source materials for generation.`
-      );
-    }
-
-    const workspace = (await ctx.runQuery(
-      api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace,
-      {
-        outputType: args.outputType,
-        sourceIds: requestedSourceIds as Array<Id<"knowledgeMaterials">>,
-        planningContext:
-          args.planningContext?.kind === "topic" ? args.planningContext : undefined,
-      }
-    )) as LessonPlanWorkspace;
-
-    if (!workspace.canGenerate) {
-      throw new ConvexError(
-        workspace.warnings[0] ?? "Generation is blocked for the current source selection."
-      );
-    }
-
-    const effectiveTopicLabel = normalizeLessonPlanSnapshotTopicLabel({
-      workspace,
-      targetTopicLabel: args.targetTopicLabel?.trim() || null,
-    });
-
-    if (!effectiveTopicLabel) {
-      throw new ConvexError(
-        "Add a target topic before generating from broad planning sources."
-      );
-    }
-
-    const effectiveSubjectId = lessonPlanSubjectId(workspace);
-    const effectiveSubjectName = lessonPlanSubjectName(workspace);
-    const effectiveLevel = lessonPlanLevel(workspace);
-
-    if (!effectiveSubjectId || !effectiveLevel) {
-      throw new ConvexError(
-        "The selected sources did not resolve a valid subject and level for generation."
-      );
-    }
-
-    if (!workspace.template) {
-      throw new ConvexError(
-        "No active template resolved for this lesson-planning context. Ask an admin to set a template first."
-      );
-    }
-
-    const sourceExcerptBundle = (await ctx.runQuery(
-      api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionSourceExcerpts,
-      {
-        outputType: args.outputType,
-        sourceIds: requestedSourceIds as Array<Id<"knowledgeMaterials">>,
-        planningContext:
-          args.planningContext?.kind === "topic" ? args.planningContext : undefined,
-        targetTopicLabel: effectiveTopicLabel,
-      }
-    )) as SourceExcerptBundle;
-
-    try {
-      assertUsableExcerptMinimum(sourceExcerptBundle.excerpts, workspace.template?.objectiveMinimums.minimumSourceMaterials ?? 1);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Insufficient usable source excerpts";
-      const retrievalWarning = sourceExcerptBundle.warnings[0];
-      throw new ConvexError(retrievalWarning ? `${message} ${retrievalWarning}` : message);
-    }
-
-    const rateLimit = (await ctx.runMutation(
-      api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit,
-      {}
-    )) as RateLimitResult;
-    enforceRateLimit(rateLimit);
-
-    const modelId = resolveDocumentModelId(args.outputType);
-    const providerName = resolveDocumentProviderName();
-    const promptClass = promptClassForOutputType(args.outputType);
-
-    const sourceSelectionSnapshot = buildLessonPlanSourceSelectionSnapshot({
-      outputType: args.outputType,
-      sourceIds: requestedSourceIds,
-      subjectId: effectiveSubjectId ? String(effectiveSubjectId) : null,
-      level: effectiveLevel,
-      topicLabel: effectiveTopicLabel,
-      templateId: workspace.template._id ? String(workspace.template._id) : null,
-      templateResolutionPath: workspace.template.resolutionPath ?? null,
-    });
-
-    const startedAt = Date.now();
-
-    const runningLogId = ensureAiRunLogId(
-      (await ctx.runMutation(
-        api.functions.academic.lessonKnowledgeLessonPlans.recordTeacherLessonPlanAiRun,
-        {
-          outputType: args.outputType,
-          promptClass,
-          status: "running",
-          model: modelId,
-          provider: providerName,
-          sourceSelectionSnapshot,
-          sourceCount: requestedSourceIds.length,
-          startedAt,
-        }
-      )) as Id<"aiRunLogs"> | null
-    );
-
-    try {
-      const model = createDocumentModel(args.outputType);
-      const sourceMaterials = sourcePromptMaterialsFromLessonPlan(workspace, sourceExcerptBundle.excerpts);
-      const templateSections: ResolvedTemplateSection[] = workspace.template
-        ? workspace.template.sectionDefinitions
-            .slice()
-            .sort((a, b) => a.order - b.order)
-        : [];
-
-      const revisionNotes =
-        workspace.draft.artifactId && workspace.template?.title
-          ? `Refresh the current draft while preserving the teacher's working title.`
-          : undefined;
-
-      const promptContext: DocumentPromptContext = {
-        schoolName: workspace.schoolName ?? undefined,
-        subject: effectiveSubjectName ?? undefined,
-        level: effectiveLevel ?? undefined,
-        topic: effectiveTopicLabel ?? undefined,
-        templateName: workspace.template?.title,
-        templateSections,
-        minimumObjectives: findObjectiveSection(templateSections) ? workspace.template.objectiveMinimums.minimumObjectives : undefined,
-        minimumSections: workspace.template.objectiveMinimums.minimumSections,
-        sourceMaterials,
-        relatedInstructionArtifacts: buildRelatedArtifactsSummary(workspace.relatedInstructionArtifacts),
-        constraints: [
-          `Use at least ${workspace.template?.objectiveMinimums.minimumSourceMaterials ?? 1} source materials.`,
-          `Cover the required sections in this exact order: ${templateSections.map((section) => section.label).join(", ")}.`,
-          "Do not replace the resolved template with a generic lesson-plan, student-note, or assignment outline.",
-          args.outputType === "student_note"
-            ? "If a related lesson plan draft is available, use it to enrich the student note with the teacher's planned objectives, explanations, examples, and classroom emphasis."
-            : args.outputType === "assignment"
-              ? "If related lesson-plan or student-note drafts are available, align the assignment with their objectives, explanations, examples, evaluation points, and classroom activities."
-              : "Use the resolved lesson-planning context and selected source materials as the grounding basis.",
-        ],
-        ...(revisionNotes ? { revisionNotes } : {}),
-      };
-
-      const basePrompt = buildPromptForLessonPlanOutputType(args.outputType, promptContext);
-
-      let result: GenerateObjectResult<TemplateBoundInstructionDraft>;
-      let repaired = false;
-      let validationIssues: string[] = [];
-
-      try {
-        result = await generateTemplateObject(model, basePrompt);
-      } catch (generationError) {
-        if (!NoObjectGeneratedError.isInstance(generationError) || MAX_TEMPLATE_REPAIR_ATTEMPTS < 1) {
-          throw generationError;
-        }
-        const failed = generationError as NoObjectGeneratedError & { text?: string };
-        validationIssues = [
-          "The model returned text that was not parseable as the required JSON object.",
-          "Return only a complete JSON object with title, subject, level, topic, sections, and sourceNotes.",
-        ];
-        repaired = true;
-        const repairPrompt = buildTemplateRepairPrompt({
-          originalPrompt: basePrompt.prompt ?? "",
-          previousDraft: (failed.text ?? failed.message).slice(0, MAX_FAILED_RESPONSE_REPAIR_CHARS),
-          validationErrors: validationIssues,
-          templateSections,
-          minimumObjectives: findObjectiveSection(templateSections) ? workspace.template.objectiveMinimums.minimumObjectives : undefined,
-          minimumSections: workspace.template.objectiveMinimums.minimumSections,
-        });
-        result = await generateTemplateObject(model, narrowRepairPrompt(repairPrompt));
-      }
-
-      let generatedObject: TemplateBoundInstructionDraft;
-      try {
-        generatedObject = normalizeGeneratedTemplateDraft(
-          result.object,
-          templateSections,
-          effectiveTopicLabel,
-          workspace.template.objectiveMinimums
-        );
-      } catch (validationError) {
-        if (
-          !(validationError instanceof TemplateDraftValidationError) ||
-          MAX_TEMPLATE_REPAIR_ATTEMPTS < 1 ||
-          repaired
-        ) {
-          throw validationError;
-        }
-        validationIssues = validationError.issues;
-        repaired = true;
-        const repairPrompt = buildTemplateRepairPrompt({
-          originalPrompt: basePrompt.prompt ?? "",
-          previousDraft: result.object,
-          validationErrors: validationIssues,
-          templateSections,
-          minimumObjectives: findObjectiveSection(templateSections) ? workspace.template.objectiveMinimums.minimumObjectives : undefined,
-          minimumSections: workspace.template.objectiveMinimums.minimumSections,
-        });
-        result = await generateTemplateObject(model, narrowRepairPrompt(repairPrompt));
-        generatedObject = normalizeGeneratedTemplateDraft(
-          result.object,
-          templateSections,
-          effectiveTopicLabel,
-          workspace.template.objectiveMinimums
-        );
-      }
-
-      const documentState = renderTemplateBoundMarkdown(generatedObject);
-      const plainText = markdownToPlainText(documentState);
-      const usage = result.usage as { inputTokens?: number; outputTokens?: number } | undefined;
-
-      const saveResult = (await ctx.runMutation(
-        api.functions.academic.lessonKnowledgeLessonPlans.saveTeacherInstructionArtifactDraft,
-        {
-          artifactId: workspace.draft.artifactId ?? null,
-          expectedRevisionNumber: workspace.draft.revisionNumber,
-          outputType: args.outputType,
-          title: generatedObject.title,
-          documentState,
-          plainText,
-          sourceIds: requestedSourceIds as Array<Id<"knowledgeMaterials">>,
-          subjectId: effectiveSubjectId,
-          level: effectiveLevel,
-          topicLabel: effectiveTopicLabel,
-          planningContext:
-            args.planningContext?.kind === "topic" ? args.planningContext : undefined,
-          revisionKind: "generated",
-        }
-      )) as LessonPlanSaveResult;
-
-      const finishedAt = Date.now();
-
-      await ctx.runMutation(
-        api.functions.academic.lessonKnowledgeLessonPlans.recordTeacherLessonPlanAiRun,
-        {
-          outputType: args.outputType,
-          promptClass,
-          status: "succeeded",
-          model: modelId,
-          provider: providerName,
-          targetArtifactId: saveResult.artifactId,
-          sourceSelectionSnapshot,
-          sourceCount: requestedSourceIds.length,
-          tokenPromptCount: usage?.inputTokens,
-          tokenCompletionCount: usage?.outputTokens,
-          finishedAt,
-        }
-      );
-
-      return {
-        artifactId: String(saveResult.artifactId),
-        documentId: String(saveResult.documentId),
-        revisionId: String(saveResult.revisionId),
-        revisionNumber: saveResult.revisionNumber,
-        title: saveResult.title,
-        documentState: saveResult.documentState,
-        plainText: saveResult.plainText,
-        outputType: saveResult.outputType,
-        sourceIds: saveResult.sourceIds.map((id) => String(id)),
-        sourceSelectionSnapshot: saveResult.sourceSelectionSnapshot,
-        templateId: saveResult.templateId ? String(saveResult.templateId) : null,
-        templateResolutionPath: saveResult.templateResolutionPath,
-        savedAt: saveResult.savedAt,
-        generationMeta: {
-          attempts: repaired ? 2 : 1,
-          repaired,
-          validationIssues,
-          sourceExcerptWarnings: sourceExcerptBundle.warnings,
-          aiRunLogId: String(runningLogId),
-        },
-      };
-    } catch (error) {
-      const finishedAt = Date.now();
-      const failureMessage = getConvexFriendlyErrorMessage(error, {
-        outputType: args.outputType,
-        modelId,
-      });
-
-      try {
-        await ctx.runMutation(
-          api.functions.academic.lessonKnowledgeLessonPlans.recordTeacherLessonPlanAiRun,
-          {
-            outputType: args.outputType,
-            promptClass,
-            status: "failed",
-            model: modelId,
-            provider: providerName,
-            sourceSelectionSnapshot: buildLessonPlanSourceSelectionSnapshot({
-              outputType: args.outputType,
-              sourceIds: requestedSourceIds,
-              subjectId: null,
-              level: null,
-              topicLabel: null,
-              templateId: null,
-              templateResolutionPath: null,
-            }),
-            sourceCount: requestedSourceIds.length,
-            errorMessage: failureMessage,
-            errorCode: error instanceof Error ? error.name : "generation_failed",
-            finishedAt,
-          }
-        );
-      } catch (secondaryErr) {
-        console.error("[documentGeneration] Failed to record AI run failure:", secondaryErr);
-      }
-
-      throw new ConvexError(failureMessage);
-    }
-  },
+// One provider call per confirmed attempt. A failed schema/template check still settles its
+// measured tokens. Repair requires a new quote; no automatic provider replay is permitted.
+const lessonArgs = v.object({
+  outputType: lessonPlanOutputTypeValidator,
+  sourceIds: v.array(v.id("knowledgeMaterials")),
+  targetTopicLabel: v.optional(v.string()),
+  planningContext: planningContextValidator,
 });
-
-export const generateTeacherAssessmentDraft = action({
-  args: {
-    draftMode: draftModeValidator,
-    sourceIds: v.array(v.id("knowledgeMaterials")),
-    targetTopicLabel: v.optional(v.string()),
-    planningContext: planningContextValidator,
-    effectiveGenerationSettings: v.optional(effectiveGenerationSettingsValidator),
-  },
-  returns: assessmentBankGenerationResultValidator,
-  handler: async (ctx, args): Promise<AssessmentBankGenerationResultShape> => {
-    await requireStaffGenerationContext(ctx);
-    assertPaidUsageAvailable();
-
-    const requestedSourceIds = normalizeSourceIds(args.sourceIds.map((id) => String(id)));
-    if (requestedSourceIds.length > MAX_GENERATION_SOURCE_COUNT) {
-      throw new ConvexError(
-        `Select at most ${MAX_GENERATION_SOURCE_COUNT} source materials for generation.`
-      );
+const assessmentArgs = v.object({
+  draftMode: draftModeValidator,
+  sourceIds: v.array(v.id("knowledgeMaterials")),
+  targetTopicLabel: v.optional(v.string()),
+  planningContext: planningContextValidator,
+  effectiveGenerationSettings: v.optional(effectiveGenerationSettingsValidator),
+});
+type LessonArgs = typeof lessonArgs.type;
+type AssessmentArgs = typeof assessmentArgs.type;
+type PreparedLesson = {
+  kind: "lesson"; args: LessonArgs; workspace: LessonPlanWorkspace; excerpts: SourceExcerptBundle;
+  sourceIds: Array<Id<"knowledgeMaterials">>; subjectId: Id<"subjects">; level: string; topic: string;
+  prompt: { system: string; prompt: string }; modelId: string; digest: string; minimumUnits: number;
+};
+type PreparedAssessment = {
+  kind: "assessment"; args: AssessmentArgs; workspace: AssessmentWorkspace; settings: EffectiveGenerationSettings;
+  sourceIds: Array<Id<"knowledgeMaterials">>; subjectId: Id<"subjects">; level: string; topic: string | null;
+  outputType: AssessmentOutputType; prompt: { system: string; prompt: string }; modelId: string; digest: string; minimumUnits: number;
+};
+function boundRequest(kind: string, args: LessonArgs | AssessmentArgs, modelId: string, prompt: { system: string; prompt: string }, context: unknown) {
+  const request = JSON.stringify({ policy: "school-document-single-call-v1", kind, args, modelId, prompt, context });
+  const promptBytes = Buffer.byteLength(prompt.system + prompt.prompt, "utf8");
+  // The extra 12 KB covers the reviewed structured-output schema and provider
+  // framing. Four tokens per UTF-8 byte plus 4096 covers one capped output.
+  // A provider that exceeds the hold is charged in full and blocked for review.
+  if (promptBytes > 16_000) throw new ConvexError("Prepared prompt is too long for the reviewed AI budget. Select fewer sources.");
+  return {
+    digest: createHash("sha256").update(request).digest("hex"),
+    minimumUnits: (promptBytes + 12_000) * 4 + 4096,
+  };
+}
+function checkedSources(sourceIds: Array<Id<"knowledgeMaterials">>) {
+  const normalized = normalizeSourceIds(sourceIds.map(String)) as Array<Id<"knowledgeMaterials">>;
+  if (!normalized.length || normalized.length > MAX_GENERATION_SOURCE_COUNT) throw new ConvexError("Select 1 to 12 source materials for generation.");
+  return normalized;
+}
+async function prepareLesson(ctx: ActionCtx, args: LessonArgs): Promise<PreparedLesson> {
+  await requireStaffGenerationContext(ctx);
+  const sourceIds = checkedSources(args.sourceIds);
+  args = { ...args, sourceIds };
+  const planningContext = args.planningContext?.kind === "topic" ? args.planningContext : undefined;
+  const workspace = await ctx.runQuery(api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace,
+    { outputType: args.outputType, sourceIds, planningContext }) as LessonPlanWorkspace;
+  if (!workspace.canGenerate) throw new ConvexError(workspace.warnings[0] ?? "Generation blocked for the selected sources.");
+  const topic = normalizeLessonPlanSnapshotTopicLabel({ workspace, targetTopicLabel: args.targetTopicLabel?.trim() || null });
+  const subjectId = lessonPlanSubjectId(workspace);
+  const level = lessonPlanLevel(workspace);
+  if (!topic || !subjectId || !level || !workspace.template) throw new ConvexError("Select a subject, level, topic and active template before generation.");
+  const excerpts = await ctx.runQuery(api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionSourceExcerpts,
+    { outputType: args.outputType, sourceIds, planningContext, targetTopicLabel: topic }) as SourceExcerptBundle;
+  assertUsableExcerptMinimum(excerpts.excerpts, workspace.template.objectiveMinimums.minimumSourceMaterials);
+  const sections = workspace.template.sectionDefinitions.slice().sort((a, b) => a.order - b.order);
+  const context: DocumentPromptContext = {
+    schoolName: workspace.schoolName ?? undefined, subject: lessonPlanSubjectName(workspace) ?? undefined,
+    level, topic, templateName: workspace.template.title, templateSections: sections,
+    minimumObjectives: findObjectiveSection(sections) ? workspace.template.objectiveMinimums.minimumObjectives : undefined,
+    minimumSections: workspace.template.objectiveMinimums.minimumSections,
+    sourceMaterials: sourcePromptMaterialsFromLessonPlan(workspace, excerpts.excerpts),
+    relatedInstructionArtifacts: buildRelatedArtifactsSummary(workspace.relatedInstructionArtifacts),
+    constraints: [
+      `Use at least ${workspace.template.objectiveMinimums.minimumSourceMaterials} source materials.`,
+      `Cover the required sections in this exact order: ${sections.map(section => section.label).join(", ")}.`,
+      "Do not replace the resolved template with a generic outline.",
+      args.outputType === "student_note" ? "Use a related lesson plan to enrich the student note when available."
+        : args.outputType === "assignment" ? "Align with related plans and notes when available."
+        : "Ground the work in the selected sources and planning context.",
+    ],
+    ...(workspace.draft.artifactId && workspace.template.title ? { revisionNotes: "Refresh the current draft while preserving the teacher's working title." } : {}),
+  };
+  const prompt = buildPromptForLessonPlanOutputType(args.outputType, context);
+  const modelId = resolveDocumentModelId(args.outputType);
+  const bound = boundRequest("lesson", args, modelId, prompt, { workspace, excerpts });
+  return { kind: "lesson", args, workspace, excerpts, sourceIds, subjectId, level, topic, prompt, modelId, ...bound };
+}
+async function prepareAssessment(ctx: ActionCtx, args: AssessmentArgs): Promise<PreparedAssessment> {
+  await requireStaffGenerationContext(ctx);
+  const sourceIds = checkedSources(args.sourceIds);
+  args = { ...args, sourceIds };
+  const outputType: AssessmentOutputType = args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft";
+  const workspace = await ctx.runQuery(api.functions.academic.lessonKnowledgeAssessmentDrafts.getTeacherAssessmentBankWorkspace,
+    { draftMode: args.draftMode, sourceIds, planningContext: args.planningContext }) as AssessmentWorkspace;
+  if (!workspace.canGenerate) throw new ConvexError(workspace.warnings[0] ?? "Generation blocked for the selected sources.");
+  const requested = args.effectiveGenerationSettings ?? workspace.draft.effectiveGenerationSettings;
+  if (!requested) throw new ConvexError("Assessment generation settings are required.");
+  const settings = resolveEffectiveGenerationSettingsForAction({ requested, profiles: workspace.profiles });
+  const topic = normalizeAssessmentSnapshotTopicLabel({ workspace, targetTopicLabel: args.targetTopicLabel?.trim() || null });
+  if (args.draftMode !== "exam_draft" && !topic) throw new ConvexError("Add a target topic before generation.");
+  const subjectId = assessmentSubjectId(workspace);
+  const level = assessmentLevel(workspace);
+  if (!subjectId || !level) throw new ConvexError("Selected sources need a subject and level.");
+  const context: DocumentPromptContext = {
+    schoolName: workspace.schoolName ?? undefined, subject: assessmentSubjectName(workspace) ?? undefined,
+    level, topic: assessmentPromptTopicLabel({ workspace, fallbackTopicLabel: topic }),
+    sourceMaterials: sourcePromptMaterialsFromAssessment(workspace),
+    constraints: [ ...generationSettingConstraints(settings),
+      ...(args.draftMode === "exam_draft" ? ["Produce a structured CBT draft for moderation.", "Keep section labels concise."]
+        : args.draftMode === "practice_quiz" ? ["Use supportive retrieval questions."]
+          : ["Balance recall, understanding and application. Keep the draft editable."]) ],
+    ...(workspace.draft.bankId ? { revisionNotes: `Refresh the existing draft while preserving the teacher's working title: ${workspace.draft.title}` } : {}),
+  };
+  const prompt = buildPromptForAssessmentOutputType(outputType, context);
+  const modelId = resolveDocumentModelId(outputType);
+  const bound = boundRequest("assessment", args, modelId, prompt, { workspace, settings });
+  return { kind: "assessment", args, workspace, settings, sourceIds, subjectId, level, topic, outputType, prompt, modelId, ...bound };
+}
+async function quotePrepared(ctx: ActionCtx, prepared: PreparedLesson | PreparedAssessment, key: string): Promise<{ attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string }> {
+  const viewer = await requireStaffGenerationContext(ctx);
+  return await ctx.runMutation(spendMutation("quote"), {
+    schoolId: viewer.schoolId, task: prepared.kind === "lesson" ? "teacher_lesson_plan" : "teacher_assessment",
+    digest: prepared.digest, modelId: prepared.modelId, minimumUnits: prepared.minimumUnits,
+    idempotencyKey: key,
+    requestArgs: JSON.stringify({ kind: prepared.kind, args: prepared.args }),
+  }) as { attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string };
+}
+export const quoteTeacherLessonPlanDraft = action({
+  args: { ...lessonArgs.fields, idempotencyKey: v.string() },
+  handler: async (ctx, { idempotencyKey, ...args }) => quotePrepared(ctx, await prepareLesson(ctx, args), idempotencyKey),
+});
+export const quoteTeacherAssessmentDraft = action({
+  args: { ...assessmentArgs.fields, idempotencyKey: v.string() },
+  handler: async (ctx, { idempotencyKey, ...args }) => quotePrepared(ctx, await prepareAssessment(ctx, args), idempotencyKey),
+});
+function measured(result: unknown, attemptId: Id<"usageOperationAttempts">): { inputTokens: number; outputTokens: number; evidence: string } {
+  const response = result as { usage?: { inputTokens?: number; outputTokens?: number }; response?: { id?: string } };
+  const inputTokens = response.usage?.inputTokens;
+  const outputTokens = response.usage?.outputTokens;
+  if (!Number.isSafeInteger(inputTokens) || !Number.isSafeInteger(outputTokens) || inputTokens! < 0 || outputTokens! < 0 || !Number.isSafeInteger(inputTokens! + outputTokens!)) {
+    throw new ConvexError("Provider usage is incomplete; hold requires Platform reconciliation.");
+  }
+  const id = response.response?.id;
+  return { inputTokens: inputTokens!, outputTokens: outputTokens!, evidence: id && /^[a-zA-Z0-9:_./-]{1,150}$/.test(id) ? `provider:${id}:attempt:${attemptId}:call-1` : `attempt:${attemptId}:call-1:usage-without-response-id` };
+}
+async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">, kind: "lesson" | "assessment"): Promise<unknown> {
+  const row = await ctx.runQuery(spendQuery("load"), { attemptId }) as { requestArgs: string; digest: string; modelId: string; status: string; estimate: number };
+  if (row.status !== "reserved") throw new ConvexError("Attempt is not awaiting dispatch. Check its status; never replay a claimed call.");
+  // The persisted JSON contains identifiers/settings only. Re-read every source, template,
+  // related artifact and effective profile before claiming; changed inputs fail closed.
+  let bound: PreparedLesson | PreparedAssessment;
+  try {
+    const request = JSON.parse(row.requestArgs) as { kind: string; args: LessonArgs | AssessmentArgs };
+    if (request.kind !== kind) throw new ConvexError("Output type changed; request a new quote.");
+    bound = kind === "lesson" ? await prepareLesson(ctx, request.args as LessonArgs) : await prepareAssessment(ctx, request.args as AssessmentArgs);
+    if (row.digest !== bound.digest || row.modelId !== bound.modelId || row.estimate < bound.minimumUnits) throw new ConvexError("Sources, template, settings or model changed. Cancel and request a new quote.");
+  } catch (error) {
+    // A preparation failure cannot have reached the provider. A cancelled hold is safe.
+    await ctx.runMutation(spendMutation("cancel"), { attemptId });
+    throw error;
+  }
+  const rate = await ctx.runMutation(kind === "lesson"
+    ? api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit
+    : api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit, {});
+  enforceRateLimit(rate);
+  await ctx.runMutation(spendMutation("claim"), { attemptId, digest: bound.digest, modelId: bound.modelId });
+  let usage: ReturnType<typeof measured> | undefined;
+  let outcome: "succeeded" | "failed" = "failed";
+  let generation: unknown;
+  try {
+    const result = await callGenerateObject(createDocumentModel(bound.kind === "lesson" ? bound.args.outputType : bound.outputType),
+      bound.kind === "lesson" ? templateBoundInstructionDraftSchema
+        : bound.outputType === "cbt_draft" ? cbtDraftSchema : questionBankDraftSchema,
+      bound.prompt.system, bound.prompt.prompt);
+    usage = measured(result, attemptId); // Capture before validating object or saving a draft.
+    generation = (result as { object: unknown }).object;
+    if (kind === "lesson") {
+      const lesson = bound as PreparedLesson;
+      normalizeGeneratedTemplateDraft(generation as TemplateBoundInstructionDraft,
+        lesson.workspace.template!.sectionDefinitions.slice().sort((a, b) => a.order - b.order), lesson.topic,
+        lesson.workspace.template!.objectiveMinimums);
+    } else {
+      const assessment = bound as PreparedAssessment;
+      const draft = assessment.outputType === "cbt_draft"
+        ? mapCbtDraft(assessment.args.draftMode, generation as CbtDraft, assessment.settings)
+        : mapQuestionBankDraft(assessment.args.draftMode, generation as QuestionBankDraft, assessment.settings);
+      assertGeneratedQuestionCount({ expected: assessment.settings.totalQuestions, actual: draft.items.length, outputType: assessment.outputType });
     }
-
-    const outputType: AssessmentOutputType =
-      args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft";
-
-    const workspace = (await ctx.runQuery(
-      api.functions.academic.lessonKnowledgeAssessmentDrafts.getTeacherAssessmentBankWorkspace,
-      {
-        draftMode: args.draftMode,
-        sourceIds: requestedSourceIds as Array<Id<"knowledgeMaterials">>,
-        planningContext:
-          args.planningContext?.kind === "topic" || args.planningContext?.kind === "exam_scope"
-            ? args.planningContext
-            : undefined,
-      }
-    )) as AssessmentWorkspace;
-
-    if (!workspace.canGenerate) {
-      throw new ConvexError(
-        workspace.warnings[0] ?? "Generation is blocked for the current source selection."
-      );
+    outcome = "succeeded";
+  } catch (error) {
+    // Thrown provider errors may have incurred tokens. Do not interpret a 429/5xx
+    // or a missing usage report as zero; an operator must reconcile the hold.
+    if (!usage) {
+      await ctx.runMutation(spendMutation("uncertain"), { attemptId });
+      throw new ConvexError("AI provider outcome is uncertain. No retry will run; Platform must reconcile usage.");
     }
+    await ctx.runMutation(spendMutation("settle"), { attemptId, ...usage, outcome: "failed" });
+    throw new ConvexError(getConvexFriendlyErrorMessage(error, { outputType: bound.kind === "lesson" ? bound.args.outputType : bound.outputType, modelId: bound.modelId }));
+  }
+  if (!usage) throw new ConvexError("Usage unavailable");
+  // Stage generated content outside the accounting ledger before settling. If the action
+  // stops after this write, recovery saves the same object without another provider call.
+  const payload = JSON.stringify({ kind: bound.kind, args: bound.args, generation,
+    sourceIds: bound.sourceIds, subjectId: bound.subjectId, level: bound.level, topic: bound.topic,
+    ...(bound.kind === "lesson" ? {
+      artifactId: bound.workspace.draft.artifactId, revisionNumber: bound.workspace.draft.revisionNumber,
+      sections: bound.workspace.template!.sectionDefinitions, minimums: bound.workspace.template!.objectiveMinimums,
+      excerptWarnings: bound.excerpts.warnings,
+    } : {
+      bankId: bound.workspace.draft.bankId, settings: bound.settings, outputType: bound.outputType,
+    }),
+  });
+  try {
+    await ctx.runMutation(spendMutation("stage"), { attemptId, payload, ...usage });
+  } catch (error) {
+    await ctx.runMutation(spendMutation("uncertain"), { attemptId });
+    throw new ConvexError("Measured provider result could not be staged. Platform must reconcile this hold.");
+  }
+  return await finishStaged(ctx, attemptId);
+}
 
-    const requestedSettings =
-      args.effectiveGenerationSettings ?? workspace.draft.effectiveGenerationSettings;
-    if (!requestedSettings) {
-      throw new ConvexError("Assessment generation settings are required.");
-    }
-
-    const effectiveGenerationSettings = resolveEffectiveGenerationSettingsForAction({
-      requested: requestedSettings,
-      profiles: workspace.profiles,
-    });
-
-    const effectiveTopicLabel = normalizeAssessmentSnapshotTopicLabel({
-      workspace,
-      targetTopicLabel: args.targetTopicLabel?.trim() || null,
-    });
-
-    if (args.draftMode !== "exam_draft" && !effectiveTopicLabel) {
-      throw new ConvexError(
-        "Add a target topic before generating from broad planning sources."
-      );
-    }
-
-    const effectiveSubjectId = assessmentSubjectId(workspace);
-    const effectiveSubjectName = assessmentSubjectName(workspace);
-    const effectiveLevel = assessmentLevel(workspace);
-
-    if (!effectiveSubjectId || !effectiveLevel) {
-      throw new ConvexError(
-        "The selected sources did not resolve a valid subject and level for generation."
-      );
-    }
-
-    const effectivePromptTopic = assessmentPromptTopicLabel({
-      workspace,
-      fallbackTopicLabel: effectiveTopicLabel,
-    });
-
-    const sourceSelectionSnapshot = buildAssessmentSourceSelectionSnapshot({
-      draftMode: args.draftMode,
-      outputType,
-      sourceIds: requestedSourceIds,
-      subjectId: effectiveSubjectId ? String(effectiveSubjectId) : null,
-      level: effectiveLevel,
-      topicLabel: effectiveTopicLabel,
-    });
-
-    const rateLimit = (await ctx.runMutation(
-      api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit,
-      {}
-    )) as RateLimitResult;
-    enforceRateLimit(rateLimit);
-
-    const modelId = resolveDocumentModelId(outputType);
-    const providerName = resolveDocumentProviderName();
-    const promptClass = promptClassForDraftMode(
-      args.draftMode,
-      effectiveGenerationSettings.questionStyle
-    );
-
-    const startedAt = Date.now();
-
-    const mutationGenerationSettings = {
-      ...(effectiveGenerationSettings.profileId
-        ? { profileId: effectiveGenerationSettings.profileId }
-        : {}),
-      ...(effectiveGenerationSettings.profileName
-        ? { profileName: effectiveGenerationSettings.profileName }
-        : {}),
-      questionStyle: effectiveGenerationSettings.questionStyle,
-      totalQuestions: effectiveGenerationSettings.totalQuestions,
-      questionMix: effectiveGenerationSettings.questionMix,
-      allowTeacherOverrides: effectiveGenerationSettings.allowTeacherOverrides,
-      ...(effectiveGenerationSettings.overrideReason
-        ? { overrideReason: effectiveGenerationSettings.overrideReason }
-        : {}),
-    };
-
-    const runningLogId = ensureAiRunLogId(
-      (await ctx.runMutation(
-        api.functions.academic.lessonKnowledgeAssessmentDrafts.recordTeacherAssessmentBankAiRun,
-        {
-          outputType,
-          promptClass,
-          status: "running",
-          model: modelId,
-          provider: providerName,
-          sourceSelectionSnapshot,
-          sourceCount: requestedSourceIds.length,
-          effectiveGenerationSettings: mutationGenerationSettings,
-          startedAt,
-        }
-      )) as Id<"aiRunLogs"> | null
-    );
-
+type StagedResult = {
+  kind: "lesson" | "assessment";
+  args: LessonArgs & AssessmentArgs;
+  generation: TemplateBoundInstructionDraft & QuestionBankDraft & CbtDraft;
+  sourceIds: Array<Id<"knowledgeMaterials">>;
+  subjectId: Id<"subjects">; level: string; topic: string | null;
+  artifactId?: Id<"instructionArtifacts"> | null; revisionNumber?: number;
+  sections?: ResolvedTemplateSection[];
+  minimums?: { minimumObjectives: number; minimumSourceMaterials: number; minimumSections: number };
+  excerptWarnings?: string[];
+  bankId?: Id<"assessmentBanks"> | null;
+  settings?: EffectiveGenerationSettings;
+  outputType?: AssessmentOutputType;
+};
+async function finishStaged(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">): Promise<unknown> {
+  const row = await ctx.runQuery(spendQuery("staged"), { attemptId }) as {
+    payload: string; inputTokens: number; outputTokens: number; evidence: string; status: string; resultId: string | null;
+  };
+  if (row.resultId) return { resultId: row.resultId, status: "settled" };
+  if (row.status === "dispatch_started" || row.status === "needs_reconciliation") {
     try {
-      const model = createDocumentModel(outputType);
-      const sourceMaterials = sourcePromptMaterialsFromAssessment(workspace);
-
-      const revisionNotes = workspace.draft.bankId
-        ? `Refresh the existing draft while preserving the teacher's working title: ${workspace.draft.title}`
-        : undefined;
-
-      const promptContext: DocumentPromptContext = {
-        schoolName: workspace.schoolName ?? undefined,
-        subject: effectiveSubjectName ?? undefined,
-        level: effectiveLevel ?? undefined,
-        topic: effectivePromptTopic,
-        sourceMaterials,
-        constraints: [
-          ...generationSettingConstraints(effectiveGenerationSettings),
-          ...(args.draftMode === "exam_draft"
-            ? [
-                "Produce a structured CBT-style draft that can be moderated later.",
-                "Keep section labels concise and exam appropriate.",
-              ]
-            : args.draftMode === "practice_quiz"
-              ? [
-                  "Make the draft short, supportive, and retrieval focused.",
-                  "Blend quick recall with a few understanding checks.",
-                ]
-              : [
-                  "Balance recall, understanding, and application questions.",
-                  "Keep the draft classroom-ready and editable by the teacher.",
-                ]),
-        ],
-        ...(revisionNotes ? { revisionNotes } : {}),
-      };
-
-      const basePrompt = buildPromptForAssessmentOutputType(outputType, promptContext);
-
-      const result = await generateAssessmentObjectWithRepair(outputType, model, basePrompt);
-      const generatedObject = result.object as QuestionBankDraft | CbtDraft;
-
-      const generatedDraft =
-        outputType === "question_bank_draft"
-          ? mapQuestionBankDraft(
-              args.draftMode,
-              generatedObject as QuestionBankDraft,
-              effectiveGenerationSettings
-            )
-          : mapCbtDraft(
-              args.draftMode,
-              generatedObject as CbtDraft,
-              effectiveGenerationSettings
-            );
-
-      assertGeneratedQuestionCount({
-        expected: effectiveGenerationSettings.totalQuestions,
-        actual: generatedDraft.items.length,
-        outputType,
-      });
-
-      const usage = result.usage as { inputTokens?: number; outputTokens?: number } | undefined;
-
-      const saveResult = (await ctx.runMutation(
-        api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft,
-        {
-          bankId: workspace.draft.bankId ?? null,
-          draftMode: args.draftMode,
-          title: generatedDraft.title,
-          description: generatedDraft.description,
-          sourceIds: requestedSourceIds as Array<Id<"knowledgeMaterials">>,
-          sourceSelectionSnapshot,
-          effectiveGenerationSettings: mutationGenerationSettings,
-          subjectId: effectiveSubjectId,
-          level: effectiveLevel,
-          topicLabel: effectiveTopicLabel,
-          planningContext:
-            args.planningContext?.kind === "topic" || args.planningContext?.kind === "exam_scope"
-              ? args.planningContext
-              : undefined,
-          items: generatedDraft.items.map((item) => ({
-            questionType: item.questionType,
-            difficulty: item.difficulty,
-            promptText: item.promptText,
-            answerText: item.answerText,
-            explanationText: item.explanationText,
-            marks: item.marks,
-            tags: item.tags,
-          })),
-        }
-      )) as AssessmentSaveResult;
-
-      const finishedAt = Date.now();
-
-      await ctx.runMutation(
-        api.functions.academic.lessonKnowledgeAssessmentDrafts.recordTeacherAssessmentBankAiRun,
-        {
-          outputType,
-          promptClass,
-          status: "succeeded",
-          model: modelId,
-          provider: providerName,
-          targetAssessmentBankId: saveResult.bankId,
-          sourceSelectionSnapshot,
-          sourceCount: requestedSourceIds.length,
-          effectiveGenerationSettings: mutationGenerationSettings,
-          tokenPromptCount: usage?.inputTokens,
-          tokenCompletionCount: usage?.outputTokens,
-          finishedAt,
-        }
-      );
-
-      return {
-        bankId: String(saveResult.bankId),
-        title: saveResult.title,
-        description: saveResult.description,
-        draftMode: saveResult.draftMode,
-        outputType: saveResult.outputType,
-        sourceSelectionSnapshot: saveResult.sourceSelectionSnapshot,
-        itemCount: saveResult.itemCount,
-        savedAt: saveResult.savedAt,
-        effectiveGenerationSettings: saveResult.effectiveGenerationSettings,
-        items: generatedDraft.items.map((item) => ({
-          id: item.id,
-          itemOrder: item.itemOrder,
-          questionType: item.questionType,
-          difficulty: item.difficulty,
-          promptText: item.promptText,
-          answerText: item.answerText,
-          explanationText: item.explanationText,
-          marks: item.marks,
-          tags: item.tags,
-        })),
-        generationMeta: {
-          attempts: 1,
-          repaired: false,
-          validationIssues: [],
-          aiRunLogId: String(runningLogId),
-        },
-      };
+      await ctx.runMutation(spendMutation("settle"), { attemptId, inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens, evidence: row.evidence, outcome: "succeeded" });
     } catch (error) {
-      const finishedAt = Date.now();
-      const errorMessage =
-        error instanceof Error ? error.message : "Assessment draft generation failed.";
-
-      try {
-        await ctx.runMutation(
-          api.functions.academic.lessonKnowledgeAssessmentDrafts.recordTeacherAssessmentBankAiRun,
-          {
-            outputType,
-            promptClass: promptClassForDraftMode(
-              args.draftMode,
-              args.effectiveGenerationSettings?.questionStyle
-            ),
-            status: "failed",
-            model: modelId,
-            provider: providerName,
-            sourceSelectionSnapshot: buildAssessmentSourceSelectionSnapshot({
-              draftMode: args.draftMode,
-              outputType,
-              sourceIds: requestedSourceIds,
-              subjectId: null,
-              level: null,
-              topicLabel: null,
-            }),
-            sourceCount: requestedSourceIds.length,
-            errorMessage,
-            errorCode: error instanceof Error ? error.name : "generation_failed",
-            finishedAt,
-          }
-        );
-      } catch (secondaryErr) {
-        console.error("[documentGeneration] Failed to record AI run failure:", secondaryErr);
-      }
-
-      throw new ConvexError(errorMessage);
+      await ctx.runMutation(spendMutation("uncertain"), { attemptId });
+      throw new ConvexError("Measured usage could not settle. Platform must reconcile the hold.");
     }
-  },
+  } else if (row.status !== "settled") throw new ConvexError("Attempt cannot save this result");
+  const data = JSON.parse(row.payload) as StagedResult;
+  const aiRunLogId = await ctx.runQuery(spendQuery("runLogId"), { attemptId }) as Id<"aiRunLogs"> | null;
+  if (data.kind === "lesson") {
+    if (!data.sections || !data.minimums || !data.topic || data.revisionNumber === undefined) throw new ConvexError("Staged lesson result invalid");
+    const object = normalizeGeneratedTemplateDraft(data.generation, data.sections.slice().sort((a, b) => a.order - b.order), data.topic, data.minimums);
+    const documentState = renderTemplateBoundMarkdown(object);
+    const saved = await ctx.runMutation(api.functions.academic.lessonKnowledgeLessonPlans.saveTeacherInstructionArtifactDraft, {
+      attemptId, artifactId: data.artifactId ?? null, expectedRevisionNumber: data.revisionNumber,
+      outputType: data.args.outputType, title: object.title, documentState, plainText: markdownToPlainText(documentState),
+      sourceIds: data.sourceIds, subjectId: data.subjectId, level: data.level, topicLabel: data.topic,
+      planningContext: data.args.planningContext?.kind === "topic" ? data.args.planningContext : undefined, revisionKind: "generated" as const,
+    });
+    return { ...saved, artifactId: String(saved.artifactId), documentId: String(saved.documentId), revisionId: String(saved.revisionId),
+      sourceIds: saved.sourceIds.map(String), templateId: saved.templateId ? String(saved.templateId) : null,
+      generationMeta: { attempts: 1, repaired: false, validationIssues: [], sourceExcerptWarnings: data.excerptWarnings ?? [], aiRunLogId: String(aiRunLogId ?? "") } };
+  }
+  if (data.kind !== "assessment" || !data.settings || !data.outputType) throw new ConvexError("Staged assessment result invalid");
+  const draft = data.outputType === "cbt_draft"
+    ? mapCbtDraft(data.args.draftMode, data.generation, data.settings)
+    : mapQuestionBankDraft(data.args.draftMode, data.generation, data.settings);
+  const snapshot = buildAssessmentSourceSelectionSnapshot({ draftMode: data.args.draftMode, outputType: data.outputType,
+    sourceIds: data.sourceIds.map(String), subjectId: String(data.subjectId), level: data.level, topicLabel: data.topic });
+  const saved = await ctx.runMutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft, {
+    attemptId, bankId: data.bankId ?? null, draftMode: data.args.draftMode, title: draft.title, description: draft.description,
+    sourceIds: data.sourceIds, sourceSelectionSnapshot: snapshot, subjectId: data.subjectId, level: data.level, topicLabel: data.topic,
+    planningContext: data.args.planningContext,
+    effectiveGenerationSettings: { ...data.settings, profileId: data.settings.profileId ?? undefined },
+    items: draft.items.map(item => ({ questionType: item.questionType, difficulty: item.difficulty, promptText: item.promptText,
+      answerText: item.answerText, explanationText: item.explanationText, marks: item.marks, tags: item.tags })),
+  });
+  return { ...saved, bankId: String(saved.bankId), items: draft.items,
+    generationMeta: { attempts: 1, repaired: false, validationIssues: [], aiRunLogId: String(aiRunLogId ?? "") } };
+}
+export const recoverTeacherGenerationDraft = action({
+  args: { attemptId: v.id("usageOperationAttempts") },
+  handler: async (ctx, { attemptId }): Promise<unknown> => finishStaged(ctx, attemptId),
+});
+export const generateTeacherLessonPlanDraft = action({
+  args: { attemptId: v.id("usageOperationAttempts") },
+  handler: async (ctx, { attemptId }): Promise<unknown> => runBound(ctx, attemptId, "lesson"),
+});
+export const generateTeacherAssessmentDraft = action({
+  args: { attemptId: v.id("usageOperationAttempts") },
+  handler: async (ctx, { attemptId }): Promise<unknown> => runBound(ctx, attemptId, "assessment"),
 });

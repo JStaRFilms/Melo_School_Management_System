@@ -3657,6 +3657,7 @@ export default defineSchema({
     .index("by_window_expires_at", ["windowExpiresAt"]),
 
   aiRunLogs: defineTable({
+    attemptId: v.optional(v.id("usageOperationAttempts")),
     schoolId: v.id("schools"),
     actorUserId: v.id("users"),
     actorRole: knowledgeOwnerRoleValidator,
@@ -3696,7 +3697,8 @@ export default defineSchema({
       "targetAssessmentBankId",
     ])
     .index("by_school_and_curriculum_import", ["schoolId", "curriculumImportId"])
-    .index("by_school_and_created_at", ["schoolId", "createdAt"]),
+    .index("by_school_and_created_at", ["schoolId", "createdAt"])
+    .index("by_attempt", ["attemptId"]),
 
   contentAuditEvents: defineTable({
     schoolId: v.id("schools"),
@@ -4288,11 +4290,16 @@ export default defineSchema({
     status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("needs_reconciliation"), v.literal("settled")),
     actorTokenIdentifier: v.string(), createdAt: v.number(), updatedAt: v.number(),
     requestDigest: v.optional(v.string()), modelId: v.optional(v.string()),
+    requestArgs: v.optional(v.string()),
     expiresAt: v.optional(v.number()), actualUnits: v.optional(v.number()), inputTokens: v.optional(v.number()), outputTokens: v.optional(v.number()),
     outcome: v.optional(v.string()), evidence: v.optional(v.string()), overage: v.optional(v.boolean()), overageReviewedAt: v.optional(v.number()), resultId: v.optional(v.string()),
   }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"])
     .index("by_school", ["schoolId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
+  // Private generated content staged for settlement/save recovery. Never part of the accounting ledger.
+  aiGenerationResults: defineTable({
+    attemptId: v.id("usageOperationAttempts"), payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string(), createdAt: v.number(),
+  }).index("by_attempt", ["attemptId"]),
   usageOperationTransitions: defineTable({
     attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled"), v.literal("needs_reconciliation"), v.literal("settled")), createdAt: v.number(),
   }).index("by_attempt", ["attemptId"]),

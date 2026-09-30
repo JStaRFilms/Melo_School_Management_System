@@ -274,7 +274,8 @@ export function QuestionBankWorkspaceScreen({
   onOpenLibrary,
   onSaveDraft,
   onGenerateDraft,
-}: QuestionBankWorkspaceScreenProps) {
+  onGenerationSettingsChange,
+}: QuestionBankWorkspaceScreenProps & { onGenerationSettingsChange?: (settings: AssessmentGenerationSettings) => void }) {
   const [title, setTitle] = useState(workspace.draft.title);
   const [description, setDescription] = useState(workspace.draft.description ?? "");
   const [items, setItems] = useState<AssessmentDraftItem[]>(workspace.items.map(mapWorkspaceItem));
@@ -300,6 +301,7 @@ export function QuestionBankWorkspaceScreen({
     () => serializeDraftForSignature({ title, description, draftMode: workspace.draftMode, items, effectiveGenerationSettings }),
     [description, effectiveGenerationSettings, items, title, workspace.draftMode]
   );
+  useEffect(() => { onGenerationSettingsChange?.(effectiveGenerationSettings); }, [effectiveGenerationSettings, onGenerationSettingsChange]);
   const dirty = signature !== lastSavedSignature;
   const canGenerate = workspace.canGenerate && workspace.paidGenerationAvailable && !isGenerating;
   const canAutosave = workspace.canAutosave;
@@ -619,7 +621,7 @@ export function QuestionBankWorkspaceScreen({
 
           {!workspace.paidGenerationAvailable && (
             <p role="status" className="text-[11px] font-semibold leading-relaxed text-amber-700">
-              Assessment generation is unavailable until paid usage entitlements and provider reconciliation are enabled. You can continue editing and saving drafts.
+              This workspace cannot prepare a generation quote. You can still edit and save drafts.
             </p>
           )}
           <div className="grid grid-cols-2 gap-2 pt-2">
@@ -639,7 +641,7 @@ export function QuestionBankWorkspaceScreen({
               className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 text-[11px] font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
             >
               {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              Generate
+              Review and generate
             </button>
           </div>
         </div>

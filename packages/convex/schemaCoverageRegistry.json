@@ -1174,6 +1174,16 @@
     "storage": {},
     "shape": "1527:388ca1a3:7817bf37"
   },
+  "aiGenerationResults": {
+    "ownership": "indirect",
+    "reason": "Private staged content belongs to an attempt; tenant purge removes it by indexed attempt before deleting the attempt",
+    "references": [
+      { "path": "attemptId", "target": "usageOperationAttempts", "optional": false }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "428:36061071:112959ed"
+  },
   "aiRunLogs": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
@@ -1182,6 +1192,11 @@
         "path": "actorUserId",
         "target": "users",
         "optional": false
+      },
+      {
+        "path": "attemptId",
+        "target": "usageOperationAttempts",
+        "optional": true
       },
       {
         "path": "curriculumImportId",
@@ -1211,7 +1226,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "3255:f4ff99a8:26961d84"
+    "shape": "3348:1ed72f84:2ed3c6b2"
   },
   "assessmentBankItems": {
     "ownership": "direct-indexed",
@@ -5338,7 +5353,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "2212:7ff4d71f:1dbf9e79"
+    "shape": "2274:f48069a8:9a0927e0"
   },
   "usageOperationTransitions": {
     "ownership": "indirect",

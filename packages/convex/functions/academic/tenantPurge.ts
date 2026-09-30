@@ -261,6 +261,12 @@ export const purgeTenantBatchInternal = internalMutation({
     const attempts = await ctx.db.query("usageOperationAttempts")
       .withIndex("by_school", (q) => q.eq("schoolId", school._id)).take(BATCH_SIZE);
     for (const attempt of attempts) {
+      const staged = await ctx.db.query("aiGenerationResults")
+        .withIndex("by_attempt", (q) => q.eq("attemptId", attempt._id)).take(BATCH_SIZE);
+      if (staged.length) {
+        for (const row of staged) await ctx.db.delete(row._id);
+        return { complete: false, deletedCount: staged.length, tableName: "aiGenerationResults", storageIds: [] };
+      }
       const rows = await ctx.db.query("usageOperationTransitions")
         .withIndex("by_attempt", (q) => q.eq("attemptId", attempt._id)).take(BATCH_SIZE);
       if (rows.length) {

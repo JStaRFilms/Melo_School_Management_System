@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation, mutation, query, type MutationCtx } from "../../_generated/server";
+import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../../_generated/server";
 import { makeFunctionReference } from "convex/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { requireCapability } from "./rbac";
@@ -36,18 +36,18 @@ async function transition(ctx: MutationCtx, id: Id<"usageOperationAttempts">, st
 
 // Only documentGeneration may supply this digest. No prompt, excerpts or model output are stored here.
 export const quote = internalMutation({
-  args: { schoolId: v.id("schools"), task: v.union(v.literal("teacher_lesson_plan"), v.literal("teacher_assessment")), digest: v.string(), modelId: v.string(), idempotencyKey: v.string(), minimumUnits: v.number() },
+  args: { schoolId: v.id("schools"), task: v.union(v.literal("teacher_lesson_plan"), v.literal("teacher_assessment")), digest: v.string(), modelId: v.string(), idempotencyKey: v.string(), minimumUnits: v.number(), requestArgs: v.optional(v.string()) },
   handler: async (ctx, args) => {
     await requireCapability(ctx, args.schoolId, "academic.planning.use");
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("Authentication required");
-    if (!/^[a-f0-9]{64}$/.test(args.digest) || !args.modelId || args.modelId.length > 150 || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.idempotencyKey) || !Number.isSafeInteger(args.minimumUnits) || args.minimumUnits < 1) throw new ConvexError("Invalid bounded AI request");
+    if (!/^[a-f0-9]{64}$/.test(args.digest) || !args.modelId || args.modelId.length > 150 || !/^[a-zA-Z0-9_-]{8,100}$/.test(args.idempotencyKey) || !Number.isSafeInteger(args.minimumUnits) || args.minimumUnits < 1 || (args.requestArgs !== undefined && (args.requestArgs.length < 2 || args.requestArgs.length > 6000))) throw new ConvexError("Invalid bounded AI request");
     const cycle = await active(ctx, args.schoolId);
     const profile = cycle.entitlement.profiles.find(row => row.task === args.task);
     if (!profile || profile.meterType !== "ai_tokens" || profile.maxItems < 1 || profile.unitsPerItem < args.minimumUnits || profile.modelProfile !== args.modelId) throw new ConvexError("Publish a reviewed AI profile for this model and worst-case token hold");
     const existing = await ctx.db.query("usageOperationAttempts").withIndex("by_school_and_idempotency", q => q.eq("schoolId", args.schoolId).eq("idempotencyKey", args.idempotencyKey)).unique();
     if (existing) {
-      if (existing.cycleId !== cycle._id || existing.actorTokenIdentifier !== identity.tokenIdentifier || existing.task !== args.task || existing.requestDigest !== args.digest || existing.modelId !== args.modelId || existing.estimatedUnits !== profile.unitsPerItem || existing.status === "cancelled") throw new ConvexError("Operation ID is bound to different work");
+      if (existing.cycleId !== cycle._id || existing.actorTokenIdentifier !== identity.tokenIdentifier || existing.task !== args.task || existing.requestDigest !== args.digest || existing.modelId !== args.modelId || existing.estimatedUnits !== profile.unitsPerItem || existing.requestArgs !== args.requestArgs || existing.status === "cancelled") throw new ConvexError("Operation ID is bound to different work");
       return { attemptId: existing._id, estimate: existing.estimatedUnits, modelProfile: existing.modelProfile, expiresAt: existing.expiresAt!, status: existing.status };
     }
     const meter = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", args.schoolId).eq("meterType", "ai_tokens")).take(2);
@@ -58,10 +58,65 @@ export const quote = internalMutation({
     if (profile.unitsPerItem > available) throw new ConvexError(`AI allowance short by ${profile.unitsPerItem - available} tokens`);
     const now = Date.now();
     const expiresAt = Math.min(now + TTL, cycle.endAt);
-    const id = await ctx.db.insert("usageOperationAttempts", { schoolId: args.schoolId, cycleId: cycle._id, idempotencyKey: args.idempotencyKey, task: args.task, meterType: "ai_tokens", itemCount: 1, estimatedUnits: profile.unitsPerItem, modelProfile: profile.modelProfile, status: "quoted", actorTokenIdentifier: identity.tokenIdentifier, requestDigest: args.digest, modelId: args.modelId, expiresAt, createdAt: now, updatedAt: now });
+    const id = await ctx.db.insert("usageOperationAttempts", { schoolId: args.schoolId, cycleId: cycle._id, idempotencyKey: args.idempotencyKey, task: args.task, meterType: "ai_tokens", itemCount: 1, estimatedUnits: profile.unitsPerItem, modelProfile: profile.modelProfile, status: "quoted", actorTokenIdentifier: identity.tokenIdentifier, requestDigest: args.digest, modelId: args.modelId, requestArgs: args.requestArgs, expiresAt, createdAt: now, updatedAt: now });
     await transition(ctx, id, "quoted");
     await ctx.scheduler.runAfter(expiresAt - now, makeFunctionReference<"mutation", { attemptId: Id<"usageOperationAttempts"> }>("functions/academic/aiSpend:expire"), { attemptId: id });
     return { attemptId: id, estimate: profile.unitsPerItem, modelProfile: profile.modelProfile, expiresAt, status: "quoted" as const };
+  },
+});
+
+// Internal dispatch reads only the request identifiers and settings bound to the quote.
+export const load = internalQuery({
+  args: { attemptId },
+  handler: async (ctx, { attemptId }) => {
+    const row = await ctx.db.get(attemptId);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!row?.requestArgs || !identity || identity.tokenIdentifier !== row.actorTokenIdentifier) throw new ConvexError("AI attempt unavailable");
+    await requireCapability(ctx, row.schoolId, "academic.planning.use");
+    return { requestArgs: row.requestArgs, digest: row.requestDigest!, modelId: row.modelId!, status: row.status, estimate: row.estimatedUnits };
+  },
+});
+
+export const stage = internalMutation({
+  args: { attemptId, payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string() },
+  handler: async (ctx, args) => {
+    const attempt = await ctx.db.get(args.attemptId);
+    if (!attempt?.requestArgs || attempt.status !== "dispatch_started") throw new ConvexError("Dispatched attempt unavailable for staging");
+    await owner(ctx, attempt);
+    if (args.payload.length < 2 || args.payload.length > 150_000 || !Number.isSafeInteger(args.inputTokens) || args.inputTokens < 0 || !Number.isSafeInteger(args.outputTokens) || args.outputTokens < 0 || !Number.isSafeInteger(args.inputTokens + args.outputTokens) || !args.evidence || args.evidence.length > 2000) throw new ConvexError("Provider result invalid");
+    const existing = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", args.attemptId)).unique();
+    if (existing) {
+      if (existing.payload !== args.payload || existing.inputTokens !== args.inputTokens || existing.outputTokens !== args.outputTokens || existing.evidence !== args.evidence) throw new ConvexError("Conflicting staged generation");
+      return existing._id;
+    }
+    return await ctx.db.insert("aiGenerationResults", { ...args, createdAt: Date.now() });
+  },
+});
+export const staged = internalQuery({
+  args: { attemptId },
+  handler: async (ctx, { attemptId }) => {
+    const attempt = await ctx.db.get(attemptId);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!attempt?.requestArgs || !identity || identity.tokenIdentifier !== attempt.actorTokenIdentifier) throw new ConvexError("Generation result unavailable");
+    await requireCapability(ctx, attempt.schoolId, "academic.planning.use");
+    const row = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).unique();
+    if (!row && !attempt.resultId) throw new ConvexError("No measured result was staged; Platform must reconcile this attempt");
+    if (row && attempt.status === "settled" && (attempt.outcome !== "succeeded" || attempt.inputTokens !== row.inputTokens || attempt.outputTokens !== row.outputTokens || attempt.evidence !== row.evidence)) throw new ConvexError("Staged result conflicts with reconciled usage");
+    return { payload: row?.payload ?? "", inputTokens: row?.inputTokens ?? attempt.inputTokens ?? 0, outputTokens: row?.outputTokens ?? attempt.outputTokens ?? 0, evidence: row?.evidence ?? attempt.evidence ?? "",
+      status: attempt.status, resultId: attempt.resultId ?? null };
+  },
+});
+
+export const runLogId = internalQuery({
+  args: { attemptId },
+  handler: async (ctx, { attemptId }) => {
+    const attempt = await ctx.db.get(attemptId);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!attempt?.requestArgs || !identity || attempt.actorTokenIdentifier !== identity.tokenIdentifier) throw new ConvexError("AI log unavailable");
+    await requireCapability(ctx, attempt.schoolId, "academic.planning.use");
+    const logs = await ctx.db.query("aiRunLogs").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).take(2);
+    if (logs.length > 1) throw new ConvexError("Duplicate AI run log needs review");
+    return logs[0]?._id ?? null;
   },
 });
 
@@ -103,6 +158,7 @@ export const claim = internalMutation({
     const meter = await meterFor(ctx, attempt);
     const allowance = await effectiveAllowance(ctx, cycle, "ai_tokens");
     if (!allowance || meter.aiOverageRequiresReview || meter.reservedUnits < attempt.estimatedUnits || Math.floor(allowance.allocatedUnits * cycle.entitlement.hardStopPercent / 100) < meter.consumedUnits + meter.reservedUnits) throw new ConvexError("Held AI allowance needs review");
+    if (attempt.requestArgs && attempt.requestArgs.length > 6000) throw new ConvexError("Bound request invalid");
     await ctx.db.patch(attempt._id, { status: "dispatch_started", updatedAt: Date.now() });
     await transition(ctx, attempt._id, "dispatch_started");
     return attempt.estimatedUnits;
@@ -126,10 +182,49 @@ export const settle = internalMutation({
     await ctx.db.patch(meter._id, { consumedUnits: meter.consumedUnits + actual, reservedUnits: meter.reservedUnits - attempt.estimatedUnits, aiOverageRequiresReview: meter.aiOverageRequiresReview || actual > attempt.estimatedUnits, updatedAt: Date.now() });
     await ctx.db.patch(attempt._id, { status: "settled", actualUnits: actual, inputTokens: args.inputTokens, outputTokens: args.outputTokens, outcome: args.outcome, evidence: args.evidence, overage: actual > attempt.estimatedUnits, updatedAt: Date.now() });
     await ctx.db.insert("usageEvents", { schoolId: attempt.schoolId, meterType: "ai_tokens", unitsDelta: actual, reservationId: String(attempt._id), measurementMetadata: { source: "provider_reported_tokens", measuredAt: Date.now(), reference: String(attempt._id) }, operationName: attempt.task, description: "Measured AI generation token use", timestamp: Date.now() });
+    if (attempt.requestArgs) {
+      const users = await ctx.db.query("users").withIndex("by_auth_token_identifier", q => q.eq("authTokenIdentifier", attempt.actorTokenIdentifier)).take(10);
+      const user = users.find(row => row.schoolId === attempt.schoolId && !row.isArchived);
+      if (user) {
+        const request = JSON.parse(attempt.requestArgs) as { kind: string; args: { outputType?: string; draftMode?: string; sourceIds?: string[] } };
+        const outputType = request.kind === "lesson" ? request.args.outputType : request.args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft";
+        if (outputType !== "lesson_plan" && outputType !== "student_note" && outputType !== "assignment" && outputType !== "cbt_draft" && outputType !== "question_bank_draft") throw new ConvexError("Bound output type invalid");
+        await ctx.db.insert("aiRunLogs", {
+          attemptId: attempt._id, schoolId: attempt.schoolId, actorUserId: user._id,
+          actorRole: user.role === "teacher" ? "teacher" : "admin", outputType,
+          promptClass: `teacher.${outputType}.generation`, status: args.outcome === "failed" ? "failed" : "running",
+          model: attempt.modelId!, provider: "openrouter", sourceSelectionSnapshot: "Bound to AI attempt",
+          sourceCount: request.args.sourceIds?.length ?? 0, tokenPromptCount: args.inputTokens,
+          tokenCompletionCount: args.outputTokens, startedAt: attempt.createdAt,
+          finishedAt: args.outcome === "failed" ? Date.now() : undefined, createdAt: Date.now(), updatedAt: Date.now(),
+        });
+      }
+    }
     await transition(ctx, attempt._id, "settled");
     return actual;
   },
 });
+
+// Associate the saved draft in the same transaction as the save, never from a client token.
+export async function assertSaveAttempt(ctx: MutationCtx, attemptId: Id<"usageOperationAttempts">, schoolId: Id<"schools">, outputType: string, sourceIds: readonly Id<"knowledgeMaterials">[]) {
+  const row = await ctx.db.get(attemptId);
+  const identity = await ctx.auth.getUserIdentity();
+  if (!row?.requestArgs || row.schoolId !== schoolId || row.actorTokenIdentifier !== identity?.tokenIdentifier || row.status !== "settled" || row.outcome !== "succeeded" || row.resultId) throw new ConvexError("Generation attempt cannot save another draft");
+  const request = JSON.parse(row.requestArgs) as { kind: string; args: { outputType?: string; draftMode?: string; sourceIds?: string[] } };
+  const boundOutput = request.kind === "lesson" ? request.args.outputType : request.kind === "assessment" ? request.args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft" : null;
+  if (boundOutput !== outputType || JSON.stringify(request.args.sourceIds) !== JSON.stringify(sourceIds.map(String))) throw new ConvexError("Saved output differs from the confirmed request");
+  return row;
+}
+
+export async function attachSavedDraft(ctx: MutationCtx, attemptId: Id<"usageOperationAttempts">, resultId: string, target: "lesson" | "assessment") {
+  const row = await ctx.db.get(attemptId);
+  if (!row || row.resultId || row.status !== "settled" || row.outcome !== "succeeded") throw new ConvexError("Draft association unavailable");
+  await ctx.db.patch(attemptId, { resultId, updatedAt: Date.now() });
+  const staged = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).unique();
+  if (staged) await ctx.db.delete(staged._id);
+  const logs = await ctx.db.query("aiRunLogs").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).take(2);
+  if (logs.length === 1) await ctx.db.patch(logs[0]._id, { status: "succeeded", finishedAt: Date.now(), updatedAt: Date.now(), ...(target === "lesson" ? { targetArtifactId: resultId as Id<"instructionArtifacts"> } : { targetAssessmentBankId: resultId as Id<"assessmentBanks"> }) });
+}
 
 export const uncertain = internalMutation({
   args: { attemptId },
@@ -220,6 +315,18 @@ export const reviewOverage = mutation({
     await ctx.db.patch(meter._id, { aiOverageRequiresReview: outstanding, updatedAt: Date.now() });
     await recordAuditEventHelper(ctx, { schoolId: row.schoolId, actorKind: "platform_admin", actorEmailSnapshot: (await ctx.auth.getUserIdentity())?.email ?? "authenticated operator", module: "commercial", action: "usage.ai_overage_reviewed", targetType: "usage_entitlement", targetId: String(row._id), outcome: "success", safeSummary: `Provider evidence ${args.evidence}; ${args.reason.trim()}; ${row.actualUnits} tokens`, retentionClass: "permanent_statutory", alertTier: "tier2_warn" });
     return row._id;
+  },
+});
+
+export const recent = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, args) => {
+    if (!(await isGroupPlatformOperator(ctx))) throw new ConvexError("Platform authority required");
+    const rows = await ctx.db.query("usageOperationAttempts").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).order("desc").take(100);
+    return rows.filter(row => !!row.requestArgs).map(row => ({ id: row._id, status: row.status, modelId: row.modelId,
+      estimate: row.estimatedUnits, inputTokens: row.inputTokens ?? null, outputTokens: row.outputTokens ?? null,
+      evidence: row.evidence ?? null, overage: row.overage ?? false, overageReviewedAt: row.overageReviewedAt ?? null,
+      resultId: row.resultId ?? null, updatedAt: row.updatedAt }));
   },
 });
 

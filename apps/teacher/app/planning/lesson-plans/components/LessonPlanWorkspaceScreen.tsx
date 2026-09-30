@@ -729,7 +729,7 @@ export function LessonPlanWorkspaceScreen({
                 </div>
               )}
 
-              <p role="status" className="text-sm">Paid generation unavailable: plan estimate, allowance reservation and provider reconciliation are not enabled. No charge is incurred. Existing drafts can still be edited and saved.</p>
+              <p role="status" className="text-sm">Review the AI token hold before generating. Your school needs an active allowance for the selected model. Failed output may still use provider tokens.</p>
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-1.5">
                   {saveState === "conflict" && (
@@ -754,12 +754,12 @@ export function LessonPlanWorkspaceScreen({
                   <button
                     type="button"
                     onClick={handleGenerate}
-                    disabled
-                    title="Paid generation unavailable pending entitlement and reservation integration"
+                    disabled={!canGenerate}
+                    title={generationBlockedReason ?? "Review a quote before one provider call"}
                     className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-4 text-[10px] font-bold text-white transition-all hover:bg-slate-800 shadow-sm disabled:opacity-40 disabled:hover:bg-slate-950 cursor-pointer"
                   >
                     {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
-                    Generation unavailable
+                    {isGenerating ? "Reviewing or generating…" : "Review and generate"}
                   </button>
                 </div>
               </div>

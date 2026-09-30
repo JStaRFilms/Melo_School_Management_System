@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
-import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import {
   buildExamPlanningContextKey,
   buildTopicPlanningContextKey,
@@ -16,6 +16,7 @@ import {
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
 import { assertBranchDoc } from "../foundation/tenantScope";
+import { assertSaveAttempt, attachSavedDraft } from "./aiSpend";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
 
@@ -1402,7 +1403,7 @@ export const getTeacherAssessmentBankWorkspace = query({
       },
       items: bankItems,
       canGenerate,
-      paidGenerationAvailable: false,
+      paidGenerationAvailable: true,
       canAutosave,
       selectedSources: sourceBundle.selectedSources,
     };
@@ -1411,6 +1412,7 @@ export const getTeacherAssessmentBankWorkspace = query({
 
 export const saveTeacherAssessmentBankDraft = mutation({
   args: {
+    attemptId: v.optional(v.id("usageOperationAttempts")),
     bankId: v.optional(v.union(v.id("assessmentBanks"), v.null())),
     draftMode: draftModeValidator,
     title: v.string(),
@@ -1439,6 +1441,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
+    if (args.attemptId) await assertSaveAttempt(ctx, args.attemptId, schoolId, args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft", args.sourceIds);
 
     const normalizedTitle = normalizeOptionalText(args.title) ?? defaultAssessmentTitle({
       draftMode: args.draftMode,
@@ -1620,6 +1623,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
       bankExists: Boolean(existingBank),
     });
 
+    if (args.attemptId) await attachSavedDraft(ctx, args.attemptId, String(bankId), "assessment");
     return {
       bankId,
       title: normalizedTitle,
@@ -1634,7 +1638,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
   },
 });
 
-export const recordTeacherAssessmentBankAiRun = mutation({
+export const recordTeacherAssessmentBankAiRun = internalMutation({
   args: aiRunLogValidator,
   returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {

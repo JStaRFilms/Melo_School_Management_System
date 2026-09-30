@@ -14,6 +14,7 @@ import { api } from "@school/convex/_generated/api";
 
 import { TeacherHeader } from "@/lib/components/ui/TeacherHeader";
 import { QuestionBankWorkspaceScreen } from "./components/QuestionBankWorkspaceScreen";
+import { useAiSpendReview } from "../AiSpendReview";
 import type {
   AssessmentBankGenerationResult,
   AssessmentBankSaveResult,
@@ -89,6 +90,7 @@ export default function QuestionBankPage() {
   const searchParams = useSearchParams();
   const [draftMode, setDraftMode] = useState<AssessmentDraftMode>(parseDraftMode(searchParams.get("mode")));
   const [targetTopicLabel, setTargetTopicLabel] = useState("");
+  const [settingsKey, setSettingsKey] = useState("");
 
   const sourceIdsParam = searchParams.get("sourceIds");
   const selectedSourceIds = useMemo(
@@ -115,9 +117,9 @@ export default function QuestionBankPage() {
   const saveDraft = useMutation(
     "functions/academic/lessonKnowledgeAssessmentDrafts:saveTeacherAssessmentBankDraft" as never
   );
-  const generateDraftAction = useAction(
-    api.functions.academic.documentGeneration.generateTeacherAssessmentDraft
-  );
+  const quoteDraft = useAction(api.functions.academic.documentGeneration.quoteTeacherAssessmentDraft);
+  const generateDraftAction = useAction(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft);
+  const { review, reviewDialog } = useAiSpendReview(JSON.stringify({ draftMode, sourceIds: selectedSourceIds, topic: targetTopicLabel, planningContext, settingsKey }));
   const effectiveSourceIds = useMemo(() => {
     if (selectedSourceIds.length > 0) {
       return selectedSourceIds;
@@ -315,7 +317,7 @@ export default function QuestionBankPage() {
         planningContextArg = undefined;
       }
 
-      const result = (await generateDraftAction({
+      const request = {
         draftMode,
         sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
         targetTopicLabel: effectiveTopicLabel ?? undefined,
@@ -327,7 +329,10 @@ export default function QuestionBankPage() {
               ? null
               : (effectiveGenerationSettings.profileId as Id<"assessmentGenerationProfiles">),
         },
-      })) as AssessmentBankGenerationResult;
+      };
+      const quote = await quoteDraft({ ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") });
+      const attemptId = await review(quote, draftMode.replaceAll("_", " "), effectiveSourceIds.length);
+      const result = (await generateDraftAction({ attemptId })) as AssessmentBankGenerationResult;
       return result;
     } catch (error) {
       const toastMessage = getQuestionBankGenerationToast(error);
@@ -338,6 +343,8 @@ export default function QuestionBankPage() {
       throw new Error(toastMessage.description);
     }
   };
+
+  const onGenerationSettingsChange = useCallback((settings: NonNullable<AssessmentWorkspaceData["draft"]["effectiveGenerationSettings"]>) => setSettingsKey(JSON.stringify(settings)), []);
 
   if (!workspace) {
     return <LoadingShell />;
@@ -378,6 +385,7 @@ export default function QuestionBankPage() {
         </div>
       )}
 
+      {reviewDialog}
       <div className="flex-1 min-h-0 w-full overflow-hidden">
         <QuestionBankWorkspaceScreen
           key={`${draftMode}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
@@ -387,6 +395,7 @@ export default function QuestionBankPage() {
           onOpenLibrary={handleOpenLibrary}
           onSaveDraft={handleSaveDraft}
           onGenerateDraft={handleGenerateDraft}
+          onGenerationSettingsChange={onGenerationSettingsChange}
         />
       </div>
     </div>
