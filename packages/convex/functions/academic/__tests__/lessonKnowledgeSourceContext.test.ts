@@ -64,9 +64,14 @@ describe("lesson source planning-context compatibility", () => {
       issue: "The selected source is attached to a different topic.",
     },
     {
+      label: "subjectless non-broad source at the same topic",
+      source: source({ subjectId: undefined }),
+      issue: "The selected source does not match the current subject or level.",
+    },
+    {
       label: "subjectless non-broad source at a different topic",
       source: source({ subjectId: undefined, topicId: ids.otherTopic }),
-      issue: "The selected source is attached to a different topic.",
+      issue: "The selected source does not match the current subject or level.",
     },
   ])("rejects a mismatched $label with an actionable issue", ({ source: candidate, issue }) => {
     expect(getLessonSourceContextIssue({ source: candidate, planningContext })).toBe(issue);
@@ -75,16 +80,16 @@ describe("lesson source planning-context compatibility", () => {
   it("rejects a class-scoped source that does not include the planning class", () => {
     expect(
       getLessonSourceContextIssue({
-        source: source({ subjectId: undefined, visibility: "class_scoped" }),
+        source: source({ subjectId: undefined, sourceType: "imported_curriculum", visibility: "class_scoped" }),
         planningContext,
         classAccess: { matchedClassIds: [ids.otherClass] },
       })
     ).toBe("The selected source is not available for the current class.");
   });
 
-  it("accepts matching and subjectless sources at the planning level", () => {
+  it("accepts matching sources and subjectless broad curriculum sources at the planning level", () => {
     expect(getLessonSourceContextIssue({ source: source(), planningContext })).toBeNull();
-    expect(getLessonSourceContextIssue({ source: source({ subjectId: undefined }), planningContext })).toBeNull();
+    expect(getLessonSourceContextIssue({ source: source({ subjectId: undefined, sourceType: "imported_curriculum" }), planningContext })).toBeNull();
     expect(
       getLessonSourceContextIssue({
         source: source({ subjectId: undefined, sourceType: "imported_curriculum", topicId: ids.otherTopic }),

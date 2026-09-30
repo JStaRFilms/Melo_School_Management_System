@@ -1670,7 +1670,9 @@ export const getTeacherInstructionWorkspace = query({
 
     if (sourceBundle.selectedSources.length > 1) {
       const subjectKeys = new Set(
-        sourceBundle.selectedSources.map((source) => `${String(source.subjectId)}::${source.level.toLowerCase()}`)
+        sourceBundle.selectedSources
+          .filter((source) => source.subjectId !== null)
+          .map((source) => `${String(source.subjectId)}::${source.level.toLowerCase()}`)
       );
       if (subjectKeys.size > 1) {
         warnings.push(

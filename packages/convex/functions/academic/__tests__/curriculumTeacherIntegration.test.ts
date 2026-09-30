@@ -1,22 +1,18 @@
 import { convexTest } from "convex-test";
-import type { FunctionReference, RegisteredMutation, RegisteredQuery } from "convex/server";
 import { describe, expect, it } from "vitest";
+import { api } from "../../../_generated/api";
 import schema from "../../../schema";
-import * as lessonKnowledgeTeacher from "../lessonKnowledgeTeacher";
-import * as lessonKnowledgeLessonPlans from "../lessonKnowledgeLessonPlans";
-import * as curriculumImportLifecycle from "../curriculumImportLifecycle";
-import * as curriculumReviewLifecycle from "../curriculumReviewLifecycle";
 
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
-const modules = import.meta.glob("../../../**/*.ts");
+const convexRoot = new URL("../../../", import.meta.url).pathname;
+const rawModules = import.meta.glob("../../../**/*.ts");
+const modules = Object.fromEntries(
+  Object.entries(rawModules).map(([path, module]) => [
+    `./${new URL(path, import.meta.url).pathname.slice(convexRoot.length)}`,
+    module,
+  ]),
+);
 const admin = { subject: "curriculum-teacher-admin", issuer: "https://legacy-auth.test" };
-type QueryReference<Export> = Export extends RegisteredQuery<infer Visibility, infer Args, infer Result> ? FunctionReference<"query", Visibility, Args, Awaited<Result>> : never;
-const listTopics = lessonKnowledgeTeacher.listTeacherKnowledgeTopics as unknown as QueryReference<typeof lessonKnowledgeTeacher.listTeacherKnowledgeTopics>;
-const listWork = lessonKnowledgeTeacher.listTeacherPlanningTopicWork as unknown as QueryReference<typeof lessonKnowledgeTeacher.listTeacherPlanningTopicWork>;
-const getWorkspace = lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace as unknown as QueryReference<typeof lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace>;
-type MutationReference<Export> = Export extends RegisteredMutation<infer Visibility, infer Args, infer Result> ? FunctionReference<"mutation", Visibility, Args, Awaited<Result>> : never;
-const createImport = curriculumImportLifecycle.createCurriculumImport as unknown as MutationReference<typeof curriculumImportLifecycle.createCurriculumImport>;
-const approveUnit = curriculumReviewLifecycle.approveCurriculumUnit as unknown as MutationReference<typeof curriculumReviewLifecycle.approveCurriculumUnit>;
 
 describe("curriculum topics in teacher planning", () => {
   it("keeps a subjectless curriculum-planning source attached in the subject-specific lesson workspace", async () => {
@@ -38,7 +34,7 @@ describe("curriculum topics in teacher planning", () => {
       return { schoolId, subjectId, termId, classId, materialId };
     });
 
-    const importId = await t.withIdentity(admin).mutation(createImport, {
+    const importId = await t.withIdentity(admin).mutation(api.functions.academic.curriculumImportLifecycle.createCurriculumImport, {
       materialId: ids.materialId, subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId,
     });
     // Seed the extracted proposal; approval is the real source-to-topic linkage under test.
@@ -48,7 +44,7 @@ describe("curriculum topics in teacher planning", () => {
       supportingExcerpt: "Safety Club as an Agent of Socialization", confidence: 1, reviewStatus: "proposed",
       validationWarnings: [], duplicateWarnings: [], createdAt: 1, updatedAt: 1,
     }));
-    const topicId = await t.withIdentity(admin).mutation(approveUnit, { unitId });
+    const topicId = await t.withIdentity(admin).mutation(api.functions.academic.curriculumReviewLifecycle.approveCurriculumUnit, { unitId });
     const persisted = await t.run(async (ctx) => ({
       material: await ctx.db.get(ids.materialId),
       importRecord: await ctx.db.get(importId),
@@ -61,10 +57,10 @@ describe("curriculum topics in teacher planning", () => {
     expect(persisted.unit).toMatchObject({ materialId: ids.materialId, knowledgeTopicId: topicId, reviewStatus: "approved" });
     expect(persisted.topic).toMatchObject({ subjectId: ids.subjectId, level: "JSS 1" });
 
-    const work = await t.withIdentity(admin).query(listWork, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 20 });
+    const work = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 20 });
     expect(work.items).toMatchObject([{ topicId, sourceIds: [ids.materialId], sourceCount: 1 }]);
 
-    const workspace = await t.withIdentity(admin).query(getWorkspace, {
+    const workspace = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace, {
       outputType: "lesson_plan", sourceIds: work.items[0].sourceIds,
       planningContext: { kind: "topic", classId: ids.classId, termId: ids.termId, subjectId: ids.subjectId, level: "JSS 1", topicId },
     });
@@ -72,6 +68,39 @@ describe("curriculum topics in teacher planning", () => {
     expect(workspace.selectedSources.map((source) => source._id)).toContain(ids.materialId);
     expect(workspace.selectedSourceCount).toBe(1);
     expect(workspace.inaccessibleSourceIds).toEqual([]);
+
+    const { matchingId, subjectlessFileId } = await t.run(async (ctx) => {
+      const common = {
+        schoolId: ids.schoolId, ownerUserId: persisted.material!.ownerUserId, ownerRole: "admin" as const,
+        visibility: "staff_shared" as const, reviewStatus: "approved" as const,
+        level: "JSS 1", topicLabel: "Safety Club", searchStatus: "indexed" as const,
+        searchText: "safety club", processingStatus: "ready" as const,
+        ingestionErrorMessage: null, ingestionAttemptCount: 0, labelSuggestions: [], chunkCount: 1,
+        indexedAt: 1, createdAt: 1, updatedAt: 1,
+        createdBy: persisted.material!.ownerUserId, updatedBy: persisted.material!.ownerUserId,
+      };
+      const matchingId = await ctx.db.insert("knowledgeMaterials", {
+        ...common, sourceType: "file_upload", subjectId: ids.subjectId, title: "Safety Club handout", topicId,
+      });
+      const subjectlessFileId = await ctx.db.insert("knowledgeMaterials", {
+        ...common, sourceType: "file_upload", title: "Unscoped handout", topicId,
+      });
+      return { matchingId, subjectlessFileId };
+    });
+    const planningContext = { kind: "topic" as const, classId: ids.classId, termId: ids.termId, subjectId: ids.subjectId, level: "JSS 1", topicId };
+    const mixedWorkspace = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace, {
+      outputType: "lesson_plan", sourceIds: [ids.materialId, matchingId], planningContext,
+    });
+    expect(mixedWorkspace.selectedSources.map((source) => source._id)).toEqual([ids.materialId, matchingId]);
+    expect(mixedWorkspace.warnings).not.toContain(
+      "The selected sources span more than one subject. The first accessible source is being used for template resolution."
+    );
+
+    const invalidWorkspace = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace, {
+      outputType: "lesson_plan", sourceIds: [ids.materialId, subjectlessFileId], planningContext,
+    });
+    expect(invalidWorkspace.inaccessibleSourceIds).toEqual([String(subjectlessFileId)]);
+    expect(invalidWorkspace.selectedSources.map((source) => source._id)).toEqual([ids.materialId]);
   });
 
   it("uses exact topic scope and inherits the approved curriculum source", async () => {
@@ -93,14 +122,14 @@ describe("curriculum topics in teacher planning", () => {
       return { subjectId, distractorSubjectId, termId, topicId, materialId };
     });
 
-    const topics = await t.withIdentity(admin).query(listTopics, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 80 });
+    const topics = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherKnowledgeTopics, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 80 });
     expect(topics.map((topic) => topic._id)).toEqual([ids.topicId]);
-    const work = await t.withIdentity(admin).query(listWork, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 20 });
+    const work = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork, { subjectId: ids.subjectId, level: "JSS 1", termId: ids.termId, limit: 20 });
     expect(work).toMatchObject({ totalCount: 1, totalIsExact: true, hasMore: false });
     expect(work.items).toHaveLength(1);
     expect(work.items[0]).toMatchObject({ topicId: ids.topicId, sourceCount: 1, readySourceCount: 1, sourceIds: [ids.materialId] });
 
-    const subjectPage = await t.withIdentity(admin).query(listWork, { subjectId: ids.distractorSubjectId, limit: 18 });
+    const subjectPage = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork, { subjectId: ids.distractorSubjectId, limit: 18 });
     expect(subjectPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
     expect(subjectPage.items).toHaveLength(18);
     expect(subjectPage.items.every((item) => item.subjectId === ids.distractorSubjectId)).toBe(true);
@@ -109,7 +138,7 @@ describe("curriculum topics in teacher planning", () => {
       { id: ids.subjectId, name: "Social Studies", count: 1 },
     ]);
 
-    const combinedFilter = await t.withIdentity(admin).query(listWork, {
+    const combinedFilter = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork, {
       searchQuery: "Distractor",
       subjectId: ids.distractorSubjectId,
       limit: 18,
@@ -118,15 +147,15 @@ describe("curriculum topics in teacher planning", () => {
     expect(combinedFilter.items).toHaveLength(18);
     expect(combinedFilter.items.every((item) => item.subjectId === ids.distractorSubjectId)).toBe(true);
 
-    const searchResult = await t.withIdentity(admin).query(listWork, { searchQuery: "Safety Club", limit: 18 });
+    const searchResult = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork, { searchQuery: "Safety Club", limit: 18 });
     expect(searchResult).toMatchObject({ totalCount: 1, totalIsExact: true, hasMore: false });
     expect(searchResult.items.map((item) => item.topicId)).toEqual([ids.topicId]);
 
-    const firstPage = await t.withIdentity(admin).query(listWork, { searchQuery: "Distractor", limit: 18 });
+    const firstPage = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork, { searchQuery: "Distractor", limit: 18 });
     expect(firstPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
     expect(firstPage.items).toHaveLength(18);
 
-    const expandedPage = await t.withIdentity(admin).query(listWork, { searchQuery: "Distractor", limit: 36 });
+    const expandedPage = await t.withIdentity(admin).query(api.functions.academic.lessonKnowledgeTeacher.listTeacherPlanningTopicWork, { searchQuery: "Distractor", limit: 36 });
     expect(expandedPage).toMatchObject({ totalCount: 301, totalIsExact: true, hasMore: true });
     expect(expandedPage.items).toHaveLength(36);
   });
