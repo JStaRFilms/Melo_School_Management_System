@@ -1864,6 +1864,19 @@
     "storage": {},
     "shape": "874:7fc3c6a3:4186c549"
   },
+  "classSessionReportModes": {
+    "ownership": "direct-indexed",
+    "reason": "School-owned narrative class/session mode with by_school; actor/class/session references do not confer independent ownership",
+    "references": [
+      { "path": "classId", "target": "classes", "optional": false },
+      { "path": "schoolId", "target": "schools", "optional": false },
+      { "path": "sessionId", "target": "academicSessions", "optional": false },
+      { "path": "updatedBy", "target": "users", "optional": false }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "485:b67096db:e39c4267"
+  },
   "classSubjects": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
@@ -3387,6 +3400,22 @@
     "bySchool": true,
     "storage": {},
     "shape": "1034:aeab98d2:3f291fa2"
+  },
+  "narrativeReportDrafts": {
+    "ownership": "direct-indexed",
+    "reason": "School-owned narrative observations with by_school; indexed purge includes rows while referenced student/subject/actor documents retain their own ownership checks",
+    "references": [
+      { "path": "classId", "target": "classes", "optional": false },
+      { "path": "schoolId", "target": "schools", "optional": false },
+      { "path": "sessionId", "target": "academicSessions", "optional": false },
+      { "path": "studentId", "target": "students", "optional": false },
+      { "path": "subjectId", "target": "subjects", "optional": false },
+      { "path": "termId", "target": "academicTerms", "optional": false },
+      { "path": "updatedBy", "target": "users", "optional": false }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "709:ff81bb2a:eed8c33c"
   },
   "pdfCompressionCandidates": {
     "ownership": "direct-indexed",

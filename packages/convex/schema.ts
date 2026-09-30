@@ -2071,6 +2071,7 @@ export default defineSchema({
     .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
     // Backfill first. Do not query until a later deployment removes staged.
     .index("by_classId_and_sessionId", { fields: ["classId", "sessionId"], staged: true })
+    .index("by_class_and_session_and_term", { fields: ["classId", "sessionId", "termId"], staged: true })
     .index("by_school_logo_storage", ["schoolLogoStorageId"])
     .index("by_student_photo_storage", ["studentPhotoStorageId"])
     .index("by_school", ["schoolId"])
