@@ -3,7 +3,9 @@ import { internalMutation, internalQuery, mutation, query, type MutationCtx } fr
 import { paginationOptsValidator } from "convex/server";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { requireCapability } from "./rbac";
+import { requireCapability, TEACHER_PLANNING_CAPABILITIES } from "./rbac";
+import { getAuthenticatedSchoolMembership } from "./auth";
+import { consumeLessonKnowledgeRateLimit } from "./lessonKnowledgeRateLimits";
 import { isGroupPlatformOperator } from "./groups";
 import { effectiveAllowance } from "./usageEntitlements";
 import { recordAuditEventHelper } from "./audit";
@@ -149,7 +151,7 @@ export const claim = internalMutation({
   args: { attemptId, digest: v.string(), modelId: v.string() },
   handler: async (ctx, args) => {
     const attempt = await ctx.db.get(args.attemptId);
-    if (!attempt || !attempt.requestDigest) throw new ConvexError("AI attempt unavailable");
+    if (!attempt || !attempt.requestDigest || (attempt.task !== "teacher_lesson_plan" && attempt.task !== "teacher_assessment")) throw new ConvexError("AI attempt unavailable");
     await owner(ctx, attempt);
     if (attempt.status !== "reserved" || attempt.expiresAt === undefined || Date.now() >= attempt.expiresAt || attempt.requestDigest !== args.digest || attempt.modelId !== args.modelId) throw new ConvexError("AI request changed, expired or already dispatched; do not replay");
     const cycle = await active(ctx, attempt.schoolId);
@@ -158,12 +160,27 @@ export const claim = internalMutation({
     const allowance = await effectiveAllowance(ctx, cycle, "ai_tokens");
     if (!allowance || meter.aiOverageRequiresReview || (meter.aiOutstandingOverageCount ?? 0) > 0 || meter.reservedUnits < attempt.estimatedUnits || Math.floor(allowance.allocatedUnits * cycle.entitlement.hardStopPercent / 100) < meter.consumedUnits + meter.reservedUnits) throw new ConvexError("Held AI allowance needs review");
     if (attempt.requestArgs && attempt.requestArgs.length > 6000) throw new ConvexError("Bound request invalid");
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    if (actor.schoolId !== attempt.schoolId || (actor.role !== "teacher" && actor.role !== "admin" && !actor.isSchoolAdmin)) throw new ConvexError("Teacher generation is restricted to school staff");
+    // Charge the rate bucket in this claim transaction, after checking the
+    // attempt is still reserved. A competing dispatch cannot debit it twice.
+    const rate = await consumeLessonKnowledgeRateLimit(ctx, {
+      action: attempt.task === "teacher_assessment" ? "teacher_assessment_generation" : "teacher_lesson_plan_generation",
+      schoolId: attempt.schoolId,
+      actorUserId: actor.userId,
+    });
+    if (!rate.allowed) {
+      await ctx.db.patch(meter._id, { reservedUnits: meter.reservedUnits - attempt.estimatedUnits, updatedAt: Date.now() });
+      await ctx.db.patch(attempt._id, { status: "cancelled", updatedAt: Date.now() });
+      await transition(ctx, attempt._id, "cancelled");
+      return { claimed: false as const, retryAfterMs: rate.retryAfterMs, resetAt: rate.resetAt };
+    }
     await ctx.db.patch(attempt._id, { status: "dispatch_started", updatedAt: Date.now() });
     await transition(ctx, attempt._id, "dispatch_started");
     // The quote TTL releases only unclaimed work. A separate review watchdog
     // preserves the hold and still accepts a late, measured provider result.
     await ctx.scheduler.runAfter(60 * 60_000, internal.functions.academic.aiSpend.watchDispatch, { attemptId: attempt._id });
-    return attempt.estimatedUnits;
+    return { claimed: true as const, estimatedUnits: attempt.estimatedUnits };
   },
 });
 

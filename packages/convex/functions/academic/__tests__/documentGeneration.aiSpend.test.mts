@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { api, internal } from "../../../_generated/api";
-import { internalMutation, mutation } from "../../../_generated/server";
+import { internalMutation } from "../../../_generated/server";
 import { v } from "convex/values";
 import { NoObjectGeneratedError } from "ai";
 import { convexTest } from "convex-test";
@@ -248,36 +248,13 @@ it("immediately releases a rate-denied reservation without any provider charge",
     .toMatchObject({ status: "cancelled", actualUnits: null });
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 0 });
   expect(await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5))).toHaveLength(0);
+  const counters = await f.t.run(ctx => ctx.db.query("rateLimitCounters")
+    .withIndex("by_school_and_action", q => q.eq("schoolId", f.schoolId).eq("action", "teacher_lesson_plan_generation")).take(5));
+  expect(counters).toHaveLength(2);
+  expect(counters.every(counter => counter.count === 10)).toBe(true);
   expect(mock.generate).not.toHaveBeenCalled();
 });
-it("reports failed cancellation after rate denial and keeps an unclaimed hold eligible for expiry", async () => {
-  const key = "./functions/academic/aiSpend.ts";
-  const override = { ...modules, [key]: async () => ({
-    ...await (modules[key] as () => Promise<object>)(),
-    cancel: mutation({ args: { attemptId: v.id("usageOperationAttempts") }, handler: async () => {
-      throw new Error("private cancellation network details");
-    } }),
-  }) };
-  const f = await setup(override);
-  for (let i = 0; i < 10; i += 1)
-    await f.teacher.mutation(api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit, {});
-  const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
-  const failure = await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft,
-    { attemptId: quoted.attemptId }).then(() => null, error => error);
-  expect(String(failure)).toContain("Rate limit exceeded. Reservation cancellation could not be confirmed");
-  expect(String(failure)).not.toContain("private cancellation network details");
-  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
-    .toMatchObject({ status: "reserved", actualUnits: null });
-  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate, consumedUnits: 0 });
-  expect(mock.generate).not.toHaveBeenCalled();
-  const clock = Date.now;
-  try {
-    Date.now = () => clock() + 10 * 60_000;
-    await f.t.mutation(internal.functions.academic.aiSpend.expire, { attemptId: quoted.attemptId });
-  } finally { Date.now = clock; }
-  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 0 });
-});
-it("cannot cancel another caller's claimed attempt while handling pre-dispatch denial", async () => {
+it("does not release a reservation after it was claimed", async () => {
   const f = await setup();
   const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
   const attempt = await f.t.run(ctx => ctx.db.get(quoted.attemptId));
@@ -290,30 +267,35 @@ it("cannot cancel another caller's claimed attempt while handling pre-dispatch d
     .toMatchObject({ status: "dispatch_started" });
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate, consumedUnits: 0 });
 });
-it("keeps a concurrent caller's claimed hold when the denying rate check races cancellation", async () => {
-  const key = "./functions/academic/lessonKnowledgeRateLimits.ts";
-  let attemptId: Id<"usageOperationAttempts">;
-  let digest = "";
-  let modelId = "";
-  const override = { ...modules, [key]: async () => ({
-    ...await (modules[key] as () => Promise<object>)(),
-    consumeTeacherLessonPlanGenerationLimit: mutation({ args: {}, handler: async ctx => {
-      await ctx.runMutation(internal.functions.academic.aiSpend.claim, { attemptId, digest, modelId });
-      return { allowed: false, action: "teacher_lesson_plan_generation", limit: 10, remaining: 0,
-        resetAt: Date.now() + 60_000, retryAfterMs: 60_000 };
-    } }),
-  }) };
-  const f = await setup(override);
-  const quoted = await f.quote(); attemptId = quoted.attemptId;
-  const attempt = await f.t.run(ctx => ctx.db.get(attemptId));
-  if (!attempt?.requestDigest || !attempt.modelId) throw new Error("missing bound attempt");
-  digest = attempt.requestDigest; modelId = attempt.modelId;
-  await f.confirm(attemptId, quoted.estimate);
-  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft,
-    { attemptId })).rejects.toThrow("Rate limit exceeded");
-  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId })).toMatchObject({ status: "dispatch_started" });
-  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate, consumedUnits: 0 });
-  expect(mock.generate).not.toHaveBeenCalled();
+it("dispatches a reserved attempt once and charges one rate unit under duplicate action calls", async () => {
+  const f = await setup();
+  const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+  const outcomes = await Promise.allSettled([
+    f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId }),
+    f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId }),
+  ]);
+  expect(outcomes.filter(row => row.status === "fulfilled")).toHaveLength(1);
+  expect(outcomes.filter(row => row.status === "rejected")).toHaveLength(1);
+  expect(mock.generate).toHaveBeenCalledTimes(1);
+  const counters = await f.t.run(ctx => ctx.db.query("rateLimitCounters")
+    .withIndex("by_school_and_action", q => q.eq("schoolId", f.schoolId).eq("action", "teacher_lesson_plan_generation")).take(5));
+  expect(counters).toHaveLength(2);
+  expect(counters.every(counter => counter.count === 1)).toBe(true);
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ consumedUnits: 30, reservedUnits: 0 });
+  const events = await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5));
+  expect(events).toHaveLength(1);
+});
+it("keeps existing per-user and school rate limits across distinct attempts", async () => {
+  const f = await setup();
+  for (let i = 0; i < 2; i += 1) {
+    const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+    await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId });
+  }
+  expect(mock.generate).toHaveBeenCalledTimes(2);
+  const counters = await f.t.run(ctx => ctx.db.query("rateLimitCounters")
+    .withIndex("by_school_and_action", q => q.eq("schoolId", f.schoolId).eq("action", "teacher_lesson_plan_generation")).take(5));
+  expect(counters).toHaveLength(2);
+  expect(counters.every(counter => counter.count === 2)).toBe(true);
 });
 it("denies unauthorized requests and insufficient allowance before a provider call", async () => {
   const f = await setup();

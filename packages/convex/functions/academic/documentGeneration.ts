@@ -1310,30 +1310,10 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
     await ctx.runMutation(api.functions.academic.aiSpend.cancel, { attemptId });
     throw error;
   }
-  try {
-    const rate = await ctx.runMutation(kind === "lesson"
-      ? api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit
-      : api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit, {});
-    enforceRateLimit(rate);
-  } catch (error) {
-    // Before this action claims anything, release its hold immediately. If a
-    // concurrent caller already claimed it, cancel refuses atomically and must
-    // not undo that caller's provider work.
-    try {
-      await ctx.runMutation(api.functions.academic.aiSpend.cancel, { attemptId });
-    } catch (cancelError) {
-      if (cancelError instanceof Error && cancelError.message.includes("Dispatched AI work cannot be cancelled")) {
-        // Another caller claimed first. The server must not release its hold.
-        throw error;
-      }
-      // Keep the original safe denial reason, not the raw cancellation error.
-      const denial = error instanceof Error && error.message.includes("Rate limit exceeded")
-        ? "Rate limit exceeded. " : "Pre-dispatch check failed. ";
-      throw new ConvexError(`${denial}Reservation cancellation could not be confirmed. Check attempt status. An unclaimed hold expires with its quote; ask Platform if it remains.`);
-    }
-    throw error;
-  }
-  await ctx.runMutation(internal.functions.academic.aiSpend.claim, { attemptId, digest: bound.digest, modelId: bound.modelId });
+  const claim = await ctx.runMutation(internal.functions.academic.aiSpend.claim, { attemptId, digest: bound.digest, modelId: bound.modelId });
+  // A denied rate check cancels the still-reserved attempt and releases its
+  // hold in the same transaction. A duplicate claim never debits the bucket.
+  if (!claim.claimed) enforceRateLimit({ allowed: false, retryAfterMs: claim.retryAfterMs, resetAt: claim.resetAt });
   let usage: ReturnType<typeof measured> | undefined;
   let outcome: "succeeded" | "failed" = "failed";
   let generation: unknown;

@@ -145,6 +145,20 @@ it("does not save or quote after unmount while an older autosave is pending", as
   expect(generate).not.toHaveBeenCalled();
 });
 
+it("keeps assessment edits made while generation is pending", async () => {
+  let finish!: (value: AssessmentBankSaveResult & { items: typeof initialItem[] }) => void;
+  const generate = vi.fn(() => new Promise<AssessmentBankSaveResult & { items: typeof initialItem[] }>(resolve => { finish = resolve; }));
+  renderScreen(vi.fn(), generate);
+  fireEvent.click(screen.getByRole("button", { name: "Review and generate" }));
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Teacher's newer title" } });
+  fireEvent.change(screen.getByDisplayValue("Original prompt"), { target: { value: "Teacher's newer question" } });
+  await act(async () => { finish({ ...saveResult("AI generated"), items: [{ ...initialItem, promptText: "AI question" }] }); });
+  expect(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz")).toHaveValue("Teacher's newer title");
+  expect(screen.getByDisplayValue("Teacher's newer question")).toHaveValue("Teacher's newer question");
+  expect(screen.getByRole("button", { name: "Review and generate" })).not.toBeDisabled();
+});
+
 it("keeps unsaved edits and never prepares a quote when the pre-generation save fails", async () => {
   vi.useFakeTimers();
   const save = vi.fn().mockRejectedValue(new Error("Save failed"));
