@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { makeFunctionReference } from "convex/server";
 import { api } from "../../../_generated/api";
 import { convexTest } from "convex-test";
@@ -137,6 +138,49 @@ it("measures zero, exact hold and overage without releasing a disputed hold", as
   await expect(f.quote("attempt-0013")).rejects.toThrow("overage");
   const events = await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(10));
   expect(events.map(row => row.unitsDelta)).toEqual([0, 10, 15]);
+});
+it("reviews two overages after 125 normal attempts without clearing another cycle's block", async () => {
+  const f = await setup();
+  await f.t.run(ctx => ctx.db.insert("platformAdmins", { authId: "operator", authTokenIdentifier: "test|operator", email: "operator@test.invalid", name: "Operator", isActive: true, createdAt: 1, updatedAt: 1 }));
+  const operator = f.t.withIdentity({ subject: "operator", tokenIdentifier: "test|operator" });
+  const first = await f.quote("overage-review-01");
+  const second = await f.quote("overage-review-02");
+  for (const attempt of [first, second]) {
+    await f.one.mutation(fn.confirm, { attemptId: attempt.attemptId, expectedUnits: 10, confirmation: "CONFIRM" });
+    await f.one.mutation(fn.claim, { attemptId: attempt.attemptId, digest: "a".repeat(64), modelId: "reviewed-model" });
+  }
+  for (const attempt of [first, second]) {
+    await f.one.mutation(fn.settle, { attemptId: attempt.attemptId, inputTokens: 9, outputTokens: 6, outcome: "succeeded", evidence: `provider:${attempt.attemptId}` });
+  }
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ aiOutstandingOverageCount: 2, aiOverageRequiresReview: true, consumedUnits: 30 });
+  await f.t.run(async ctx => {
+    const cycle = await ctx.db.get(f.cycleId);
+    if (!cycle) throw new Error("cycle missing");
+    const oldCycleId = await ctx.db.insert("usageCycles", { schoolId: f.schoolId, contractId: cycle.contractId, entitlementVersionId: cycle.entitlementVersionId,
+      code: cycle.code, version: cycle.version, entitlement: cycle.entitlement, startAt: cycle.startAt - 200_000, endAt: cycle.startAt - 100_000,
+      status: "closed", createdAt: 1 });
+    await ctx.db.insert("usageOperationAttempts", { ...{ schoolId: f.schoolId, cycleId: oldCycleId, task: "teacher_lesson_plan" as const, meterType: "ai_tokens" as const,
+      itemCount: 1, estimatedUnits: 10, modelProfile: "reviewed-model", status: "settled" as const, actorTokenIdentifier: "test|one",
+      createdAt: 1, updatedAt: 1, idempotencyKey: "old-cycle-overage", overage: true, actualUnits: 15, inputTokens: 9, outputTokens: 6, outcome: "succeeded", evidence: "old-evidence" } });
+    for (let i = 0; i < 125; i += 1) {
+      await ctx.db.insert("usageOperationAttempts", { schoolId: f.schoolId, cycleId: f.cycleId, task: "teacher_lesson_plan", meterType: "ai_tokens",
+        itemCount: 1, estimatedUnits: 10, modelProfile: "reviewed-model", status: "settled", actorTokenIdentifier: "test|one",
+        createdAt: i + 2, updatedAt: i + 2, idempotencyKey: `normal-history-${i}`, overage: false });
+    }
+  });
+  const review = (attemptId: Id<"usageOperationAttempts">) => operator.mutation(api.functions.academic.aiSpend.reviewOverage,
+    { attemptId, evidence: "provider:response-123", reason: "Checked provider evidence", confirmation: "REVIEW" });
+  await review(first.attemptId);
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ aiOutstandingOverageCount: 1, aiOverageRequiresReview: true });
+  await expect(review(first.attemptId)).rejects.toThrow("Reviewed overage evidence");
+  await expect(f.quote("overage-review-03")).rejects.toThrow("overage");
+  const old = await f.t.run(ctx => ctx.db.query("usageOperationAttempts").withIndex("by_school_and_idempotency", q => q.eq("schoolId", f.schoolId).eq("idempotencyKey", "old-cycle-overage")).unique());
+  if (!old) throw new Error("old attempt missing");
+  await expect(review(old._id)).rejects.toThrow("Cycle meter requires reconciliation");
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ aiOutstandingOverageCount: 1, aiOverageRequiresReview: true });
+  await review(second.attemptId);
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ aiOutstandingOverageCount: 0, aiOverageRequiresReview: false });
+  expect((await f.quote("overage-review-04")).estimate).toBe(10);
 });
 it("expires only unclaimed work and denies changes in capability", async () => {
   const f = await setup();

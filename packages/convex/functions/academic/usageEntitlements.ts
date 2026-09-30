@@ -102,7 +102,7 @@ export const startUsageCycle = mutation({
     const id = await ctx.db.insert("usageCycles", { schoolId: args.schoolId, contractId: contract._id, entitlementVersionId: version._id, code: version.code, version: version.version, entitlement: version.entitlement, startAt: args.startAt, endAt: args.endAt, status: "active", createdAt: Date.now() });
     for (const row of version.entitlement.allowances) {
       const existing = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", args.schoolId).eq("meterType", row.meterType)).take(2);
-      if (existing.length > 1 || existing[0]?.reservedUnits || existing[0]?.aiOverageRequiresReview) throw new ConvexError("Existing meter requires reviewed cycle reconciliation");
+      if (existing.length > 1 || existing[0]?.reservedUnits || existing[0]?.aiOverageRequiresReview || (existing[0]?.aiOutstandingOverageCount ?? 0) > 0) throw new ConvexError("Existing meter requires reviewed cycle reconciliation");
       if (existing[0]?.cycleId) {
         const [priorCycle, snapshot] = await Promise.all([
           ctx.db.get(existing[0].cycleId),
@@ -118,7 +118,7 @@ export const startUsageCycle = mutation({
             tempStorageBytes: existing[0].tempStorageBytes ?? 0,
           }
         : { consumedUnits: 0, activeStorageBytes: 0, trashStorageBytes: 0, tempStorageBytes: 0 };
-      const value = { schoolId: args.schoolId, cycleId: id, meterType: row.meterType, allocatedUnits: row.baseUnits + row.graceUnits, baseUnits: row.baseUnits, graceUnits: row.graceUnits, topUpUnits: 0, exceptionUnits: 0, poolUnits: 0, ...carriedStorage, reservedUnits: 0, warningThresholdPercent: version.entitlement.warningPercent, criticalThresholdPercent: version.entitlement.criticalPercent, hardStopThresholdPercent: version.entitlement.hardStopPercent, resetCadence: "termly" as const, lastResetAt: args.startAt, updatedAt: Date.now() };
+      const value = { schoolId: args.schoolId, cycleId: id, meterType: row.meterType, allocatedUnits: row.baseUnits + row.graceUnits, baseUnits: row.baseUnits, graceUnits: row.graceUnits, topUpUnits: 0, exceptionUnits: 0, poolUnits: 0, ...carriedStorage, reservedUnits: 0, aiOverageRequiresReview: false, aiOutstandingOverageCount: 0, warningThresholdPercent: version.entitlement.warningPercent, criticalThresholdPercent: version.entitlement.criticalPercent, hardStopThresholdPercent: version.entitlement.hardStopPercent, resetCadence: "termly" as const, lastResetAt: args.startAt, updatedAt: Date.now() };
       if (existing[0]) await ctx.db.replace(existing[0]._id, value); else await ctx.db.insert("usageMeterAllocations", value);
     }
     await audit(ctx, args.schoolId, "usage.cycle_started", id, "Activated explicit contract-bound entitlement cycle; no payment inferred"); return id;
@@ -147,7 +147,7 @@ export const closeUsageCycle = mutation({
       // instead mean effective at the cycle's exclusive end boundary, never cumulative issued.
       const effectiveAtClose = await effectiveAllowance(ctx, cycle, allowance.meterType, cycle.endAt);
       if (meter.cycleId !== cycle._id || !reviewed || !effectiveAtClose || effectiveAtClose.allocatedUnits !== reviewed.allocatedUnits || meter.consumedUnits !== reviewed.consumedUnits) throw new ConvexError("Effective-at-close usage balances changed; reload and reconcile");
-      if (meter.reservedUnits !== 0 || meter.aiOverageRequiresReview) throw new ConvexError("Usage cycle has active reservations or unreviewed AI overage");
+      if (meter.reservedUnits !== 0 || meter.aiOverageRequiresReview || (meter.aiOutstandingOverageCount ?? 0) > 0) throw new ConvexError("Usage cycle has active reservations or unreviewed AI overage");
       await ctx.db.insert("usageCycleMeterSnapshots", {
         schoolId: args.schoolId, cycleId: cycle._id, meterType: meter.meterType,
         allocatedUnits: effectiveAtClose.allocatedUnits, baseUnits: effectiveAtClose.baseUnits, graceUnits: effectiveAtClose.graceUnits,
@@ -321,7 +321,7 @@ export const getUsageWorkspace = query({
     for (const row of cycle.entitlement.allowances) {
       const effective = await effectiveAllowance(ctx, cycle, row.meterType, allowanceAt);
       const meter = await allocation(ctx, args.schoolId, row.meterType);
-      if (row.meterType === "ai_tokens") aiMeterReady = meter.cycleId === cycle._id && !meter.aiOverageRequiresReview;
+      if (row.meterType === "ai_tokens") aiMeterReady = meter.cycleId === cycle._id && !meter.aiOverageRequiresReview && (meter.aiOutstandingOverageCount ?? 0) === 0;
       if (effective) meters.push({ meterType: row.meterType, ...effective, consumedUnits: meter.consumedUnits, reservedUnits: meter.reservedUnits, availableUnits: closureRequired ? 0 : dispatchAvailable(effective.allocatedUnits, cycle.entitlement.hardStopPercent, meter.consumedUnits, meter.reservedUnits) });
     }
     const requests = await ctx.db.query("usageExceptionRequests").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).order("desc").take(100);

@@ -12,7 +12,7 @@ Status: **implemented for code review, not deployed or approved for live provide
 
 ## Verification
 
-- `pnpm --filter @school/convex test`: **96 files, 746 passed**. This includes 10 mocked action tests for authorized lesson and assessment generation, settled usage/draft association, over-budget and foreign callers, changed sources/template/profile/model, reused key, revoked capability, one claim/no replay, ambiguous or missing usage, known failed-use charge, and saving failure followed by provider-free recovery. Existing `aiSpend.integration.test.ts` covers reserve races, expiry/cancel, settlement idempotency, zero/partial/exact/over-hold use and reconciliation; existing OCR/storage gate suites passed.
+- `pnpm --filter @school/convex test`: **96 files, 747 passed**. This includes 10 mocked action tests for authorized lesson and assessment generation, settled usage/draft association, over-budget and foreign callers, changed sources/template/profile/model, reused key, revoked capability, one claim/no replay, ambiguous or missing usage, known failed-use charge, and saving failure followed by provider-free recovery. Existing `aiSpend.integration.test.ts` covers reserve races, expiry/cancel, settlement idempotency, zero/partial/exact/over-hold use and reconciliation; existing OCR/storage gate suites passed.
 - `pnpm --filter @school/convex typecheck`, `pnpm --filter @school/teacher typecheck`, `pnpm --filter @school/admin typecheck`, `pnpm --filter @school/platform typecheck`: passed.
 - `pnpm --filter @school/teacher test`: **16 files, 77 passed**. `pnpm --filter @school/admin test`: **75 files, 333 passed**. `pnpm --filter @school/platform test`: **4 files, 11 passed**.
 - `pnpm install --frozen-lockfile --offline --ignore-scripts`: passed. `vite` is now an explicit Convex test dependency for the test's `vite/client` reference. `convex codegen --typecheck disable` required an unavailable `CONVEX_DEPLOYMENT`; the two missing API module entries were emitted from Convex's installed offline `apiCodegen` template, preserving existing generated component definitions. No deployment or env copy occurred.
@@ -28,6 +28,12 @@ Status: **implemented for code review, not deployed or approved for live provide
 6. New backend and client calls use generated `api`/`internal` references. The offline Convex API template generated the missing module entries because the CLI needs deployment configuration. No generated file was handwritten.
 7. The mocked action test is a `.test.mts` file with a `vite/client` reference. This isolates Vite's `ImportMeta.glob` definition from older test declarations in the Convex `.ts` typecheck.
 8. Admin readiness takes a supplied clock and refreshes every 30 seconds. The confirmation dialog shows current headroom and expected remaining tokens.
+
+## Second review change
+
+Overage review now uses `aiOutstandingOverageCount` on the AI meter. Each verified over-hold settlement increments it once. Platform review checks that the attempt belongs to the meter's original cycle, then decrements it once; other outstanding overages keep dispatch blocked. New cycles initialize the count to zero. No attempt-history scan or new index is needed. A test inserts 125 ordinary historical attempts, reviews two pending overages separately, rejects duplicate and old-cycle reviews, and proves the block clears only after the second review. A legacy meter marked blocked without a count fails closed and needs evidence-based migration rather than guessing the outstanding total. The AI run-log integration test now references `vite/client` and uses `.mts` to avoid colliding with older global `ImportMeta.glob` declarations. Teacher status says "Reviewed hold".
+
+After this change, `pnpm --filter @school/convex test` passed 96 files and 747 tests, `pnpm --filter @school/teacher test` passed 16 files and 77 tests, all four affected typechecks passed, `git diff --check` passed, and the theme audit exited 0. The only direct colour it reported against the comparison base was Platform's existing indigo product neutral. No index staging or deployment was attempted.
 
 ## Review and activation limits
 

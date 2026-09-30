@@ -49,7 +49,7 @@ export const quote = internalMutation({
     const meter = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", args.schoolId).eq("meterType", "ai_tokens")).take(2);
     const allowance = await effectiveAllowance(ctx, cycle, "ai_tokens");
     if (meter.length !== 1 || meter[0].cycleId !== cycle._id || !allowance) throw new ConvexError("AI meter requires reconciliation");
-    if (meter[0].aiOverageRequiresReview) throw new ConvexError("AI overage requires Platform review");
+    if (meter[0].aiOverageRequiresReview || (meter[0].aiOutstandingOverageCount ?? 0) > 0) throw new ConvexError("AI overage requires Platform review");
     const available = Math.floor(allowance.allocatedUnits * cycle.entitlement.hardStopPercent / 100) - meter[0].consumedUnits - meter[0].reservedUnits;
     if (existing) {
       if (existing.cycleId !== cycle._id || existing.actorTokenIdentifier !== identity.tokenIdentifier || existing.task !== args.task || existing.requestDigest !== args.digest || existing.modelId !== args.modelId || existing.estimatedUnits !== profile.unitsPerItem || existing.requestArgs !== args.requestArgs || existing.status === "cancelled") throw new ConvexError("Operation ID is bound to different work");
@@ -136,7 +136,7 @@ export const confirm = mutation({
     const meter = await meterFor(ctx, attempt);
     const allowance = await effectiveAllowance(ctx, cycle, "ai_tokens");
     if (!allowance) throw new ConvexError("Allowance unavailable");
-    if (meter.aiOverageRequiresReview) throw new ConvexError("AI overage requires Platform review");
+    if (meter.aiOverageRequiresReview || (meter.aiOutstandingOverageCount ?? 0) > 0) throw new ConvexError("AI overage requires Platform review");
     const available = Math.floor(allowance.allocatedUnits * cycle.entitlement.hardStopPercent / 100) - meter.consumedUnits - meter.reservedUnits;
     if (available < attempt.estimatedUnits) throw new ConvexError(`AI allowance short by ${attempt.estimatedUnits - available} tokens`);
     await ctx.db.patch(meter._id, { reservedUnits: meter.reservedUnits + attempt.estimatedUnits, updatedAt: Date.now() });
@@ -157,7 +157,7 @@ export const claim = internalMutation({
     if (cycle._id !== attempt.cycleId) throw new ConvexError("Cycle changed");
     const meter = await meterFor(ctx, attempt);
     const allowance = await effectiveAllowance(ctx, cycle, "ai_tokens");
-    if (!allowance || meter.aiOverageRequiresReview || meter.reservedUnits < attempt.estimatedUnits || Math.floor(allowance.allocatedUnits * cycle.entitlement.hardStopPercent / 100) < meter.consumedUnits + meter.reservedUnits) throw new ConvexError("Held AI allowance needs review");
+    if (!allowance || meter.aiOverageRequiresReview || (meter.aiOutstandingOverageCount ?? 0) > 0 || meter.reservedUnits < attempt.estimatedUnits || Math.floor(allowance.allocatedUnits * cycle.entitlement.hardStopPercent / 100) < meter.consumedUnits + meter.reservedUnits) throw new ConvexError("Held AI allowance needs review");
     if (attempt.requestArgs && attempt.requestArgs.length > 6000) throw new ConvexError("Bound request invalid");
     await ctx.db.patch(attempt._id, { status: "dispatch_started", updatedAt: Date.now() });
     await transition(ctx, attempt._id, "dispatch_started");
@@ -179,7 +179,10 @@ export const settle = internalMutation({
     const meter = await meterFor(ctx, attempt);
     if (meter.reservedUnits < attempt.estimatedUnits || !Number.isSafeInteger(meter.consumedUnits + args.inputTokens + args.outputTokens)) throw new ConvexError("Meter requires reconciliation");
     const actual = args.inputTokens + args.outputTokens;
-    await ctx.db.patch(meter._id, { consumedUnits: meter.consumedUnits + actual, reservedUnits: meter.reservedUnits - attempt.estimatedUnits, aiOverageRequiresReview: meter.aiOverageRequiresReview || actual > attempt.estimatedUnits, updatedAt: Date.now() });
+    const outstanding = meter.aiOutstandingOverageCount ?? 0;
+    if (!Number.isSafeInteger(outstanding) || outstanding < 0 || (meter.aiOverageRequiresReview && outstanding === 0) || !Number.isSafeInteger(outstanding + (actual > attempt.estimatedUnits ? 1 : 0))) throw new ConvexError("AI overage count requires reconciliation");
+    const nextOutstanding = outstanding + (actual > attempt.estimatedUnits ? 1 : 0);
+    await ctx.db.patch(meter._id, { consumedUnits: meter.consumedUnits + actual, reservedUnits: meter.reservedUnits - attempt.estimatedUnits, aiOutstandingOverageCount: nextOutstanding, aiOverageRequiresReview: nextOutstanding > 0, updatedAt: Date.now() });
     await ctx.db.patch(attempt._id, { status: "settled", actualUnits: actual, inputTokens: args.inputTokens, outputTokens: args.outputTokens, outcome: args.outcome, evidence: args.evidence, overage: actual > attempt.estimatedUnits, updatedAt: Date.now() });
     await ctx.db.insert("usageEvents", { schoolId: attempt.schoolId, meterType: "ai_tokens", unitsDelta: actual, reservationId: String(attempt._id), measurementMetadata: { source: "provider_reported_tokens", measuredAt: Date.now(), reference: String(attempt._id) }, operationName: attempt.task, description: "Measured AI generation token use", timestamp: Date.now() });
     if (attempt.requestArgs) {
@@ -310,12 +313,12 @@ export const reviewOverage = mutation({
     const row = await ctx.db.get(args.attemptId);
     if (!row?.overage || row.overageReviewedAt || row.status !== "settled" || !/^[a-zA-Z0-9:_./-]{8,200}$/.test(args.evidence) || args.reason.trim().length < 8 || args.reason.length > 240) throw new ConvexError("Reviewed overage evidence required");
     const meter = await meterFor(ctx, row);
-    // Other overages may still be awaiting review. Keep the meter blocked in that case.
-    const recent = await ctx.db.query("usageOperationAttempts").withIndex("by_school", q => q.eq("schoolId", row.schoolId)).order("desc").take(101);
-    if (recent.length > 100) throw new ConvexError("Overage history exceeds review bound");
-    const outstanding = recent.some(other => other._id !== row._id && other.cycleId === row.cycleId && other.overage && !other.overageReviewedAt);
+    // meterFor requires the original cycle. Other pending overages keep this cycle blocked.
+    const outstanding = meter.aiOutstandingOverageCount;
+    if (!Number.isSafeInteger(outstanding) || outstanding === undefined || outstanding < 1 || !meter.aiOverageRequiresReview) throw new ConvexError("AI overage count requires reconciliation");
+    const remaining = outstanding - 1;
     await ctx.db.patch(row._id, { overageReviewedAt: Date.now(), updatedAt: Date.now() });
-    await ctx.db.patch(meter._id, { aiOverageRequiresReview: outstanding, updatedAt: Date.now() });
+    await ctx.db.patch(meter._id, { aiOutstandingOverageCount: remaining, aiOverageRequiresReview: remaining > 0, updatedAt: Date.now() });
     await recordAuditEventHelper(ctx, { schoolId: row.schoolId, actorKind: "platform_admin", actorEmailSnapshot: (await ctx.auth.getUserIdentity())?.email ?? "authenticated operator", module: "commercial", action: "usage.ai_overage_reviewed", targetType: "usage_entitlement", targetId: String(row._id), outcome: "success", safeSummary: `Provider evidence ${args.evidence}; ${args.reason.trim()}; ${row.actualUnits} tokens`, retentionClass: "permanent_statutory", alertTier: "tier2_warn" });
     return row._id;
   },

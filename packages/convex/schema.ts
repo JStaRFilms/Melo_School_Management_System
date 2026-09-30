@@ -4322,6 +4322,7 @@ export default defineSchema({
     // currently reside without counting a storage object twice.
     consumedUnits: v.number(),
     aiOverageRequiresReview: v.optional(v.boolean()),
+    aiOutstandingOverageCount: v.optional(v.number()),
     activeStorageBytes: v.optional(v.number()),
     trashStorageBytes: v.optional(v.number()),
     tempStorageBytes: v.optional(v.number()),
