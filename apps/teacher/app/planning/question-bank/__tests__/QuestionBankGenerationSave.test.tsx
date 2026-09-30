@@ -56,11 +56,93 @@ it("saves dirty assessment text and items before starting quote preparation", as
   const generate = vi.fn().mockImplementation(async () => ({ ...saveResult("AI draft"), items: [initialItem] }));
   renderScreen(save, generate);
   editAndGenerate();
-  expect(save).toHaveBeenCalledWith(expect.objectContaining({ title: "Unsaved title",
-    items: [expect.objectContaining({ promptText: "Unsaved question" })] }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ title: "Unsaved title",
+    items: [expect.objectContaining({ promptText: "Unsaved question" })] })));
   expect(generate).not.toHaveBeenCalled();
   await act(async () => { finishSave(saveResult("Unsaved title")); });
   await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+});
+
+it("serializes an older autosave before the latest generation save and quotes only the newest stored draft", async () => {
+  vi.useFakeTimers();
+  type SaveInput = Parameters<typeof QuestionBankWorkspaceScreen>[0]["onSaveDraft"] extends (draft: infer D) => Promise<unknown> ? D : never;
+  const saves: Array<{ draft: SaveInput; resolve: (result: AssessmentBankSaveResult) => void }> = [];
+  let stored: SaveInput | null = null;
+  const save = vi.fn((draft: SaveInput) => new Promise<AssessmentBankSaveResult>(resolve => {
+    saves.push({ draft, resolve: result => { stored = draft; resolve(result); } });
+  }));
+  let quotedStored: SaveInput | null = null;
+  const generate = vi.fn().mockImplementation(async () => {
+    quotedStored = stored;
+    return { ...saveResult("AI draft"), items: [initialItem] };
+  });
+  renderScreen(save, generate);
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Older autosave" } });
+  await act(async () => { vi.advanceTimersByTime(1200); });
+  expect(saves).toHaveLength(1);
+  vi.useRealTimers();
+
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Newer title" } });
+  fireEvent.change(screen.getByDisplayValue("Original prompt"), { target: { value: "Newer question" } });
+  fireEvent.click(screen.getByRole("button", { name: "Review and generate" }));
+  expect(saves).toHaveLength(1);
+  expect(generate).not.toHaveBeenCalled();
+
+  await act(async () => { saves[0].resolve(saveResult("Older autosave")); });
+  await waitFor(() => expect(saves).toHaveLength(2));
+  expect(saves[1].draft).toMatchObject({ title: "Newer title",
+    items: [expect.objectContaining({ promptText: "Newer question" })] });
+  expect(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz")).toHaveValue("Newer title");
+  expect(generate).not.toHaveBeenCalled();
+
+  // A further edit while the latest save is running requires one more pass.
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Newest title" } });
+  await act(async () => { saves[1].resolve(saveResult("Newer title")); });
+  await waitFor(() => expect(saves).toHaveLength(3));
+  expect(saves[2].draft.title).toBe("Newest title");
+  expect(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz")).toHaveValue("Newest title");
+  expect(generate).not.toHaveBeenCalled();
+  await act(async () => { saves[2].resolve(saveResult("Newest title")); });
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+  expect(quotedStored).toMatchObject({ title: "Newest title",
+    items: [expect.objectContaining({ promptText: "Newer question" })] });
+});
+
+it("retries the latest snapshot after an older autosave fails without quoting early", async () => {
+  vi.useFakeTimers();
+  let failOld!: (error: Error) => void;
+  const save = vi.fn().mockImplementationOnce(() => new Promise((_resolve, reject) => { failOld = reject; }))
+    .mockImplementation(async draft => saveResult(draft.title));
+  const generate = vi.fn().mockImplementation(async () => ({ ...saveResult("AI draft"), items: [initialItem] }));
+  renderScreen(save, generate);
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Older autosave" } });
+  await act(async () => { vi.advanceTimersByTime(1200); });
+  vi.useRealTimers();
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Latest local edit" } });
+  fireEvent.click(screen.getByRole("button", { name: "Review and generate" }));
+  expect(generate).not.toHaveBeenCalled();
+  await act(async () => { failOld(new Error("Old save failed")); });
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[1][0].title).toBe("Latest local edit");
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+});
+
+it("does not save or quote after unmount while an older autosave is pending", async () => {
+  vi.useFakeTimers();
+  let finishOld!: (value: AssessmentBankSaveResult) => void;
+  const save = vi.fn().mockImplementation(() => new Promise(resolve => { finishOld = resolve; }));
+  const generate = vi.fn();
+  const view = render(<QuestionBankWorkspaceScreen workspace={workspace()} onDraftModeChange={vi.fn()}
+    onRemoveSource={vi.fn()} onOpenLibrary={vi.fn()} onSaveDraft={save} onGenerateDraft={generate} />);
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Older autosave" } });
+  await act(async () => { vi.advanceTimersByTime(1200); });
+  vi.useRealTimers();
+  fireEvent.change(screen.getByPlaceholderText("e.g. Mid-term Physics Quiz"), { target: { value: "Local edit before leaving" } });
+  fireEvent.click(screen.getByRole("button", { name: "Review and generate" }));
+  view.unmount();
+  await act(async () => { finishOld(saveResult("Older autosave")); });
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(generate).not.toHaveBeenCalled();
 });
 
 it("keeps unsaved edits and never prepares a quote when the pre-generation save fails", async () => {
