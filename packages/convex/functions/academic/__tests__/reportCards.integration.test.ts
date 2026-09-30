@@ -103,6 +103,25 @@ describe("report card registered functions", () => {
         createdAt: now,
         updatedAt: now,
       });
+      const otherSessionId = await ctx.db.insert("academicSessions", {
+        schoolId,
+        name: "2025/2026",
+        startDate: 100,
+        endDate: Date.now() + 60_000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const otherTermId = await ctx.db.insert("academicTerms", {
+        schoolId,
+        sessionId: otherSessionId,
+        name: "First Term",
+        startDate: 150,
+        endDate: Date.now() + 60_000,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
       const subjectId = await ctx.db.insert("subjects", {
         schoolId,
         name: "Mathematics",
@@ -183,7 +202,7 @@ describe("report card registered functions", () => {
         updatedAt: now,
         updatedBy: adminId,
       });
-      return { adminId, schoolId, studentId, classId, historicalSessionId, termId };
+      return { adminId, schoolId, studentId, classId, historicalSessionId, termId, otherSessionId, otherTermId };
     });
 
     const reportCard = await t.withIdentity(adminIdentity).query(api.functions.academic.reportCards.getStudentReportCard, {
@@ -285,6 +304,99 @@ describe("report card registered functions", () => {
     );
     expect(issuedReport.schoolLogoUrl).toBeNull();
     expect(issuedReport.student.photoUrl).toBeNull();
+    await t.run(ctx => ctx.db.insert("sessionScoringPolicies", {
+      schoolId: ids.schoolId, sessionId: ids.historicalSessionId, version: 1,
+      ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 50,
+      examContributionMax: 50, updatedAt: 3, updatedBy: ids.adminId,
+    }));
+    const stale = await admin.query(api.functions.academic.reportCards.getStudentReportCard, {
+      studentId: ids.studentId, classId: ids.classId,
+      sessionId: ids.historicalSessionId, termId: ids.termId,
+    });
+    expect(stale.scoringPolicyWarning).toMatch(/Replacement certification.*not available/);
+    // The fixture deliberately gives the school and student the same unsafe
+    // storage object. Portal identity listing rejects that conflict before
+    // reaching the report, so detach it after the image-safety assertions.
+    await t.run(async ctx => {
+      await ctx.db.patch(ids.schoolId, { logoStorageId: undefined });
+      await ctx.db.patch(ids.studentId, { photoStorageId: undefined });
+    });
+    const portalStudent = t.withIdentity({ subject: "report-student-auth",
+      tokenIdentifier: "https://auth.school.test|report-student-auth" });
+    const portalArgs = { studentId: ids.studentId, sessionId: ids.historicalSessionId, termId: ids.termId };
+    const withheld = await portalStudent.query(api.functions.portal.getWorkspaceData, portalArgs);
+    expect(withheld.selectedReportCard).toBeNull();
+    expect(withheld.selectedResultState).toBe("withheld");
+    // Model a card released while its term was active. Certification alone
+    // never makes the issued copy or policy-change notice visible to families.
+    await t.run(async ctx => {
+      const publicationId = await ctx.db.insert("classResultPublications", {
+        schoolId: ids.schoolId, sessionId: ids.historicalSessionId, termId: ids.termId,
+        classId: ids.classId, releasedAt: 2, releasedBy: ids.adminId, reviewKey: "fixture-release",
+        eligibleCount: 1, certifiedCount: 1, excludedCount: 0,
+      });
+      await ctx.db.insert("classResultPublicationStudents", {
+        schoolId: ids.schoolId, publicationId, studentId: ids.studentId,
+        sessionId: ids.historicalSessionId, termId: ids.termId, classId: ids.classId,
+        releasedAt: 2, issuedReportCardId: issuedReportId,
+      });
+    });
+    const portal = await portalStudent.query(api.functions.portal.getWorkspaceData, portalArgs);
+    expect(portal.selectedReportCard?.scoringPolicyWarning).toMatch(/issued report is unchanged/);
+    expect(portal.selectedReportCard?.results).toEqual(issuedReport.results);
+    const printWarning = await admin.query(api.functions.academic.reportCards.getIssuedReportScoringWarning, {
+      studentId: ids.studentId, classId: ids.classId,
+      sessionId: ids.historicalSessionId, termId: ids.termId,
+    });
+    expect(printWarning).toMatchObject({ stale: true, message: expect.stringMatching(/Replacement certification.*not available/) });
+    const lockedJobId = await t.run(ctx => ctx.db.insert("sessionScoringRegradeJobs", {
+      schoolId: ids.schoolId, sessionId: ids.historicalSessionId, phase: "scanning",
+      policy: { ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 50, examContributionMax: 50 },
+      before: { ca1Max: 20, ca2Max: 20, ca3Max: 20, examRawMax: 40, examContributionMax: 40 },
+      expectedVersion: 1, scanned: 1, batchSize: 40, invalidCount: 1, invalidExamples: [],
+      updated: 0, startedAt: 3, updatedAt: 3, updatedBy: ids.adminId,
+    }));
+    const issuedArgs = {
+      studentId: ids.studentId, classId: ids.classId,
+      sessionId: ids.historicalSessionId, termId: ids.termId,
+    };
+    const otherArgs = {
+      studentId: ids.studentId, classId: ids.classId,
+      sessionId: ids.otherSessionId, termId: ids.otherTermId,
+    };
+    for (const phase of ["scanning", "regrading"] as const) {
+      await t.run(ctx => ctx.db.patch(lockedJobId, { phase }));
+      await expect(admin.query(api.functions.academic.reportCards.getStudentReportCard, issuedArgs))
+        .rejects.toThrow(/Session scoring regrade/);
+      await expect(admin.query(api.functions.academic.reportCards.getIssuedReportScoringWarning, issuedArgs))
+        .rejects.toThrow(/Session scoring regrade/);
+      await expect(admin.query(api.functions.academic.reportCards.getClassReportCards, {
+        classId: ids.classId, sessionId: ids.historicalSessionId, termId: ids.termId,
+      })).rejects.toThrow(/Session scoring regrade/);
+      const lockedPortal = await t.withIdentity({ subject: "report-student-auth",
+        tokenIdentifier: "https://auth.school.test|report-student-auth" })
+        .query(api.functions.portal.getWorkspaceData, { studentId: ids.studentId,
+          sessionId: ids.historicalSessionId, termId: ids.termId });
+      // Regrading locks live staff previews, not the pinned, already released
+      // family copy. No newly recalculated draft marks enter this payload.
+      expect(lockedPortal.selectedResultState).toBe("released");
+      expect(lockedPortal.selectedReportCard?.results).toEqual(issuedReport.results);
+      expect(lockedPortal.selectedReportCard?.certifiedAt).toBe(issuedReport.certifiedAt);
+      expect((await admin.query(api.functions.academic.reportCards.getStudentReportCard, otherArgs)).certifiedAt)
+        .toBeUndefined();
+    }
+    await t.run(ctx => ctx.db.patch(lockedJobId, { phase: "complete" }));
+    const afterRegrade = await admin.query(api.functions.academic.reportCards.getStudentReportCard, issuedArgs);
+    expect(afterRegrade.results).toEqual(issuedReport.results);
+    expect(afterRegrade.certifiedAt).toBe(issuedReport.certifiedAt);
+    expect(afterRegrade.scoringPolicyWarning).toMatch(/issued report is unchanged/);
+    expect(await admin.query(api.functions.academic.reportCards.getIssuedReportScoringWarning, issuedArgs))
+      .toMatchObject({ stale: true, message: expect.stringMatching(/issued copy is unchanged/) });
+    expect((await t.run(ctx => ctx.db.get(issuedReportId)))?.report.scoringPolicyWarning).toBeUndefined();
+    await expect(admin.mutation(api.functions.academic.reportCards.certifyStudentReportCard, {
+      studentId: ids.studentId, classId: ids.classId, sessionId: ids.historicalSessionId,
+      termId: ids.termId, confirmation: "REPORT-001", reviewedKey: reportCardReviewKey(reportCard),
+    })).rejects.toThrow(/Replacement certification.*not available/);
 
     await t.run(async (ctx) => {
       const assetBoundStorageId = await ctx.storage.store(

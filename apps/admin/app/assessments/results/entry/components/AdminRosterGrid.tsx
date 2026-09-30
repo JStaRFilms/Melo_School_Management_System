@@ -15,14 +15,17 @@ StudentRosterEntry,
 ValidationErrors,
 } from "@/types";
 import type { ExamInputMode } from "@school/shared";
+import { scoreRowPolicy, scoreRosterHasScaledColumn, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import { buildReportCardExtrasHref,buildReportCardHref } from "@school/shared";
 import Link from "next/link";
-import { useEffect,useState } from "react";
+import { ScoreNumberInput } from "@school/shared/drafts";
+import { useEffect,useRef,useState } from "react";
 import { AdminRosterGridRow } from "./AdminRosterGridRow";
 
 interface AdminRosterGridProps {
   roster: StudentRosterEntry[];
   examInputMode: ExamInputMode;
+  policy?: SessionScoringPolicy;
   gradingBands: GradingBandResponse[];
   draftScores: DraftScores;
   validationErrors: ValidationErrors;
@@ -30,6 +33,7 @@ interface AdminRosterGridProps {
   sessionId: string;
   termId: string;
   classId: string;
+  highlightedStudentId?: string | null;
   isEditable?: boolean;
   onScoreChange: (
     studentId: Id<"students">,
@@ -41,6 +45,7 @@ interface AdminRosterGridProps {
 export function AdminRosterGrid({
   roster,
   examInputMode,
+  policy,
   gradingBands,
   draftScores,
   validationErrors,
@@ -48,12 +53,28 @@ export function AdminRosterGrid({
   sessionId,
   termId,
   classId,
+  highlightedStudentId,
   isEditable = true,
   onScoreChange,
 }: AdminRosterGridProps) {
-  const showScaledColumn = examInputMode === "raw60_scaled_to_40";
-  const examLabel = examInputMode === "raw40" ? "/40" : "/60";
+  const showScaledColumn = scoreRosterHasScaledColumn(examInputMode, policy, roster);
+  const sheetWeights = scoreRowPolicy(examInputMode, policy);
+  const mixedLegacy = roster.some(row => {
+    const weights = scoreRowPolicy(examInputMode, policy, row.assessmentRecord);
+    return weights.examRawMax !== sheetWeights.examRawMax || weights.ca1Max !== sheetWeights.ca1Max ||
+      weights.ca2Max !== sheetWeights.ca2Max || weights.ca3Max !== sheetWeights.ca3Max ||
+      weights.examContributionMax !== sheetWeights.examContributionMax;
+  });
+  const examLabel = mixedLegacy ? "row limit" : `/${policy?.examRawMax ?? (examInputMode === "raw40" ? 40 : 60)}`;
   const [selectedStudentId, setSelectedStudentId] = useState(roster[0]?.studentId ?? "");
+  const scrolledStudentRef = useRef<string | null>(null);
+  useEffect(() => {
+    const scrollKey = `${sessionId}:${termId}:${classId}:${highlightedStudentId}`;
+    if (!highlightedStudentId || !roster.some(row => row.studentId === highlightedStudentId) || scrolledStudentRef.current === scrollKey) return;
+    const isDesktop = window.matchMedia?.("(min-width: 768px)").matches ?? true;
+    const row = document.getElementById(`${isDesktop ? "student" : "mobile-student"}-${highlightedStudentId}`);
+    if (row) { row.scrollIntoView({ block: "center" }); scrolledStudentRef.current = scrollKey; }
+  }, [highlightedStudentId, roster, sessionId, termId, classId]);
 
   useEffect(() => {
     if (roster.length === 0) {
@@ -62,11 +83,11 @@ export function AdminRosterGrid({
     }
 
     setSelectedStudentId((current) =>
-      roster.some((student) => student.studentId === current)
-        ? current
-        : roster[0].studentId
+      roster.some((student) => student.studentId === highlightedStudentId)
+        ? highlightedStudentId!
+        : roster.some((student) => student.studentId === current) ? current : roster[0].studentId
     );
-  }, [roster]);
+  }, [roster, highlightedStudentId]);
 
   return (
     <section className="space-y-4">
@@ -91,7 +112,7 @@ export function AdminRosterGrid({
             onChange={(event) => {
               const nextStudentId = event.target.value;
               setSelectedStudentId(nextStudentId);
-              document.getElementById(`student-${nextStudentId}`)?.scrollIntoView({
+              document.getElementById(`mobile-student-${nextStudentId}`)?.scrollIntoView({
                 behavior: "smooth",
                 block: "start",
               });
@@ -123,19 +144,19 @@ export function AdminRosterGrid({
               <th className="border-b border-slate-200">
                 <div className="flex flex-col items-center">
                    <span className="text-[10px] font-black text-slate-900 leading-none mb-1">CA 01</span>
-                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">CONTRIB /20</span>
+                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">CONTRIB {mixedLegacy ? "/row limit" : `/${policy?.ca1Max ?? 20}`}</span>
                 </div>
               </th>
               <th className="border-b border-slate-200">
                 <div className="flex flex-col items-center">
                    <span className="text-[10px] font-black text-slate-900 leading-none mb-1">CA 02</span>
-                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">CONTRIB /20</span>
+                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">CONTRIB {mixedLegacy ? "/row limit" : `/${policy?.ca2Max ?? 20}`}</span>
                 </div>
               </th>
               <th className="border-b border-slate-200">
                 <div className="flex flex-col items-center">
                    <span className="text-[10px] font-black text-slate-900 leading-none mb-1">CA 03</span>
-                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">CONTRIB /20</span>
+                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">CONTRIB {mixedLegacy ? "/row limit" : `/${policy?.ca3Max ?? 20}`}</span>
                 </div>
               </th>
               <th className="bg-amber-50/50 text-amber-900 border-b border-amber-100 border-x border-amber-100/50">
@@ -148,7 +169,7 @@ export function AdminRosterGrid({
                 <th className="bg-indigo-50/50 text-indigo-700 border-b border-indigo-100">
                   <div className="flex flex-col items-center">
                      <span className="text-[10px] font-black leading-none mb-1">SCALED</span>
-                     <span className="text-[8px] font-bold text-indigo-400 uppercase tracking-tighter whitespace-nowrap">SYSTEM /40</span>
+                     <span className="text-[8px] font-bold text-indigo-400 uppercase tracking-tighter whitespace-nowrap">SYSTEM {mixedLegacy ? "/row limit" : `/${policy?.examContributionMax ?? 40}`}</span>
                   </div>
                 </th>
               )}
@@ -167,6 +188,9 @@ export function AdminRosterGrid({
                 student={student}
                 examInputMode={examInputMode}
                 gradingBands={gradingBands}
+                policy={policy}
+                showScaledColumn={showScaledColumn}
+                showRowLimits={mixedLegacy}
                 draftScores={draftScores}
                 validationErrors={validationErrors}
                 sessionId={sessionId}
@@ -183,11 +207,12 @@ export function AdminRosterGrid({
       {/* Mobile: Swipeable Focus Cards (hidden on desktop) */}
       <div className="md:hidden mobile-focus-container space-y-4 pb-20">
         {roster.map((student) => {
+          const rowPolicy = scoreRowPolicy(examInputMode, policy, student.assessmentRecord);
           const ca1 = getEffectiveValue(student.studentId, "ca1", draftScores, [student]);
           const ca2 = getEffectiveValue(student.studentId, "ca2", draftScores, [student]);
           const ca3 = getEffectiveValue(student.studentId, "ca3", draftScores, [student]);
           const examRaw = getEffectiveValue(student.studentId, "examRawScore", draftScores, [student]);
-          const derived = computeDerivedValues(ca1,ca2,ca3,examRaw,examInputMode,gradingBands);
+          const derived = computeDerivedValues(ca1,ca2,ca3,examRaw,examInputMode,gradingBands,rowPolicy);
           const studentErrors = validationErrors.get(student.studentId) ?? {};
           const isIncomplete = ca1 === null && ca2 === null && ca3 === null && examRaw === null;
           const reportCardHref = buildReportCardHref({ studentId: student.studentId, sessionId, termId, classId });
@@ -199,14 +224,14 @@ export function AdminRosterGrid({
             max: number;
             isExam?: boolean;
           }> = [
-            { field: "ca1", label: "01", value: ca1, max: 20 },
-            { field: "ca2", label: "02", value: ca2, max: 20 },
-            { field: "ca3", label: "03", value: ca3, max: 20 },
+            { field: "ca1", label: "01", value: ca1, max: rowPolicy.ca1Max },
+            { field: "ca2", label: "02", value: ca2, max: rowPolicy.ca2Max },
+            { field: "ca3", label: "03", value: ca3, max: rowPolicy.ca3Max },
             {
               field: "examRawScore",
               label: "EX",
               value: examRaw,
-              max: examInputMode === "raw40" ? 40 : 60,
+              max: rowPolicy.examRawMax,
               isExam: true,
             },
           ];
@@ -214,7 +239,7 @@ export function AdminRosterGrid({
           return (
             <div
               key={student.studentId}
-              id={`student-${student.studentId}`}
+              id={`mobile-student-${student.studentId}`}
               className={`p-3 rounded-xl border transition-all ${
                 isIncomplete ? "border-slate-100 bg-slate-50/20 grayscale" : "border-slate-200 bg-white"
               }`}
@@ -246,7 +271,7 @@ export function AdminRosterGrid({
                 <div className="flex items-center gap-2">
                    <div className="text-right">
                      <div className="text-[14px] font-black text-slate-950 italic leading-none">
-                       {derived.total !== null ? `${derived.total.toFixed(2)}%` : "--"}
+                       {derived.total !== null ? `${derived.total.toFixed(2)} /100` : "--"}
                      </div>
                    </div>
                    <div className="w-6 h-6 rounded bg-white flex items-center justify-center text-[10px] font-black" style={{color: derived.gradeColor}}>
@@ -267,21 +292,13 @@ export function AdminRosterGrid({
                       } ${inputError ? "border-rose-200 bg-rose-50/50" : ""}`}
                     >
                       <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                        {input.label}
+                        {input.label} /{input.max}
                       </span>
-                      <input
-                        type="number"
-                        value={input.value ?? ""}
+                      <ScoreNumberInput
+                        value={input.value}
+                        min={0} max={input.max} step="0.01" aria-label={`${humanNameFinalStrict(student.studentName)} ${input.field === "examRawScore" ? "exam" : input.field.toUpperCase()} score out of ${input.max}`}
                         disabled={!isEditable}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          const parsed = raw === "" ? null : Number(raw);
-                          onScoreChange(
-                            student.studentId,
-                            input.field,
-                            parsed === null || Number.isNaN(parsed) ? null : parsed
-                          );
-                        }}
+                        onScoreChange={(next) => onScoreChange(student.studentId, input.field, next)}
                         placeholder="--"
                         aria-invalid={Boolean(inputError)}
                         className={`w-full bg-transparent text-center font-black text-sm text-slate-900 outline-none tabular-nums p-0 ${
@@ -292,6 +309,11 @@ export function AdminRosterGrid({
                   );
                 })}
               </div>
+              {rowPolicy.examRawMax !== rowPolicy.examContributionMax && (
+                <p className="mt-2 text-xs font-semibold text-indigo-700">
+                  Exam contribution /{rowPolicy.examContributionMax}: {derived.examScaledScore?.toFixed(2) ?? "--"}
+                </p>
+              )}
             </div>
           );
         })}

@@ -202,6 +202,11 @@ export const purgeTenantBatchInternal = internalMutation({
   }),
   handler: async (ctx, args) => {
     const school = await requireExactSchool(ctx, args.schoolId, args.schoolSlug);
+    for (const phase of ["scanning", "failed_scanning", "invalid", "ready", "regrading", "failed_regrading"] as const) {
+      const job = await ctx.db.query("sessionScoringRegradeJobs")
+        .withIndex("by_school_and_phase", q => q.eq("schoolId", school._id).eq("phase", phase)).first();
+      if (job) throw new ConvexError("Complete or cancel the session scoring job before purging the school.");
+    }
     if (school.status !== "suspended") {
       await ctx.db.patch(school._id, { status: "suspended", updatedAt: Date.now() });
     }

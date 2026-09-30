@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   calls: [] as Array<{ name: string; args: unknown }>,
 }));
 vi.mock("@/convex-runtime", () => ({ isConvexConfigured: () => true }));
+vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ session: { user: { id: "owner" } }, workspaceAccess: { state: "ready", branch: { schoolId: "branch-school" } } }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams("sessionId=session&termId=term&classId=class&subjectId=art") }));
 vi.mock("convex/react", () => ({
@@ -36,6 +37,7 @@ it("keeps the existing graded entry available to an exam officer", () => {
   state.entry = { mode: "graded", canEnterNarrative: false };
   render(<AdminScoreEntryPage />);
   expect(screen.getByText("Graded selector")).toBeTruthy();
+  expect(state.calls.find(call => call.name.endsWith("getEntryClassMode"))?.args).toEqual({ schoolId: "branch-school", classId: "class", sessionId: "session" });
   expect(state.calls.some(call => call.name.endsWith("getExamEntrySheet") && call.args !== "skip")).toBe(true);
   expect(state.calls.some(call => call.name.endsWith("getSheet") && call.args !== "skip")).toBe(false);
 });
@@ -65,6 +67,8 @@ it("mounts the narrative sheet only when entry access is granted", () => {
   state.entry = { mode: "narrative", canEnterNarrative: true };
   render(<AdminScoreEntryPage />);
   expect(screen.getByText("Subject comments")).toBeTruthy();
+  expect(state.calls).toContainEqual({ name: "functions/academic/narrativeEntrySheet:getSubjectOptions", args: { schoolId: "branch-school", classId: "class", sessionId: "session", termId: "term" } });
+  expect(state.calls).toContainEqual({ name: "functions/academic/narrativeEntrySheet:getSheet", args: { schoolId: "branch-school", classId: "class", sessionId: "session", termId: "term", subjectId: "art" } });
   expect(state.calls.some(call => call.name.endsWith("getSheet") && call.args !== "skip")).toBe(true);
   expect(state.calls.some(call => call.name.endsWith("getExamEntrySheet") && call.args !== "skip")).toBe(false);
 });

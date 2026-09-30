@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { api } from "../../../_generated/api";
 import schema from "../../../schema";
 import type { Id } from "../../../_generated/dataModel";
-import { FACTORY_DEFAULT_GRADING_BANDS } from "@school/shared/exam-recording";
+import { FACTORY_DEFAULT_GRADING_BANDS, scoreRowPolicy } from "@school/shared/exam-recording";
 
 declare global {
   interface ImportMeta {
@@ -72,6 +72,7 @@ async function fixture() {
     for (const capability of [
       "system.migration.execute",
       "enrollment.admissions.override_number",
+      "academic.assessments.enter",
     ]) {
       await ctx.db.insert("membershipDirectGrants", {
         membershipId,
@@ -1482,6 +1483,97 @@ describe("R1 reviewed import remediation", () => {
     });
   });
 
+  it("uses the recorded raw40 session policy after the school switches to raw60", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    await f.t.run(async ctx => {
+      const historicalStudentId = await ctx.db.insert("students", {
+        schoolId: f.schoolId, classId: f.classId, userId: f.studentUserIds[1],
+        admissionNumber: "HISTORICAL-1", gender: "Female", enrollmentStatus: "active",
+        createdAt: 1, updatedAt: 1,
+      });
+      await ctx.db.insert("assessmentRecords", {
+        schoolId: f.schoolId, sessionId: f.sessionId, termId: f.termId,
+        classId: f.classId, subjectId: f.subjectId, studentId: historicalStudentId,
+        ca1: 10, ca2: 10, ca3: 0, examRawScore: 40, examScaledScore: 40,
+        total: 60, gradeLetter: "B", remark: "Good", examInputModeSnapshot: "raw40",
+        examRawMaxSnapshot: 40, status: "draft", enteredBy: f.actorUserId,
+        updatedBy: f.actorUserId, createdAt: 1, updatedAt: 1,
+      });
+      const settings = await ctx.db.query("schoolAssessmentSettings")
+        .withIndex("by_school_active", q => q.eq("schoolId", f.schoolId).eq("isActive", true)).unique();
+      if (!settings) throw new Error("missing settings");
+      await ctx.db.patch(settings._id, { examInputMode: "raw60_scaled_to_40" });
+    });
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 10, exam: 40 });
+    await reviewGrade(f, record._id, { selectedStudentId: studentId });
+    expect(await f.t.run(ctx => ctx.db.get(record._id))).toMatchObject({
+      reviewedAssessmentPolicySnapshot: { examInputMode: "raw40", examRawMax: 40 },
+    });
+    await approveAll(f, workspaceId);
+    await commitAll(f, workspaceId);
+    const assessment = await f.t.run(ctx => ctx.db.query("assessmentRecords")
+      .withIndex("by_student_sheet", q => q.eq("schoolId", f.schoolId).eq("sessionId", f.sessionId)
+        .eq("termId", f.termId).eq("classId", f.classId).eq("subjectId", f.subjectId)
+        .eq("studentId", studentId)).unique());
+    expect(assessment).toMatchObject({
+      examRawScore: 40, examScaledScore: 40, total: 60,
+      examInputModeSnapshot: "raw40", examRawMaxSnapshot: 40,
+      assessmentPolicySnapshot: { examInputMode: "raw40", examRawMax: 40 },
+    });
+    const secondWorkspaceId = await createWorkspace(f, "Invalid historical score");
+    const invalid = await stageGrade(f, secondWorkspaceId, { ca1: 10, ca2: 10, exam: 50 });
+    await expect(reviewGrade(f, invalid._id, { selectedStudentId: studentId }))
+      .rejects.toThrow("examRawScore must be between 0 and 40");
+  });
+
+  it("validates and scales imported scores against an explicit /80 worth 50 session policy", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    await f.t.run(ctx => ctx.db.insert("sessionScoringPolicies", {
+      schoolId: f.schoolId, sessionId: f.sessionId,
+      ca1Max: 50, ca2Max: 0, ca3Max: 0, examRawMax: 80,
+      examContributionMax: 50, version: 1, updatedAt: 1, updatedBy: f.actorUserId,
+    }));
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 0, exam: 80 });
+    await reviewGrade(f, record._id, { selectedStudentId: studentId });
+    expect(await f.t.run(ctx => ctx.db.get(record._id))).toMatchObject({
+      reviewedAssessmentPolicySnapshot: { examInputMode: "custom", examRawMax: 80, examContributionMax: 50 },
+    });
+    await approveAll(f, workspaceId);
+    await commitAll(f, workspaceId);
+    const assessment = await f.t.run(ctx => ctx.db.query("assessmentRecords")
+      .withIndex("by_school", q => q.eq("schoolId", f.schoolId)).unique());
+    expect(assessment).toMatchObject({
+      examRawScore: 80, examScaledScore: 50, total: 60,
+      examInputModeSnapshot: "custom", examRawMaxSnapshot: 80,
+      sessionScoringPolicyVersion: 1,
+      assessmentPolicySnapshot: { examInputMode: "custom", ca1Max: 50, examRawMax: 80, examContributionMax: 50, sessionScoringPolicyVersion: 1 },
+    });
+    const sheet = await f.session.query(api.functions.academic.assessmentRecords.getExamEntrySheet, {
+      schoolId: f.schoolId, sessionId: f.sessionId, termId: f.termId,
+      classId: f.classId, subjectId: f.subjectId,
+    });
+    const saved = sheet.roster.find(row => row.studentId === studentId)?.assessmentRecord;
+    expect(saved?.assessmentPolicySnapshot).toEqual({
+      ca1Max: 50, ca2Max: 0, ca3Max: 0, examRawMax: 80, examContributionMax: 50,
+    });
+    expect(saved).not.toHaveProperty("gradingPolicySnapshot");
+    expect(scoreRowPolicy(sheet.settings.examInputMode, undefined, saved)).toEqual({
+      ca1Max: 50, ca2Max: 0, ca3Max: 0, examRawMax: 80, examContributionMax: 50,
+    });
+    expect(await f.t.run(ctx => ctx.db.get(assessment!._id))).toMatchObject({
+      assessmentPolicySnapshot: { examInputMode: "custom", sessionScoringPolicyVersion: 1 },
+      gradingPolicySnapshot: { version: 1 },
+    });
+    await expect(f.session.query(api.functions.academic.assessmentRecords.getExamEntrySheet, {
+      schoolId: f.schoolId, sessionId: f.sessionId, termId: f.termId,
+      classId: f.otherClassId, subjectId: f.subjectId,
+    })).rejects.toThrow("Cross-school access denied");
+  });
+
   it("uses the configured grading band and persists its reviewed snapshot", async () => {
     const f = await fixture();
     const studentId = await createExistingStudent(f);
@@ -1541,7 +1633,7 @@ describe("R1 reviewed import remediation", () => {
     const studentId = await createExistingStudent(f);
     const workspaceId = await createWorkspace(f);
     const record = await stageGrade(f, workspaceId, { ca1: 20, ca2: 20, exam: 100 });
-    await expect(reviewGrade(f, record._id, { selectedStudentId: studentId })).rejects.toThrow("Exam score must be between 0 and 40");
+    await expect(reviewGrade(f, record._id, { selectedStudentId: studentId })).rejects.toThrow("examRawScore must be between 0 and 40");
   });
 
   it("fails closed when reviewed scoring policy changes before commit", async () => {
@@ -1558,6 +1650,44 @@ describe("R1 reviewed import remediation", () => {
     });
     await expect(commitAll(f, workspaceId)).rejects.toThrow("policy evidence changed");
     expect(await f.t.run(ctx => ctx.db.query("assessmentRecords").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(1))).toEqual([]);
+  });
+
+  it("rejects stale explicit session policy and a locked session at review or commit", async () => {
+    const f = await fixture();
+    const studentId = await createExistingStudent(f);
+    const policyId = await f.t.run(ctx => ctx.db.insert("sessionScoringPolicies", {
+      schoolId: f.schoolId, sessionId: f.sessionId,
+      ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80,
+      examContributionMax: 50, version: 1, updatedAt: 1, updatedBy: f.actorUserId,
+    }));
+    const workspaceId = await createWorkspace(f);
+    const record = await stageGrade(f, workspaceId, { ca1: 10, ca2: 10, exam: 50 });
+    const jobId = await f.t.run(ctx => ctx.db.insert("sessionScoringRegradeJobs", {
+      schoolId: f.schoolId, sessionId: f.sessionId, phase: "scanning",
+      policy: { ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80, examContributionMax: 50 },
+      before: { ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80, examContributionMax: 50 },
+      expectedVersion: 1, scanned: 0, batchSize: 40, invalidCount: 0,
+      invalidExamples: [], updated: 0, startedAt: 1, updatedAt: 1, updatedBy: f.actorUserId,
+    }));
+    await expect(reviewGrade(f, record._id, { selectedStudentId: studentId }))
+      .rejects.toThrow("Session scoring regrade");
+    await f.t.run(ctx => ctx.db.delete(jobId));
+    await reviewGrade(f, record._id, { selectedStudentId: studentId });
+    await approveAll(f, workspaceId);
+    await f.t.run(ctx => ctx.db.patch(policyId, { version: 2 }));
+    await expect(commitAll(f, workspaceId)).rejects.toThrow("policy evidence changed");
+    expect(await f.t.run(ctx => ctx.db.query("assessmentRecords").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(1))).toEqual([]);
+    await f.t.run(ctx => ctx.db.patch(policyId, { examRawMax: 80, version: 1 }));
+    const commitJobId = await f.t.run(ctx => ctx.db.insert("sessionScoringRegradeJobs", {
+      schoolId: f.schoolId, sessionId: f.sessionId, phase: "ready",
+      policy: { ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80, examContributionMax: 50 },
+      before: { ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80, examContributionMax: 50 },
+      expectedVersion: 1, scanned: 0, batchSize: 40, invalidCount: 0,
+      invalidExamples: [], updated: 0, startedAt: 1, updatedAt: 1, updatedBy: f.actorUserId,
+    }));
+    await expect(commitAll(f, workspaceId)).rejects.toThrow("Session scoring regrade");
+    await f.t.run(ctx => ctx.db.delete(commitJobId));
+    await commitAll(f, workspaceId);
   });
 
   it("fails closed for inactive or archived terms in the active session after policy changes between terms", async () => {

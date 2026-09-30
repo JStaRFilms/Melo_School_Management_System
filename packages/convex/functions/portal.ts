@@ -326,7 +326,13 @@ async function releasedPortalReport(
     try { return await getUnboundStorageUrl(ctx, id); }
     catch (error) { if (isStorageOwnershipDenied(error)) return null; throw error; }
   };
-  return { ...frozen.report, schoolLogoUrl: await safeImage(frozen.schoolLogoStorageId),
+  const policy = await ctx.db.query("sessionScoringPolicies")
+    .withIndex("by_school_and_sessionId", q => q.eq("schoolId", schoolId).eq("sessionId", sessionId)).unique();
+  return { ...frozen.report,
+    ...(policy && policy.version > (frozen.scoringPolicyVersion ?? 0) ? {
+      scoringPolicyWarning: "Session scores changed after certification. This issued report is unchanged. Replacement certification for an already issued report is not available; review current scores separately.",
+    } : {}),
+    schoolLogoUrl: await safeImage(frozen.schoolLogoStorageId),
     student: { ...frozen.report.student, photoUrl: await safeImage(frozen.studentPhotoStorageId) } };
 }
 
