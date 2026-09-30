@@ -51,6 +51,7 @@
 | FR-006 | Assessment and grading engine | As a teacher, I want to enter three CA scores and an exam score with school-defined grading rules, so that averages, rankings, and CGPA are calculated automatically. | MUS |
 | FR-007 | Results entry and moderation | As a teacher or admin, I want controlled score entry, editing, and approval workflows, so that published results are accurate and auditable. | MUS |
 | FR-008 | Branded printable report cards | As a school, I want printable and portal-ready report cards with comments and branding, so that result delivery is professional and consistent. | MUS |
+| FR-023 | Subject comments for selected classes | As a school admin, I want to choose score or comment reporting for classes by session, so teachers can write a comment for each student's assigned subject and parents can read the published report. | MUS (in progress; see `docs/issues/FR-023.md`) |
 
 ### User Workspaces
 
