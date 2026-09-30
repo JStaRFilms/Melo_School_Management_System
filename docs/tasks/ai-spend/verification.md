@@ -1,6 +1,6 @@
 # AI spend verification, B1
 
-Status: **implemented for code review, not deployed or approved for live provider use**. This replaces the foundation-only report from b07a413. No live AI request, environment copy, payment, deployment, push or PR was made.
+Status: **implemented and independently reviewed; PR #97 open, not deployed or approved for live provider use**. This replaces the foundation-only report from b07a413. No live AI request, environment copy, payment, deployment, push or PR was made.
 
 ## Working route
 
