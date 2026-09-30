@@ -6,7 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import {
   TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable,
-  acquireLease, releaseLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker,
+  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker,
 } from './core.mjs';
 import { options, validateOptions } from './cli.mjs';
 import { reportHtml } from './report.mjs';
@@ -76,6 +76,13 @@ test('leases are exclusive and can only be released by their owner', t => {
   releaseLease(filename, 'qa-first');
   assert.equal(fs.existsSync(filename), false);
   assert.throws(() => acquireLease('../escape', { id: 'qa-first' }, directory), /Invalid/);
+});
+test('setup or metadata failures release the backend lease', async t => {
+  const directory = temporary(t);
+  await assert.rejects(withLease('backend-test', { id: 'qa-setup' }, async () => { throw new Error('Directory or revision setup failed'); }, directory), /setup failed/);
+  assert.deepEqual(fs.readdirSync(directory), []);
+  assert.equal(await withLease('backend-test', { id: 'qa-success' }, async () => 42, directory), 42);
+  assert.deepEqual(fs.readdirSync(directory), []);
 });
 test('supervisor ownership requires exact script and run token', () => {
   const state = { id: 'qa-first', pid: 1234 };

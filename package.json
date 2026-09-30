@@ -48,6 +48,8 @@
     "qa:smoke": "node scripts/qa/cli.mjs smoke",
     "qa:feature": "node scripts/qa/cli.mjs feature",
     "qa:layout": "node scripts/qa/cli.mjs layout",
+    "qa:roles": "node scripts/qa/cli.mjs roles",
+    "qa:explore": "node scripts/qa/cli.mjs explore",
     "qa:report": "node scripts/qa/cli.mjs report",
     "qa:test": "node --test scripts/qa/*.test.mjs"
   },

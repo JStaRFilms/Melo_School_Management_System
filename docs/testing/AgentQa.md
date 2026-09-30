@@ -4,7 +4,7 @@
 
 These commands start this worktree against the verified synthetic school on `dev:content-poodle-172`. They do not call a seed, reset, purge, deployment, or environment-update command. Normal development and production are refused.
 
-The first supported origins are Admin `3102`, Teacher `3101`, and Portal `3103`. Startup can select any of these three apps. The first browser workflows use Admin only. There is no claim of all-app, provider, or cross-tenant coverage yet.
+The supported origins are Admin `3102`, Teacher `3101`, and Portal `3103`. Startup selects these attested apps; the built-in role journey covers Admin, Teacher, and Parent. There is no claim of all-seven-app, provider, complete feature, or cross-tenant coverage. Standing isolated-development authority is recorded in [AgentQaAuthority.md](AgentQaAuthority.md). For agent execution, use the project-local [verify-melo skill](../../.agents/skills/verify-melo/SKILL.md).
 
 ## Setup
 
@@ -23,15 +23,17 @@ An existing private profile can be referenced instead of copied:
 pnpm qa:doctor --env-file /absolute/path/to/.env.e2e.local --apps admin
 ```
 
-Doctor checks Node, pnpm, the installed Playwright browser, root and selected app target agreement, free ports, and an inspection-only backend endpoint. It stores the profile path, not credentials, in the ignored `.qa/config.json`. Future commands reuse that path. Moving or deleting it makes the next check fail.
+Doctor checks Node, pnpm, the installed Playwright browser, root and selected app target agreement, ports, and an inspection-only backend endpoint. Before launch it requires free ports; for an already ready owned instance it verifies matching ownership/profile/apps and HTTP readiness instead of treating its own ports as a collision. It stores the profile path, not credentials, in the ignored `.qa/config.json`. Future commands reuse that path. Moving or deleting it makes the next check fail.
 
 ## Start, inspect, and stop
 
 ```sh
-pnpm qa:start
+pnpm qa:start --apps admin,teacher,portal
 pnpm qa:smoke
 pnpm qa:layout
 pnpm qa:feature
+pnpm qa:roles
+pnpm qa:explore --role parent --script scripts/qa/explore-example.mjs
 pnpm qa:report
 pnpm qa:stop
 ```
@@ -39,6 +41,8 @@ pnpm qa:stop
 - `qa:smoke` checks protected routing, real Admin sign-in, and template workspace availability.
 - `qa:layout` checks starter preview, title validation, desktop control containment, and mobile draft layout without saving templates.
 - `qa:feature` additionally creates a uniquely named inactive subject-scoped template, reloads it, checks guidance and format persistence, exercises cancel/discard, saves an edit, and reloads on mobile. It does not activate templates, change the existing school default, or call AI. Teacher template resolution and generation need separate acceptance coverage before claiming the whole template feature is verified.
+- `qa:roles` checks Admin grading draft/discard, Teacher dependent roster selection/reload/mobile and rejection from Admin editing, and Parent topic search/detail/mobile. Use `--roles teacher,parent` for a subset; Teacher's denial criterion also needs an owned Admin server.
+- `qa:explore` runs a trusted worktree-contained module with a single declared role. The module exports scope, effects, and named executable acceptance steps. Paths/digests are checked, synthetic-write declarations also require `--allow-synthetic-writes`, and browser traffic is restricted to owned app origins, the isolated backend, and read-only public Google font CSS/files. This is not a Node/filesystem sandbox or an enforced guarantee about script side effects. See [the recipe](../../.agents/skills/verify-melo/references/exploration.md).
 - `qa:stop` checks the exact supervisor owner before signalling it. It does not kill whatever happens to occupy a port.
 
 A QA-owned supervisor starts each selected Next.js app in this worktree with explicit isolated cloud/site URLs. Operator secrets are not forwarded to frontend processes. App logs remain private in `.qa/`.
@@ -49,11 +53,13 @@ Browser runs take a local backend lease to prevent simultaneous QA fixture chang
 
 ## Evidence
 
-Each run has a unique directory under `.qa/runs/`. The result manifest records passed, failed, blocked, and skipped checks. A failed prerequisite marks unexercised checks blocked. Backend argument-contract drift is reported as blocked; the runner does not deploy to fix it.
+Each run has a unique directory under `.qa/runs/`. The result manifest records passed, failed, blocked, and skipped checks. Built-in role plans declare all criteria before driving a role, so interruption also records pending criteria for roles not yet started. Setup/report failures release the backend lease. Backend contract drift is reported as blocked; ordinary QA does not deploy to fix it.
+
+Reports include the checkout revision, upstream ref observed at run time, and a dirty-source flag. Preflight does not attest a deployed source revision, so that field remains unverified instead of guessing a match. An exploratory effect declaration is reported as a declaration, not an independently enforced guarantee.
 
 Screenshots and an HTML summary are available locally. Trace ZIPs, raw console errors, raw assertion text, and videos stay private. Authentication happens before tracing and video capture; the browser session snapshot stays in memory. Traces may still contain authenticated network data, so they are never copied to the share.
 
-Review each screenshot for secrets and sensitive content before publishing:
+Review the HTML scope, effect declarations, outcomes, and each screenshot for sensitive content before publishing:
 
 ```sh
 pnpm qa:report --run qa-<run-id> --publish-reviewed
@@ -71,13 +77,15 @@ Inactive QA templates remain marked by their run ID. No generic purge or automat
 
 ## Backend updates
 
-A backend update is a separately approved maintenance operation. Ordinary QA commands do not deploy. In Convex CLI 1.34.1, a project-scoped `CONVEX_DEPLOYMENT` selector can resolve to the user's default dev deployment instead of the deployment name written in an env file. The CLI authorization endpoint also returns the broad login token, which can access both development backends; it is not a deployment-specific credential.
+A backend update uses the maintenance procedure under the owner's [standing isolated authority](AgentQaAuthority.md). Ordinary QA commands do not deploy, and production/normal-dev writes remain outside scope. In Convex CLI 1.34.1, a project-scoped `CONVEX_DEPLOYMENT` selector can resolve to the user's default dev deployment instead of the deployment name written in an env file. The CLI authorization endpoint also returns the broad login token, which can access both development backends; it is not a deployment-specific credential.
 
 Use the management API's documented `create_deploy_key` endpoint for `content-poodle-172` with a named, short-lived key and limited deployment permissions. Keep its value in a private ignored profile containing one unquoted literal `CONVEX_DEPLOY_KEY=<key>` assignment and optional blank/comment lines. Additional lines, colon assignments, duplicates, and other dotenv syntax are refused rather than silently skipped. OAuth-derived keys may reuse a broad grant, so test scope rather than trusting a name or prefix alone.
 
 The maintenance-only `scripts/qa/deployment-target.mjs` helpers reject other targets, project selectors, URL overrides, and broad unprefixed credentials. They attest the key through protected configuration reads: it must succeed on the isolated cloud URL and receive an authentication denial on normal development. A network failure is not scope proof. These helpers do not mint keys or push code.
 
-Before an approved push, use the installed CLI's `dev --once --skip-push --codegen disable --env-file <private deployment-key profile>` path, and verify the effective cloud/site URLs and deployment name written in this worktree. Keep credentials out of CLI argument values. Then perform the one-shot push using the same verified profile, with typecheck enabled, codegen disabled, and no `--run` step. Capture code/schema fingerprints for normal development before and after to establish that the corrective operation did not change it. Revoke the temporary key afterward and confirm that it is denied.
+Before an approved push, use the installed CLI's `dev --once --skip-push --codegen disable --env-file <private deployment-key profile>` path, and verify the effective cloud/site URLs and deployment name written in this worktree. Keep credentials out of CLI argument values. Then perform the one-shot push using the same verified profile, with typecheck enabled, codegen disabled, and no `--run` step. Capture code/schema fingerprints for normal development before and after to establish that the corrective operation did not change it. Revoke the temporary key afterward and confirm that it is denied. Revocation can have a brief access-cache delay; poll protected metadata read-only, and treat an already-removed key as cleaned up only when access is denied.
+
+For staged-index activation, verify the isolated index is actually backfilled, not just declared in source. `stagedIndexReady` accounts for Convex's implicit `_creationTime` ordering suffix while checking the exact logical fields and staged/backfill state. Keep separate staged indexes staged unless their own readiness and rollout are established.
 
 This procedure succeeded for the first milestone. See [the verification and incident record](AgentQaVerification.md). Preserve the distinction between correcting the isolated backend and establishing the full effects of the earlier normal-dev incident.
 

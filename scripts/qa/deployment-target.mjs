@@ -26,6 +26,13 @@ export function readDeploymentProfile(filename) {
   return { filename: absolute, key: validateDeploymentProfile(values) };
 }
 
+export function stagedIndexReady(index, name, fields) {
+  if (!index || index.name !== name || index.staged !== true || !['backfilled', 'done'].includes(index.backfill?.state) || !Array.isArray(index.fields)) return false;
+  // Convex metadata appends its implicit ordering field to declared fields.
+  const actual = index.fields.at(-1) === '_creationTime' ? index.fields.slice(0, -1) : index.fields;
+  return actual.length === fields.length && actual.every((field, position) => field === fields[position]);
+}
+
 export async function attestDeploymentCredential(key, request = fetch) {
   validateDeploymentProfile({ CONVEX_DEPLOY_KEY: key });
   async function metadata(url) {

@@ -17,6 +17,8 @@ writeJson(stateFile, state);
 async function shutdown() {
   if (stopping) return;
   stopping = true;
+  state = { ...state, status: 'stopping' };
+  if (readJson(stateFile).id === id) writeJson(stateFile, state);
   for (const child of children) {
     if (child.exitCode === null && child.signalCode === null) {
       try { process.kill(-child.pid, 'SIGTERM'); } catch { /* Already stopped. */ }

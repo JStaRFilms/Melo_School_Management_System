@@ -69,3 +69,11 @@ deliverables/sponsorship-profiles-*/
 .windsurf/
 .agents/
 skills/
+
+# Version only Melo's project-specific verification utility.
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/verify-melo/
+!.agents/skills/verify-melo/**

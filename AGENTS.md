@@ -13,3 +13,7 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 - Use `--school-*-contrast` for text on a branded fill and preserve white paper plus readable/monochrome rules in print surfaces.
 - Static Sites data is an explicitly published configuration seam, not a live Admin or private Convex source. Do not imply an Admin save has synchronized it.
 - For touched school-facing files, run `node scripts/audit-theme-colors.mjs`. It is informational: classify direct colours as tenant, semantic status/grade, product neutral, or print-only; do not perform global replacements.
+
+## Browser verification
+
+For feature/UI testing, isolated QA startup, or review evidence, read [verify-melo](.agents/skills/verify-melo/SKILL.md). Verify the affected feature's acceptance criteria through real user paths and retain evidence; baseline smoke checks alone are partial coverage. Use its authority and exact-target maintenance procedure for the isolated backend.

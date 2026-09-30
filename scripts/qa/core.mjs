@@ -112,6 +112,12 @@ export function acquireLease(name, owner, directory = LOCK_DIR) {
   return filename;
 }
 
+export async function withLease(name, owner, action, directory = LOCK_DIR) {
+  const filename = acquireLease(name, owner, directory);
+  try { return await action(); }
+  finally { releaseLease(filename, owner.id); }
+}
+
 export function releaseLease(filename, id) {
   if (!fs.existsSync(filename)) return;
   if (readJson(filename).id !== id) throw new Error('Lease belongs to another run; refusing removal.');
@@ -188,8 +194,16 @@ export function evidenceStatus(checks) {
 }
 
 export function isBackendContractBlocker(messages) {
-  return messages.some(message => /ArgumentValidationError/.test(message) &&
-    /extra field `(?:formatHint|guidance|sourcePresetId|sourcePresetVersion)`/.test(message));
+  return messages.some(message => /Could not find public function for/.test(message) ||
+    /ArgumentValidationError/.test(message) && /extra field `(?:formatHint|guidance|sourcePresetId|sourcePresetVersion)`/.test(message));
+}
+
+export function workspaceRevision(root = ROOT) {
+  const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  let upstreamRevision = null;
+  try { upstreamRevision = git(['rev-parse', 'origin/master']); } catch { /* A fresh clone may have no upstream ref. */ }
+  return { checkoutRevision: git(['rev-parse', 'HEAD']), upstreamRevision, sourceDirty: git(['status', '--porcelain=v1']) !== '',
+    backendCodeRevision: null, backendCodeNote: 'Preflight attests deployment and fixtures, not a deployed source revision. Passing a journey does not verify other upstream features.' };
 }
 
 export function escapeHtml(value) {
