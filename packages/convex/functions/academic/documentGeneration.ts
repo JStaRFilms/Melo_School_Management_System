@@ -356,6 +356,7 @@ type AssessmentWorkspace = {
   canAutosave: boolean;
   draft: {
     bankId: Id<"assessmentBanks"> | null;
+    draftRevision: number | null;
     title: string;
     description: string | null;
     sourceSelectionSnapshot: string | null;
@@ -1338,14 +1339,24 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
       sections: bound.workspace.template!.sectionDefinitions, minimums: bound.workspace.template!.objectiveMinimums,
       excerptWarnings: bound.excerpts.warnings,
     } : {
-      bankId: bound.workspace.draft.bankId, settings: bound.settings, outputType: bound.outputType,
+      bankId: bound.workspace.draft.bankId, expectedBankRevision: bound.workspace.draft.draftRevision,
+      settings: bound.settings, outputType: bound.outputType,
     }),
   });
   try {
     await ctx.runMutation(internal.functions.academic.aiSpend.stage, { attemptId, payload, ...usage });
-  } catch (error) {
-    await ctx.runMutation(internal.functions.academic.aiSpend.uncertain, { attemptId });
-    throw new ConvexError("Measured provider result could not be staged. Platform must reconcile this hold.");
+  } catch {
+    // Do not log the raw staging exception: it may contain generated content.
+    // Even if the reconciliation transition fails, the claimed hold remains.
+    let markedForReview = true;
+    try {
+      await ctx.runMutation(internal.functions.academic.aiSpend.uncertain, { attemptId });
+    } catch {
+      markedForReview = false;
+    }
+    throw new ConvexError(markedForReview
+      ? "Measured provider result could not be staged. Platform must reconcile this held attempt."
+      : "Measured provider result could not be staged or marked for review. The hold remains. Check attempt status and contact Platform.");
   }
   return await finishStaged(ctx, attemptId);
 }
@@ -1361,6 +1372,7 @@ type StagedResult = {
   minimums?: { minimumObjectives: number; minimumSourceMaterials: number; minimumSections: number };
   excerptWarnings?: string[];
   bankId?: Id<"assessmentBanks"> | null;
+  expectedBankRevision?: number | null;
   settings?: EffectiveGenerationSettings;
   outputType?: AssessmentOutputType;
 };
@@ -1394,14 +1406,15 @@ async function finishStaged(ctx: ActionCtx, attemptId: Id<"usageOperationAttempt
       sourceIds: saved.sourceIds.map(String), templateId: saved.templateId ? String(saved.templateId) : null,
       generationMeta: { attempts: 1, repaired: false, validationIssues: [], sourceExcerptWarnings: data.excerptWarnings ?? [], aiRunLogId: String(aiRunLogId ?? "") } };
   }
-  if (data.kind !== "assessment" || !data.settings || !data.outputType) throw new ConvexError("Staged assessment result invalid");
+  if (data.kind !== "assessment" || !data.settings || !data.outputType || data.expectedBankRevision === undefined) throw new ConvexError("Staged assessment result invalid");
   const draft = data.outputType === "cbt_draft"
     ? mapCbtDraft(data.args.draftMode, data.generation, data.settings)
     : mapQuestionBankDraft(data.args.draftMode, data.generation, data.settings);
   const snapshot = buildAssessmentSourceSelectionSnapshot({ draftMode: data.args.draftMode, outputType: data.outputType,
     sourceIds: data.sourceIds.map(String), subjectId: String(data.subjectId), level: data.level, topicLabel: data.topic });
   const saved = await ctx.runMutation(internal.functions.academic.lessonKnowledgeAssessmentDrafts.saveGeneratedAssessmentBankDraft, {
-    attemptId, bankId: data.bankId ?? null, draftMode: data.args.draftMode, title: draft.title, description: draft.description,
+    attemptId, bankId: data.bankId ?? null, expectedBankRevision: data.expectedBankRevision,
+    draftMode: data.args.draftMode, title: draft.title, description: draft.description,
     sourceIds: data.sourceIds, sourceSelectionSnapshot: snapshot, subjectId: data.subjectId, level: data.level, topicLabel: data.topic,
     planningContext: data.args.planningContext,
     effectiveGenerationSettings: { ...data.settings, profileId: data.settings.profileId ?? undefined },

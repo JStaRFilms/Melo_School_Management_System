@@ -107,7 +107,6 @@ export default function LessonPlansPage() {
   );
   const quoteDraft = useAction(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft);
   const generateDraftAction = useAction(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft);
-  const { review, reviewDialog } = useAiSpendReview(JSON.stringify({ outputType, sourceIds: selectedSourceIds, topic: targetTopicLabel, planningContext }));
   const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
   const sourceSyncKey = useMemo(() => getPlanningSourceSyncKey(planningContext), [planningContext]);
 
@@ -165,6 +164,7 @@ export default function LessonPlansPage() {
 
   const effectiveTopicLabel =
     workspace?.planningContext?.topicTitle ?? workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+  const { reviewAfterQuote, reviewDialog } = useAiSpendReview(JSON.stringify({ outputType, sourceIds: effectiveSourceIds, topic: effectiveTopicLabel, planningContext }));
 
   useEffect(() => {
     setTargetTopicLabel(workspace?.sourceContext.topicLabel ?? "");
@@ -234,8 +234,9 @@ export default function LessonPlansPage() {
 
       const request = { outputType, sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
         targetTopicLabel: effectiveTopicLabel ?? undefined, planningContext: planningContextArg };
-      const quote = await quoteDraft({ ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") });
-      const attemptId = await review(quote, outputType.replaceAll("_", " "), effectiveSourceIds.length);
+      const attemptId = await reviewAfterQuote(
+        () => quoteDraft({ ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") }),
+        outputType.replaceAll("_", " "), effectiveSourceIds.length);
       const result = (await generateDraftAction({ attemptId })) as LessonPlanSaveResult;
       return result;
     } catch (error) {

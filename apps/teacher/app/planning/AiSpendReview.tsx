@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 
 type Quote = { attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string; availableUnits: number; remainingAfterHold: number };
-type Pending = { quote: Quote; sourceCount: number; output: string; resolve: (id: Id<"usageOperationAttempts">) => void; reject: (reason: Error) => void };
+type Pending = { quote: Quote; formKey: string; sourceCount: number; output: string; resolve: (id: Id<"usageOperationAttempts">) => void; reject: (reason: Error) => void };
 
 export function useAiSpendReview(formKey: string) {
+  const formKeyRef = useRef(formKey);
+  formKeyRef.current = formKey;
   const [pending, setPending] = useState<Pending | null>(null);
   const [lastAttempt, setLastAttempt] = useState<Id<"usageOperationAttempts"> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,21 +28,37 @@ export function useAiSpendReview(formKey: string) {
     // Only edits, not a newly returned quote, invalidate this dialog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formKey]);
-  function review(quote: Quote, output: string, sourceCount: number): Promise<Id<"usageOperationAttempts">> {
-    if (pending) return Promise.reject(new Error("Finish or cancel the current quote first."));
+  async function reviewAfterQuote(prepare: () => Promise<Quote>, output: string, sourceCount: number): Promise<Id<"usageOperationAttempts">> {
+    if (pending) throw new Error("Finish or cancel the current quote first.");
+    const preparedKey = formKeyRef.current;
+    const quote = await prepare();
+    if (formKeyRef.current !== preparedKey) {
+      await cancel({ attemptId: quote.attemptId }).catch(() => {});
+      throw new Error("The form changed while preparing the quote. Review a new quote.");
+    }
     setMessage("");
     setLastAttempt(quote.attemptId);
-    return new Promise((resolve, reject) => setPending({ quote, output, sourceCount, resolve, reject }));
+    return new Promise((resolve, reject) => setPending({ quote, formKey: preparedKey, output, sourceCount, resolve, reject }));
   }
   async function approve() {
     if (!pending || busy) return;
     setBusy(true);
     try {
+      if (formKeyRef.current !== pending.formKey) throw new Error("The form changed. Review a new quote.");
       await confirm({ attemptId: pending.quote.attemptId, expectedUnits: pending.quote.estimate, confirmation: "CONFIRM" });
+      if (formKeyRef.current !== pending.formKey) {
+        await cancel({ attemptId: pending.quote.attemptId }).catch(() => {});
+        throw new Error("The form changed during confirmation. Request a new quote.");
+      }
       pending.resolve(pending.quote.attemptId);
       setPending(null);
       setMessage("Reserved. Generating once; check status if the connection drops.");
     } catch (error) {
+      if (formKeyRef.current !== pending.formKey) {
+        pending.reject(error instanceof Error ? error : new Error("The form changed. Request a new quote."));
+        setPending(null);
+        void cancel({ attemptId: pending.quote.attemptId }).catch(() => {});
+      }
       setMessage(error instanceof Error ? error.message : "Confirmation failed.");
     } finally { setBusy(false); }
   }
@@ -65,5 +83,5 @@ export function useAiSpendReview(formKey: string) {
     </div>}
     {lastAttempt && !pending && <p role="status" className="px-4 py-2 text-xs text-slate-700">AI attempt: {status?.status ?? "checking"}. Reviewed hold {status?.estimate?.toLocaleString() ?? "…"} ai_tokens{status?.actualUnits != null ? `, measured ${status.actualUnits.toLocaleString()} tokens` : ""}{status?.resultId ? `. Draft ${status.resultId}` : ""}. {status?.status === "needs_reconciliation" ? "Platform must reconcile unknown provider usage. If a measured draft was staged, recover it below." : message}{!status?.resultId && (status?.status === "settled" || status?.status === "needs_reconciliation") && <button type="button" className="ml-2 underline" onClick={() => { void recover({ attemptId: lastAttempt }).catch(error => setMessage(error instanceof Error ? error.message : "Recovery unavailable. Contact Platform.")); }}>Recover saved draft without another AI call</button>}</p>}
   </>;
-  return { review, reviewDialog };
+  return { reviewAfterQuote, reviewDialog };
 }

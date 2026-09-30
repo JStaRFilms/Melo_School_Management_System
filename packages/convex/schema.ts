@@ -3485,6 +3485,7 @@ export default defineSchema({
     draftMode: v.optional(assessmentDraftModeValidator),
     sourceSelectionSnapshot: v.optional(v.string()),
     effectiveGenerationSettings: v.optional(assessmentGenerationSettingsValidator),
+    draftRevision: v.optional(v.number()),
     bankStatus: knowledgeArtifactStatusValidator,
     title: v.string(),
     description: v.optional(v.string()),
@@ -3697,8 +3698,7 @@ export default defineSchema({
       "targetAssessmentBankId",
     ])
     .index("by_school_and_curriculum_import", ["schoolId", "curriculumImportId"])
-    .index("by_school_and_created_at", ["schoolId", "createdAt"])
-    .index("by_attempt", ["attemptId"]),
+    .index("by_school_and_created_at", ["schoolId", "createdAt"]),
 
   contentAuditEvents: defineTable({
     schoolId: v.id("schools"),
@@ -4297,11 +4297,11 @@ export default defineSchema({
     outcome: v.optional(v.string()), evidence: v.optional(v.string()), overage: v.optional(v.boolean()), overageReviewedAt: v.optional(v.number()), resultId: v.optional(v.string()),
   }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"])
     .index("by_school", ["schoolId"])
-    .index("by_status_and_updatedAt", ["status", "updatedAt"])
     .index("by_school_and_status_and_updatedAt", ["schoolId", "status", "updatedAt"]),
   // Private generated content staged for settlement/save recovery. Never part of the accounting ledger.
   aiGenerationResults: defineTable({
-    attemptId: v.id("usageOperationAttempts"), payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string(), createdAt: v.number(),
+    attemptId: v.id("usageOperationAttempts"), aiRunLogId: v.optional(v.id("aiRunLogs")),
+    payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string(), createdAt: v.number(),
   }).index("by_attempt", ["attemptId"]),
   usageOperationTransitions: defineTable({
     attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled"), v.literal("needs_reconciliation"), v.literal("settled")), createdAt: v.number(),

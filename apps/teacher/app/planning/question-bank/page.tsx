@@ -119,7 +119,6 @@ export default function QuestionBankPage() {
   );
   const quoteDraft = useAction(api.functions.academic.documentGeneration.quoteTeacherAssessmentDraft);
   const generateDraftAction = useAction(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft);
-  const { review, reviewDialog } = useAiSpendReview(JSON.stringify({ draftMode, sourceIds: selectedSourceIds, topic: targetTopicLabel, planningContext, settingsKey }));
   const effectiveSourceIds = useMemo(() => {
     if (selectedSourceIds.length > 0) {
       return selectedSourceIds;
@@ -198,6 +197,7 @@ export default function QuestionBankPage() {
     workspace?.planningContext?.kind === "topic"
       ? workspace.planningContext.topicTitle
       : workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+  const { reviewAfterQuote, reviewDialog } = useAiSpendReview(JSON.stringify({ draftMode, sourceIds: effectiveSourceIds, topic: effectiveTopicLabel, planningContext, settingsKey }));
 
   useEffect(() => {
     if (planningContext?.kind === "exam_scope" && draftMode !== "exam_draft") {
@@ -330,8 +330,9 @@ export default function QuestionBankPage() {
               : (effectiveGenerationSettings.profileId as Id<"assessmentGenerationProfiles">),
         },
       };
-      const quote = await quoteDraft({ ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") });
-      const attemptId = await review(quote, draftMode.replaceAll("_", " "), effectiveSourceIds.length);
+      const attemptId = await reviewAfterQuote(
+        () => quoteDraft({ ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") }),
+        draftMode.replaceAll("_", " "), effectiveSourceIds.length);
       const result = (await generateDraftAction({ attemptId })) as AssessmentBankGenerationResult;
       return result;
     } catch (error) {

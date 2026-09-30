@@ -195,6 +195,7 @@ const bankItemValidator = v.object({
 
 const bankDraftValidator = v.object({
   bankId: v.union(v.id("assessmentBanks"), v.null()),
+  draftRevision: v.union(v.number(), v.null()),
   title: v.string(),
   description: v.union(v.string(), v.null()),
   draftMode: draftModeValidator,
@@ -1384,6 +1385,7 @@ export const getTeacherAssessmentBankWorkspace = query({
       })),
       draft: {
         bankId: bank?._id ?? null,
+        draftRevision: bank ? bank.draftRevision ?? 0 : null,
         title,
         description,
         draftMode,
@@ -1443,12 +1445,12 @@ export const saveTeacherAssessmentBankDraft = mutation({
 
 // Only an authenticated server action may attach a staged provider result.
 export const saveGeneratedAssessmentBankDraft = internalMutation({
-  args: { ...aiDraftSaveArgs.fields, attemptId: v.id("usageOperationAttempts") },
+  args: { ...aiDraftSaveArgs.fields, attemptId: v.id("usageOperationAttempts"), expectedBankRevision: v.union(v.number(), v.null()) },
   returns: saveResultValidator,
   handler: async (ctx, args) => saveDraftHelper(ctx, args),
 });
 
-async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.type & { attemptId?: Id<"usageOperationAttempts"> }) {
+async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.type & { attemptId?: Id<"usageOperationAttempts">; expectedBankRevision?: number | null }) {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
@@ -1555,6 +1557,15 @@ async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.ty
           planningContext,
         });
 
+    // The generated result must match the bank at quote time. A teacher may
+    // continue editing, but a slow call or later recovery cannot replace it.
+    const baseline = existingBank ? existingBank.draftRevision ?? 0 : null;
+    if (args.attemptId && (args.expectedBankRevision === undefined || args.bankId !== (existingBank?._id ?? null) || args.expectedBankRevision !== baseline)) {
+      throw new ConvexError("Assessment draft changed after generation began. Staged AI content is retained; review newer edits before recovery.");
+    }
+    if (baseline !== null && (!Number.isSafeInteger(baseline) || baseline < 0 || !Number.isSafeInteger(baseline + 1))) {
+      throw new ConvexError("Assessment draft revision needs review");
+    }
     let bankId: Id<"assessmentBanks">;
     const now = Date.now();
 
@@ -1566,6 +1577,7 @@ async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.ty
 
       bankId = existingBank._id;
       await ctx.db.patch(bankId, {
+        draftRevision: baseline! + 1,
         draftMode: args.draftMode,
         sourceSelectionSnapshot,
         effectiveGenerationSettings,
@@ -1584,6 +1596,7 @@ async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.ty
       } as never);
     } else {
       bankId = await ctx.db.insert("assessmentBanks", {
+        draftRevision: 1,
         schoolId,
         ownerUserId: userId,
         ownerRole: actor.role === "admin" ? "admin" : "teacher",

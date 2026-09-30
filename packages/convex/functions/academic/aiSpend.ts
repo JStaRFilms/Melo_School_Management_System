@@ -81,7 +81,7 @@ export const stage = internalMutation({
   args: { attemptId, payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string() },
   handler: async (ctx, args) => {
     const attempt = await ctx.db.get(args.attemptId);
-    if (!attempt?.requestArgs || attempt.status !== "dispatch_started") throw new ConvexError("Dispatched attempt unavailable for staging");
+    if (!attempt?.requestArgs || (attempt.status !== "dispatch_started" && attempt.status !== "needs_reconciliation")) throw new ConvexError("Dispatched attempt unavailable for staging");
     await owner(ctx, attempt);
     if (args.payload.length < 2 || args.payload.length > 150_000 || !Number.isSafeInteger(args.inputTokens) || args.inputTokens < 0 || !Number.isSafeInteger(args.outputTokens) || args.outputTokens < 0 || !Number.isSafeInteger(args.inputTokens + args.outputTokens) || !args.evidence || args.evidence.length > 2000) throw new ConvexError("Provider result invalid");
     const existing = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", args.attemptId)).unique();
@@ -114,9 +114,8 @@ export const runLogId = internalQuery({
     const identity = await ctx.auth.getUserIdentity();
     if (!attempt?.requestArgs || !identity || attempt.actorTokenIdentifier !== identity.tokenIdentifier) throw new ConvexError("AI log unavailable");
     await requireCapability(ctx, attempt.schoolId, "academic.planning.use");
-    const logs = await ctx.db.query("aiRunLogs").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).take(2);
-    if (logs.length > 1) throw new ConvexError("Duplicate AI run log needs review");
-    return logs[0]?._id ?? null;
+    const staged = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).unique();
+    return staged?.aiRunLogId ?? null;
   },
 });
 
@@ -161,6 +160,9 @@ export const claim = internalMutation({
     if (attempt.requestArgs && attempt.requestArgs.length > 6000) throw new ConvexError("Bound request invalid");
     await ctx.db.patch(attempt._id, { status: "dispatch_started", updatedAt: Date.now() });
     await transition(ctx, attempt._id, "dispatch_started");
+    // The quote TTL releases only unclaimed work. A separate review watchdog
+    // preserves the hold and still accepts a late, measured provider result.
+    await ctx.scheduler.runAfter(60 * 60_000, internal.functions.academic.aiSpend.watchDispatch, { attemptId: attempt._id });
     return attempt.estimatedUnits;
   },
 });
@@ -192,7 +194,7 @@ export const settle = internalMutation({
         const request = JSON.parse(attempt.requestArgs) as { kind: string; args: { outputType?: string; draftMode?: string; sourceIds?: string[] } };
         const outputType = request.kind === "lesson" ? request.args.outputType : request.args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft";
         if (outputType !== "lesson_plan" && outputType !== "student_note" && outputType !== "assignment" && outputType !== "cbt_draft" && outputType !== "question_bank_draft") throw new ConvexError("Bound output type invalid");
-        await ctx.db.insert("aiRunLogs", {
+        const logId = await ctx.db.insert("aiRunLogs", {
           attemptId: attempt._id, schoolId: attempt.schoolId, actorUserId: user._id,
           actorRole: user.role === "teacher" ? "teacher" : "admin", outputType,
           promptClass: `teacher.${outputType}.generation`, status: args.outcome === "failed" ? "failed" : "running",
@@ -201,6 +203,10 @@ export const settle = internalMutation({
           tokenCompletionCount: args.outputTokens, startedAt: attempt.createdAt,
           finishedAt: args.outcome === "failed" ? Date.now() : undefined, createdAt: Date.now(), updatedAt: Date.now(),
         });
+        if (args.outcome === "succeeded") {
+          const staged = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", attempt._id)).unique();
+          if (staged) await ctx.db.patch(staged._id, { aiRunLogId: logId });
+        }
       }
     }
     await transition(ctx, attempt._id, "settled");
@@ -228,8 +234,11 @@ export async function attachSavedDraft(ctx: MutationCtx, attemptId: Id<"usageOpe
   const staged = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).unique();
   if (!staged) throw new ConvexError("Staged provider result unavailable");
   await ctx.db.delete(staged._id);
-  const logs = await ctx.db.query("aiRunLogs").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).take(2);
-  if (logs.length === 1) await ctx.db.patch(logs[0]._id, { status: "succeeded", finishedAt: Date.now(), updatedAt: Date.now(), ...(target === "lesson" ? { targetArtifactId: resultId as Id<"instructionArtifacts"> } : { targetAssessmentBankId: resultId as Id<"assessmentBanks"> }) });
+  const log = staged.aiRunLogId ? await ctx.db.get(staged.aiRunLogId) : null;
+  if (log) {
+    if (log.attemptId !== attemptId) throw new ConvexError("AI run log association requires review");
+    await ctx.db.patch(log._id, { status: "succeeded", finishedAt: Date.now(), updatedAt: Date.now(), ...(target === "lesson" ? { targetArtifactId: resultId as Id<"instructionArtifacts"> } : { targetAssessmentBankId: resultId as Id<"assessmentBanks"> }) });
+  }
 }
 
 export const uncertain = internalMutation({
@@ -242,6 +251,16 @@ export const uncertain = internalMutation({
       await ctx.db.patch(row._id, { status: "needs_reconciliation", updatedAt: Date.now() });
       await transition(ctx, row._id, "needs_reconciliation");
     }
+  },
+});
+
+export const watchDispatch = internalMutation({
+  args: { attemptId },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.attemptId);
+    if (!row?.requestDigest || row.status !== "dispatch_started") return;
+    await ctx.db.patch(row._id, { status: "needs_reconciliation", updatedAt: Date.now() });
+    await transition(ctx, row._id, "needs_reconciliation");
   },
 });
 
@@ -258,7 +277,6 @@ export const expire = internalMutation({
       await ctx.db.patch(row._id, { status: "cancelled", updatedAt: Date.now() });
       await transition(ctx, row._id, "cancelled");
     }
-    if (row.status === "dispatch_started") { await ctx.db.patch(row._id, { status: "needs_reconciliation", updatedAt: Date.now() }); await transition(ctx, row._id, "needs_reconciliation"); }
   },
 });
 

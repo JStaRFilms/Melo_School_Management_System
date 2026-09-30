@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
-import { api } from "../../../_generated/api";
+import { api, internal } from "../../../_generated/api";
+import { internalMutation } from "../../../_generated/server";
+import { v } from "convex/values";
 import { NoObjectGeneratedError } from "ai";
 import { convexTest } from "convex-test";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -13,8 +15,8 @@ const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**
 const model = "nvidia/nemotron-3-super-120b-a12b:free";
 const result = { object: { title: "Algebra lesson", subject: "Mathematics", level: "JSS 1", topic: "Algebra", sections: [{ sectionId: "content", label: "Content", content: "Worked examples with clear explanations and practice." }], sourceNotes: ["Source used"] }, usage: { inputTokens: 20, outputTokens: 10 }, response: { id: "openrouter-response-1" } };
 beforeEach(() => { mock.generate.mockReset(); mock.generate.mockResolvedValue(result); });
-async function setup() {
-  const t = convexTest(schema, modules);
+async function setup(moduleMap = modules) {
+  const t = convexTest(schema, moduleMap);
   const ids = await t.run(async ctx => {
     const now = Date.now();
     const schoolId = await ctx.db.insert("schools", { name: "School", slug: "ai-school", status: "active", createdAt: now, updatedAt: now });
@@ -69,6 +71,35 @@ it("quotes, confirms, generates a real saved draft through a mocked provider and
   const events = await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5));
   expect(events).toMatchObject([{ unitsDelta: 30 }]);
 });
+it("keeps a claimed hold through quote expiry and stages a slow result after the dispatch watchdog", async () => {
+  const f = await setup();
+  const quoted = await f.quote();
+  const attempt = await f.t.run(ctx => ctx.db.get(quoted.attemptId));
+  if (!attempt?.expiresAt) throw new Error("missing expiry");
+  const clock = Date.now;
+  try {
+    Date.now = () => attempt.expiresAt! - 500;
+    await f.confirm(quoted.attemptId, quoted.estimate);
+    mock.generate.mockImplementationOnce(async () => {
+      Date.now = () => attempt.expiresAt! + 10_000;
+      await f.t.mutation(internal.functions.academic.aiSpend.expire, { attemptId: quoted.attemptId });
+      expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+        .toMatchObject({ status: "dispatch_started" });
+      expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate });
+      await f.t.mutation(internal.functions.academic.aiSpend.watchDispatch, { attemptId: quoted.attemptId });
+      expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+        .toMatchObject({ status: "needs_reconciliation" });
+      return result;
+    });
+    const saved = await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft,
+      { attemptId: quoted.attemptId }) as { artifactId: string };
+    expect(saved.artifactId).toBeTruthy();
+    expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+      .toMatchObject({ status: "settled", actualUnits: 30, resultId: saved.artifactId });
+    expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 30 });
+    expect(mock.generate).toHaveBeenCalledTimes(1);
+  } finally { Date.now = clock; }
+});
 it("generates an assessment with effective settings, binds profile edits and settles the saved bank", async () => {
   const f = await setup();
   const settings = { profileId: f.assessmentProfileId, questionStyle: "balanced", totalQuestions: 1,
@@ -93,6 +124,54 @@ it("generates an assessment with effective settings, binds profile edits and set
   await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft, { attemptId: second.attemptId })).rejects.toThrow("changed");
   expect(mock.generate).toHaveBeenCalledTimes(1);
 });
+for (const editTiming of ["during_provider", "before_recovery"] as const) {
+  it(`keeps newer manual assessment edits when they occur ${editTiming}`, async () => {
+    const f = await setup();
+    const settings = { profileId: f.assessmentProfileId, questionStyle: "balanced" as const, totalQuestions: 1,
+      questionMix: { multiple_choice: 0, short_answer: 1, essay: 0, true_false: 0, fill_in_the_blank: 0 }, allowTeacherOverrides: true };
+    const baseSave = { bankId: null as Id<"assessmentBanks"> | null, draftMode: "practice_quiz" as const, title: "Working bank",
+      sourceIds: [f.sourceId], sourceSelectionSnapshot: "manual", effectiveGenerationSettings: settings,
+      subjectId: f.subjectId, level: "JSS 1", topicLabel: "Algebra", items: [
+        { questionType: "short_answer" as const, difficulty: "easy" as const, promptText: "Initial question",
+          answerText: "Initial answer", explanationText: "Initial explanation", marks: 1, tags: ["algebra"] }],
+    };
+    const baseline = await f.teacher.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft, baseSave);
+    const request = { draftMode: "practice_quiz" as const, sourceIds: [f.sourceId], targetTopicLabel: "Algebra", effectiveGenerationSettings: settings };
+    const quoted = await f.teacher.action(api.functions.academic.documentGeneration.quoteTeacherAssessmentDraft,
+      { ...request, idempotencyKey: `assessment-conflict-${editTiming}` });
+    await f.confirm(quoted.attemptId, quoted.estimate);
+    const newer = { ...baseSave, bankId: baseline.bankId, title: "Newer manual bank", items: [
+      { ...baseSave.items[0], promptText: "Teacher's newer question" }] };
+    const generated = { object: { title: "Staged quiz", subject: "Mathematics", level: "JSS 1", topic: "Algebra",
+      blueprint: "One question", questions: [{ number: 1, prompt: "AI question", answer: "3",
+        explanation: "Subtract 2", difficulty: "easy", marks: 2, tags: ["algebra"] }],
+      answerKeyNotes: "Check working", sourceNotes: ["Source"] },
+      usage: { inputTokens: 40, outputTokens: 50 }, response: { id: `assessment-conflict-${editTiming}` } };
+    mock.generate.mockImplementationOnce(async () => {
+      if (editTiming === "during_provider") await f.teacher.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft, newer);
+      else await f.t.run(ctx => ctx.db.patch(f.subjectId, { isArchived: true }));
+      return generated;
+    });
+    await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft,
+      { attemptId: quoted.attemptId })).rejects.toThrow();
+    if (editTiming === "before_recovery") {
+      await f.t.run(ctx => ctx.db.patch(f.subjectId, { isArchived: false }));
+      await f.teacher.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft, newer);
+    }
+    await expect(f.teacher.action(api.functions.academic.documentGeneration.recoverTeacherGenerationDraft,
+      { attemptId: quoted.attemptId })).rejects.toThrow("Assessment draft changed");
+    expect(await f.t.run(ctx => ctx.db.get(baseline.bankId))).toMatchObject({ title: "Newer manual bank", draftRevision: 2 });
+    const items = await f.t.run(ctx => ctx.db.query("assessmentBankItems")
+      .withIndex("by_school_and_bank", q => q.eq("schoolId", f.schoolId).eq("bankId", baseline.bankId)).take(5));
+    expect(items).toHaveLength(1);
+    expect(items[0].promptText).toBe("Teacher's newer question");
+    expect(await f.t.run(ctx => ctx.db.query("aiGenerationResults")
+      .withIndex("by_attempt", q => q.eq("attemptId", quoted.attemptId)).unique())).not.toBeNull();
+    expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+      .toMatchObject({ status: "settled", actualUnits: 90, resultId: null });
+    expect(mock.generate).toHaveBeenCalledTimes(1);
+  });
+}
 it("denies unauthorized requests and insufficient allowance before a provider call", async () => {
   const f = await setup();
   await expect(f.other.action(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft, { ...f.request, idempotencyKey: "foreign-request" })).rejects.toThrow();
@@ -173,6 +252,31 @@ it("settles complete SDK NoObject usage from a thrown response and never replays
   const attempt = await f.t.run(ctx => ctx.db.get(quoted.attemptId));
   expect(attempt?.evidence).toContain("sdk:no-object:provider:sdk-failed-1");
   await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId })).rejects.toThrow("never replay");
+  expect(mock.generate).toHaveBeenCalledTimes(1);
+});
+it("reports staging failure safely even if the uncertainty transition also fails", async () => {
+  const key = "./functions/academic/aiSpend.ts";
+  const override = { ...modules, [key]: async () => ({
+    ...await (modules[key] as () => Promise<object>)(),
+    stage: internalMutation({
+      args: { attemptId: v.id("usageOperationAttempts"), payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string() },
+      handler: async () => { throw new Error("raw private generated content: secret"); },
+    }),
+    uncertain: internalMutation({
+      args: { attemptId: v.id("usageOperationAttempts") },
+      handler: async () => { throw new Error("second private error"); },
+    }),
+  }) };
+  const f = await setup(override);
+  const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+  const failure = await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft,
+    { attemptId: quoted.attemptId }).then(() => null, error => error);
+  expect(String(failure)).toContain("Measured provider result could not be staged or marked for review");
+  expect(String(failure)).not.toContain("raw private generated content");
+  expect(String(failure)).not.toContain("second private error");
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+    .toMatchObject({ status: "dispatch_started", resultId: null });
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate, consumedUnits: 0 });
   expect(mock.generate).toHaveBeenCalledTimes(1);
 });
 it("holds a branded SDK error when its usage is partial", async () => {

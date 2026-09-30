@@ -1178,11 +1178,12 @@
     "ownership": "indirect",
     "reason": "Private staged content belongs to an attempt; tenant purge removes it by indexed attempt before deleting the attempt",
     "references": [
+      { "path": "aiRunLogId", "target": "aiRunLogs", "optional": true },
       { "path": "attemptId", "target": "usageOperationAttempts", "optional": false }
     ],
     "bySchool": false,
     "storage": {},
-    "shape": "428:36061071:112959ed"
+    "shape": "509:8bd0fa0f:1d7bdab"
   },
   "aiRunLogs": {
     "ownership": "direct-indexed",
@@ -1299,7 +1300,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "3675:c72f717f:108a46b3"
+    "shape": "3739:cd91f830:7a45dc5c"
   },
   "assessmentEditingPolicies": {
     "ownership": "direct-indexed",
