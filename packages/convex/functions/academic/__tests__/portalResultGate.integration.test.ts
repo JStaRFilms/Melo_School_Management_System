@@ -61,6 +61,60 @@ async function fixture() {
 }
 
 describe("family graded release gate", () => {
+  it("dispatches by family: a narrative period cannot borrow a frozen graded release", async () => {
+    const f = await fixture();
+    await f.certify();
+    await f.release();
+    expect((await f.workspace()).selectedReportCard).not.toBeNull();
+    // Simulate legacy conflicting configuration. A narrative mode must never
+    // expose the graded frozen copy even if its inclusion remains in storage.
+    await f.t.run(ctx => ctx.db.insert("classSessionReportModes", {
+      schoolId: f.ids.schoolId, classId: f.ids.classId, sessionId: f.ids.sessionId,
+      mode: "narrative", updatedAt: 2, updatedBy: f.ids.adminId,
+    }));
+    const hidden = await f.workspace();
+    expect(hidden).toMatchObject({ selectedReportMode: "narrative", selectedResultState: "withheld",
+      selectedReportCard: null, selectedNarrativeReport: null, history: [] });
+    expect(JSON.stringify(hidden)).not.toContain("totalScore");
+  });
+
+  it("returns only an issued narrative snapshot after promotion, with numeric evidence still private", async () => {
+    const f = await fixture();
+    await f.t.run(async ctx => {
+      await ctx.db.insert("classSessionReportModes", { schoolId: f.ids.schoolId, classId: f.ids.classId,
+        sessionId: f.ids.sessionId, mode: "narrative", updatedAt: 2, updatedBy: f.ids.adminId });
+      await ctx.db.insert("assessmentRecords", { schoolId: f.ids.schoolId, studentId: f.ids.studentId,
+        classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.recentTermId,
+        subjectId: (await ctx.db.query("subjects").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).first())!._id,
+        ca1: 10, ca2: 10, ca3: 10, examRawScore: 40, examScaledScore: 40,
+        total: 70, gradeLetter: "A", remark: "Private numeric", examInputModeSnapshot: "raw_70",
+        examRawMaxSnapshot: 70, status: "draft", enteredBy: f.ids.adminId, updatedBy: f.ids.adminId,
+        createdAt: 1, updatedAt: 1 });
+    });
+    const args = { studentId: f.ids.studentId, sessionId: f.ids.sessionId, termId: f.ids.recentTermId };
+    const unpublished = await f.parent.query(api.functions.portal.getWorkspaceData, args);
+    expect(unpublished).toMatchObject({ selectedReportMode: "narrative", selectedReportCard: null,
+      selectedNarrativeReport: null, history: [] });
+    await f.t.run(async ctx => {
+      const subject = (await ctx.db.query("subjects").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).first())!;
+      await ctx.db.insert("issuedNarrativeReports", { schoolId: f.ids.schoolId, studentId: f.ids.studentId,
+        classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.recentTermId,
+        issuedAt: 3, issuedBy: f.ids.adminId,
+        snapshot: { schoolName: "School", studentName: "Student", admissionNumber: "STU-1",
+          className: "JSS 1", sessionName: "2025/26", termName: "Second",
+          subjects: [{ subjectId: subject._id, name: "Math", order: 0, comment: "Issued comment" }] } });
+      await ctx.db.patch(f.ids.studentId, { classId: f.ids.nextClassId });
+      await ctx.db.insert("studentPromotions", { schoolId: f.ids.schoolId, studentId: f.ids.studentId,
+        fromClassId: f.ids.classId, toClassId: f.ids.nextClassId, fromSessionId: f.ids.sessionId,
+        toSessionId: f.ids.sessionId, subjectEnrollmentMode: "none", subjectEnrollmentCount: 0,
+        batchKey: "joint", createdAt: 3, createdBy: f.ids.adminId });
+    });
+    const issued = await f.parent.query(api.functions.portal.getWorkspaceData, args);
+    expect(issued.selectedNarrativeReport?.snapshot.subjects[0].comment).toBe("Issued comment");
+    expect(issued.selectedReportCard).toBeNull();
+    expect(issued.history).toMatchObject([{ mode: "narrative", issued: true, classId: f.ids.classId }]);
+    expect(JSON.stringify(issued)).not.toContain("Private numeric");
+  });
   it("shows upcoming school events beyond 256 past events without leaking another school's events", async () => {
     const f = await fixture();
     const now = Date.now();

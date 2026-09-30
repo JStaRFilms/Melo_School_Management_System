@@ -2001,6 +2001,58 @@ export default defineSchema({
     .index("by_school_and_student_and_released_at", ["schoolId", "studentId", "releasedAt"])
     .index("by_school", ["schoolId"]),
 
+  classSessionReportModes: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    mode: v.literal("narrative"),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_classId_and_sessionId", ["classId", "sessionId"])
+    .index("by_school", ["schoolId"])
+    .index("by_schoolId_and_sessionId", ["schoolId", "sessionId"]),
+
+  narrativeReportDrafts: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    subjectId: v.id("subjects"),
+    comment: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_studentId_and_sessionId_and_termId_and_classId_and_subjectId", ["studentId", "sessionId", "termId", "classId", "subjectId"])
+    .index("by_classId_and_sessionId_and_termId_and_subjectId", ["classId", "sessionId", "termId", "subjectId"])
+    .index("by_school", ["schoolId"]),
+
+  issuedNarrativeReports: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    issuedAt: v.number(),
+    issuedBy: v.id("users"),
+    snapshot: v.object({
+      schoolName: v.string(),
+      primaryColor: v.optional(v.string()),
+      accentColor: v.optional(v.string()),
+      studentName: v.string(),
+      admissionNumber: v.string(),
+      className: v.string(),
+      sessionName: v.string(),
+      termName: v.string(),
+      subjects: v.array(v.object({ subjectId: v.id("subjects"), name: v.string(), order: v.number(), comment: v.string() })),
+    }),
+  })
+    .index("by_studentId_and_sessionId_and_termId", ["studentId", "sessionId", "termId"])
+    .index("by_classId_and_sessionId", ["classId", "sessionId"])
+    .index("by_classId_and_sessionId_and_termId", ["classId", "sessionId", "termId"])
+    .index("by_school", ["schoolId"]),
+
   issuedReportCards: defineTable({
     schoolId: v.id("schools"),
     studentId: v.id("students"),
@@ -2015,7 +2067,10 @@ export default defineSchema({
   })
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
     .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
+    // This index is queried by graded class release; activation follows the #90 backfill.
     .index("by_class_and_session_and_term", ["classId", "sessionId", "termId"])
+    // Separate narrative mode-lock backfill. No query uses this index yet.
+    .index("by_classId_and_sessionId", { fields: ["classId", "sessionId"], staged: true })
     .index("by_school_logo_storage", ["schoolLogoStorageId"])
     .index("by_student_photo_storage", ["studentPhotoStorageId"])
     .index("by_school", ["schoolId"])

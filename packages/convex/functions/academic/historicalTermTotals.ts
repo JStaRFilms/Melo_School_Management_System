@@ -117,6 +117,9 @@ export const saveHistoricalTermTotalsBulk = mutation({
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) {
       throw new ConvexError("Class not found");
     }
+    const narrativeMode = await ctx.db.query("classSessionReportModes")
+      .withIndex("by_classId_and_sessionId", q => q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (narrativeMode) throw new ConvexError("This class uses narrative reports for this session; numeric totals cannot be saved");
 
     const subjectIds = Array.from(new Set(args.entries.map((entry) => String(entry.subjectId))));
     const studentIds = Array.from(new Set(args.entries.map((entry) => String(entry.studentId))));

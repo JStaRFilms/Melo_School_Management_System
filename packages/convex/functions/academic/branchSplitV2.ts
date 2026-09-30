@@ -51,6 +51,7 @@ export const DUPLICATION_TIERS: string[][] = [
   ],
   // Tier 3: Depends on Tier 2
   [
+    "classSessionReportModes",
     "studentSubjectSelections",
     "studentPromotions",
     "studentGraduations",
@@ -202,6 +203,9 @@ export const SCHOOL_PURGE_TABLES = [
   "knowledgeMaterials",
   "knowledgeTopics",
   "rateLimitCounters",
+  "issuedNarrativeReports",
+  "narrativeReportDrafts",
+  "classSessionReportModes",
   "studentSubjectAggregationOptOuts",
   "studentSubjectSelections",
   "studentPromotions",
@@ -350,6 +354,11 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
     { field: "classId", targetTable: "classes" },
     { field: "sessionId", targetTable: "academicSessions" },
     { field: "formTeacherId", targetTable: "users" },
+  ],
+  classSessionReportModes: [
+    { field: "classId", targetTable: "classes" },
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "updatedBy", targetTable: "users" },
   ],
   assessmentEditingPolicies: [
     { field: "sessionId", targetTable: "academicSessions" },
@@ -948,6 +957,18 @@ export const cascadeDeleteWrongBranchData = internalMutation({
     // Process the first class to delete
     const cls = classesToDelete[0];
     const classId = cls._id;
+
+    // Drain narrative children first, before deleting a class or its users.
+    // A retry processes the same first class until all three indexed ranges are empty.
+    const [modes, drafts, issued] = await Promise.all([
+      ctx.db.query("classSessionReportModes").withIndex("by_classId_and_sessionId", q => q.eq("classId", classId)).take(25),
+      ctx.db.query("narrativeReportDrafts").withIndex("by_classId_and_sessionId_and_termId_and_subjectId", q => q.eq("classId", classId)).take(25),
+      ctx.db.query("issuedNarrativeReports").withIndex("by_classId_and_sessionId", q => q.eq("classId", classId)).take(25),
+    ]);
+    if (modes.length || drafts.length || issued.length) {
+      for (const row of [...drafts, ...issued, ...modes]) await ctx.db.delete(row._id);
+      return { done: false, target, remainingClasses: classesToDelete.length };
+    }
 
     // 1. Delete class-level attendance and report card extras (indexed by classId)
     const attClassVals = await ctx.db

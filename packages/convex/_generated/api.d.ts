@@ -98,6 +98,8 @@ import type * as functions_academic_migrationWorkspace from "../functions/academ
 import type * as functions_academic_portalIdentity from "../functions/academic/portalIdentity.js";
 import type * as functions_academic_rbac from "../functions/academic/rbac.js";
 import type * as functions_academic_rbacMigration from "../functions/academic/rbacMigration.js";
+import type * as functions_academic_narrativeEntrySheet from "../functions/academic/narrativeEntrySheet.js";
+import type * as functions_academic_narrativeReports from "../functions/academic/narrativeReports.js";
 import type * as functions_academic_reportCardExtras from "../functions/academic/reportCardExtras.js";
 import type * as functions_academic_reportCardExtrasModel from "../functions/academic/reportCardExtrasModel.js";
 import type * as functions_academic_reportCardManualAdjustments from "../functions/academic/reportCardManualAdjustments.js";
@@ -267,6 +269,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/portalIdentity": typeof functions_academic_portalIdentity;
   "functions/academic/rbac": typeof functions_academic_rbac;
   "functions/academic/rbacMigration": typeof functions_academic_rbacMigration;
+  "functions/academic/narrativeEntrySheet": typeof functions_academic_narrativeEntrySheet;
+  "functions/academic/narrativeReports": typeof functions_academic_narrativeReports;
   "functions/academic/reportCardExtras": typeof functions_academic_reportCardExtras;
   "functions/academic/reportCardExtrasModel": typeof functions_academic_reportCardExtrasModel;
   "functions/academic/reportCardManualAdjustments": typeof functions_academic_reportCardManualAdjustments;

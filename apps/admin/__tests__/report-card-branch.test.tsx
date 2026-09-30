@@ -44,6 +44,7 @@ beforeEach(() => {
   mocks.branch = "branch-b";
   mocks.params = new URLSearchParams("schoolId=branch-b&studentId=student-b&classId=class-b&sessionId=session-b&termId=term-b");
   mocks.query.mockImplementation((ref, args) => args === "skip" ? undefined :
+    String(ref).includes("getClassMode") ? "graded" :
     String(ref).includes("getClassReportCards") || String(ref).includes("getStudentsForReportCardBatch") ? [] : sheet);
 });
 

@@ -1856,7 +1856,7 @@ describe("U6 Portal canonical identity continuity", () => {
   it("opens the current destination with the same canonical login and keeps source history explicitly selectable", async () => {
     const t = convexTest(schema, modules);
     const h = await setupTestHarness(t);
-    await t.run(async (ctx) => {
+    const historical = await t.run(async (ctx) => {
       const sessionId = await ctx.db.insert("academicSessions", {
         schoolId: h.schoolA,
         name: "2025/26 source history",
@@ -1866,7 +1866,7 @@ describe("U6 Portal canonical identity continuity", () => {
         createdAt: 1,
         updatedAt: 1,
       });
-      await ctx.db.insert("academicTerms", {
+      const termId = await ctx.db.insert("academicTerms", {
         schoolId: h.schoolA,
         sessionId,
         name: "Source historical term",
@@ -1876,6 +1876,7 @@ describe("U6 Portal canonical identity continuity", () => {
         createdAt: 1,
         updatedAt: 1,
       });
+      return { sessionId, termId };
     });
     const { accepted, acceptanceArgs, destination } = await completeTransfer(
       t,
@@ -1940,6 +1941,19 @@ describe("U6 Portal canonical identity continuity", () => {
     expect(sourceHistory.history).toHaveLength(0);
     expect(sourceHistory.selectedReportCard).toBeNull();
     expect(sourceHistory.students).toHaveLength(2);
+    await t.run(async ctx => {
+      const subjectId = await ctx.db.insert("subjects", { schoolId: h.schoolA, name: "Art", code: "ART", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("classSubjects", { schoolId: h.schoolA, classId: h.classAId, subjectId, createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("classSessionReportModes", { schoolId: h.schoolA, classId: h.classAId,
+        sessionId: historical.sessionId, mode: "narrative", updatedAt: 1, updatedBy: h.adminAUserId });
+      await ctx.db.insert("narrativeReportDrafts", { schoolId: h.schoolA, classId: h.classAId,
+        sessionId: historical.sessionId, termId: historical.termId, subjectId, studentId: h.studentId,
+        comment: "Private transfer draft", updatedAt: 1, updatedBy: h.adminAUserId });
+    });
+    const narrativeHistory = await studentLogin.query(portalApi.getWorkspaceData, { studentId: h.studentId });
+    expect(narrativeHistory.history).toHaveLength(0);
+    expect(narrativeHistory.selectedNarrativeReport).toBeNull();
+    expect(JSON.stringify(narrativeHistory)).not.toContain("Private transfer draft");
 
     const replay = await destination.mutation(
       acceptDestinationTransferRef,

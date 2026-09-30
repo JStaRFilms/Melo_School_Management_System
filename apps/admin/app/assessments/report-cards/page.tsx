@@ -19,6 +19,8 @@ import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
 import { ReportCardLauncher } from "./components/ReportCardLauncher";
 import { useAuth } from "@/AuthProvider";
 import type { Id } from "../../../../../packages/convex/_generated/dataModel";
+import { NarrativeReview } from "./components/NarrativeReview";
+import { NarrativeClassPrint } from "./components/NarrativeClassPrint";
 
 export default function AdminReportCardPage() {
   return (
@@ -157,30 +159,37 @@ function AdminReportCardPageContent({ schoolId, resetTuple }: { schoolId: Id<"sc
     touchStartDistanceRef.current = null;
   };
 
+  const inferred = useQuery("functions/academic/narrativeReports:getStaffPeriodReportMode" as never,
+    !clearingTuple && !wrongBranch && !classIdParam && studentId && sessionId && termId
+      ? { studentId, sessionId, termId } as never : "skip") as { classId: string; mode: "graded" | "narrative" } | null | undefined;
+  const selectedClassId = classIdParam ?? inferred?.classId ?? null;
+  const explicitMode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    !clearingTuple && !wrongBranch && classIdParam && sessionId ? { classId: classIdParam, sessionId } as never : "skip") as "graded" | "narrative" | undefined;
+  const mode = classIdParam ? explicitMode : inferred?.mode;
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    !clearingTuple && !wrongBranch && studentId && sessionId && termId
+    !clearingTuple && !wrongBranch && studentId && sessionId && termId && selectedClassId && mode === "graded"
       ? ({
           schoolId,
           studentId,
           sessionId,
           termId,
-          ...(classIdParam ? { classId: classIdParam } : {}),
+          classId: selectedClassId,
         } as never)
       : ("skip" as never)
   ) as ReportCardSheetData | undefined | null;
-  const resolvedClassId = classIdParam ?? (reportCard && typeof reportCard === 'object' ? reportCard.classId : null) ?? null;
+  const resolvedClassId = selectedClassId;
 
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
-    !clearingTuple && !wrongBranch && sessionId && termId && resolvedClassId
+    !clearingTuple && !wrongBranch && mode === "graded" && sessionId && termId && resolvedClassId
       ? ({ schoolId, classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardBatchStudent[] | undefined;
 
   const classReportCards = useQuery(
     "functions/academic/reportCards:getClassReportCards" as never,
-    !clearingTuple && !wrongBranch && isPrintClassMode && sessionId && termId && resolvedClassId
+    !clearingTuple && !wrongBranch && isPrintClassMode && mode === "graded" && sessionId && termId && resolvedClassId
       ? ({ schoolId, classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
@@ -233,10 +242,20 @@ function AdminReportCardPageContent({ schoolId, resetTuple }: { schoolId: Id<"sc
     </div>
   );
 
+  // Narrative class printing uses issued snapshots, not a graded roster.
+  if (isPrintClassMode && classIdParam && sessionId && termId) {
+    if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+    if (mode === "narrative") return <NarrativeClassPrint key={`${schoolId}-${classIdParam}-${sessionId}-${termId}`} classId={classIdParam} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
+  }
+
   if (!studentId || !sessionId || !termId) {
     return <ReportCardLauncher schoolId={schoolId} />;
   }
 
+  if (!classIdParam && inferred === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (!selectedClassId) return <div className="mx-auto max-w-3xl p-6 text-slate-700">No verified class was found for this period. <Link href="/assessments/report-cards" className="underline">Choose a student and class</Link>.</div>;
+  if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (mode === "narrative") return <NarrativeReview key={`${schoolId}-${studentId}-${sessionId}-${termId}-${selectedClassId}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={selectedClassId} />;
   if (reportCard === undefined) {
     return <ReportCardPageFallback message="Loading student report card..." />;
   }

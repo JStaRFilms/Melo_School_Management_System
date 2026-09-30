@@ -32,7 +32,7 @@ const child = {
 };
 const older = {
   sessionId: "older", termId: "older-term", sessionName: "2025", termName: "First term",
-  classId: "class", className: "Year 1", generatedAt: 1, totalSubjects: 2,
+  classId: "class", className: "Year 1", mode: "graded" as const, issued: true, generatedAt: 1, totalSubjects: 2,
   recordedSubjects: 2, pendingSubjects: 0, averageScore: 83, totalScore: 166,
   resultCalculationMode: "standalone" as const, href: "/report-cards", note: null,
 };
@@ -43,7 +43,7 @@ function workspace(overrides: Partial<PortalWorkspaceData> = {}): PortalWorkspac
     students: [child], selectedStudentId: "child", selectedStudent: child,
     selectedSessionId: "current", selectedTermId: "current-term",
     activeSession: { id: "current", name: "2026" }, activeTerm: { id: "current-term", name: "Second term" },
-    selectedResultState: "withheld", selectedReportCard: null, history: [older],
+    selectedResultState: "withheld", selectedReportMode: "graded", selectedReportNeedsReview: false, selectedNarrativeReport: null, selectedReportCard: null, history: [older],
     notifications: [{ id: "event", title: "School event", body: "Sports day", tone: "info", href: null }],
     ...overrides,
   };

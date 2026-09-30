@@ -1,5 +1,5 @@
 import { getUnboundStorageUrl, isStorageOwnershipDenied } from "./academic/assetStorageBoundary";
-import { ConvexError, v } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
 import { isOnlineCheckoutOffered } from "./foundation/billingGate";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -9,6 +9,8 @@ import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-
 import { getPortalStudentAccess, resolvePortalMemberships, resolvePortalStudentContext, type PortalAuth } from "./academic/portalIdentity";
 import { reportCardResultValidator } from "./academic/reportCards";
 import { getReleasedGradedReport } from "./academic/resultPublication";
+import { resolveAuthorizedPortalReportSelection } from "./academic/narrativeReports";
+import schema from "../schema";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { resolveDomainSetting } from "./academic/groupSettings";
 
@@ -28,7 +30,12 @@ const portalStudentValidator = v.object({
   enrollmentState: v.union(v.literal("active"), v.literal("historical")),
 });
 
-const portalHistoryItemValidator = v.object({
+const portalNarrativeReportValidator = v.object({
+  snapshot: schema.tables.issuedNarrativeReports.validator.fields.snapshot,
+  issuedAt: v.number(),
+});
+
+const historyContext = {
   sessionId: v.id("academicSessions"),
   termId: v.id("academicTerms"),
   sessionName: v.string(),
@@ -36,6 +43,13 @@ const portalHistoryItemValidator = v.object({
   classId: v.id("classes"),
   className: v.string(),
   generatedAt: v.number(),
+  href: v.string(),
+  note: v.union(v.string(), v.null()),
+};
+const portalHistoryItemValidator = v.union(v.object({
+  ...historyContext,
+  mode: v.literal("graded"),
+  issued: v.boolean(),
   totalSubjects: v.number(),
   recordedSubjects: v.number(),
   pendingSubjects: v.number(),
@@ -45,9 +59,21 @@ const portalHistoryItemValidator = v.object({
     v.literal("standalone"),
     v.literal("cumulative_annual")
   ),
+}), v.object({
+  ...historyContext,
+  mode: v.literal("narrative"),
+  issued: v.boolean(),
+}), v.object({
+  mode: v.literal("needs_review"),
+  issued: v.literal(false),
+  sessionId: v.id("academicSessions"),
+  termId: v.id("academicTerms"),
+  sessionName: v.string(),
+  termName: v.string(),
+  generatedAt: v.number(),
   href: v.string(),
-  note: v.union(v.string(), v.null()),
-});
+  note: v.string(),
+}));
 
 const portalNotificationValidator = v.object({
   id: v.string(),
@@ -179,6 +205,9 @@ export const portalWorkspaceDataValidator = v.object({
   ),
   selectedReportCard: v.union(v.null(), reportCardResultValidator),
   selectedResultState: v.union(v.literal("released"), v.literal("withheld"), v.literal("no_eligible_record")),
+  selectedReportMode: v.union(v.null(), v.literal("graded"), v.literal("narrative")),
+  selectedReportNeedsReview: v.boolean(),
+  selectedNarrativeReport: v.union(v.null(), portalNarrativeReportValidator),
   history: v.array(portalHistoryItemValidator),
   notifications: v.array(portalNotificationValidator),
 });
@@ -344,6 +373,18 @@ async function hasReleasedTupleWithoutEligibleRecord(
   return !klass.isArchived && student.createdAt > release.releasedAt;
 }
 
+// Only the precise enrollment ambiguity is safe to present as a review state.
+// Other failures keep the existing fail-closed behavior and reveal no report.
+async function resolvePortalSelectionForWorkspace(ctx: QueryCtx, args: {
+  studentId: Id<"students">; sessionId: Id<"academicSessions">; termId: Id<"academicTerms">;
+}) {
+  try {
+    return { selection: await resolveAuthorizedPortalReportSelection(ctx, args), needsReview: false };
+  } catch (error) {
+    return { selection: null, needsReview: error instanceof ConvexError && error.data === "Enrollment history requires review" };
+  }
+}
+
 export const getWorkspaceData = query({
   args: {
     studentId: v.optional(v.union(v.id("students"), v.null())),
@@ -479,72 +520,77 @@ export const getWorkspaceData = query({
       (student): student is NonNullable<typeof student> => student !== null
     );
 
-    const selectedReportCard = selectedStudent && selectedSessionId && selectedTermId
+    // The reporting family is selected before reading a graded payload. A
+    // narrative period without an issued snapshot cannot borrow a graded card.
+    const selectedResolution = selectedStudent && selectedSessionId && selectedTermId
+      ? await resolvePortalSelectionForWorkspace(ctx, {
+          studentId: selectedStudent._id, sessionId: selectedSessionId, termId: selectedTermId,
+        })
+      : { selection: null, needsReview: false };
+    const selectedSelection = selectedResolution.selection;
+    const selectedReportMode = selectedSelection?.mode ?? null;
+    const selectedNarrativeReport = selectedSelection?.mode === "narrative" && selectedSelection.issued
+      ? { snapshot: selectedSelection.issued.snapshot, issuedAt: selectedSelection.issued.issuedAt }
+      : null;
+    const selectedReportCard = selectedStudent && selectedSessionId && selectedTermId && selectedReportMode === "graded"
       ? await releasedPortalReport(ctx, schoolId, selectedStudent._id, selectedSessionId, selectedTermId)
       : null;
-    const noEligibleRecord = !selectedReportCard && selectedStudent && selectedSession && selectedTerm
+    const noEligibleRecord = selectedReportMode === "graded" && !selectedReportCard && selectedStudent && selectedSession && selectedTerm
       ? await hasReleasedTupleWithoutEligibleRecord(ctx, schoolId, selectedStudent, selectedSession, selectedTerm)
       : false;
-    const selectedResultState = selectedReportCard ? "released" as const
+    const selectedResultState = selectedReportCard || selectedNarrativeReport ? "released" as const
       : noEligibleRecord || !selectedStudent || !selectedSessionId || !selectedTermId
         ? "no_eligible_record" as const : "withheld" as const;
 
     const historyLimit = Number.isFinite(args.historyLimit) ? Math.max(1, Math.min(Math.floor(args.historyLimit!), 12)) : 4;
-    // Filter for released rows first; a run of withheld recent terms must not
-    // displace an older published result.
-    const history = [] as Array<{
-      sessionId: Id<"academicSessions">;
-      termId: Id<"academicTerms">;
-      sessionName: string;
-      termName: string;
-      classId: Id<"classes">;
-      className: string;
-      generatedAt: number;
-      totalSubjects: number;
-      recordedSubjects: number;
-      pendingSubjects: number;
-      averageScore: number | null;
-      totalScore: number;
-      resultCalculationMode: "standalone" | "cumulative_annual";
-      href: string;
-      note: string | null;
-    }>;
-
+    // Scan a bounded window of issued narrative snapshots and released graded
+    // inclusions. Neither live scores nor unreleased graded issues enter history.
+    const history: Array<Infer<typeof portalHistoryItemValidator>> = [];
     if (selectedStudent) {
-      // This budget only affects the sidebar. The selected report was resolved
-      // above by exact tuple and must never depend on how much history exists.
-      const inclusions = await ctx.db.query("classResultPublicationStudents")
-        .withIndex("by_school_and_student_and_released_at", q => q
-          .eq("schoolId", schoolId).eq("studentId", selectedStudent._id))
-        .order("desc").take(48);
-      for (const inclusion of inclusions) {
+      const [inclusions, narrativeIssues] = await Promise.all([
+        ctx.db.query("classResultPublicationStudents")
+          .withIndex("by_school_and_student_and_released_at", q => q
+            .eq("schoolId", schoolId).eq("studentId", selectedStudent._id))
+          .order("desc").take(48),
+        ctx.db.query("issuedNarrativeReports")
+          .withIndex("by_studentId_and_sessionId_and_termId", q => q.eq("studentId", selectedStudent._id))
+          .order("desc").take(48),
+      ]);
+      const tuples = new Map<string, { sessionId: Id<"academicSessions">; termId: Id<"academicTerms">; at: number }>();
+      for (const row of inclusions) tuples.set(`${row.sessionId}:${row.termId}`, { sessionId: row.sessionId, termId: row.termId, at: row.releasedAt });
+      for (const row of narrativeIssues) if (row.schoolId === schoolId) {
+        const key = `${row.sessionId}:${row.termId}`;
+        if (!tuples.has(key)) tuples.set(key, { sessionId: row.sessionId, termId: row.termId, at: row.issuedAt });
+      }
+      for (const tuple of [...tuples.values()].sort((a, b) => b.at - a.at)) {
         if (history.length >= historyLimit) break;
-        const reportCard = selectedSessionId === inclusion.sessionId && selectedTermId === inclusion.termId
-          ? selectedReportCard
-          : await releasedPortalReport(ctx, schoolId, selectedStudent._id, inclusion.sessionId, inclusion.termId);
-        if (!reportCard || reportCard.classId !== inclusion.classId ||
-            history.some(row => row.sessionId === inclusion.sessionId && row.termId === inclusion.termId)) continue;
-        history.push({
-          sessionId: inclusion.sessionId,
-          termId: inclusion.termId,
-          sessionName: reportCard.sessionName,
-          termName: reportCard.termName,
-          classId: reportCard.classId,
-          className: reportCard.className,
-          generatedAt: reportCard.generatedAt,
-          totalSubjects: reportCard.summary.totalSubjects,
-          recordedSubjects: reportCard.summary.recordedSubjects,
-          pendingSubjects: reportCard.summary.pendingSubjects,
-          averageScore: reportCard.summary.averageScore,
-          totalScore: reportCard.summary.totalScore,
-          resultCalculationMode: reportCard.resultCalculationMode,
-          href: buildPortalHref("/report-cards", {
-            studentId: String(selectedStudent._id),
-            sessionId: String(inclusion.sessionId),
-            termId: String(inclusion.termId),
-          }),
-          note: null,
+        const resolution = await resolvePortalSelectionForWorkspace(ctx, {
+          studentId: selectedStudent._id, sessionId: tuple.sessionId, termId: tuple.termId,
         });
+        const selection = resolution.selection;
+        if (!selection || resolution.needsReview) continue;
+        const href = buildPortalHref("/report-cards", {
+          studentId: String(selectedStudent._id), sessionId: String(tuple.sessionId), termId: String(tuple.termId),
+        });
+        if (selection.mode === "narrative") {
+          if (!selection.issued || selection.issued.schoolId !== schoolId) continue;
+          const snapshot = selection.issued.snapshot;
+          history.push({ mode: "narrative", issued: true, sessionId: tuple.sessionId, termId: tuple.termId,
+            sessionName: snapshot.sessionName, termName: snapshot.termName, classId: selection.classId,
+            className: snapshot.className, generatedAt: selection.issued.issuedAt, href, note: null });
+          continue;
+        }
+        const reportCard = selectedSessionId === tuple.sessionId && selectedTermId === tuple.termId
+          ? selectedReportCard
+          : await releasedPortalReport(ctx, schoolId, selectedStudent._id, tuple.sessionId, tuple.termId);
+        if (!reportCard || reportCard.classId !== selection.classId) continue;
+        history.push({ mode: "graded", issued: true, sessionId: tuple.sessionId, termId: tuple.termId,
+          sessionName: reportCard.sessionName, termName: reportCard.termName,
+          classId: reportCard.classId, className: reportCard.className, generatedAt: reportCard.generatedAt,
+          totalSubjects: reportCard.summary.totalSubjects, recordedSubjects: reportCard.summary.recordedSubjects,
+          pendingSubjects: reportCard.summary.pendingSubjects, averageScore: reportCard.summary.averageScore,
+          totalScore: reportCard.summary.totalScore, resultCalculationMode: reportCard.resultCalculationMode,
+          href, note: null });
       }
     }
 
@@ -671,6 +717,9 @@ export const getWorkspaceData = query({
         : null,
       selectedReportCard,
       selectedResultState,
+      selectedReportMode,
+      selectedReportNeedsReview: selectedResolution.needsReview,
+      selectedNarrativeReport,
       history,
       notifications,
     };
