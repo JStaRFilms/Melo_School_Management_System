@@ -4247,7 +4247,9 @@ export default defineSchema({
     code: v.string(), version: v.number(), entitlement: usageEntitlement,
     startAt: v.number(), endAt: v.number(), status: v.union(v.literal("active"), v.literal("closed")), createdAt: v.number(),
     closedAt: v.optional(v.number()), reconciliationNote: v.optional(v.string()),
-  }).index("by_school", ["schoolId"]),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_status", { fields: ["schoolId", "status"], staged: true })
+    .index("by_school_and_startAt", { fields: ["schoolId", "startAt"], staged: true }),
   usageCycleMeterSnapshots: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType,
     allocatedUnits: v.number(), baseUnits: v.number(), graceUnits: v.number(), topUpUnits: v.number(), exceptionUnits: v.number(), poolUnits: v.number(),
@@ -4288,7 +4290,8 @@ export default defineSchema({
     status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable")),
     actorTokenIdentifier: v.string(), createdAt: v.number(), updatedAt: v.number(),
   }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"])
-    .index("by_school", ["schoolId"]),
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_status_and_updatedAt", { fields: ["schoolId", "status", "updatedAt"], staged: true }),
   usageOperationTransitions: defineTable({
     attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled")), createdAt: v.number(),
   }).index("by_attempt", ["attemptId"]),
