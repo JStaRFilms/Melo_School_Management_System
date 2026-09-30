@@ -11,9 +11,10 @@ import {
 } from "./admissionNumbers";
 import { requireCapability } from "./rbac";
 import { resolveEffectiveAcademicPolicy } from "./settings";
+import { resolveSessionScoringPolicy, assertSessionScoringAvailable } from "./sessionScoring";
 import { resolveEffectiveGradingBands } from "./gradingBands";
 import { getActiveAggregationByUmbrellaSubject } from "./subjectAggregationHelpers";
-import { validateGradingBands, validateScoreRanges, type GradingBand } from "@school/shared/exam-recording";
+import { sessionScoringSnapshotMode, validateGradingBands, validateScoresForPolicy, type GradingBand } from "@school/shared/exam-recording";
 
 const editableStatuses = new Set([
   "draft",
@@ -153,8 +154,9 @@ async function resolveGradeImportEvidence(
     throw new ConvexError(`Grade row #${record.rowNumber} targets a derived aggregate subject`);
   }
 
-  const [policy, resolvedBands] = await Promise.all([
+  const [policy, sessionPolicy, resolvedBands] = await Promise.all([
     resolveEffectiveAcademicPolicy(ctx, schoolId),
+    resolveSessionScoringPolicy(ctx, schoolId, session._id),
     resolveEffectiveGradingBands(ctx, schoolId),
   ]);
   const bands: GradingBand[] = resolvedBands
@@ -170,13 +172,9 @@ async function resolveGradeImportEvidence(
   if (validateGradingBands(bands).length > 0) {
     throw new ConvexError(`Grade row #${record.rowNumber} grading policy evidence is unavailable or invalid`);
   }
-  const scoreErrors = validateScoreRanges(
-    record.parsedData.ca1 ?? 0,
-    record.parsedData.ca2 ?? 0,
-    0,
-    record.parsedData.exam ?? 0,
-    policy.examInputMode,
-  );
+  const importScores = { ca1: record.parsedData.ca1 ?? 0, ca2: record.parsedData.ca2 ?? 0,
+    ca3: 0, examRawScore: record.parsedData.exam ?? 0 };
+  const scoreErrors = validateScoresForPolicy(importScores, sessionPolicy.policy);
   if (scoreErrors.length) {
     throw new ConvexError(`Grade row #${record.rowNumber} has invalid canonical scores: ${scoreErrors.map(error => error.message).join("; ")}`);
   }
@@ -186,12 +184,13 @@ async function resolveGradeImportEvidence(
       mode: policy.governance.mode,
       groupVersion: policy.governance.groupVersion,
       revision: policy.governance.revision,
-      examInputMode: policy.examInputMode,
-      ca1Max: policy.ca1Max,
-      ca2Max: policy.ca2Max,
-      ca3Max: policy.ca3Max,
-      examContributionMax: policy.examContributionMax,
-      examRawMax: policy.examInputMode === "raw40" ? 40 : 60,
+      examInputMode: sessionScoringSnapshotMode(sessionPolicy.policy),
+      ca1Max: sessionPolicy.policy.ca1Max,
+      ca2Max: sessionPolicy.policy.ca2Max,
+      ca3Max: sessionPolicy.policy.ca3Max,
+      examContributionMax: sessionPolicy.policy.examContributionMax,
+      examRawMax: sessionPolicy.policy.examRawMax,
+      ...(sessionPolicy.source === "session" ? { sessionScoringPolicyVersion: sessionPolicy.version } : {}),
     },
     gradingPolicy: {
       version: Math.max(0, ...resolvedBands.map(band => band.version ?? 0)),
@@ -521,6 +520,7 @@ export async function validateReviewedRecord(
       `Grade row #${record.rowNumber} duplicates another reviewed assessment row`,
     );
   }
+  await assertSessionScoringAvailable(ctx, schoolId, session._id);
   const existingAssessment = await ctx.db
     .query("assessmentRecords")
     .withIndex("by_student_sheet", (q) =>

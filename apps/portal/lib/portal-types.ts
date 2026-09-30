@@ -19,7 +19,7 @@ export interface PortalStudentOption {
 }
 
 interface PortalHistoryContext {
-  issued: boolean;
+  issued?: boolean;
   sessionId: string;
   termId: string;
   sessionName: string;
@@ -90,6 +90,7 @@ export interface PortalWorkspaceData {
     name: string;
   } | null;
   selectedReportCard: ReportCardSheetData | null;
+  selectedResultState: "released" | "withheld" | "no_eligible_record";
   selectedReportMode: "graded" | "narrative" | null;
   selectedReportNeedsReview: boolean;
   selectedNarrativeReport: {

@@ -11,21 +11,21 @@ import { getDerivedUmbrellaSubjectIdsForClass } from "./subjectAggregationHelper
 import { assertBranchDoc } from "../foundation/tenantScope";
 
 export const getAdminSessions = query({
-  args: {},
+  args: { schoolId: v.optional(v.id("schools")) },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
-  handler: async (ctx: any) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const sessions = await ctx.db
       .query("academicSessions")
-      .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+      .withIndex("by_school", q => q.eq("schoolId", schoolId))
       .collect();
 
     return sessions
-      .filter((session: any) => !session.isArchived)
-      .sort((a: any, b: any) => b.startDate - a.startDate)
-      .map((session: any) => ({
+      .filter(session => !session.isArchived)
+      .sort((a, b) => b.startDate - a.startDate)
+      .map(session => ({
         id: session._id,
         name: normalizeHumanName(session.name),
       }));
@@ -33,10 +33,10 @@ export const getAdminSessions = query({
 });
 
 export const getTermsBySession = query({
-  args: { sessionId: v.id("academicSessions") },
+  args: { sessionId: v.id("academicSessions"), schoolId: v.optional(v.id("schools")) },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
-  handler: async (ctx: any, args: { sessionId: any }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const session = await ctx.db.get(args.sessionId);
@@ -58,10 +58,10 @@ export const getTermsBySession = query({
 });
 
 export const getAllClasses = query({
-  args: {},
+  args: { schoolId: v.optional(v.id("schools")) },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
-  handler: async (ctx: any) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classes = await ctx.db
@@ -86,10 +86,10 @@ export const getAllClasses = query({
 });
 
 export const getSubjectsByClass = query({
-  args: { classId: v.id("classes") },
+  args: { classId: v.id("classes"), schoolId: v.optional(v.id("schools")) },
   returns: v.array(v.object({ id: v.string(), name: v.string() })),
-  handler: async (ctx: any, args: { classId: any }) => {
-    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: ACADEMIC_CONTEXT_CAPABILITIES });
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: ACADEMIC_CONTEXT_CAPABILITIES });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const classDoc = await ctx.db.get(args.classId);

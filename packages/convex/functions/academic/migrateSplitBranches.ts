@@ -1,6 +1,7 @@
 import { internalMutation, internalQuery } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
+import { assertSessionScoringAvailable } from "./sessionScoring";
 import type { Id } from "../../_generated/dataModel";
 import {
   adjustSchoolEnrollmentCount,
@@ -97,6 +98,12 @@ export const executeSplitMigrationInternal = internalMutation({
     }
 
     const fedrahSchoolId = fedrahSchool._id;
+    // This legacy one-off moves assessments without session-policy remapping.
+    // Refuse to split a school that now has explicit session scoring policies.
+    const explicitPolicy = await ctx.db.query("sessionScoringPolicies")
+      .withIndex("by_school", q => q.eq("schoolId", fedrahSchoolId)).first();
+    if (explicitPolicy)
+      throw new ConvexError("Legacy branch split cannot move session scoring policies. Use the versioned split workflow.");
 
     // 1. Update Fedrah School Metadata & Activate
     await ctx.db.patch(fedrahSchoolId, {
@@ -282,6 +289,7 @@ export const executeSplitMigrationInternal = internalMutation({
         .collect();
 
       for (const a of assessments) {
+        await assertSessionScoringAvailable(ctx, fedrahSchoolId, a.sessionId);
         const nextTermId = termMap.get(String(a.termId)) ?? a.termId;
         await ctx.db.patch(a._id, {
           schoolId: rugaSchoolId,

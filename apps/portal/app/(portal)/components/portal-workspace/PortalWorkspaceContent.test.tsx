@@ -71,9 +71,10 @@ describe("portal report dispatch", () => {
     expect(screen.getByText("Paints carefully.")).toBeTruthy();
     expect(screen.getByText("Print issued report")).toBeTruthy();
     expect(screen.queryByText("Graded sheet")).toBeNull();
-    state.workspace = { ...base, selectedReportMode: "graded", selectedNarrativeReport: null,
-      history: [{ ...base.history[0], mode: "graded", totalSubjects: 1, recordedSubjects: 1, pendingSubjects: 0,
-        averageScore: 80, totalScore: 80, resultCalculationMode: "standalone" }], selectedReportCard: { student: { name: "Ada" } } };
+    state.workspace = { ...base, selectedReportMode: "graded", selectedResultState: "released", selectedNarrativeReport: null,
+      history: [{ ...base.history[0], mode: "graded", issued: true, totalSubjects: 1, recordedSubjects: 1, pendingSubjects: 0,
+        averageScore: 80, totalScore: 80, resultCalculationMode: "standalone" }],
+      selectedReportCard: { classId: "class", sessionName: "2025", termName: "Term 1", student: { _id: "child", name: "Ada" } } };
     view.rerender(<PortalWorkspaceContent mode="report-cards" />);
     expect(screen.getByText("Graded sheet")).toBeTruthy();
     expect(screen.queryByText("Paints carefully.")).toBeNull();

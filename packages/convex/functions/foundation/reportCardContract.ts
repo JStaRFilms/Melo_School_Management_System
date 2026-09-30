@@ -21,6 +21,8 @@ export const reportCardResultValidator = v.object({
     }),
   ),
   certifiedAt: v.optional(v.number()),
+  scoringPolicyWarning: v.optional(v.string()),
+  sessionScoringPolicyVersion: v.optional(v.number()),
   schoolName: v.string(),
   schoolLogoUrl: v.union(v.string(), v.null()),
   schoolAddress: v.optional(v.union(v.string(), v.null())),
@@ -42,6 +44,7 @@ export const reportCardResultValidator = v.object({
     ca2Max: v.number(),
     ca3Max: v.number(),
     examMax: v.number(),
+    examRawMax: v.optional(v.number()),
   }),
   resultCalculationMode: v.union(
     v.literal("standalone"),

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ExamInputMode } from "@school/shared";
+import { scoreRowPolicy, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import { buildReportCardExtrasHref, buildReportCardHref } from "@school/shared";
 import type {
   StudentRosterEntry,
@@ -19,6 +20,9 @@ import { getEffectiveValue, computeDerivedValues } from "@/lib/exam-helpers";
 interface RosterGridRowProps {
   student: StudentRosterEntry;
   examInputMode: ExamInputMode;
+  policy?: SessionScoringPolicy;
+  showScaledColumn?: boolean;
+  showRowLimits?: boolean;
   gradingBands: GradingBandResponse[];
   draftScores: DraftScores;
   validationErrors: ValidationErrors;
@@ -45,6 +49,9 @@ function getInitials(name: string): string {
 export function RosterGridRow({
   student,
   examInputMode,
+  policy,
+  showScaledColumn = false,
+  showRowLimits = false,
   gradingBands,
   draftScores,
   validationErrors,
@@ -54,7 +61,8 @@ export function RosterGridRow({
   isEditable,
   onScoreChange,
 }: RosterGridRowProps) {
-  const examMax = examInputMode === "raw40" ? 40 : 60;
+  const rowPolicy = scoreRowPolicy(examInputMode, policy, student.assessmentRecord);
+  const examMax = rowPolicy.examRawMax;
   const displayStudentName = humanNameFinalStrict(student.studentName);
   const studentErrors = validationErrors.get(student.studentId) ?? {};
 
@@ -92,7 +100,8 @@ export function RosterGridRow({
     ca3,
     examRaw,
     examInputMode,
-    gradingBands
+    gradingBands,
+    rowPolicy
   );
 
   return (
@@ -132,9 +141,11 @@ export function RosterGridRow({
       {/* CA1 */}
       <td>
         <ScoreInput
+          studentName={displayStudentName}
+          showMaxLabel={showRowLimits}
           field="ca1"
           value={ca1}
-          max={20}
+          max={rowPolicy.ca1Max}
           disabled={!isEditable}
           onChange={(v) => onScoreChange(student.studentId, "ca1", v)}
           validationError={studentErrors.ca1 ?? null}
@@ -144,9 +155,11 @@ export function RosterGridRow({
       {/* CA2 */}
       <td>
         <ScoreInput
+          studentName={displayStudentName}
+          showMaxLabel={showRowLimits}
           field="ca2"
           value={ca2}
-          max={20}
+          max={rowPolicy.ca2Max}
           disabled={!isEditable}
           onChange={(v) => onScoreChange(student.studentId, "ca2", v)}
           validationError={studentErrors.ca2 ?? null}
@@ -156,9 +169,11 @@ export function RosterGridRow({
       {/* CA3 */}
       <td>
         <ScoreInput
+          studentName={displayStudentName}
+          showMaxLabel={showRowLimits}
           field="ca3"
           value={ca3}
-          max={20}
+          max={rowPolicy.ca3Max}
           disabled={!isEditable}
           onChange={(v) => onScoreChange(student.studentId, "ca3", v)}
           validationError={studentErrors.ca3 ?? null}
@@ -168,6 +183,8 @@ export function RosterGridRow({
       {/* Exam - exact mockup: bg-amber-50/20 border-amber-200 */}
       <td>
         <ScoreInput
+          studentName={displayStudentName}
+          showMaxLabel={showRowLimits}
           field="examRawScore"
           value={examRaw}
           max={examMax}
@@ -191,6 +208,9 @@ export function RosterGridRow({
         gradeColor={derived.gradeColor}
         remark={derived.remark}
         examInputMode={examInputMode}
+        policy={rowPolicy}
+        showScaledColumn={showScaledColumn}
+        showMaxLabel={showRowLimits}
       />
     </tr>
   );

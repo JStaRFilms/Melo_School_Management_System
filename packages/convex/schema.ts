@@ -24,16 +24,18 @@ import {
 } from "./functions/foundation/contracts";
 
 const assessmentPolicySnapshotValidator = v.object({
-  source: v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override")),
-  mode: v.union(v.literal("legacy"), v.literal("inherit"), v.literal("override")),
-  groupVersion: v.number(),
-  revision: v.number(),
-  examInputMode: v.union(v.literal("raw40"), v.literal("raw60_scaled_to_40")),
+  // Reviewed imports carry provenance; a manual edit retains only numeric row policy.
+  source: v.optional(v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override"))),
+  mode: v.optional(v.union(v.literal("legacy"), v.literal("inherit"), v.literal("override"))),
+  groupVersion: v.optional(v.number()),
+  revision: v.optional(v.number()),
+  examInputMode: v.optional(v.union(v.literal("raw40"), v.literal("raw60_scaled_to_40"), v.literal("custom"))),
   ca1Max: v.number(),
   ca2Max: v.number(),
   ca3Max: v.number(),
   examContributionMax: v.number(),
   examRawMax: v.number(),
+  sessionScoringPolicyVersion: v.optional(v.number()),
 });
 const gradingPolicySnapshotValidator = v.object({
   version: v.number(),
@@ -1934,6 +1936,56 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_active", ["schoolId", "isActive"]),
 
+  sessionScoringPolicies: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    version: v.number(),
+    ca1Max: v.number(),
+    ca2Max: v.number(),
+    ca3Max: v.number(),
+    examRawMax: v.number(),
+    examContributionMax: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_sessionId", ["schoolId", "sessionId"]),
+
+  sessionScoringRegradeJobs: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    phase: v.union(v.literal("scanning"), v.literal("failed_scanning"), v.literal("ready"), v.literal("invalid"), v.literal("regrading"), v.literal("failed_regrading"), v.literal("complete")),
+    policy: v.object({ ca1Max: v.number(), ca2Max: v.number(), ca3Max: v.number(), examRawMax: v.number(), examContributionMax: v.number() }),
+    before: v.object({ ca1Max: v.number(), ca2Max: v.number(), ca3Max: v.number(), examRawMax: v.number(), examContributionMax: v.number() }),
+    expectedVersion: v.number(),
+    gradingBandsJson: v.optional(v.string()),
+    failureReason: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    scanned: v.number(),
+    batchSize: v.number(),
+    invalidCount: v.number(),
+    invalidExamples: v.array(v.object({ recordId: v.id("assessmentRecords"), studentId: v.id("students"), termId: v.id("academicTerms"), classId: v.optional(v.id("classes")), subjectId: v.optional(v.id("subjects")), field: v.string(), message: v.string() })),
+    mixedLegacyCount: v.optional(v.number()),
+    mixedLegacyExamples: v.optional(v.array(v.object({ recordId: v.id("assessmentRecords"), studentId: v.id("students"), termId: v.id("academicTerms"), classId: v.id("classes"), subjectId: v.id("subjects"), snapshot: v.object({ ca1Max: v.number(), ca2Max: v.number(), ca3Max: v.number(), examRawMax: v.number(), examContributionMax: v.number() }) }))),
+    updated: v.number(),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_phase", ["schoolId", "phase"])
+    .index("by_school_and_sessionId", ["schoolId", "sessionId"]),
+
+  sessionScoringPolicyEvents: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    version: v.number(),
+    before: v.string(),
+    after: v.string(),
+    affectedRecords: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_sessionId", ["schoolId", "sessionId"]),
+
   assessmentEditingPolicies: defineTable({
     schoolId: v.id("schools"),
     sessionId: v.id("academicSessions"),
@@ -1949,6 +2001,57 @@ export default defineSchema({
   })
     .index("by_school", ["schoolId"])
     .index("by_school_session_term", ["schoolId", "sessionId", "termId"]),
+
+  resultReleaseControls: defineTable({
+    schoolId: v.id("schools"),
+    releasesPaused: v.boolean(),
+    reason: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"]),
+
+  classResultPublications: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    releasedAt: v.number(),
+    releasedBy: v.id("users"),
+    releasedByMembershipId: v.optional(v.id("branchMemberships")),
+    releasedByPersonId: v.optional(v.id("persons")),
+    reviewKey: v.string(),
+    eligibleCount: v.number(),
+    certifiedCount: v.number(),
+    excludedCount: v.number(),
+  }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+    .index("by_school", ["schoolId"]),
+
+  classResultExclusions: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    reason: v.string(),
+    approvedBy: v.id("users"),
+    approvedAt: v.number(),
+  }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+    .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
+    .index("by_school", ["schoolId"]),
+
+  classResultPublicationStudents: defineTable({
+    schoolId: v.id("schools"),
+    publicationId: v.id("classResultPublications"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    releasedAt: v.number(),
+    issuedReportCardId: v.id("issuedReportCards"),
+  }).index("by_publication_and_student", ["publicationId", "studentId"])
+    .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
+    .index("by_school_and_student_and_released_at", ["schoolId", "studentId", "releasedAt"])
+    .index("by_school", ["schoolId"]),
 
   classSessionReportModes: defineTable({
     schoolId: v.id("schools"),
@@ -2010,15 +2113,17 @@ export default defineSchema({
     classId: v.id("classes"),
     issuedAt: v.number(),
     issuedBy: v.id("users"),
+    scoringPolicyVersion: v.optional(v.number()),
     schoolLogoStorageId: v.optional(v.id("_storage")),
     studentPhotoStorageId: v.optional(v.id("_storage")),
     report: reportCardResultValidator,
   })
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
     .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
-    // Backfill first. Do not query until a later deployment removes staged.
+    // This index is queried by graded class release; activation follows the #90 backfill.
+    .index("by_class_and_session_and_term", ["classId", "sessionId", "termId"])
+    // Separate narrative mode-lock backfill. No query uses this index yet.
     .index("by_classId_and_sessionId", { fields: ["classId", "sessionId"], staged: true })
-    .index("by_class_and_session_and_term", { fields: ["classId", "sessionId", "termId"], staged: true })
     .index("by_school_logo_storage", ["schoolLogoStorageId"])
     .index("by_student_photo_storage", ["studentPhotoStorageId"])
     .index("by_school", ["schoolId"])
@@ -2115,6 +2220,7 @@ export default defineSchema({
     remark: v.string(),
     examInputModeSnapshot: v.string(),
     examRawMaxSnapshot: v.number(),
+    sessionScoringPolicyVersion: v.optional(v.number()),
     assessmentPolicySnapshot: v.optional(assessmentPolicySnapshotValidator),
     gradingPolicySnapshot: v.optional(gradingPolicySnapshotValidator),
     status: v.literal("draft"),
@@ -3658,7 +3764,9 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_source_school", ["sourceSchoolId"])
-    .index("by_target_school", ["targetSchoolId"]),
+    .index("by_target_school", ["targetSchoolId"])
+    .index("by_source_school_and_status", ["sourceSchoolId", "status"])
+    .index("by_target_school_and_status", ["targetSchoolId", "status"]),
 
   importWorkspaces: defineTable({
     schoolId: v.id("schools"),

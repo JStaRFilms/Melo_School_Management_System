@@ -5,6 +5,7 @@ import { CertifyReportCard } from "./CertifyReportCard";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { ReportCardSheetData } from "@school/shared";
+import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import { 
   MessageSquare, 
   Calendar, 
@@ -54,20 +55,23 @@ function parseIntegerInputValue(value: string) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-export function ReportCardAdminPanel({
-  studentId,
-  sessionId,
-  termId,
-  reportCard,
-}: {
+type PanelProps = {
   studentId: string;
   sessionId: string;
   termId: string;
   reportCard: ReportCardSheetData;
-}) {
+  schoolId: Id<"schools">;
+};
+
+// Remount the form when the selected branch or report changes so edits and group selection cannot leak across previews.
+export function ReportCardAdminPanel(props: PanelProps) {
+  return <ReportCardAdminPanelContent key={`${props.schoolId}:${props.studentId}:${props.sessionId}:${props.termId}`} {...props} />;
+}
+
+function ReportCardAdminPanelContent({ studentId, sessionId, termId, reportCard, schoolId }: PanelProps) {
   const termSettings = useQuery(
     "functions/academic/reportCardTermSettings:getTermReportCardSettings" as never,
-    termId ? ({ termId } as never) : ("skip" as never)
+    termId ? ({ termId, schoolId } as never) : ("skip" as never)
   ) as
     | {
         termId: string;
@@ -86,7 +90,8 @@ export function ReportCardAdminPanel({
       }
     | undefined;
   const classes = useQuery(
-    "functions/academic/adminSelectors:getAllClasses" as never
+    "functions/academic/adminSelectors:getAllClasses" as never,
+    { schoolId } as never
   ) as Array<{ id: string; name: string }> | undefined;
   const saveComments = useMutation(
     "functions/academic/reportCards:saveStudentReportCardComments" as never
@@ -188,6 +193,7 @@ export function ReportCardAdminPanel({
 
     try {
       await saveComments({
+        schoolId,
         studentId,
         sessionId,
         termId,
@@ -224,6 +230,7 @@ export function ReportCardAdminPanel({
       }
 
       await saveTermDefaults({
+        schoolId,
         termId,
         nextTermBegins,
         defaultTimesSchoolOpened: parseIntegerInputValue(defaultTimesOpened),
@@ -262,6 +269,7 @@ export function ReportCardAdminPanel({
       }
 
       const nextGroupId = (await saveTermGroup({
+        schoolId,
         groupId,
         termId,
         name: groupName,
@@ -289,7 +297,7 @@ export function ReportCardAdminPanel({
     setGroupError(null);
     setGroupSuccess(null);
     try {
-      await deleteTermGroup({ groupId } as never);
+      await deleteTermGroup({ schoolId, groupId } as never);
       setSelectedGroupId(null);
       setIsCreatingGroup(false);
       setGroupSuccess("Group removed.");
@@ -334,7 +342,7 @@ export function ReportCardAdminPanel({
 
   return (
     <div className="rc-no-print space-y-10">
-      <CertifyReportCard key={`${studentId}:${sessionId}:${termId}`} reportCard={reportCard} sessionId={sessionId} termId={termId} />
+      <CertifyReportCard key={`${schoolId}:${studentId}:${sessionId}:${termId}`} schoolId={schoolId} reportCard={reportCard} sessionId={sessionId} termId={termId} />
       {reportCard.resultCalculationMode === "cumulative_annual" && missingDataSubjects.length > 0 && (
         <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4">
           <div className="flex items-start gap-3">
@@ -659,6 +667,7 @@ export function ReportCardAdminPanel({
                 <button
                   type="button"
                   onClick={handleDeleteGroup}
+                  aria-label="Delete group"
                   disabled={isDeletingGroup}
                   className="w-9 h-9 flex items-center justify-center rounded-lg border border-rose-100 bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"
                 >

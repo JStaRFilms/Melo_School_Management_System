@@ -37,7 +37,7 @@ function normalizeSelectorOptions(
 }
 
 export default function ExamEntryPage() {
-  const { workspaceAccess } = useAuth();
+  const { workspaceAccess, session } = useAuth();
   const searchParams = useSearchParams();
   const selection = useMemo(
     () => ({
@@ -56,10 +56,10 @@ export default function ExamEntryPage() {
 
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   if (!schoolId) return <p role="status">Checking branch context…</p>;
-  return <LiveExamEntryPage key={schoolId} schoolId={schoolId} selection={selection} />;
+  return <LiveExamEntryPage key={schoolId} schoolId={schoolId} actorId={session?.user.id ?? "anonymous"} selection={selection} />;
 }
 
-function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; selection: SelectionState }) {
+function LiveExamEntryPage({ schoolId, actorId, selection }: { schoolId: Id<"schools">; actorId: string; selection: SelectionState }) {
   const sessions = useQuery(
     "functions/academic/teacherSelectors:getTeacherSessions" as never,
     { schoolId } as never,
@@ -147,6 +147,7 @@ function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; s
   return (
     <ExamEntryWorkspace
       selection={selection}
+      schoolId={`${schoolId}:${actorId}`}
       sessions={normalizedSessions}
       terms={terms ?? []}
       classes={normalizedClasses}
