@@ -1,4 +1,5 @@
 import { makeFunctionReference } from "convex/server";
+import { api } from "../../../_generated/api";
 import { convexTest } from "convex-test";
 import { expect, it } from "vitest";
 import schema from "../../../schema";
@@ -40,6 +41,52 @@ async function setup() {
   const quote = (idempotencyKey: string, digest = "a".repeat(64)) => one.mutation(fn.quote, { schoolId: ids.schoolId, task: "teacher_lesson_plan", digest, modelId: "reviewed-model", idempotencyKey, minimumUnits: 5 }) as Promise<{ attemptId: Id<"usageOperationAttempts">; estimate: number }>;
   return { ...ids, t, one, two, quote };
 }
+it("finds active cycles after more than 100 closed historical cycles", async () => {
+  const f = await setup();
+  await f.t.run(async ctx => {
+    const cycle = await ctx.db.get(f.cycleId);
+    if (!cycle) throw new Error("missing cycle");
+    for (let i = 0; i < 125; i += 1) {
+      await ctx.db.insert("usageCycles", { schoolId: f.schoolId, contractId: cycle.contractId,
+        entitlementVersionId: cycle.entitlementVersionId, code: cycle.code, version: cycle.version,
+        entitlement: cycle.entitlement, startAt: cycle.startAt - (i + 2) * 86_400_000,
+        endAt: cycle.startAt - (i + 1) * 86_400_000, status: "closed", createdAt: i });
+    }
+  });
+  const quoted = await f.quote("historical-001");
+  await f.one.mutation(fn.confirm, { attemptId: quoted.attemptId, expectedUnits: 10, confirmation: "CONFIRM" });
+  await f.one.mutation(fn.claim, { attemptId: quoted.attemptId, digest: "a".repeat(64), modelId: "reviewed-model" });
+  expect(await f.one.query(fn.status, { attemptId: quoted.attemptId })).toMatchObject({ status: "dispatch_started" });
+});
+it("paginates unresolved attempts by school despite 150 newer other-school rows", async () => {
+  const f = await setup();
+  await f.t.run(ctx => ctx.db.insert("platformAdmins", { authId: "operator", authTokenIdentifier: "test|operator", email: "op@test.invalid", name: "Operator", isActive: true, createdAt: 1, updatedAt: 1 }));
+  const operator = f.t.withIdentity({ subject: "operator", tokenIdentifier: "test|operator" });
+  const first = await f.quote("pending-0001");
+  await f.one.mutation(fn.confirm, { attemptId: first.attemptId, expectedUnits: 10, confirmation: "CONFIRM" });
+  await f.one.mutation(fn.claim, { attemptId: first.attemptId, digest: "a".repeat(64), modelId: "reviewed-model" });
+  await f.one.mutation(fn.uncertain, { attemptId: first.attemptId });
+  const source = await f.t.run(ctx => ctx.db.get(first.attemptId));
+  if (!source) throw new Error("missing attempt");
+  for (const [schoolId, count] of [[f.schoolId, 60], [f.otherSchoolId, 150]] as const) {
+    for (let start = 0; start < count; start += 30) await f.t.run(async ctx => {
+      for (let i = start; i < Math.min(start + 30, count); i += 1)
+        await ctx.db.insert("usageOperationAttempts", { schoolId, cycleId: source.cycleId,
+          idempotencyKey: `pending-${schoolId}-${i}`, task: source.task, meterType: source.meterType,
+          itemCount: 1, estimatedUnits: 10, modelProfile: source.modelProfile, status: "needs_reconciliation",
+          actorTokenIdentifier: source.actorTokenIdentifier, createdAt: Date.now(), updatedAt: Date.now() + i,
+          requestDigest: source.requestDigest, modelId: source.modelId });
+    });
+  }
+  const firstPage = await operator.query(api.functions.academic.aiSpend.unresolved, { schoolId: f.schoolId,
+    paginationOpts: { numItems: 25, cursor: null } });
+  expect(firstPage.page).toHaveLength(25);
+  expect(firstPage.page.every(row => row.id !== undefined)).toBe(true);
+  const secondPage = await operator.query(api.functions.academic.aiSpend.unresolved, { schoolId: f.schoolId,
+    paginationOpts: { numItems: 25, cursor: firstPage.continueCursor } });
+  expect(secondPage.page).toHaveLength(25);
+  expect(new Set([...firstPage.page, ...secondPage.page].map(row => row.id)).size).toBe(50);
+});
 it("binds request and identity, and allows one confirmation and dispatch", async () => {
   const f = await setup();
   const row = await f.quote("attempt-0001");

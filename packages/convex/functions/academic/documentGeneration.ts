@@ -2,8 +2,7 @@
 
 import { ConvexError, v } from "convex/values";
 import { createHash } from "node:crypto";
-import { makeFunctionReference } from "convex/server";
-import { generateObject, NoObjectGeneratedError } from "ai";
+import { generateObject, NoObjectGeneratedError, zodSchema, type Schema } from "ai";
 import {
   buildAssignmentPrompt,
   buildCbtDraftPrompt,
@@ -26,15 +25,13 @@ import {
   type RelatedInstructionArtifactSummary,
   type TemplateBoundInstructionDraft,
 } from "@school/ai";
-import { api } from "../../_generated/api";
+import { api, internal } from "../../_generated/api";
 import { action, type ActionCtx } from "../../_generated/server";
 import { assertUsableExcerptMinimum, findObjectiveSection, renderTemplateBoundMarkdown, validateGenerationMinimums } from "./instructionGenerationRules";
 import { TEACHER_PLANNING_CAPABILITIES } from "./rbac";
 import type { Id } from "../../_generated/dataModel";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
-const spendMutation = (name: string) => makeFunctionReference<"mutation">(`functions/academic/aiSpend:${name}`);
-const spendQuery = (name: string) => makeFunctionReference<"query">(`functions/academic/aiSpend:${name}`);
 
 type AssessmentDraftMode = "practice_quiz" | "class_test" | "exam_draft";
 type AssessmentOutputType = Extract<DocumentOutputType, "question_bank_draft" | "cbt_draft">;
@@ -1142,17 +1139,23 @@ type PreparedAssessment = {
   sourceIds: Array<Id<"knowledgeMaterials">>; subjectId: Id<"subjects">; level: string; topic: string | null;
   outputType: AssessmentOutputType; prompt: { system: string; prompt: string }; modelId: string; digest: string; minimumUnits: number;
 };
-function boundRequest(kind: string, args: LessonArgs | AssessmentArgs, modelId: string, prompt: { system: string; prompt: string }, context: unknown) {
-  const request = JSON.stringify({ policy: "school-document-single-call-v1", kind, args, modelId, prompt, context });
-  const promptBytes = Buffer.byteLength(prompt.system + prompt.prompt, "utf8");
-  // The extra 12 KB covers the reviewed structured-output schema and provider
-  // framing. Four tokens per UTF-8 byte plus 4096 covers one capped output.
-  // A provider that exceeds the hold is charged in full and blocked for review.
-  if (promptBytes > 16_000) throw new ConvexError("Prepared prompt is too long for the reviewed AI budget. Select fewer sources.");
-  return {
-    digest: createHash("sha256").update(request).digest("hex"),
-    minimumUnits: (promptBytes + 12_000) * 4 + 4096,
-  };
+function schemaForOutput(outputType: DocumentOutputType): Schema<unknown> {
+  // Keep Zod's recursive types opaque here; the same converter runs at quote and dispatch.
+  const raw: unknown = outputType === "lesson_plan" || outputType === "student_note" || outputType === "assignment"
+    ? templateBoundInstructionDraftSchema : outputType === "cbt_draft" ? cbtDraftSchema : questionBankDraftSchema;
+  return zodSchema<unknown>(raw as Parameters<typeof zodSchema<unknown>>[0]);
+}
+async function boundRequest(kind: string, args: LessonArgs | AssessmentArgs, outputType: DocumentOutputType, modelId: string, prompt: { system: string; prompt: string }, context: unknown) {
+  // Use the SDK's own schema serialization for the quote and the provider call.
+  const schema = JSON.stringify(await schemaForOutput(outputType).jsonSchema);
+  const knownBytes = Buffer.byteLength(prompt.system, "utf8") + Buffer.byteLength(prompt.prompt, "utf8") + Buffer.byteLength(schema, "utf8");
+  if (knownBytes > 16_000) throw new ConvexError("Prepared AI request exceeds the reviewed size limit. Select fewer sources.");
+  const request = JSON.stringify({ policy: "school-document-single-call-v2", kind, args, modelId, prompt, schema, context });
+  // 16 units per serialized input byte is a conservative reviewed hold, plus
+  // the 2048 output cap and 2048 for SDK/provider framing. OpenRouter can add
+  // unseen tokens: this is NOT a guaranteed token maximum. Full verified
+  // overage is recorded and blocks new quotes pending Platform review.
+  return { digest: createHash("sha256").update(request).digest("hex"), minimumUnits: knownBytes * 16 + 4096 };
 }
 function checkedSources(sourceIds: Array<Id<"knowledgeMaterials">>) {
   const normalized = normalizeSourceIds(sourceIds.map(String)) as Array<Id<"knowledgeMaterials">>;
@@ -1194,7 +1197,7 @@ async function prepareLesson(ctx: ActionCtx, args: LessonArgs): Promise<Prepared
   };
   const prompt = buildPromptForLessonPlanOutputType(args.outputType, context);
   const modelId = resolveDocumentModelId(args.outputType);
-  const bound = boundRequest("lesson", args, modelId, prompt, { workspace, excerpts });
+  const bound = await boundRequest("lesson", args, args.outputType, modelId, prompt, { workspace, excerpts });
   return { kind: "lesson", args, workspace, excerpts, sourceIds, subjectId, level, topic, prompt, modelId, ...bound };
 }
 async function prepareAssessment(ctx: ActionCtx, args: AssessmentArgs): Promise<PreparedAssessment> {
@@ -1225,17 +1228,17 @@ async function prepareAssessment(ctx: ActionCtx, args: AssessmentArgs): Promise<
   };
   const prompt = buildPromptForAssessmentOutputType(outputType, context);
   const modelId = resolveDocumentModelId(outputType);
-  const bound = boundRequest("assessment", args, modelId, prompt, { workspace, settings });
+  const bound = await boundRequest("assessment", args, outputType, modelId, prompt, { workspace, settings });
   return { kind: "assessment", args, workspace, settings, sourceIds, subjectId, level, topic, outputType, prompt, modelId, ...bound };
 }
-async function quotePrepared(ctx: ActionCtx, prepared: PreparedLesson | PreparedAssessment, key: string): Promise<{ attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string }> {
+async function quotePrepared(ctx: ActionCtx, prepared: PreparedLesson | PreparedAssessment, key: string): Promise<{ attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string; availableUnits: number; remainingAfterHold: number }> {
   const viewer = await requireStaffGenerationContext(ctx);
-  return await ctx.runMutation(spendMutation("quote"), {
+  return await ctx.runMutation(internal.functions.academic.aiSpend.quote, {
     schoolId: viewer.schoolId, task: prepared.kind === "lesson" ? "teacher_lesson_plan" : "teacher_assessment",
     digest: prepared.digest, modelId: prepared.modelId, minimumUnits: prepared.minimumUnits,
     idempotencyKey: key,
     requestArgs: JSON.stringify({ kind: prepared.kind, args: prepared.args }),
-  }) as { attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string };
+  });
 }
 export const quoteTeacherLessonPlanDraft = action({
   args: { ...lessonArgs.fields, idempotencyKey: v.string() },
@@ -1255,8 +1258,19 @@ function measured(result: unknown, attemptId: Id<"usageOperationAttempts">): { i
   const id = response.response?.id;
   return { inputTokens: inputTokens!, outputTokens: outputTokens!, evidence: id && /^[a-zA-Z0-9:_./-]{1,150}$/.test(id) ? `provider:${id}:attempt:${attemptId}:call-1` : `attempt:${attemptId}:call-1:usage-without-response-id` };
 }
+function sdkFailureUsage(error: unknown, attemptId: Id<"usageOperationAttempts">) {
+  // Only AI SDK's branded NoObjectGeneratedError carries usage from a completed
+  // response. A generic status/error object, including 429 and 5xx, is not evidence.
+  if (!NoObjectGeneratedError.isInstance(error) || !error.usage) return undefined;
+  try {
+    const usage = measured(error, attemptId);
+    return { ...usage, evidence: `sdk:no-object:${usage.evidence}` };
+  } catch {
+    return undefined;
+  }
+}
 async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">, kind: "lesson" | "assessment"): Promise<unknown> {
-  const row = await ctx.runQuery(spendQuery("load"), { attemptId }) as { requestArgs: string; digest: string; modelId: string; status: string; estimate: number };
+  const row = await ctx.runQuery(internal.functions.academic.aiSpend.load, { attemptId }) as { requestArgs: string; digest: string; modelId: string; status: string; estimate: number };
   if (row.status !== "reserved") throw new ConvexError("Attempt is not awaiting dispatch. Check its status; never replay a claimed call.");
   // The persisted JSON contains identifiers/settings only. Re-read every source, template,
   // related artifact and effective profile before claiming; changed inputs fail closed.
@@ -1268,21 +1282,20 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
     if (row.digest !== bound.digest || row.modelId !== bound.modelId || row.estimate < bound.minimumUnits) throw new ConvexError("Sources, template, settings or model changed. Cancel and request a new quote.");
   } catch (error) {
     // A preparation failure cannot have reached the provider. A cancelled hold is safe.
-    await ctx.runMutation(spendMutation("cancel"), { attemptId });
+    await ctx.runMutation(api.functions.academic.aiSpend.cancel, { attemptId });
     throw error;
   }
   const rate = await ctx.runMutation(kind === "lesson"
     ? api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit
     : api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherAssessmentGenerationLimit, {});
   enforceRateLimit(rate);
-  await ctx.runMutation(spendMutation("claim"), { attemptId, digest: bound.digest, modelId: bound.modelId });
+  await ctx.runMutation(internal.functions.academic.aiSpend.claim, { attemptId, digest: bound.digest, modelId: bound.modelId });
   let usage: ReturnType<typeof measured> | undefined;
   let outcome: "succeeded" | "failed" = "failed";
   let generation: unknown;
   try {
     const result = await callGenerateObject(createDocumentModel(bound.kind === "lesson" ? bound.args.outputType : bound.outputType),
-      bound.kind === "lesson" ? templateBoundInstructionDraftSchema
-        : bound.outputType === "cbt_draft" ? cbtDraftSchema : questionBankDraftSchema,
+      schemaForOutput(bound.kind === "lesson" ? bound.args.outputType : bound.outputType),
       bound.prompt.system, bound.prompt.prompt);
     usage = measured(result, attemptId); // Capture before validating object or saving a draft.
     generation = (result as { object: unknown }).object;
@@ -1300,13 +1313,19 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
     }
     outcome = "succeeded";
   } catch (error) {
-    // Thrown provider errors may have incurred tokens. Do not interpret a 429/5xx
-    // or a missing usage report as zero; an operator must reconcile the hold.
+    // A schema failure with complete SDK response usage is measured failed work.
+    // Other errors, including status codes with unverified usage, stay held.
+    usage ??= sdkFailureUsage(error, attemptId);
     if (!usage) {
-      await ctx.runMutation(spendMutation("uncertain"), { attemptId });
+      await ctx.runMutation(internal.functions.academic.aiSpend.uncertain, { attemptId });
       throw new ConvexError("AI provider outcome is uncertain. No retry will run; Platform must reconcile usage.");
     }
-    await ctx.runMutation(spendMutation("settle"), { attemptId, ...usage, outcome: "failed" });
+    try {
+      await ctx.runMutation(internal.functions.academic.aiSpend.settle, { attemptId, ...usage, outcome: "failed" });
+    } catch {
+      await ctx.runMutation(internal.functions.academic.aiSpend.uncertain, { attemptId });
+      throw new ConvexError("Measured AI use could not settle. Platform must reconcile the hold.");
+    }
     throw new ConvexError(getConvexFriendlyErrorMessage(error, { outputType: bound.kind === "lesson" ? bound.args.outputType : bound.outputType, modelId: bound.modelId }));
   }
   if (!usage) throw new ConvexError("Usage unavailable");
@@ -1323,9 +1342,9 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
     }),
   });
   try {
-    await ctx.runMutation(spendMutation("stage"), { attemptId, payload, ...usage });
+    await ctx.runMutation(internal.functions.academic.aiSpend.stage, { attemptId, payload, ...usage });
   } catch (error) {
-    await ctx.runMutation(spendMutation("uncertain"), { attemptId });
+    await ctx.runMutation(internal.functions.academic.aiSpend.uncertain, { attemptId });
     throw new ConvexError("Measured provider result could not be staged. Platform must reconcile this hold.");
   }
   return await finishStaged(ctx, attemptId);
@@ -1346,26 +1365,26 @@ type StagedResult = {
   outputType?: AssessmentOutputType;
 };
 async function finishStaged(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">): Promise<unknown> {
-  const row = await ctx.runQuery(spendQuery("staged"), { attemptId }) as {
+  const row = await ctx.runQuery(internal.functions.academic.aiSpend.staged, { attemptId }) as {
     payload: string; inputTokens: number; outputTokens: number; evidence: string; status: string; resultId: string | null;
   };
   if (row.resultId) return { resultId: row.resultId, status: "settled" };
   if (row.status === "dispatch_started" || row.status === "needs_reconciliation") {
     try {
-      await ctx.runMutation(spendMutation("settle"), { attemptId, inputTokens: row.inputTokens,
+      await ctx.runMutation(internal.functions.academic.aiSpend.settle, { attemptId, inputTokens: row.inputTokens,
         outputTokens: row.outputTokens, evidence: row.evidence, outcome: "succeeded" });
     } catch (error) {
-      await ctx.runMutation(spendMutation("uncertain"), { attemptId });
+      await ctx.runMutation(internal.functions.academic.aiSpend.uncertain, { attemptId });
       throw new ConvexError("Measured usage could not settle. Platform must reconcile the hold.");
     }
   } else if (row.status !== "settled") throw new ConvexError("Attempt cannot save this result");
   const data = JSON.parse(row.payload) as StagedResult;
-  const aiRunLogId = await ctx.runQuery(spendQuery("runLogId"), { attemptId }) as Id<"aiRunLogs"> | null;
+  const aiRunLogId = await ctx.runQuery(internal.functions.academic.aiSpend.runLogId, { attemptId }) as Id<"aiRunLogs"> | null;
   if (data.kind === "lesson") {
     if (!data.sections || !data.minimums || !data.topic || data.revisionNumber === undefined) throw new ConvexError("Staged lesson result invalid");
     const object = normalizeGeneratedTemplateDraft(data.generation, data.sections.slice().sort((a, b) => a.order - b.order), data.topic, data.minimums);
     const documentState = renderTemplateBoundMarkdown(object);
-    const saved = await ctx.runMutation(api.functions.academic.lessonKnowledgeLessonPlans.saveTeacherInstructionArtifactDraft, {
+    const saved = await ctx.runMutation(internal.functions.academic.lessonKnowledgeLessonPlans.saveGeneratedInstructionArtifactDraft, {
       attemptId, artifactId: data.artifactId ?? null, expectedRevisionNumber: data.revisionNumber,
       outputType: data.args.outputType, title: object.title, documentState, plainText: markdownToPlainText(documentState),
       sourceIds: data.sourceIds, subjectId: data.subjectId, level: data.level, topicLabel: data.topic,
@@ -1381,7 +1400,7 @@ async function finishStaged(ctx: ActionCtx, attemptId: Id<"usageOperationAttempt
     : mapQuestionBankDraft(data.args.draftMode, data.generation, data.settings);
   const snapshot = buildAssessmentSourceSelectionSnapshot({ draftMode: data.args.draftMode, outputType: data.outputType,
     sourceIds: data.sourceIds.map(String), subjectId: String(data.subjectId), level: data.level, topicLabel: data.topic });
-  const saved = await ctx.runMutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft, {
+  const saved = await ctx.runMutation(internal.functions.academic.lessonKnowledgeAssessmentDrafts.saveGeneratedAssessmentBankDraft, {
     attemptId, bankId: data.bankId ?? null, draftMode: data.args.draftMode, title: draft.title, description: draft.description,
     sourceIds: data.sourceIds, sourceSelectionSnapshot: snapshot, subjectId: data.subjectId, level: data.level, topicLabel: data.topic,
     planningContext: data.args.planningContext,

@@ -5,7 +5,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 
-type Quote = { attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string };
+type Quote = { attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string; availableUnits: number; remainingAfterHold: number };
 type Pending = { quote: Quote; sourceCount: number; output: string; resolve: (id: Id<"usageOperationAttempts">) => void; reject: (reason: Error) => void };
 
 export function useAiSpendReview(formKey: string) {
@@ -14,9 +14,9 @@ export function useAiSpendReview(formKey: string) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const recover = useAction(api.functions.academic.documentGeneration.recoverTeacherGenerationDraft);
-  const confirm = useMutation("functions/academic/aiSpend:confirm" as never) as unknown as (args: { attemptId: Id<"usageOperationAttempts">; expectedUnits: number; confirmation: string }) => Promise<unknown>;
-  const cancel = useMutation("functions/academic/aiSpend:cancel" as never) as unknown as (args: { attemptId: Id<"usageOperationAttempts"> }) => Promise<unknown>;
-  const status = useQuery("functions/academic/aiSpend:status" as never, lastAttempt ? { attemptId: lastAttempt } as never : "skip") as { status: string; estimate: number; actualUnits: number | null; resultId: string | null } | undefined;
+  const confirm = useMutation(api.functions.academic.aiSpend.confirm);
+  const cancel = useMutation(api.functions.academic.aiSpend.cancel);
+  const status = useQuery(api.functions.academic.aiSpend.status, lastAttempt ? { attemptId: lastAttempt } : "skip");
   // Form edits invalidate the review, including a profile change made while the dialog is open.
   useEffect(() => {
     if (!pending) return;
@@ -56,7 +56,7 @@ export function useAiSpendReview(formKey: string) {
       <div className="w-full max-w-md space-y-3 rounded-xl bg-white p-6 text-slate-900 shadow-xl">
         <h2 className="text-lg font-semibold">Review AI generation</h2>
         <p>{pending.output} from {pending.sourceCount} selected source{pending.sourceCount === 1 ? "" : "s"}.</p>
-        <p>Model: {pending.quote.modelProfile}. Maximum hold: {pending.quote.estimate.toLocaleString()} ai_tokens. Unused tokens return to the school allowance after the provider reports usage. This is not a money charge.</p>
+        <p>Model: {pending.quote.modelProfile}. Reviewed hold: {pending.quote.estimate.toLocaleString()} ai_tokens. Available now: {pending.quote.availableUnits.toLocaleString()}; expected after confirmation: {pending.quote.remainingAfterHold.toLocaleString()}. The balance can change before confirmation. Unused hold returns after measured settlement. Actual provider usage can exceed the hold and will block new AI work for review. This is not a money charge.</p>
         <p>Quote expires at {new Date(pending.quote.expiresAt).toLocaleTimeString()}. One confirmed call will run. If usage is uncertain, Platform must review it before the hold can be released.</p>
         <div className="flex gap-3"><button type="button" disabled={busy} onClick={() => void approve()} className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50">Confirm and generate</button>
           <button type="button" disabled={busy} onClick={() => void dismiss()} className="rounded border px-4 py-2">Cancel</button></div>

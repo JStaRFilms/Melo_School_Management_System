@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query, type MutationCtx } from "../../_generated/server";
-import { makeFunctionReference } from "convex/server";
+import { paginationOptsValidator } from "convex/server";
+import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { requireCapability } from "./rbac";
 import { isGroupPlatformOperator } from "./groups";
@@ -22,10 +23,9 @@ async function meterFor(ctx: MutationCtx, attempt: Doc<"usageOperationAttempts">
 }
 async function active(ctx: MutationCtx, schoolId: Id<"schools">) {
   const now = Date.now();
-  const cycles = await ctx.db.query("usageCycles").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(101);
-  if (cycles.length > 100) throw new ConvexError("Cycle history requires review");
-  const current = cycles.filter(row => row.status === "active" && row.startAt <= now && now < row.endAt);
-  if (current.length !== 1) throw new ConvexError("One active contract-bound cycle required");
+  const cycles = await ctx.db.query("usageCycles").withIndex("by_school_and_status", q => q.eq("schoolId", schoolId).eq("status", "active")).take(2);
+  const current = cycles.filter(row => row.startAt <= now && now < row.endAt);
+  if (cycles.length !== 1 || current.length !== 1) throw new ConvexError("One active contract-bound cycle required");
   const contract = await ctx.db.get(current[0].contractId);
   if (!contract || contract.schoolId !== schoolId || contract.effectiveFrom > now || (contract.effectiveTo !== undefined && contract.effectiveTo <= now)) throw new ConvexError("Contract is not active");
   return current[0];
@@ -46,22 +46,22 @@ export const quote = internalMutation({
     const profile = cycle.entitlement.profiles.find(row => row.task === args.task);
     if (!profile || profile.meterType !== "ai_tokens" || profile.maxItems < 1 || profile.unitsPerItem < args.minimumUnits || profile.modelProfile !== args.modelId) throw new ConvexError("Publish a reviewed AI profile for this model and worst-case token hold");
     const existing = await ctx.db.query("usageOperationAttempts").withIndex("by_school_and_idempotency", q => q.eq("schoolId", args.schoolId).eq("idempotencyKey", args.idempotencyKey)).unique();
-    if (existing) {
-      if (existing.cycleId !== cycle._id || existing.actorTokenIdentifier !== identity.tokenIdentifier || existing.task !== args.task || existing.requestDigest !== args.digest || existing.modelId !== args.modelId || existing.estimatedUnits !== profile.unitsPerItem || existing.requestArgs !== args.requestArgs || existing.status === "cancelled") throw new ConvexError("Operation ID is bound to different work");
-      return { attemptId: existing._id, estimate: existing.estimatedUnits, modelProfile: existing.modelProfile, expiresAt: existing.expiresAt!, status: existing.status };
-    }
     const meter = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", args.schoolId).eq("meterType", "ai_tokens")).take(2);
     const allowance = await effectiveAllowance(ctx, cycle, "ai_tokens");
     if (meter.length !== 1 || meter[0].cycleId !== cycle._id || !allowance) throw new ConvexError("AI meter requires reconciliation");
     if (meter[0].aiOverageRequiresReview) throw new ConvexError("AI overage requires Platform review");
     const available = Math.floor(allowance.allocatedUnits * cycle.entitlement.hardStopPercent / 100) - meter[0].consumedUnits - meter[0].reservedUnits;
+    if (existing) {
+      if (existing.cycleId !== cycle._id || existing.actorTokenIdentifier !== identity.tokenIdentifier || existing.task !== args.task || existing.requestDigest !== args.digest || existing.modelId !== args.modelId || existing.estimatedUnits !== profile.unitsPerItem || existing.requestArgs !== args.requestArgs || existing.status === "cancelled") throw new ConvexError("Operation ID is bound to different work");
+      return { attemptId: existing._id, estimate: existing.estimatedUnits, modelProfile: existing.modelProfile, expiresAt: existing.expiresAt!, status: existing.status, availableUnits: available, remainingAfterHold: Math.max(0, available - (existing.status === "reserved" ? 0 : profile.unitsPerItem)) };
+    }
     if (profile.unitsPerItem > available) throw new ConvexError(`AI allowance short by ${profile.unitsPerItem - available} tokens`);
     const now = Date.now();
     const expiresAt = Math.min(now + TTL, cycle.endAt);
     const id = await ctx.db.insert("usageOperationAttempts", { schoolId: args.schoolId, cycleId: cycle._id, idempotencyKey: args.idempotencyKey, task: args.task, meterType: "ai_tokens", itemCount: 1, estimatedUnits: profile.unitsPerItem, modelProfile: profile.modelProfile, status: "quoted", actorTokenIdentifier: identity.tokenIdentifier, requestDigest: args.digest, modelId: args.modelId, requestArgs: args.requestArgs, expiresAt, createdAt: now, updatedAt: now });
     await transition(ctx, id, "quoted");
-    await ctx.scheduler.runAfter(expiresAt - now, makeFunctionReference<"mutation", { attemptId: Id<"usageOperationAttempts"> }>("functions/academic/aiSpend:expire"), { attemptId: id });
-    return { attemptId: id, estimate: profile.unitsPerItem, modelProfile: profile.modelProfile, expiresAt, status: "quoted" as const };
+    await ctx.scheduler.runAfter(expiresAt - now, internal.functions.academic.aiSpend.expire, { attemptId: id });
+    return { attemptId: id, estimate: profile.unitsPerItem, modelProfile: profile.modelProfile, expiresAt, status: "quoted" as const, availableUnits: available, remainingAfterHold: available - profile.unitsPerItem };
   },
 });
 
@@ -213,6 +213,8 @@ export async function assertSaveAttempt(ctx: MutationCtx, attemptId: Id<"usageOp
   const request = JSON.parse(row.requestArgs) as { kind: string; args: { outputType?: string; draftMode?: string; sourceIds?: string[] } };
   const boundOutput = request.kind === "lesson" ? request.args.outputType : request.kind === "assessment" ? request.args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft" : null;
   if (boundOutput !== outputType || JSON.stringify(request.args.sourceIds) !== JSON.stringify(sourceIds.map(String))) throw new ConvexError("Saved output differs from the confirmed request");
+  const staged = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).unique();
+  if (!staged || row.inputTokens !== staged.inputTokens || row.outputTokens !== staged.outputTokens || row.evidence !== staged.evidence) throw new ConvexError("No matching staged provider result");
   return row;
 }
 
@@ -221,7 +223,8 @@ export async function attachSavedDraft(ctx: MutationCtx, attemptId: Id<"usageOpe
   if (!row || row.resultId || row.status !== "settled" || row.outcome !== "succeeded") throw new ConvexError("Draft association unavailable");
   await ctx.db.patch(attemptId, { resultId, updatedAt: Date.now() });
   const staged = await ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).unique();
-  if (staged) await ctx.db.delete(staged._id);
+  if (!staged) throw new ConvexError("Staged provider result unavailable");
+  await ctx.db.delete(staged._id);
   const logs = await ctx.db.query("aiRunLogs").withIndex("by_attempt", q => q.eq("attemptId", attemptId)).take(2);
   if (logs.length === 1) await ctx.db.patch(logs[0]._id, { status: "succeeded", finishedAt: Date.now(), updatedAt: Date.now(), ...(target === "lesson" ? { targetArtifactId: resultId as Id<"instructionArtifacts"> } : { targetAssessmentBankId: resultId as Id<"assessmentBanks"> }) });
 }
@@ -294,7 +297,7 @@ export const reconcile = mutation({
     if (!(await isGroupPlatformOperator(ctx)) || args.confirmation !== "RECONCILE") throw new ConvexError("Platform reconciliation confirmation required");
     const row = await ctx.db.get(args.attemptId);
     if (!row?.requestDigest || row.status !== "needs_reconciliation" || args.reason.trim().length < 8 || args.reason.length > 240 || !/^[a-zA-Z0-9:_./-]{8,200}$/.test(args.evidence)) throw new ConvexError("Document the provider evidence and reason before reconciling");
-    const actual: number = await ctx.runMutation(makeFunctionReference<"mutation", { attemptId: Id<"usageOperationAttempts">; inputTokens: number; outputTokens: number; outcome: string; evidence: string }, number>("functions/academic/aiSpend:settle"), { attemptId: row._id, inputTokens: args.inputTokens, outputTokens: args.outputTokens, outcome: args.outcome, evidence: args.evidence });
+    const actual: number = await ctx.runMutation(internal.functions.academic.aiSpend.settle, { attemptId: row._id, inputTokens: args.inputTokens, outputTokens: args.outputTokens, outcome: args.outcome, evidence: args.evidence });
     await recordAuditEventHelper(ctx, { schoolId: row.schoolId, actorKind: "platform_admin", actorEmailSnapshot: (await ctx.auth.getUserIdentity())?.email ?? "authenticated operator", module: "commercial", action: "usage.ai_reconciled", targetType: "usage_entitlement", targetId: String(row._id), outcome: "success", safeSummary: `Provider evidence ${args.evidence}; ${args.reason.trim()}; ${actual} tokens`, retentionClass: "permanent_statutory", alertTier: "tier2_warn" });
     return actual;
   },
@@ -331,10 +334,12 @@ export const recent = query({
 });
 
 export const unresolved = query({
-  args: { schoolId: v.id("schools") },
+  args: { schoolId: v.id("schools"), paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     if (!(await isGroupPlatformOperator(ctx))) throw new ConvexError("Platform authority required");
-    const rows = await ctx.db.query("usageOperationAttempts").withIndex("by_status_and_updatedAt", q => q.eq("status", "needs_reconciliation")).order("desc").take(100);
-    return rows.filter(row => row.schoolId === args.schoolId).map(row => ({ id: row._id, cycleId: row.cycleId, modelId: row.modelId, estimatedUnits: row.estimatedUnits, updatedAt: row.updatedAt }));
+    const result = await ctx.db.query("usageOperationAttempts")
+      .withIndex("by_school_and_status_and_updatedAt", q => q.eq("schoolId", args.schoolId).eq("status", "needs_reconciliation"))
+      .order("desc").paginate(args.paginationOpts);
+    return { ...result, page: result.page.map(row => ({ id: row._id, cycleId: row.cycleId, modelId: row.modelId, estimatedUnits: row.estimatedUnits, updatedAt: row.updatedAt })) };
   },
 });

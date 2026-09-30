@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../packages/convex/_generated/dataModel";
@@ -9,13 +9,15 @@ type LocalMutation = (args: Record<string, unknown>) => Promise<unknown>;
 
 export default function UsagePage() {
   const { workspaceAccess } = useAuth();
+  const [readinessNow, setReadinessNow] = useState(() => Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setReadinessNow(Date.now()), 30_000); return () => window.clearInterval(timer); }, []);
   const schoolId = workspaceAccess?.state === "ready"
     ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const allowed = useQuery(api.functions.academic.rbac.hasViewerCapability,
     schoolId ? { schoolId, capability: "finance.reports.view" } : "skip");
   const args = schoolId && allowed ? { schoolId } : "skip";
   const meters = useQuery(api.functions.academic.metering.getUsageStatus, args);
-  const entitlement = useQuery("functions/academic/usageEntitlements:getUsageWorkspace" as never, args as never) as { cycle: null | { _id: Id<"usageCycles">; code: string; version: number; startAt: number; endAt: number; warningPercent: number; criticalPercent: number; hardStopPercent: number; maxFileSizeBytes: number; maxPagesPerOperation: number }; meters: Array<{ meterType: "ai_tokens" | "ocr_pages" | "storage_bytes"; baseUnits: number; graceUnits: number; topUpUnits: number; exceptionUnits: number; poolUnits: number; availableUnits: number }>; requests: Array<{ _id: Id<"usageExceptionRequests"> }>; groupPools: Array<{ _id: Id<"usageGroupPools">; meterType: string; totalUnits: number }>; canAllocatePool: boolean; aiGenerationAvailable: boolean } | undefined;
+  const entitlement = useQuery(api.functions.academic.usageEntitlements.getUsageWorkspace, schoolId && allowed ? { schoolId, now: readinessNow } : "skip") as { cycle: null | { _id: Id<"usageCycles">; code: string; version: number; startAt: number; endAt: number; warningPercent: number; criticalPercent: number; hardStopPercent: number; maxFileSizeBytes: number; maxPagesPerOperation: number }; meters: Array<{ meterType: "ai_tokens" | "ocr_pages" | "storage_bytes"; baseUnits: number; graceUnits: number; topUpUnits: number; exceptionUnits: number; poolUnits: number; availableUnits: number }>; requests: Array<{ _id: Id<"usageExceptionRequests"> }>; groupPools: Array<{ _id: Id<"usageGroupPools">; meterType: string; totalUnits: number }>; canAllocatePool: boolean; aiGenerationAvailable: boolean } | undefined;
   const requestException = useMutation("functions/academic/usageEntitlements:requestUsageException" as never) as unknown as LocalMutation;
   const allocatePool = useMutation("functions/academic/usageEntitlements:allocateGroupPoolToBranch" as never) as unknown as LocalMutation;
   const [allocationId, setAllocationId] = useState(() => crypto.randomUUID());

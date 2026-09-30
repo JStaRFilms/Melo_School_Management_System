@@ -1410,9 +1410,7 @@ export const getTeacherAssessmentBankWorkspace = query({
   },
 });
 
-export const saveTeacherAssessmentBankDraft = mutation({
-  args: {
-    attemptId: v.optional(v.id("usageOperationAttempts")),
+const aiDraftSaveArgs = v.object({
     bankId: v.optional(v.union(v.id("assessmentBanks"), v.null())),
     draftMode: draftModeValidator,
     title: v.string(),
@@ -1435,9 +1433,22 @@ export const saveTeacherAssessmentBankDraft = mutation({
         tags: v.array(v.string()),
       })
     ),
-  },
+  });
+
+export const saveTeacherAssessmentBankDraft = mutation({
+  args: aiDraftSaveArgs.fields,
   returns: saveResultValidator,
-  handler: async (ctx, args) => {
+  handler: async (ctx, args) => saveDraftHelper(ctx, args),
+});
+
+// Only an authenticated server action may attach a staged provider result.
+export const saveGeneratedAssessmentBankDraft = internalMutation({
+  args: { ...aiDraftSaveArgs.fields, attemptId: v.id("usageOperationAttempts") },
+  returns: saveResultValidator,
+  handler: async (ctx, args) => saveDraftHelper(ctx, args),
+});
+
+async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.type & { attemptId?: Id<"usageOperationAttempts"> }) {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
@@ -1635,8 +1646,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
       savedAt: now,
       effectiveGenerationSettings,
     };
-  },
-});
+};
 
 export const recordTeacherAssessmentBankAiRun = internalMutation({
   args: aiRunLogValidator,

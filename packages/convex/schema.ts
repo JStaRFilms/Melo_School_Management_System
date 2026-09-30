@@ -4249,7 +4249,9 @@ export default defineSchema({
     code: v.string(), version: v.number(), entitlement: usageEntitlement,
     startAt: v.number(), endAt: v.number(), status: v.union(v.literal("active"), v.literal("closed")), createdAt: v.number(),
     closedAt: v.optional(v.number()), reconciliationNote: v.optional(v.string()),
-  }).index("by_school", ["schoolId"]),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_startAt", ["schoolId", "startAt"]),
   usageCycleMeterSnapshots: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType,
     allocatedUnits: v.number(), baseUnits: v.number(), graceUnits: v.number(), topUpUnits: v.number(), exceptionUnits: v.number(), poolUnits: v.number(),
@@ -4295,7 +4297,8 @@ export default defineSchema({
     outcome: v.optional(v.string()), evidence: v.optional(v.string()), overage: v.optional(v.boolean()), overageReviewedAt: v.optional(v.number()), resultId: v.optional(v.string()),
   }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"])
     .index("by_school", ["schoolId"])
-    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
+    .index("by_status_and_updatedAt", ["status", "updatedAt"])
+    .index("by_school_and_status_and_updatedAt", ["schoolId", "status", "updatedAt"]),
   // Private generated content staged for settlement/save recovery. Never part of the accounting ledger.
   aiGenerationResults: defineTable({
     attemptId: v.id("usageOperationAttempts"), payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string(), createdAt: v.number(),

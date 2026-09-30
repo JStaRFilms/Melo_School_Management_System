@@ -1,4 +1,6 @@
-import { makeFunctionReference } from "convex/server";
+/// <reference types="vite/client" />
+import { api } from "../../../_generated/api";
+import { NoObjectGeneratedError } from "ai";
 import { convexTest } from "convex-test";
 import { beforeEach, expect, it, vi } from "vitest";
 import schema from "../../../schema";
@@ -8,13 +10,6 @@ const mock = vi.hoisted(() => ({ generate: vi.fn() }));
 vi.mock("ai", async original => ({ ...await original<typeof import("ai")>(), generateObject: mock.generate }));
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"])).map(([path, module]) => [`./${new URL(path, import.meta.url).pathname.slice(root.length)}`, module]));
-function ref(name: string): ReturnType<typeof makeFunctionReference<"action">>;
-function ref(name: string, type: "action"): ReturnType<typeof makeFunctionReference<"action">>;
-function ref(name: string, type: "mutation"): ReturnType<typeof makeFunctionReference<"mutation">>;
-function ref(name: string, type: "query"): ReturnType<typeof makeFunctionReference<"query">>;
-function ref(name: string, type: "action" | "mutation" | "query" = "action") {
-  return makeFunctionReference<typeof type>(`functions/academic/${name}`);
-}
 const model = "nvidia/nemotron-3-super-120b-a12b:free";
 const result = { object: { title: "Algebra lesson", subject: "Mathematics", level: "JSS 1", topic: "Algebra", sections: [{ sectionId: "content", label: "Content", content: "Worked examples with clear explanations and practice." }], sourceNotes: ["Source used"] }, usage: { inputTokens: 20, outputTokens: 10 }, response: { id: "openrouter-response-1" } };
 beforeEach(() => { mock.generate.mockReset(); mock.generate.mockResolvedValue(result); });
@@ -46,8 +41,8 @@ async function setup() {
   const teacher = t.withIdentity({ subject: "ai-teacher", tokenIdentifier: "test|ai-teacher" });
   const other = t.withIdentity({ subject: "stranger", tokenIdentifier: "test|stranger" });
   const request = { outputType: "lesson_plan", sourceIds: [ids.sourceId], targetTopicLabel: "Algebra" };
-  async function quote() { return await teacher.action(ref("documentGeneration:quoteTeacherLessonPlanDraft"), { ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") }) as { attemptId: Id<"usageOperationAttempts">; estimate: number }; }
-  async function confirm(attemptId: Id<"usageOperationAttempts">, estimate: number) { await teacher.mutation(ref("aiSpend:confirm", "mutation"), { attemptId, expectedUnits: estimate, confirmation: "CONFIRM" }); }
+  async function quote() { return await teacher.action(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft, { ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") }) as { attemptId: Id<"usageOperationAttempts">; estimate: number }; }
+  async function confirm(attemptId: Id<"usageOperationAttempts">, estimate: number) { await teacher.mutation(api.functions.academic.aiSpend.confirm, { attemptId, expectedUnits: estimate, confirmation: "CONFIRM" }); }
   return { ...ids, t, teacher, other, request, quote, confirm };
 }
 it("quotes, confirms, generates a real saved draft through a mocked provider and settles measured tokens once", async () => {
@@ -56,16 +51,21 @@ it("quotes, confirms, generates a real saved draft through a mocked provider and
   expect(quote.estimate).toBe(100_000);
   expect(mock.generate).not.toHaveBeenCalled();
   await f.confirm(quote.attemptId, quote.estimate);
-  const saved = await f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: quote.attemptId }) as { artifactId: string; documentState: string; generationMeta: { aiRunLogId: Id<"aiRunLogs"> } };
+  const saved = await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quote.attemptId }) as { artifactId: string; documentState: string; generationMeta: { aiRunLogId: Id<"aiRunLogs"> } };
   expect(saved.artifactId).toBeTruthy();
   expect(saved.documentState).toContain("Worked examples");
   expect(await f.t.run(ctx => ctx.db.get(saved.generationMeta.aiRunLogId))).toMatchObject({ attemptId: quote.attemptId, status: "succeeded", tokenPromptCount: 20, tokenCompletionCount: 10 });
   expect(mock.generate).toHaveBeenCalledTimes(1);
   expect(mock.generate.mock.calls[0][0]).toMatchObject({ maxOutputTokens: 2048, maxRetries: 0 });
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: quote.attemptId })).rejects.toThrow("never replay");
+  const providerSchema = JSON.stringify(await mock.generate.mock.calls[0][0].schema.jsonSchema);
+  expect(providerSchema).toContain("sections");
+  const sent = mock.generate.mock.calls[0][0];
+  const knownBytes = new TextEncoder().encode(sent.system + sent.prompt + providerSchema).length;
+  expect(knownBytes * 16 + 4096).toBeLessThanOrEqual(quote.estimate);
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quote.attemptId })).rejects.toThrow("never replay");
   expect(mock.generate).toHaveBeenCalledTimes(1);
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 30 });
-  expect(await f.teacher.query(ref("aiSpend:status", "query"), { attemptId: quote.attemptId })).toMatchObject({ status: "settled", actualUnits: 30, resultId: saved.artifactId });
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quote.attemptId })).toMatchObject({ status: "settled", actualUnits: 30, resultId: saved.artifactId });
   const events = await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5));
   expect(events).toMatchObject([{ unitsDelta: 30 }]);
 });
@@ -75,52 +75,58 @@ it("generates an assessment with effective settings, binds profile edits and set
     questionMix: { multiple_choice: 0, short_answer: 1, essay: 0, true_false: 0, fill_in_the_blank: 0 }, allowTeacherOverrides: true };
   const request = { draftMode: "practice_quiz", sourceIds: [f.sourceId], targetTopicLabel: "Algebra", effectiveGenerationSettings: settings };
   mock.generate.mockResolvedValue({ object: { title: "Algebra quiz", subject: "Mathematics", level: "JSS 1", topic: "Algebra", blueprint: "One question", questions: [{ number: 1, prompt: "Solve x+2=5", answer: "3", explanation: "Subtract 2", difficulty: "easy", marks: 2, tags: ["algebra"] }], answerKeyNotes: "Check working", sourceNotes: ["Source"] }, usage: { inputTokens: 40, outputTokens: 50 }, response: { id: "assessment-response-1" } });
-  const quoted = await f.teacher.action(ref("documentGeneration:quoteTeacherAssessmentDraft"), { ...request, idempotencyKey: "assessment-001" }) as { attemptId: Id<"usageOperationAttempts">; estimate: number };
+  const quoted = await f.teacher.action(api.functions.academic.documentGeneration.quoteTeacherAssessmentDraft, { ...request, idempotencyKey: "assessment-001" }) as { attemptId: Id<"usageOperationAttempts">; estimate: number };
   await f.confirm(quoted.attemptId, quoted.estimate);
-  const saved = await f.teacher.action(ref("documentGeneration:generateTeacherAssessmentDraft"), { attemptId: quoted.attemptId }) as { bankId: string; itemCount: number };
+  const saved = await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft, { attemptId: quoted.attemptId }) as { bankId: string; itemCount: number };
   expect(saved.itemCount).toBe(1);
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ consumedUnits: 90, reservedUnits: 0 });
-  expect(await f.teacher.query(ref("aiSpend:status", "query"), { attemptId: quoted.attemptId })).toMatchObject({ resultId: saved.bankId });
-  const second = await f.teacher.action(ref("documentGeneration:quoteTeacherAssessmentDraft"), { ...request, idempotencyKey: "assessment-002" }) as { attemptId: Id<"usageOperationAttempts">; estimate: number };
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId })).toMatchObject({ resultId: saved.bankId });
+  await expect(f.teacher.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft,
+    { attemptId: quoted.attemptId, bankId: null, draftMode: "practice_quiz", title: "Forged bank",
+      sourceIds: [f.sourceId], sourceSelectionSnapshot: "forged", effectiveGenerationSettings: settings,
+      subjectId: f.subjectId, level: "JSS 1", topicLabel: "Algebra",
+      items: [{ questionType: "short_answer", difficulty: "easy", promptText: "Forged",
+        answerText: "Forged", explanationText: "Forged", marks: 1, tags: [] }] } as never)).rejects.toThrow();
+  const second = await f.teacher.action(api.functions.academic.documentGeneration.quoteTeacherAssessmentDraft, { ...request, idempotencyKey: "assessment-002" }) as { attemptId: Id<"usageOperationAttempts">; estimate: number };
   await f.confirm(second.attemptId, second.estimate);
   await f.t.run(ctx => ctx.db.patch(f.assessmentProfileId, { name: "Renamed profile" }));
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherAssessmentDraft"), { attemptId: second.attemptId })).rejects.toThrow("changed");
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherAssessmentDraft, { attemptId: second.attemptId })).rejects.toThrow("changed");
   expect(mock.generate).toHaveBeenCalledTimes(1);
 });
 it("denies unauthorized requests and insufficient allowance before a provider call", async () => {
   const f = await setup();
-  await expect(f.other.action(ref("documentGeneration:quoteTeacherLessonPlanDraft"), { ...f.request, idempotencyKey: "foreign-request" })).rejects.toThrow();
+  await expect(f.other.action(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft, { ...f.request, idempotencyKey: "foreign-request" })).rejects.toThrow();
   await f.t.run(ctx => ctx.db.patch(f.meterId, { consumedUnits: 450_000 }));
   await expect(f.quote()).rejects.toThrow("allowance short");
   expect(mock.generate).not.toHaveBeenCalled();
 });
 it("rejects a reused quote key for changed inputs, direct generation args and revoked capability", async () => {
   const f = await setup();
-  const quote = await f.teacher.action(ref("documentGeneration:quoteTeacherLessonPlanDraft"), { ...f.request, idempotencyKey: "bound-request-001" }) as { attemptId: Id<"usageOperationAttempts">; estimate: number };
-  await expect(f.teacher.action(ref("documentGeneration:quoteTeacherLessonPlanDraft"), { ...f.request, targetTopicLabel: "Geometry", idempotencyKey: "bound-request-001" })).rejects.toThrow("different work");
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), f.request)).rejects.toThrow();
+  const quote = await f.teacher.action(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft, { ...f.request, idempotencyKey: "bound-request-001" }) as { attemptId: Id<"usageOperationAttempts">; estimate: number };
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft, { ...f.request, targetTopicLabel: "Geometry", idempotencyKey: "bound-request-001" })).rejects.toThrow("different work");
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, f.request as never)).rejects.toThrow();
   await f.confirm(quote.attemptId, quote.estimate);
   await f.t.run(ctx => ctx.db.patch(f.membershipId, { status: "suspended" }));
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: quote.attemptId })).rejects.toThrow();
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quote.attemptId })).rejects.toThrow();
   expect(mock.generate).not.toHaveBeenCalled();
 });
 it("changed source content or template invalidates a confirmed quote without dispatch", async () => {
   const f = await setup();
   const quote = await f.quote(); await f.confirm(quote.attemptId, quote.estimate);
   await f.t.run(ctx => ctx.db.patch(f.chunkId, { chunkText: "Changed excerpt before dispatch" }));
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: quote.attemptId })).rejects.toThrow("changed");
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quote.attemptId })).rejects.toThrow("changed");
   expect(mock.generate).not.toHaveBeenCalled();
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0 });
   const again = await f.quote(); await f.confirm(again.attemptId, again.estimate);
   await f.t.run(ctx => ctx.db.patch(f.templateId, { title: "New template" }));
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: again.attemptId })).rejects.toThrow("changed");
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: again.attemptId })).rejects.toThrow("changed");
 });
 it("rejects a model override changed after a confirmed quote", async () => {
   const f = await setup(); const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
   const before = process.env.SCHOOL_AI_LESSON_PLAN_MODEL;
   try {
     process.env.SCHOOL_AI_LESSON_PLAN_MODEL = "other/changed-model";
-    await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: quoted.attemptId })).rejects.toThrow("changed");
+    await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId })).rejects.toThrow("changed");
   } finally {
     if (before === undefined) delete process.env.SCHOOL_AI_LESSON_PLAN_MODEL;
     else process.env.SCHOOL_AI_LESSON_PLAN_MODEL = before;
@@ -134,35 +140,66 @@ it("settles measured usage even when draft save fails, then recovers without dis
     await f.t.run(ctx => ctx.db.patch(f.subjectId, { isArchived: true }));
     return result;
   });
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: quoted.attemptId })).rejects.toThrow();
-  expect(await f.teacher.query(ref("aiSpend:status", "query"), { attemptId: quoted.attemptId })).toMatchObject({ status: "settled", actualUnits: 30, resultId: null });
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId })).rejects.toThrow();
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId })).toMatchObject({ status: "settled", actualUnits: 30, resultId: null });
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 30 });
   await f.t.run(ctx => ctx.db.patch(f.subjectId, { isArchived: false }));
-  const saved = await f.teacher.action(ref("documentGeneration:recoverTeacherGenerationDraft"), { attemptId: quoted.attemptId }) as { artifactId: string };
+  const fakeSave = { artifactId: null, expectedRevisionNumber: 0, outputType: "lesson_plan" as const, title: "Forged output", documentState: "# Not from provider", plainText: "Not from provider", sourceIds: [f.sourceId], subjectId: f.subjectId, level: "JSS 1", topicLabel: "Algebra", revisionKind: "generated" as const };
+  await expect(f.teacher.mutation(api.functions.academic.lessonKnowledgeLessonPlans.saveTeacherInstructionArtifactDraft, { ...fakeSave, attemptId: quoted.attemptId } as never)).rejects.toThrow();
+  expect(await f.t.run(ctx => ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", quoted.attemptId)).unique())).not.toBeNull();
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId })).toMatchObject({ resultId: null });
+  const saved = await f.teacher.action(api.functions.academic.documentGeneration.recoverTeacherGenerationDraft, { attemptId: quoted.attemptId }) as { artifactId: Id<"instructionArtifacts">; revisionNumber: number };
   expect(saved.artifactId).toBeTruthy();
   expect(await f.t.run(ctx => ctx.db.query("aiGenerationResults").withIndex("by_attempt", q => q.eq("attemptId", quoted.attemptId)).unique())).toBeNull();
   expect(mock.generate).toHaveBeenCalledTimes(1);
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 30 });
   const events = await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5));
   expect(events).toHaveLength(1);
-  expect(await f.teacher.action(ref("documentGeneration:recoverTeacherGenerationDraft"), { attemptId: quoted.attemptId })).toMatchObject({ resultId: saved.artifactId });
+  expect(await f.teacher.action(api.functions.academic.documentGeneration.recoverTeacherGenerationDraft, { attemptId: quoted.attemptId })).toMatchObject({ resultId: saved.artifactId });
+  const manual = await f.teacher.mutation(api.functions.academic.lessonKnowledgeLessonPlans.saveTeacherInstructionArtifactDraft,
+    { ...fakeSave, artifactId: saved.artifactId, expectedRevisionNumber: saved.revisionNumber, revisionKind: "manual_save" });
+  expect(manual.revisionNumber).toBe(saved.revisionNumber + 1);
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId })).toMatchObject({ resultId: saved.artifactId });
+});
+it("settles complete SDK NoObject usage from a thrown response and never replays it", async () => {
+  const f = await setup();
+  const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+  mock.generate.mockRejectedValueOnce(new NoObjectGeneratedError({ message: "response did not match schema", text: "invalid",
+    response: { id: "sdk-failed-1", timestamp: new Date(), modelId: model },
+    usage: { inputTokens: 12, outputTokens: 7 } as never, finishReason: "error" }));
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId })).rejects.toThrow();
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId })).toMatchObject({ status: "settled", actualUnits: 19, outcome: "failed" });
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 19 });
+  const attempt = await f.t.run(ctx => ctx.db.get(quoted.attemptId));
+  expect(attempt?.evidence).toContain("sdk:no-object:provider:sdk-failed-1");
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId })).rejects.toThrow("never replay");
+  expect(mock.generate).toHaveBeenCalledTimes(1);
+});
+it("holds a branded SDK error when its usage is partial", async () => {
+  const f = await setup(); const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+  mock.generate.mockRejectedValueOnce(new NoObjectGeneratedError({ message: "invalid schema", text: "invalid",
+    response: { id: "partial-1", timestamp: new Date(), modelId: model },
+    usage: { inputTokens: 12, outputTokens: undefined } as never, finishReason: "error" }));
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: quoted.attemptId })).rejects.toThrow("uncertain");
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ consumedUnits: 0, reservedUnits: quoted.estimate });
 });
 it("known validation failure charges tokens; missing usage keeps the hold and forbids replay", async () => {
   const f = await setup();
   mock.generate.mockResolvedValueOnce({ ...result, object: { ...result.object, sections: [] } });
   const first = await f.quote(); await f.confirm(first.attemptId, first.estimate);
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: first.attemptId })).rejects.toThrow();
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: first.attemptId })).rejects.toThrow();
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ consumedUnits: 30, reservedUnits: 0 });
   mock.generate.mockResolvedValueOnce({ object: result.object });
   const next = await f.quote(); await f.confirm(next.attemptId, next.estimate);
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: next.attemptId })).rejects.toThrow("uncertain");
-  expect(await f.teacher.query(ref("aiSpend:status", "query"), { attemptId: next.attemptId })).toMatchObject({ status: "needs_reconciliation" });
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: next.attemptId })).rejects.toThrow("uncertain");
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: next.attemptId })).toMatchObject({ status: "needs_reconciliation" });
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 100_000 });
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: next.attemptId })).rejects.toThrow("never replay");
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: next.attemptId })).rejects.toThrow("never replay");
   expect(mock.generate).toHaveBeenCalledTimes(2);
   const thrown = await f.quote(); await f.confirm(thrown.attemptId, thrown.estimate);
-  mock.generate.mockRejectedValueOnce(Object.assign(new Error("Provider timed out"), { statusCode: 503 }));
-  await expect(f.teacher.action(ref("documentGeneration:generateTeacherLessonPlanDraft"), { attemptId: thrown.attemptId })).rejects.toThrow("uncertain");
+  mock.generate.mockRejectedValueOnce(Object.assign(new Error("Provider timed out"), { statusCode: 503,
+    usage: { inputTokens: 9, outputTokens: 8 }, response: { id: "untrusted-error" } }));
+  await expect(f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft, { attemptId: thrown.attemptId })).rejects.toThrow("uncertain");
   expect(mock.generate).toHaveBeenCalledTimes(3);
-  expect(await f.teacher.query(ref("aiSpend:status", "query"), { attemptId: thrown.attemptId })).toMatchObject({ status: "needs_reconciliation" });
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: thrown.attemptId })).toMatchObject({ status: "needs_reconciliation" });
 });

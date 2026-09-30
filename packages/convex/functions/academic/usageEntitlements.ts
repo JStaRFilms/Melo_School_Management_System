@@ -32,11 +32,9 @@ async function audit(ctx: MutationCtx, schoolId: Id<"schools">, action: string, 
   await recordAuditEventHelper(ctx, { schoolId, groupId, actorKind: actorPersonId ? "user" : "platform_admin", actorPersonId, actorEmailSnapshot: identity?.email ?? "authenticated operator", module: "commercial", action, targetType: "usage_entitlement", targetId, outcome: "success", safeSummary: summary, retentionClass: "permanent_statutory", alertTier: "tier2_warn" });
 }
 async function activeCycleRecord(ctx: Context, schoolId: Id<"schools">, now = Date.now()) {
-  const cycles = await ctx.db.query("usageCycles").withIndex("by_school", q => q.eq("schoolId", schoolId)).take(101);
-  if (cycles.length > 100) throw new ConvexError("Usage cycle history exceeds review bound");
-  const active = cycles.filter(row => row.status === "active" && row.startAt <= now);
-  if (active.length > 1) throw new ConvexError("Overlapping usage cycles require reconciliation");
-  return active[0] ?? null;
+  const cycles = await ctx.db.query("usageCycles").withIndex("by_school_and_status", q => q.eq("schoolId", schoolId).eq("status", "active")).take(2);
+  if (cycles.length > 1) throw new ConvexError("Overlapping usage cycles require reconciliation");
+  return cycles[0]?.startAt <= now ? cycles[0] : null;
 }
 async function currentCycle(ctx: Context, schoolId: Id<"schools">, now = Date.now()) {
   const cycle = await activeCycleRecord(ctx, schoolId, now);
@@ -97,9 +95,10 @@ export const startUsageCycle = mutation({
     await platform(ctx, args.schoolId, args.confirmation); validPeriod(args.startAt, args.endAt);
     const [contract, version] = await Promise.all([ctx.db.get(args.contractId), ctx.db.get(args.entitlementVersionId)]);
     if (!contract || contract.schoolId !== args.schoolId || contract.effectiveFrom > args.startAt || (contract.effectiveTo !== undefined && contract.effectiveTo < args.endAt) || !version || version.effectiveFrom > args.startAt) throw new ConvexError("Matching effective contract and entitlement version required for the complete cycle");
-    const cycles = await ctx.db.query("usageCycles").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).take(101);
-    if (cycles.length > 100 || cycles.some(row => args.startAt < row.endAt && args.endAt > row.startAt)) throw new ConvexError("Usage cycle overlaps history or exceeds review bound");
-    if (cycles.some(row => row.status !== "closed")) throw new ConvexError("Close and reconcile the prior usage cycle before starting another");
+    const predecessor = await ctx.db.query("usageCycles").withIndex("by_school_and_startAt", q => q.eq("schoolId", args.schoolId).lt("startAt", args.endAt)).order("desc").first();
+    if (predecessor && args.startAt < predecessor.endAt) throw new ConvexError("Usage cycle overlaps history");
+    const active = await ctx.db.query("usageCycles").withIndex("by_school_and_status", q => q.eq("schoolId", args.schoolId).eq("status", "active")).first();
+    if (active) throw new ConvexError("Close and reconcile the prior usage cycle before starting another");
     const id = await ctx.db.insert("usageCycles", { schoolId: args.schoolId, contractId: contract._id, entitlementVersionId: version._id, code: version.code, version: version.version, entitlement: version.entitlement, startAt: args.startAt, endAt: args.endAt, status: "active", createdAt: Date.now() });
     for (const row of version.entitlement.allowances) {
       const existing = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", args.schoolId).eq("meterType", row.meterType)).take(2);
@@ -314,16 +313,23 @@ export const cancelHeavyOperation = mutation({
   args: { schoolId: v.id("schools"), attemptId: v.id("usageOperationAttempts") }, handler: async (ctx, args) => { const attempt = await ctx.db.get(args.attemptId); if (!attempt || attempt.schoolId !== args.schoolId) throw new ConvexError("Operation quote unavailable"); await authorizeTask(ctx, args.schoolId, attempt.task); const identity = await ctx.auth.getUserIdentity(); if (!identity || identity.tokenIdentifier !== attempt.actorTokenIdentifier) throw new ConvexError("Only the quoting user may cancel"); if (attempt.status === "cancelled") return attempt._id; if (attempt.status !== "quoted") throw new ConvexError("Only an unconfirmed quote may be cancelled"); await ctx.db.patch(attempt._id, { status: "cancelled", updatedAt: Date.now() }); await ctx.db.insert("usageOperationTransitions", { attemptId: attempt._id, state: "cancelled", createdAt: Date.now() }); return attempt._id; },
 });
 export const getUsageWorkspace = query({
-  args: { schoolId: v.id("schools") }, handler: async (ctx, args) => { const platformUser = await isGroupPlatformOperator(ctx); if (!platformUser) await requireCapability(ctx, args.schoolId, "finance.reports.view"); const now = Date.now(); const cycle = await activeCycleRecord(ctx, args.schoolId, now); if (!cycle) return { cycle: null, meters: [], requests: [], groupPools: [], canAllocatePool: false, providerExecutionAvailable: false, aiGenerationAvailable: false };
+  args: { schoolId: v.id("schools"), now: v.number() }, handler: async (ctx, args) => { const platformUser = await isGroupPlatformOperator(ctx); if (!platformUser) await requireCapability(ctx, args.schoolId, "finance.reports.view"); if (!Number.isSafeInteger(args.now) || args.now < 0) throw new ConvexError("Invalid readiness time"); const now = args.now; const cycle = await activeCycleRecord(ctx, args.schoolId, now); if (!cycle) return { cycle: null, meters: [], requests: [], groupPools: [], canAllocatePool: false, providerExecutionAvailable: false, aiGenerationAvailable: false };
     const closureRequired = cycle.endAt <= now;
     const allowanceAt = closureRequired ? cycle.endAt : now;
-    const meters: Array<{ meterType: Doc<"usageMeterAllocations">["meterType"]; availableUnits: number; consumedUnits: number; reservedUnits: number; baseUnits: number; graceUnits: number; topUpUnits: number; exceptionUnits: number; poolUnits: number; allocatedUnits: number }> = []; for (const row of cycle.entitlement.allowances) { const effective = await effectiveAllowance(ctx, cycle, row.meterType, allowanceAt); const meter = await allocation(ctx, args.schoolId, row.meterType); if (effective) meters.push({ meterType: row.meterType, ...effective, consumedUnits: meter.consumedUnits, reservedUnits: meter.reservedUnits, availableUnits: closureRequired ? 0 : dispatchAvailable(effective.allocatedUnits, cycle.entitlement.hardStopPercent, meter.consumedUnits, meter.reservedUnits) }); }
+    const meters: Array<{ meterType: Doc<"usageMeterAllocations">["meterType"]; availableUnits: number; consumedUnits: number; reservedUnits: number; baseUnits: number; graceUnits: number; topUpUnits: number; exceptionUnits: number; poolUnits: number; allocatedUnits: number }> = [];
+    let aiMeterReady = false;
+    for (const row of cycle.entitlement.allowances) {
+      const effective = await effectiveAllowance(ctx, cycle, row.meterType, allowanceAt);
+      const meter = await allocation(ctx, args.schoolId, row.meterType);
+      if (row.meterType === "ai_tokens") aiMeterReady = meter.cycleId === cycle._id && !meter.aiOverageRequiresReview;
+      if (effective) meters.push({ meterType: row.meterType, ...effective, consumedUnits: meter.consumedUnits, reservedUnits: meter.reservedUnits, availableUnits: closureRequired ? 0 : dispatchAvailable(effective.allocatedUnits, cycle.entitlement.hardStopPercent, meter.consumedUnits, meter.reservedUnits) });
+    }
     const requests = await ctx.db.query("usageExceptionRequests").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).order("desc").take(100);
     const link = await ctx.db.query("schoolGroupBranches").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
     const canAllocatePool = !!link && await requireGroupOwner(ctx, link.groupId).then(() => true).catch(() => false);
     const groupPools = link && canAllocatePool ? await ctx.db.query("usageGroupPools").withIndex("by_group", q => q.eq("groupId", link.groupId)).order("desc").take(100) : [];
     const contract = await ctx.db.get(cycle.contractId);
-    const aiGenerationAvailable = !closureRequired && !!contract && contract.schoolId === args.schoolId && contract.effectiveFrom <= now && (contract.effectiveTo === undefined || contract.effectiveTo > now)
+    const aiGenerationAvailable = !closureRequired && aiMeterReady && !!contract && contract.schoolId === args.schoolId && contract.effectiveFrom <= now && (contract.effectiveTo === undefined || contract.effectiveTo > now)
       && cycle.entitlement.profiles.some(profile => (profile.task === "teacher_lesson_plan" || profile.task === "teacher_assessment") && profile.meterType === "ai_tokens"
         && meters.some(meter => meter.meterType === "ai_tokens" && meter.availableUnits >= profile.unitsPerItem));
     return { groupPools, canAllocatePool, closureRequired, aiGenerationAvailable, cycle: { _id: cycle._id, code: cycle.code, version: cycle.version, startAt: cycle.startAt, endAt: cycle.endAt, warningPercent: cycle.entitlement.warningPercent, criticalPercent: cycle.entitlement.criticalPercent, hardStopPercent: cycle.entitlement.hardStopPercent, maxFileSizeBytes: cycle.entitlement.maxFileSizeBytes, maxPagesPerOperation: cycle.entitlement.maxPagesPerOperation, profiles: cycle.entitlement.profiles }, meters, requests, providerExecutionAvailable: false };

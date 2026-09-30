@@ -16,6 +16,7 @@ import type * as functions_academic_adminLeadership from "../functions/academic/
 import type * as functions_academic_adminLeadershipHelpers from "../functions/academic/adminLeadershipHelpers.js";
 import type * as functions_academic_adminSelectors from "../functions/academic/adminSelectors.js";
 import type * as functions_academic_admissionNumbers from "../functions/academic/admissionNumbers.js";
+import type * as functions_academic_aiSpend from "../functions/academic/aiSpend.js";
 import type * as functions_academic_aiImport from "../functions/academic/aiImport.js";
 import type * as functions_academic_archiveGuardrails from "../functions/academic/archiveGuardrails.js";
 import type * as functions_academic_archiveRecords from "../functions/academic/archiveRecords.js";
@@ -188,6 +189,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/adminLeadershipHelpers": typeof functions_academic_adminLeadershipHelpers;
   "functions/academic/adminSelectors": typeof functions_academic_adminSelectors;
   "functions/academic/admissionNumbers": typeof functions_academic_admissionNumbers;
+  "functions/academic/aiSpend": typeof functions_academic_aiSpend;
   "functions/academic/aiImport": typeof functions_academic_aiImport;
   "functions/academic/archiveGuardrails": typeof functions_academic_archiveGuardrails;
   "functions/academic/archiveRecords": typeof functions_academic_archiveRecords;
