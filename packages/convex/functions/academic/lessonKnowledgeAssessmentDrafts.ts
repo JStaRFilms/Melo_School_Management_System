@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { internal } from "../../_generated/api";
-import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import {
   buildExamPlanningContextKey,
   buildTopicPlanningContextKey,
@@ -16,6 +16,7 @@ import {
   type KnowledgeActorContext,
 } from "./lessonKnowledgeAccess";
 import { assertBranchDoc } from "../foundation/tenantScope";
+import { assertSaveAttempt, attachSavedDraft } from "./aiSpend";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
 
@@ -194,6 +195,7 @@ const bankItemValidator = v.object({
 
 const bankDraftValidator = v.object({
   bankId: v.union(v.id("assessmentBanks"), v.null()),
+  draftRevision: v.union(v.number(), v.null()),
   title: v.string(),
   description: v.union(v.string(), v.null()),
   draftMode: draftModeValidator,
@@ -1383,6 +1385,7 @@ export const getTeacherAssessmentBankWorkspace = query({
       })),
       draft: {
         bankId: bank?._id ?? null,
+        draftRevision: bank ? bank.draftRevision ?? 0 : null,
         title,
         description,
         draftMode,
@@ -1402,15 +1405,14 @@ export const getTeacherAssessmentBankWorkspace = query({
       },
       items: bankItems,
       canGenerate,
-      paidGenerationAvailable: false,
+      paidGenerationAvailable: true,
       canAutosave,
       selectedSources: sourceBundle.selectedSources,
     };
   },
 });
 
-export const saveTeacherAssessmentBankDraft = mutation({
-  args: {
+const aiDraftSaveArgs = v.object({
     bankId: v.optional(v.union(v.id("assessmentBanks"), v.null())),
     draftMode: draftModeValidator,
     title: v.string(),
@@ -1433,12 +1435,26 @@ export const saveTeacherAssessmentBankDraft = mutation({
         tags: v.array(v.string()),
       })
     ),
-  },
+  });
+
+export const saveTeacherAssessmentBankDraft = mutation({
+  args: aiDraftSaveArgs.fields,
   returns: saveResultValidator,
-  handler: async (ctx, args) => {
+  handler: async (ctx, args) => saveDraftHelper(ctx, args),
+});
+
+// Only an authenticated server action may attach a staged provider result.
+export const saveGeneratedAssessmentBankDraft = internalMutation({
+  args: { ...aiDraftSaveArgs.fields, attemptId: v.id("usageOperationAttempts"), expectedBankRevision: v.union(v.number(), v.null()) },
+  returns: saveResultValidator,
+  handler: async (ctx, args) => saveDraftHelper(ctx, args),
+});
+
+async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.type & { attemptId?: Id<"usageOperationAttempts">; expectedBankRevision?: number | null }) {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
+    if (args.attemptId) await assertSaveAttempt(ctx, args.attemptId, schoolId, args.draftMode === "exam_draft" ? "cbt_draft" : "question_bank_draft", args.sourceIds);
 
     const normalizedTitle = normalizeOptionalText(args.title) ?? defaultAssessmentTitle({
       draftMode: args.draftMode,
@@ -1541,6 +1557,15 @@ export const saveTeacherAssessmentBankDraft = mutation({
           planningContext,
         });
 
+    // The generated result must match the bank at quote time. A teacher may
+    // continue editing, but a slow call or later recovery cannot replace it.
+    const baseline = existingBank ? existingBank.draftRevision ?? 0 : null;
+    if (args.attemptId && (args.expectedBankRevision === undefined || args.bankId !== (existingBank?._id ?? null) || args.expectedBankRevision !== baseline)) {
+      throw new ConvexError("Assessment draft changed after generation began. Staged AI content is retained; review newer edits before recovery.");
+    }
+    if (baseline !== null && (!Number.isSafeInteger(baseline) || baseline < 0 || !Number.isSafeInteger(baseline + 1))) {
+      throw new ConvexError("Assessment draft revision needs review");
+    }
     let bankId: Id<"assessmentBanks">;
     const now = Date.now();
 
@@ -1552,6 +1577,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
 
       bankId = existingBank._id;
       await ctx.db.patch(bankId, {
+        draftRevision: baseline! + 1,
         draftMode: args.draftMode,
         sourceSelectionSnapshot,
         effectiveGenerationSettings,
@@ -1570,6 +1596,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
       } as never);
     } else {
       bankId = await ctx.db.insert("assessmentBanks", {
+        draftRevision: 1,
         schoolId,
         ownerUserId: userId,
         ownerRole: actor.role === "admin" ? "admin" : "teacher",
@@ -1620,6 +1647,7 @@ export const saveTeacherAssessmentBankDraft = mutation({
       bankExists: Boolean(existingBank),
     });
 
+    if (args.attemptId) await attachSavedDraft(ctx, args.attemptId, String(bankId), "assessment");
     return {
       bankId,
       title: normalizedTitle,
@@ -1631,10 +1659,9 @@ export const saveTeacherAssessmentBankDraft = mutation({
       savedAt: now,
       effectiveGenerationSettings,
     };
-  },
-});
+};
 
-export const recordTeacherAssessmentBankAiRun = mutation({
+export const recordTeacherAssessmentBankAiRun = internalMutation({
   args: aiRunLogValidator,
   returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {

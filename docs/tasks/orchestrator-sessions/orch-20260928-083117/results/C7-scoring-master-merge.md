@@ -1,0 +1,9 @@
+# Scoring master merge closeout
+
+Master advanced again with scoring PR #87 after #90 source-merged. Reconciled that base rather than rebasing or reverting either feature. Five conflicts resolved: keep the release-validated Portal print selection plus scoring-policy print warning, preserve selected-school authorization in Admin selectors, retain all graded/narrative/scoring cleanup entries, keep incoming reviewed scoring schema fingerprints plus the four graded publication classifications, and update schema coverage counts.
+
+The parent gate still never calls a live graded builder. Only after frozen release and issued-card verification may it attach the same screen-only scoring-version warning used by staff. Scores, assessment maxima, policy snapshots and pinned certification stay immutable. Regrading draft rows does not hide or replace a previously released family copy; live staff previews continue to respect scoring job locks. The updated integration fixture first proves certification alone is withheld, then freezes a released copy and proves it remains unchanged during scanning/regrading.
+
+Incoming Admin/Portal print tests were updated with actual ready-branch, graded-mode and released-child context rather than bypassing those gates through incomplete mocks. Scoring warning consent tests pass alongside narrative issuance and graded visibility tests.
+
+Final local verification: 94 Convex files / 728 tests, 75 Admin files / 333 tests, 5 Portal files / 15 tests all pass. All three typechecks, diff checks and informational theme audit pass. Registry has 191 classified tables and 761 reference paths; no registry regeneration or reset/deployment was performed. No new broad reviewer/bot request is made, consistent with owner instruction. Pending deployment/runtime work remains in #93; optional/deferred policies in #94. #92's focused capacity repair is retained.

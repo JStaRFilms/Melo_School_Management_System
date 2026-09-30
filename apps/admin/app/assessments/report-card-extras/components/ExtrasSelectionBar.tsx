@@ -13,6 +13,7 @@ import {
 
 export function ExtrasSelectionBar({
   selection,
+  schoolId,
   sessions,
   terms,
   classes,
@@ -23,6 +24,7 @@ export function ExtrasSelectionBar({
   isLoadingStudents,
 }: {
   selection: ExtrasSelection;
+  schoolId: string;
   sessions: SelectorOption[];
   terms: SelectorOption[];
   classes: SelectorOption[];
@@ -38,6 +40,7 @@ export function ExtrasSelectionBar({
   const updateSelection = useCallback(
     (key: keyof ExtrasSelection, value: string | null) => {
       const params = new URLSearchParams(searchParams.toString());
+      params.set("schoolId", schoolId);
       if (value) params.set(key, value);
       else params.delete(key);
 
@@ -55,7 +58,7 @@ export function ExtrasSelectionBar({
       const query = params.toString();
       router.replace(query ? `?${query}` : "?", { scroll: false });
     },
-    [router, searchParams]
+    [router, searchParams, schoolId]
   );
 
   const baseSelectClassName =

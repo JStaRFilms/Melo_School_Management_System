@@ -16,6 +16,7 @@ import type * as functions_academic_adminLeadership from "../functions/academic/
 import type * as functions_academic_adminLeadershipHelpers from "../functions/academic/adminLeadershipHelpers.js";
 import type * as functions_academic_adminSelectors from "../functions/academic/adminSelectors.js";
 import type * as functions_academic_admissionNumbers from "../functions/academic/admissionNumbers.js";
+import type * as functions_academic_aiSpend from "../functions/academic/aiSpend.js";
 import type * as functions_academic_aiImport from "../functions/academic/aiImport.js";
 import type * as functions_academic_archiveGuardrails from "../functions/academic/archiveGuardrails.js";
 import type * as functions_academic_archiveRecords from "../functions/academic/archiveRecords.js";
@@ -65,6 +66,7 @@ import type * as functions_academic_historicalTermTotals from "../functions/acad
 import type * as functions_academic_identityMigration from "../functions/academic/identityMigration.js";
 import type * as functions_academic_identityResolver from "../functions/academic/identityResolver.js";
 import type * as functions_academic_institutionalEmail from "../functions/academic/institutionalEmail.js";
+import type * as functions_academic_instructionGenerationRules from "../functions/academic/instructionGenerationRules.js";
 import type * as functions_academic_judgeCurriculumSeed from "../functions/academic/judgeCurriculumSeed.js";
 import type * as functions_academic_judgeLessonSeed from "../functions/academic/judgeLessonSeed.js";
 import type * as functions_academic_knowledgeUploadReadiness from "../functions/academic/knowledgeUploadReadiness.js";
@@ -95,6 +97,8 @@ import type * as functions_academic_migrationAutosave from "../functions/academi
 import type * as functions_academic_migrationIngest from "../functions/academic/migrationIngest.js";
 import type * as functions_academic_migrationMerge from "../functions/academic/migrationMerge.js";
 import type * as functions_academic_migrationWorkspace from "../functions/academic/migrationWorkspace.js";
+import type * as functions_academic_narrativeEntrySheet from "../functions/academic/narrativeEntrySheet.js";
+import type * as functions_academic_narrativeReports from "../functions/academic/narrativeReports.js";
 import type * as functions_academic_portalIdentity from "../functions/academic/portalIdentity.js";
 import type * as functions_academic_rbac from "../functions/academic/rbac.js";
 import type * as functions_academic_rbacMigration from "../functions/academic/rbacMigration.js";
@@ -103,15 +107,18 @@ import type * as functions_academic_reportCardExtrasModel from "../functions/aca
 import type * as functions_academic_reportCardManualAdjustments from "../functions/academic/reportCardManualAdjustments.js";
 import type * as functions_academic_reportCardTermSettings from "../functions/academic/reportCardTermSettings.js";
 import type * as functions_academic_reportCards from "../functions/academic/reportCards.js";
+import type * as functions_academic_resultPublication from "../functions/academic/resultPublication.js";
 import type * as functions_academic_schoolBranding from "../functions/academic/schoolBranding.js";
 import type * as functions_academic_seed from "../functions/academic/seed.js";
 import type * as functions_academic_seedRunner from "../functions/academic/seedRunner.js";
 import type * as functions_academic_seedRunnerSecurity from "../functions/academic/seedRunnerSecurity.js";
 import type * as functions_academic_sessionScope from "../functions/academic/sessionScope.js";
+import type * as functions_academic_sessionScoring from "../functions/academic/sessionScoring.js";
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_storageEntitlementProvisioning from "../functions/academic/storageEntitlementProvisioning.js";
 import type * as functions_academic_studentClassMembership from "../functions/academic/studentClassMembership.js";
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
+import type * as functions_academic_studentEnrollmentCounts from "../functions/academic/studentEnrollmentCounts.js";
 import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
 import type * as functions_academic_subjectAggregationHelpers from "../functions/academic/subjectAggregationHelpers.js";
 import type * as functions_academic_subjectAggregationSelectionHelpers from "../functions/academic/subjectAggregationSelectionHelpers.js";
@@ -184,6 +191,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/adminLeadershipHelpers": typeof functions_academic_adminLeadershipHelpers;
   "functions/academic/adminSelectors": typeof functions_academic_adminSelectors;
   "functions/academic/admissionNumbers": typeof functions_academic_admissionNumbers;
+  "functions/academic/aiSpend": typeof functions_academic_aiSpend;
   "functions/academic/aiImport": typeof functions_academic_aiImport;
   "functions/academic/archiveGuardrails": typeof functions_academic_archiveGuardrails;
   "functions/academic/archiveRecords": typeof functions_academic_archiveRecords;
@@ -233,6 +241,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/identityMigration": typeof functions_academic_identityMigration;
   "functions/academic/identityResolver": typeof functions_academic_identityResolver;
   "functions/academic/institutionalEmail": typeof functions_academic_institutionalEmail;
+  "functions/academic/instructionGenerationRules": typeof functions_academic_instructionGenerationRules;
   "functions/academic/judgeCurriculumSeed": typeof functions_academic_judgeCurriculumSeed;
   "functions/academic/judgeLessonSeed": typeof functions_academic_judgeLessonSeed;
   "functions/academic/knowledgeUploadReadiness": typeof functions_academic_knowledgeUploadReadiness;
@@ -263,6 +272,8 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/migrationIngest": typeof functions_academic_migrationIngest;
   "functions/academic/migrationMerge": typeof functions_academic_migrationMerge;
   "functions/academic/migrationWorkspace": typeof functions_academic_migrationWorkspace;
+  "functions/academic/narrativeEntrySheet": typeof functions_academic_narrativeEntrySheet;
+  "functions/academic/narrativeReports": typeof functions_academic_narrativeReports;
   "functions/academic/portalIdentity": typeof functions_academic_portalIdentity;
   "functions/academic/rbac": typeof functions_academic_rbac;
   "functions/academic/rbacMigration": typeof functions_academic_rbacMigration;
@@ -271,15 +282,18 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/reportCardManualAdjustments": typeof functions_academic_reportCardManualAdjustments;
   "functions/academic/reportCardTermSettings": typeof functions_academic_reportCardTermSettings;
   "functions/academic/reportCards": typeof functions_academic_reportCards;
+  "functions/academic/resultPublication": typeof functions_academic_resultPublication;
   "functions/academic/schoolBranding": typeof functions_academic_schoolBranding;
   "functions/academic/seed": typeof functions_academic_seed;
   "functions/academic/seedRunner": typeof functions_academic_seedRunner;
   "functions/academic/seedRunnerSecurity": typeof functions_academic_seedRunnerSecurity;
   "functions/academic/sessionScope": typeof functions_academic_sessionScope;
+  "functions/academic/sessionScoring": typeof functions_academic_sessionScoring;
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/storageEntitlementProvisioning": typeof functions_academic_storageEntitlementProvisioning;
   "functions/academic/studentClassMembership": typeof functions_academic_studentClassMembership;
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
+  "functions/academic/studentEnrollmentCounts": typeof functions_academic_studentEnrollmentCounts;
   "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;
   "functions/academic/subjectAggregationHelpers": typeof functions_academic_subjectAggregationHelpers;
   "functions/academic/subjectAggregationSelectionHelpers": typeof functions_academic_subjectAggregationSelectionHelpers;

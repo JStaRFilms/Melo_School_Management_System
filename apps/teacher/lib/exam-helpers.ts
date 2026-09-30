@@ -1,4 +1,4 @@
-import { resolveGradeColor } from "@school/shared/exam-recording";
+import { resolveGradeColor, round, type SessionScoringPolicy } from "@school/shared/exam-recording";
 import type { ExamInputMode } from "@school/shared";
 import {
 examScaledScore as computeExamScaledScore,
@@ -21,9 +21,14 @@ ValidationErrors
 export function validateField(
   field: ScoreField,
   value: number | null,
-  examInputMode: ExamInputMode
+  examInputMode: ExamInputMode,
+  policy?: SessionScoringPolicy
 ): string | null {
   if (value === null) return null; // incomplete rows are not invalid
+  if (policy) {
+    const max = field === "examRawScore" ? policy.examRawMax : policy[`${field}Max`];
+    return !Number.isFinite(value) || value < 0 || value > max ? `${field} must be between 0 and ${max}` : null;
+  }
 
   const errors = validateScoreRanges(
     field === "ca1" ? value : 0,
@@ -76,7 +81,8 @@ export function computeDerivedValues(
   ca3: number | null,
   examRaw: number | null,
   examInputMode: ExamInputMode,
-  gradingBands: GradingBandResponse[]
+  gradingBands: GradingBandResponse[],
+  policy?: SessionScoringPolicy
 ): {
   examScaledScore: number | null;
   total: number | null;
@@ -93,8 +99,8 @@ export function computeDerivedValues(
     };
   }
 
-  const scaled = computeExamScaledScore(examRaw, examInputMode);
-  const totalVal = computeTotal(ca1, ca2, ca3, scaled);
+  const scaled = policy ? round(examRaw / policy.examRawMax * policy.examContributionMax, 2) : computeExamScaledScore(examRaw, examInputMode);
+  const totalVal = policy ? round(ca1 + ca2 + ca3 + scaled, 2) : computeTotal(ca1, ca2, ca3, scaled);
 
   const bands = gradingBands.map((b) => ({
     schoolId: b.schoolId,

@@ -11,26 +11,53 @@ PortalWorkspaceData,
 } from "@/portal-types";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
-import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar } from "@school/shared";
+import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar,ReportScoringPrintWarning } from "@school/shared";
 import { buildPortalHref, formatDate, formatMoney, formatScore, getGreeting } from "./format";
+import { NarrativeReport } from "./NarrativeReport";
 import { useAction,useQuery } from "convex/react";
 import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { usePathname,useRouter,useSearchParams } from "next/navigation";
-import { useEffect,useMemo,useRef,useState } from "react";
+import { useEffect,useRef,useState } from "react";
+
+function selectedResultMessage(state: PortalWorkspaceData["selectedResultState"]) {
+  return state === "withheld"
+    ? "Results for this term have not been published."
+    : "No report card is available for this enrollment.";
+}
+
+function visibleNotifications(workspace: PortalWorkspaceData) {
+  return selectedIssuedReport(workspace) || workspace.selectedNarrativeReport
+    ? workspace.notifications
+    : workspace.notifications.filter((notice) => !notice.href?.startsWith("/report-cards"));
+}
+
+function selectedIssuedReport(workspace: PortalWorkspaceData) {
+  const card = workspace.selectedReportCard;
+  const selectedHistory = workspace.history.find((item) =>
+    item.sessionId === workspace.selectedSessionId && item.termId === workspace.selectedTermId);
+  return workspace.selectedReportMode === "graded" && workspace.selectedResultState === "released" && card &&
+    workspace.selectedStudentId === card.student._id &&
+    workspace.selectedSessionId !== null && workspace.selectedTermId !== null &&
+    (!selectedHistory || (selectedHistory.mode === "graded" && selectedHistory.sessionName === card.sessionName &&
+      selectedHistory.termName === card.termName && selectedHistory.classId === card.classId))
+    ? card : null;
+}
 
 function buildQueryArgs(
   studentId: string | null,
   sessionId: string | null,
   termId: string | null,
-  historyLimit: number
+  historyLimit: number,
+  now: number
 ) {
   const args: {
     studentId?: Id<"students"> | null;
     sessionId?: Id<"academicSessions"> | null;
     termId?: Id<"academicTerms"> | null;
     historyLimit: number;
-  } = { historyLimit };
+    now: number;
+  } = { historyLimit, now };
 
   if (studentId) {
     args.studentId = studentId as Id<"students">;
@@ -54,6 +81,17 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
   const studentId = searchParams.get("studentId");
   const sessionId = searchParams.get("sessionId");
   const termId = searchParams.get("termId");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const refresh = () => setNow(Date.now());
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+  const [pendingSelection, setPendingSelection] = useState<{ from: string; to: string } | null>(null);
   const [billingNotice, setBillingNotice] = useState<string | null>(null);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
   const paymentInitializingRef = useRef(false);
@@ -62,7 +100,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
 
   const workspace = useQuery(
     api.functions.portal.getWorkspaceData,
-    buildQueryArgs(studentId, sessionId, termId, historyLimit)
+    buildQueryArgs(studentId, sessionId, termId, historyLimit, now)
   ) as PortalWorkspaceData | undefined;
   const billing = useQuery(
     api.functions.portal.getBillingData,
@@ -71,33 +109,27 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
       : "skip"
   ) as PortalBillingData | undefined;
 
-  const resolvedStudentId = workspace?.selectedStudentId ?? null;
-  const resolvedSessionId = workspace?.selectedSessionId ?? null;
-  const resolvedTermId = workspace?.selectedTermId ?? null;
+  const selectionKey = searchParams.toString();
+  const selectionPending = pendingSelection !== null && pendingSelection.from === selectionKey && pendingSelection.to !== selectionKey;
+  const matchesSelection = workspace !== undefined &&
+    (!studentId || workspace.selectedStudentId === studentId) &&
+    (!sessionId || workspace.selectedSessionId === sessionId) &&
+    (!termId || workspace.selectedTermId === termId);
 
   useEffect(() => {
-    if (workspace?.school?.name) {
+    if (pendingSelection && pendingSelection.from !== selectionKey) setPendingSelection(null);
+  }, [pendingSelection, selectionKey]);
+
+  useEffect(() => {
+    if (workspace?.school?.name && matchesSelection && !selectionPending) {
       document.title = `${workspace.school.name} · Portal`;
     }
-  }, [workspace?.school?.name]);
+  }, [workspace?.school?.name, matchesSelection, selectionPending]);
 
-  const selectedStudent = workspace?.selectedStudent ?? null;
-  const activeHistoryItem = useMemo(() => {
-    if (!workspace?.history.length) {
-      return null;
-    }
-
-    return (
-      workspace.history.find(
-        (item) =>
-          item.sessionId === resolvedSessionId && item.termId === resolvedTermId
-      ) ?? workspace.history[0]
-    );
-  }, [resolvedSessionId, resolvedTermId, workspace]);
-
-  if (workspace === undefined) {
+  if (workspace === undefined || selectionPending || !matchesSelection) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <p role="status" className="text-base text-slate-600">Loading results...</p>
         <div className="animate-pulse space-y-6">
           <div className="h-5 w-48 rounded bg-slate-100" />
           <div className="h-8 w-72 rounded bg-slate-100" />
@@ -108,11 +140,15 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
     );
   }
 
+  const resolvedStudentId = workspace.selectedStudentId;
+  const selectedStudent = workspace.selectedStudent;
+
   const handleSelectStudent = (nextStudentId: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("studentId", nextStudentId);
     params.delete("sessionId");
     params.delete("termId");
+    setPendingSelection({ from: selectionKey, to: params.toString() });
     router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   };
 
@@ -128,6 +164,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
 
     params.set("sessionId", item.sessionId);
     params.set("termId", item.termId);
+    setPendingSelection({ from: selectionKey, to: params.toString() });
     router.replace(`${pathname}?${params.toString()}`);
   };
 
@@ -187,14 +224,12 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
         {mode === "dashboard" && (
           <DashboardView
             workspace={workspace}
-            activeHistoryItem={activeHistoryItem}
             onSelectHistoryItem={handleSelectHistoryItem}
           />
         )}
         {mode === "results" && (
           <ResultsView
             workspace={workspace}
-            activeHistoryItem={activeHistoryItem}
             onSelectHistoryItem={handleSelectHistoryItem}
           />
         )}
@@ -280,19 +315,21 @@ function PortalGreetingBar({
   );
 }
 
+function HistoricalReviewNotice() {
+  return <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">Historical report needs school review.</p>;
+}
+
 /* ─── Dashboard View ───────────────────────────────────────── */
 
 function DashboardView({
   workspace,
-  activeHistoryItem,
   onSelectHistoryItem,
 }: {
   workspace: PortalWorkspaceData;
-  activeHistoryItem: PortalHistoryItem | null;
   onSelectHistoryItem: (item: PortalHistoryItem) => void;
 }) {
-  const summary = workspace.selectedReportCard?.summary ?? activeHistoryItem;
-  const reportCard = workspace.selectedReportCard;
+  const reportCard = selectedIssuedReport(workspace);
+  const summary = reportCard?.summary;
   const studentFirstName = workspace.selectedStudent?.name.split(" ")[0] ?? "Your child";
 
   return (
@@ -302,27 +339,27 @@ function DashboardView({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Term snapshot</h2>
-            {summary ? (
+            {workspace.selectedReportNeedsReview ? (
+              <div className="mt-2"><HistoricalReviewNotice /></div>
+            ) : workspace.selectedReportMode === "narrative" ? (
+              <p className="mt-2 text-sm text-slate-600">{workspace.selectedNarrativeReport ? "Progress report available." : "Report not ready. The school has not published this term's progress report yet."}</p>
+            ) : summary ? (
               <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
                 {studentFirstName} scored an average of{" "}
                 <span className="font-bold text-slate-900">{formatScore(summary.averageScore)}%</span>
                 {" "}across{" "}
                 <span className="font-bold text-slate-900">{summary.recordedSubjects}</span>
                 {" "}subjects
-                {activeHistoryItem ? ` in ${activeHistoryItem.termName}` : ""}.
-                {summary.pendingSubjects > 0 && (
-                  <span className="text-amber-600">
-                    {" "}{summary.pendingSubjects} subject{summary.pendingSubjects > 1 ? "s" : ""} still pending.
-                  </span>
-                )}
+                {reportCard ? ` in ${reportCard.termName}` : ""}.
+
               </p>
             ) : (
               <p className="mt-2 text-sm text-slate-500">
-                Results will appear here when the school publishes them.
+                {selectedResultMessage(workspace.selectedResultState)}
               </p>
             )}
           </div>
-          {workspace.selectedReportCard && (
+          {(reportCard || workspace.selectedNarrativeReport) && (
             <Link
               href={buildPortalHref("/report-cards", {
                 studentId: workspace.selectedStudentId,
@@ -353,7 +390,7 @@ function DashboardView({
                   <tr key={result.subjectId} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-2.5 font-medium text-slate-700">{result.subjectName}</td>
                     <td className="px-4 py-2.5 text-right font-bold text-slate-900 tabular-nums">{formatScore(result.total)}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold" style={{color: resolveGradeColor(result.gradeLetter, workspace.selectedReportCard?.gradingPolicy?.bands ?? [])}}>{result.gradeLetter}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold" style={{color: resolveGradeColor(result.gradeLetter, reportCard.gradingPolicy?.bands ?? [])}}>{result.gradeLetter}</td>
                   </tr>
                 ))}
               </tbody>
@@ -381,7 +418,7 @@ function DashboardView({
         {/* Recent Results */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-slate-900">Recent results</h2>
+            <h2 className="text-lg font-bold text-slate-900">Recent reports</h2>
             <Link
               href={buildPortalHref("/results", { studentId: workspace.selectedStudentId })}
               className="text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
@@ -399,18 +436,18 @@ function DashboardView({
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600 group-hover:bg-slate-200 transition-colors tabular-nums">
-                    {formatScore(item.averageScore)}
+                    {item.mode === "needs_review" ? "?" : item.mode === "narrative" ? (item.issued ? "✓" : "·") : formatScore(item.averageScore)}
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-800">{item.termName}</p>
-                    <p className="text-xs text-slate-500">{item.sessionName}</p>
+                    <p className="text-xs text-slate-500">{item.sessionName}{item.mode === "needs_review" ? " · Needs school review" : item.mode === "narrative" ? ` · ${item.issued ? "Report available" : "Report not ready"}` : ""}</p>
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
               </button>
             ))}
             {workspace.history.length === 0 && (
-              <p className="py-4 text-sm text-slate-400 text-center">No results available yet.</p>
+              <p className="py-4 text-sm text-slate-400 text-center">No published results yet.</p>
             )}
           </div>
         </section>
@@ -419,7 +456,7 @@ function DashboardView({
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-900">Updates</h2>
-            {workspace.notifications.length > 3 && (
+            {visibleNotifications(workspace).length > 3 && (
               <Link
                 href={buildPortalHref("/notifications", { studentId: workspace.selectedStudentId })}
                 className="text-sm font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
@@ -429,10 +466,10 @@ function DashboardView({
             )}
           </div>
           <div className="space-y-3">
-            {workspace.notifications.slice(0, 3).map((n) => (
+            {visibleNotifications(workspace).slice(0, 3).map((n) => (
               <NotificationRow key={n.id} notification={n} />
             ))}
-            {workspace.notifications.length === 0 && (
+            {visibleNotifications(workspace).length === 0 && (
               <p className="py-4 text-sm text-slate-400 text-center">No updates yet.</p>
             )}
           </div>
@@ -446,7 +483,7 @@ function DashboardView({
 /*  Report Card Layout (PRESERVED — approved in prior session) */
 /* ──────────────────────────────────────────────────────────── */
 
-function PortalReportCardLayout({
+export function PortalReportCardLayout({
   workspace,
   onSelectHistoryItem,
   onSelectStudent,
@@ -455,7 +492,9 @@ function PortalReportCardLayout({
   onSelectHistoryItem: (item: PortalHistoryItem) => void;
   onSelectStudent: (studentId: string) => void;
 }) {
-  const selectedReportCard = workspace.selectedReportCard;
+  const selectedReportCard = selectedIssuedReport(workspace);
+  const [printWarning, setPrintWarning] = useState(false);
+  useEffect(() => { setPrintWarning(false); }, [selectedReportCard]);
 
   return (
     <div className="lg:h-full lg:min-h-0 lg:overflow-hidden flex flex-col bg-surface-200">
@@ -525,20 +564,20 @@ function PortalReportCardLayout({
                             {item.sessionName} · {item.termName}
                           </p>
                           <p className="mt-0.5 text-xs text-slate-500">
-                            {item.className}
+                            {item.mode === "needs_review" ? item.note : item.className}
                           </p>
                         </div>
                         <span className={`rounded-xl px-2.5 py-1 text-[11px] font-extrabold ${
                           isActive ? "bg-slate-200 text-slate-700" : "bg-slate-100 text-slate-500"
                         }`}>
-                          {formatScore(item.averageScore)}
+                          {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                         </span>
                       </button>
                     );
                   })}
                   {workspace.history.length === 0 && (
                     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500">
-                      No report cards available yet.
+                      No published report cards yet.
                     </div>
                   )}
                 </div>
@@ -550,14 +589,24 @@ function PortalReportCardLayout({
         {/* Main Content Bucket - The Report Card Sheet */}
         <main className="flex-1 lg:h-full lg:overflow-y-auto custom-scrollbar p-2.5 sm:p-4 lg:p-12 lg:order-2">
           <div className="mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-            {selectedReportCard ? (
+            {workspace.selectedReportNeedsReview ? (
+              <div className="mx-auto" style={{ maxWidth: "210mm" }}><HistoricalReviewNotice /></div>
+            ) : workspace.selectedReportMode === "narrative" ? (
+              workspace.selectedNarrativeReport ? <>
+                <div className="mx-auto mb-4 flex justify-end" style={{ maxWidth: "210mm" }}><button type="button" className="rounded-lg bg-slate-900 px-4 py-2 text-white print:hidden" onClick={() => window.print()}>Print issued report</button></div>
+                <NarrativeReport report={workspace.selectedNarrativeReport} />
+              </> : <div className="mx-auto rounded-xl border border-slate-200 bg-white p-6 text-slate-700" style={{ maxWidth: "210mm" }}><h2 className="font-bold">Report not ready</h2><p className="mt-2">The school has not published this term&apos;s progress report yet.</p></div>
+            ) : selectedReportCard ? (
               <>
+                {selectedReportCard.scoringPolicyWarning && <p className="rc-no-print mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="status">{selectedReportCard.scoringPolicyWarning} Ask the school to review this issued copy. Printing does not recertify it.</p>}
                 <ReportCardToolbar
                   studentName={selectedReportCard.student.name}
+                  onPrint={() => selectedReportCard.scoringPolicyWarning ? setPrintWarning(true) : window.print()}
                   backHref={buildPortalHref("/results", {
                     studentId: workspace.selectedStudentId,
                   })}
                 />
+                {printWarning && selectedReportCard.scoringPolicyWarning && <ReportScoringPrintWarning message={selectedReportCard.scoringPolicyWarning} onCancel={() => setPrintWarning(false)} onContinue={() => { setPrintWarning(false); window.print(); }} />}
                 <ReportCardPreview
                   reportCard={selectedReportCard}
                   backHref={buildPortalHref("/results", {
@@ -568,8 +617,8 @@ function PortalReportCardLayout({
               </>
             ) : (
               <div className="mx-auto px-4 py-6 md:px-6" style={{ maxWidth: "210mm" }}>
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  Select a term to view the report card.
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-base text-slate-700">
+                  {selectedResultMessage(workspace.selectedResultState)}
                 </div>
               </div>
             )}
@@ -584,18 +633,17 @@ function PortalReportCardLayout({
 
 function ResultsView({
   workspace,
-  activeHistoryItem,
   onSelectHistoryItem,
 }: {
   workspace: PortalWorkspaceData;
-  activeHistoryItem: PortalHistoryItem | null;
   onSelectHistoryItem: (item: PortalHistoryItem) => void;
 }) {
+  const selectedReportCard = selectedIssuedReport(workspace);
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-lg font-bold text-slate-900">Academic history</h2>
-        {activeHistoryItem && (
+        {(selectedReportCard || workspace.selectedNarrativeReport) && (
           <Link
             href={buildPortalHref("/report-cards", {
               studentId: workspace.selectedStudentId,
@@ -604,12 +652,20 @@ function ResultsView({
             })}
             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer"
           >
-            Open report card
+            {workspace.selectedNarrativeReport ? "Open progress report" : "Open report card"}
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         )}
       </div>
 
+      {workspace.selectedReportNeedsReview ? <HistoricalReviewNotice /> : !selectedReportCard && !workspace.selectedNarrativeReport && (
+        <p className="rounded-2xl border border-slate-200 bg-white p-4 text-base text-slate-700">
+          {workspace.selectedReportMode === "narrative" ? "Report not ready." : selectedResultMessage(workspace.selectedResultState)}
+        </p>
+      )}
+      {workspace.history.length > 0 && !selectedReportCard && !workspace.selectedNarrativeReport && (
+        <h3 className="text-base font-semibold text-slate-800">Published past results</h3>
+      )}
       {workspace.history.length > 0 ? (
         <div className="overflow-hidden rounded-xl border border-slate-200">
           {/* Desktop table */}
@@ -619,8 +675,8 @@ function ResultsView({
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Session</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Term</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Class</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Average</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Subjects</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">{workspace.history.some(item => item.mode === "graded") ? "Average / report" : "Report"}</th>
+                {workspace.history.some(item => item.mode === "graded") && <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Subjects</th>}
                 <th className="w-10 px-4 py-3" />
               </tr>
             </thead>
@@ -650,11 +706,11 @@ function ResultsView({
                       </button>
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-800">{item.termName}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.className}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.mode === "needs_review" ? "Not confirmed" : item.className}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
-                      {formatScore(item.averageScore)}
+                      {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-500 tabular-nums">{item.totalSubjects}</td>
+                    {workspace.history.some(entry => entry.mode === "graded") && <td className="px-4 py-3 text-right text-slate-500 tabular-nums">{item.mode === "graded" ? item.totalSubjects : ""}</td>}
                     <td className="px-4 py-3 text-right">
                       {isActive && (
                         <div className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -687,14 +743,14 @@ function ResultsView({
                       {item.termName} · {item.sessionName}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {item.className} · {item.totalSubjects} subjects
+                      {item.mode === "needs_review" ? "Not confirmed" : item.className}{item.mode === "graded" ? ` · ${item.totalSubjects} subjects` : ""}
                     </p>
                     {item.note && (
                       <p className="mt-1 text-xs font-medium text-amber-600">{item.note}</p>
                     )}
                   </div>
                   <span className="text-lg font-bold text-slate-900 tabular-nums">
-                    {formatScore(item.averageScore)}
+                    {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
                   </span>
                 </button>
               );
@@ -902,9 +958,9 @@ function NotificationsView({ workspace }: { workspace: PortalWorkspaceData }) {
     <div className="space-y-6">
       <h2 className="text-lg font-bold text-slate-900">School updates</h2>
 
-      {workspace.notifications.length > 0 ? (
+      {visibleNotifications(workspace).length > 0 ? (
         <div className="space-y-1">
-          {workspace.notifications.map((n) => (
+          {visibleNotifications(workspace).map((n) => (
             <NotificationRow key={n.id} notification={n} />
           ))}
         </div>

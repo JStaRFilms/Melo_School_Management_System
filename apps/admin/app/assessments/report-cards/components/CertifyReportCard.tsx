@@ -5,27 +5,21 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 import type { ReportCardSheetData } from "@school/shared";
-import { useAuth } from "@/AuthProvider";
 
 export function CertifyReportCard({
   reportCard,
   sessionId,
   termId,
+  schoolId,
 }: {
   reportCard: ReportCardSheetData;
   sessionId: string;
   termId: string;
+  schoolId: Id<"schools">;
 }) {
-  const { workspaceAccess } = useAuth();
-  const schoolId =
-    workspaceAccess?.state === "ready"
-      ? (workspaceAccess.branch.schoolId as Id<"schools">)
-      : undefined;
   const allowed = useQuery(
     api.functions.academic.rbac.hasViewerCapability,
-    schoolId
-      ? { schoolId, capability: "academic.report_cards.publish_final" }
-      : "skip",
+    { schoolId, capability: "academic.report_cards.publish_final" },
   );
   const certify = useMutation(
     api.functions.academic.reportCards.certifyStudentReportCard,
@@ -36,8 +30,7 @@ export function CertifyReportCard({
   if (reportCard.certifiedAt)
     return (
       <p className="rounded border p-3 text-sm">
-        Certified copy. Printing and downloads preserve the issued scores,
-        comments and grading policy.
+        Certified copy. This student&apos;s report is saved, but certification alone does not publish it to families. Check Class result release for this class and term. Printing and downloads preserve the issued scores, comments and grading policy.
       </p>
     );
   if (!allowed) return null;
@@ -48,9 +41,7 @@ export function CertifyReportCard({
       </summary>
       <p>
         Save and review all scores, extras and comments first. Certification
-        creates an immutable issued copy used by Admin, Teacher and Portal
-        previews, print and downloads. It cannot be replaced by later policy
-        edits.
+        saves an immutable copy for staff review and printing. Families cannot see it until the class results are released. Later policy edits cannot replace it.
       </p>
       {reportCard.gradingPolicy?.source !== "current" ? (
         <p>
@@ -79,6 +70,7 @@ export function CertifyReportCard({
               setError("");
               try {
                 await certify({
+                  schoolId,
                   studentId: reportCard.student._id as Id<"students">,
                   classId: reportCard.classId as Id<"classes">,
                   sessionId: sessionId as Id<"academicSessions">,

@@ -202,6 +202,11 @@ export const purgeTenantBatchInternal = internalMutation({
   }),
   handler: async (ctx, args) => {
     const school = await requireExactSchool(ctx, args.schoolId, args.schoolSlug);
+    for (const phase of ["scanning", "failed_scanning", "invalid", "ready", "regrading", "failed_regrading"] as const) {
+      const job = await ctx.db.query("sessionScoringRegradeJobs")
+        .withIndex("by_school_and_phase", q => q.eq("schoolId", school._id).eq("phase", phase)).first();
+      if (job) throw new ConvexError("Complete or cancel the session scoring job before purging the school.");
+    }
     if (school.status !== "suspended") {
       await ctx.db.patch(school._id, { status: "suspended", updatedAt: Date.now() });
     }
@@ -256,6 +261,12 @@ export const purgeTenantBatchInternal = internalMutation({
     const attempts = await ctx.db.query("usageOperationAttempts")
       .withIndex("by_school", (q) => q.eq("schoolId", school._id)).take(BATCH_SIZE);
     for (const attempt of attempts) {
+      const staged = await ctx.db.query("aiGenerationResults")
+        .withIndex("by_attempt", (q) => q.eq("attemptId", attempt._id)).take(BATCH_SIZE);
+      if (staged.length) {
+        for (const row of staged) await ctx.db.delete(row._id);
+        return { complete: false, deletedCount: staged.length, tableName: "aiGenerationResults", storageIds: [] };
+      }
       const rows = await ctx.db.query("usageOperationTransitions")
         .withIndex("by_attempt", (q) => q.eq("attemptId", attempt._id)).take(BATCH_SIZE);
       if (rows.length) {

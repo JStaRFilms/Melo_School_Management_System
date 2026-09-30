@@ -1,6 +1,7 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
 import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
+import { isSessionScoringLocked } from "./sessionScoring";
 import {
   formatClassDisplayName,
   normalizeHumanName,
@@ -109,6 +110,23 @@ export const listArchivedRecords = query({
       ctx.db.query("knowledgeTopics").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
     ]);
 
+    // Archive metadata remains available while another session is regrading.
+    // Do not expose score-derived counts from a partially regraded session.
+    const lockedSessions = new Set<string>();
+    for (const session of sessions) {
+      if (await isSessionScoringLocked(ctx, schoolId, session._id)) lockedSessions.add(String(session._id));
+    }
+    const lockedAssessments = assessments.filter(row => lockedSessions.has(String(row.sessionId)));
+    const readableAssessments = assessments.filter(row => !lockedSessions.has(String(row.sessionId)));
+    const lockedClassIds = new Set(lockedAssessments.map(row => String(row.classId)));
+    const lockedSubjectIds = new Set(lockedAssessments.map(row => String(row.subjectId)));
+    const lockedStudentIds = new Set(lockedAssessments.map(row => String(row.studentId)));
+    const assessmentLabel = (count: number, partial: boolean) => partial
+      ? "Unavailable while a linked session's scoring job is locked"
+      : String(count);
+    const assessmentHistory = (count: number, partial: boolean) => partial
+      ? "Assessment count unavailable while a linked session's scoring job is locked"
+      : pluralize(count, "assessment row");
     const userLookup = new Map(users.map((user) => [String(user._id), user] as const));
     const sessionLookup = new Map(sessions.map((session) => [String(session._id), session] as const));
     const classLookup = new Map(classes.map((classDoc) => [String(classDoc._id), classDoc] as const));
@@ -177,7 +195,7 @@ export const listArchivedRecords = query({
       selectionCountByStudent.set(studentId, (selectionCountByStudent.get(studentId) ?? 0) + 1);
     }
 
-    for (const assessment of assessments) {
+    for (const assessment of readableAssessments) {
       const classId = String(assessment.classId);
       const subjectId = String(assessment.subjectId);
       const sessionId = String(assessment.sessionId);
@@ -208,12 +226,14 @@ export const listArchivedRecords = query({
         archivedById: session.archivedBy ?? null,
         archivedByName: archivedByName(session.archivedBy),
         statusNote: "Removed from active session setup while preserving historical records.",
-        linkedHistory: `${pluralize(termCountBySession.get(String(session._id)) ?? 0, "term")}, ${pluralize(selectionCountBySession.get(String(session._id)) ?? 0, "selection row")}, and ${pluralize(assessmentCountBySession.get(String(session._id)) ?? 0, "assessment row")} remain tied to this session.`,
+        linkedHistory: lockedSessions.has(String(session._id))
+          ? "Assessment count unavailable while this session's scoring job is locked."
+          : `${pluralize(termCountBySession.get(String(session._id)) ?? 0, "term")}, ${pluralize(selectionCountBySession.get(String(session._id)) ?? 0, "selection row")}, and ${pluralize(assessmentCountBySession.get(String(session._id)) ?? 0, "assessment row")} remain tied to this session.`,
         detailFields: [
           { label: "Period", value: `${formatDateLabel(session.startDate)} to ${formatDateLabel(session.endDate)}` },
           { label: "Terms", value: String(termCountBySession.get(String(session._id)) ?? 0) },
           { label: "Subject selections", value: String(selectionCountBySession.get(String(session._id)) ?? 0) },
-          { label: "Assessment records", value: String(assessmentCountBySession.get(String(session._id)) ?? 0) },
+          { label: "Assessment records", value: lockedSessions.has(String(session._id)) ? "Unavailable during scoring job" : String(assessmentCountBySession.get(String(session._id)) ?? 0) },
         ],
       }));
 
@@ -234,7 +254,7 @@ export const listArchivedRecords = query({
           archivedById: classDoc.archivedBy ?? null,
           archivedByName: archivedByName(classDoc.archivedBy),
           statusNote: "Hidden from class setup and current enrollment flows.",
-          linkedHistory: `${pluralize(classSubjectCountByClass.get(String(classDoc._id)) ?? 0, "subject offering")}, ${pluralize(assessmentCountByClass.get(String(classDoc._id)) ?? 0, "assessment row")}, and ${pluralize(studentCountByClass.get(String(classDoc._id)) ?? 0, "student row")} still reference this class.`,
+          linkedHistory: `${pluralize(classSubjectCountByClass.get(String(classDoc._id)) ?? 0, "subject offering")}, ${assessmentHistory(assessmentCountByClass.get(String(classDoc._id)) ?? 0, lockedClassIds.has(String(classDoc._id)))}, and ${pluralize(studentCountByClass.get(String(classDoc._id)) ?? 0, "student row")} still reference this class.`,
           detailFields: [
             { label: "Level", value: normalizeHumanName(classDoc.level) },
             { label: "Form teacher", value: formTeacher ? normalizePersonName(formTeacher.name) : "None assigned" },
@@ -318,12 +338,12 @@ export const listArchivedRecords = query({
         archivedById: subject.archivedBy ?? null,
         archivedByName: archivedByName(subject.archivedBy),
         statusNote: "Removed from active class offerings and selection flows.",
-        linkedHistory: `${pluralize(classSubjectCountBySubject.get(String(subject._id)) ?? 0, "class offering")}, ${pluralize(selectionCountBySubject.get(String(subject._id)) ?? 0, "selection row")}, and ${pluralize(assessmentCountBySubject.get(String(subject._id)) ?? 0, "assessment row")} still preserve this subject in history.`,
+        linkedHistory: `${pluralize(classSubjectCountBySubject.get(String(subject._id)) ?? 0, "class offering")}, ${pluralize(selectionCountBySubject.get(String(subject._id)) ?? 0, "selection row")}, and ${assessmentHistory(assessmentCountBySubject.get(String(subject._id)) ?? 0, lockedSubjectIds.has(String(subject._id)))} still preserve this subject in history.`,
         detailFields: [
           { label: "Code", value: subject.code },
           { label: "Linked classes", value: String(classSubjectCountBySubject.get(String(subject._id)) ?? 0) },
           { label: "Subject selections", value: String(selectionCountBySubject.get(String(subject._id)) ?? 0) },
-          { label: "Assessment records", value: String(assessmentCountBySubject.get(String(subject._id)) ?? 0) },
+          { label: "Assessment records", value: assessmentLabel(assessmentCountBySubject.get(String(subject._id)) ?? 0, lockedSubjectIds.has(String(subject._id))) },
         ],
       }));
 
@@ -344,7 +364,7 @@ export const listArchivedRecords = query({
           archivedById: student.archivedBy ?? null,
           archivedByName: archivedByName(student.archivedBy),
           statusNote: "Removed from active enrollment and assessment workflows while preserving the student history.",
-          linkedHistory: `${pluralize(selectionCountByStudent.get(String(student._id)) ?? 0, "subject selection")}, ${pluralize(assessmentCountByStudent.get(String(student._id)) ?? 0, "assessment row")}, and the original student profile remain attached to this archived student.`,
+          linkedHistory: `${pluralize(selectionCountByStudent.get(String(student._id)) ?? 0, "subject selection")}, ${assessmentHistory(assessmentCountByStudent.get(String(student._id)) ?? 0, lockedStudentIds.has(String(student._id)))}, and the original student profile remain attached to this archived student.`,
           detailFields: [
             { label: "Admission number", value: student.admissionNumber },
             {
@@ -357,7 +377,7 @@ export const listArchivedRecords = query({
             },
             {
               label: "Assessment records",
-              value: String(assessmentCountByStudent.get(String(student._id)) ?? 0),
+              value: assessmentLabel(assessmentCountByStudent.get(String(student._id)) ?? 0, lockedStudentIds.has(String(student._id))),
             },
           ],
         };

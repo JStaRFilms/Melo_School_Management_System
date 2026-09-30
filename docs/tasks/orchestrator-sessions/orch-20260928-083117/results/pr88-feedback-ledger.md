@@ -1,0 +1,19 @@
+# PR #88 feedback ledger
+
+Reviewed PR head `19b03b3ec96d6b77d7e8e427317c0683ff80aab1`. Initial Vercel previews triggered; seven application checks must be evaluated, not the `Vercel Preview Comments` check. No merge/deploy.
+
+- Codex inline `4126960509`, P1, branch context missing in `resultPublication.ts` and Admin release page. Confirmed blocker: selected non-default branch uses default school, showing endless load and wrong branch API context. Fix by passing selected school ID to every read/write function and server-verifying membership/permissions; add multi-branch test. Reply after commit.
+- Codex inline `4126960519`, P2, schoolEvents oldest-256 truncation in `portal.ts`. Confirmed regression caused by changing `.collect()` to `by_school.take(256)`. Use indexed `by_school_and_start` with date range to show upcoming events without losing recent entries; keep portal result gate unchanged. Reply after commit.
+- Kilo inline `4127099953`, same head, confirmed blocker: URL changes within mounted Admin release route leave selected tuple stale and could release the wrong class. Synchronize URL and component selection and test back/forward/deep link.
+- Kilo inline `4127099958`, same head, confirmed minor UX defect: changing session retains prior class. Clear class and term on session change; class is school-scoped, not session-owned, so this is selection confusion rather than proven cross-tenant access.
+- Kilo inline `4127099967`, same head, confirmed UX defect: stale roster in open modal silently disables submit with no in-dialog explanation. Show visible stale message and test.
+- Kilo inline `4127099973`, same head, confirmed UX defect: exposed raw internal staff IDs instead of readable approver/publisher identity. Prefer safely resolved staff display name; preserve immutable ID in audit, never present bare ID in UI.
+- CodeRabbit bot summary says automatic review skipped for low-star repo, not a finding; no human root review thread. @codex review requested and reviewed exact head. Kilo completed at same head with four comments. Initial seven Vercel application previews passed.
+
+Final Codex pass at f2f468c added three new root findings: P1 `4138588317` release review link loses selected branch on staff report-card preview/certify, confirmed and fixed across preview/selector/panel calls with branch tests; P1 `4138588328` new issued-report index on populated table needs staged rollout, **release blocker requiring owner deployment approval**, prerequisite staged-only PR #90 opened; P2 `4138588338` 64 archived future events obscure valid event, fixed with bounded indexed scan and test. PR #88 stays unmerged until #90's staged-index schema has been deployed and backfilled and FR-023 portal contracts have been reconciled.
+
+The six earlier Codex/Kilo roots were fixed in 19a7ca0 and resolved after replies. Two further Codex findings on the selected-branch certification handoff and archived future events were fixed in d3d38be, replied to and resolved. The staged-index root remains open with a reply naming prerequisite #90 and the owner's deployment approval requirement.
+
+Owner authorized one more bounded correction pass for roots `4138936883` and `4138936887`: extras navigation branch context and availability copy for excluded/late students. Both are implemented and independently approved by read-only reviewers. Orchestrator independently ran full suites: Convex 659 tests, Admin 288 tests, Portal 8 tests; all three typechecks, targeted lint, theme audit and diff check passed. Reply and resolve these two only after the corrective commit is pushed. #90 stays open and undeployed by owner decision; FR-023 stays separate, with joint portal reconciliation still required before combined deployment.
+
+User instructed: all intermediate pushes use `[skip vercel]`; only the settled final empty commit triggers Vercel previews. Do not merge/deploy/migrate without explicit approval.

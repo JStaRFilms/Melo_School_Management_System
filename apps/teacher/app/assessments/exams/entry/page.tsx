@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { ExamEntryWorkspace } from "./components/ExamEntryWorkspace";
+import { LiveNarrativeEntry } from "./components/LiveNarrativeEntry";
 import { isConvexConfigured } from "@/lib/convex-runtime";
 import {
   getMockSheet,
@@ -36,7 +37,7 @@ function normalizeSelectorOptions(
 }
 
 export default function ExamEntryPage() {
-  const { workspaceAccess } = useAuth();
+  const { workspaceAccess, session } = useAuth();
   const searchParams = useSearchParams();
   const selection = useMemo(
     () => ({
@@ -55,10 +56,10 @@ export default function ExamEntryPage() {
 
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   if (!schoolId) return <p role="status">Checking branch context…</p>;
-  return <LiveExamEntryPage key={schoolId} schoolId={schoolId} selection={selection} />;
+  return <LiveExamEntryPage key={schoolId} schoolId={schoolId} actorId={session?.user.id ?? "anonymous"} selection={selection} />;
 }
 
-function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; selection: SelectionState }) {
+function LiveExamEntryPage({ schoolId, actorId, selection }: { schoolId: Id<"schools">; actorId: string; selection: SelectionState }) {
   const sessions = useQuery(
     "functions/academic/teacherSelectors:getTeacherSessions" as never,
     { schoolId } as never,
@@ -73,22 +74,29 @@ function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; s
     "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never,
     { schoolId } as never,
   ) as LegacySelectorOption[] | undefined;
+  const isSelectedClassAssigned = Boolean(
+    selection.classId && classes?.some((classOption) => classOption._id === selection.classId)
+  );
   const subjects = useQuery(
     "functions/academic/teacherSelectors:getTeacherAssignableSubjectsByClass" as never,
-    selection.classId
+    isSelectedClassAssigned
       ? ({ schoolId, classId: selection.classId } as never)
       : ("skip" as never)
   ) as SelectorOption[] | undefined;
-  const isSelectedSubjectAvailable =
-    !selection.subjectId ||
-    subjects === undefined ||
-    subjects.some((subject) => subject.id === selection.subjectId);
+  const entryMode = useQuery("functions/academic/narrativeReports:getEntryClassMode" as never,
+    selection.classId && selection.sessionId ? { schoolId, classId: selection.classId, sessionId: selection.sessionId } as never : "skip") as { mode: "graded" | "narrative"; canEnterNarrative: boolean } | undefined;
+  const isSelectedSubjectAvailable = Boolean(
+    selection.subjectId && subjects?.some((subject) => subject.id === selection.subjectId)
+  );
+  const subjectUnavailable = Boolean(
+    selection.subjectId && ((classes && !isSelectedClassAssigned) || (subjects && !isSelectedSubjectAvailable))
+  );
   const isSheetReady = Boolean(
     selection.sessionId &&
       selection.termId &&
       selection.classId &&
       selection.subjectId &&
-      isSelectedSubjectAvailable
+      isSelectedClassAssigned && isSelectedSubjectAvailable && entryMode?.mode === "graded"
   );
   const sheetData = useQuery(
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
@@ -132,9 +140,14 @@ function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; s
     [classes]
   );
 
+  if (selection.classId && selection.sessionId && entryMode === undefined) return <p role="status">Checking reporting mode...</p>;
+  if (entryMode?.mode === "narrative") return entryMode.canEnterNarrative
+    ? <LiveNarrativeEntry selection={selection} schoolId={schoolId} />
+    : <p role="alert" className="p-6">Subject comments are unavailable for your account or this class. Ask a school admin to check your report preview permission and class assignment.</p>;
   return (
     <ExamEntryWorkspace
       selection={selection}
+      schoolId={`${schoolId}:${actorId}`}
       sessions={normalizedSessions}
       terms={terms ?? []}
       classes={normalizedClasses}
@@ -144,7 +157,8 @@ function LiveExamEntryPage({ schoolId, selection }: { schoolId: Id<"schools">; s
       isLoadingSessions={sessions === undefined}
       isLoadingTerms={Boolean(selection.sessionId) && terms === undefined}
       isLoadingClasses={classes === undefined}
-      isLoadingSubjects={Boolean(selection.classId) && subjects === undefined}
+      isLoadingSubjects={isSelectedClassAssigned && subjects === undefined}
+      subjectUnavailable={subjectUnavailable}
       onSaveRecords={handleSaveRecords}
     />
   );

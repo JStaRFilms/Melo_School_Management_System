@@ -15,8 +15,7 @@ import { X } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
 
 import { LessonPlanWorkspaceScreen } from "./components/LessonPlanWorkspaceScreen";
-import { UsagePreflight } from "./components/UsagePreflight";
-import { useAuth } from "@/lib/AuthProvider";
+import { useAiSpendReview } from "../AiSpendReview";
 import type {
   LessonPlanSaveResult,
   LessonPlanWorkspaceData,
@@ -76,8 +75,6 @@ function getLessonPlanGenerationToast(error: unknown): {
 }
 
 export default function LessonPlansPage() {
-  const { workspaceAccess } = useAuth();
-  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -108,9 +105,8 @@ export default function LessonPlansPage() {
   const saveDraft = useMutation(
     "functions/academic/lessonKnowledgeLessonPlans:saveTeacherInstructionArtifactDraft" as never
   );
-  const generateDraftAction = useAction(
-    api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft
-  );
+  const quoteDraft = useAction(api.functions.academic.documentGeneration.quoteTeacherLessonPlanDraft);
+  const generateDraftAction = useAction(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft);
   const effectiveSourceIds = workspace?.sourceIds ?? selectedSourceIds;
   const sourceSyncKey = useMemo(() => getPlanningSourceSyncKey(planningContext), [planningContext]);
 
@@ -168,6 +164,7 @@ export default function LessonPlansPage() {
 
   const effectiveTopicLabel =
     workspace?.planningContext?.topicTitle ?? workspace?.sourceContext.topicLabel ?? (targetTopicLabel.trim() || null);
+  const { reviewAfterQuote, reviewDialog } = useAiSpendReview(JSON.stringify({ outputType, sourceIds: effectiveSourceIds, topic: effectiveTopicLabel, planningContext }));
 
   useEffect(() => {
     setTargetTopicLabel(workspace?.sourceContext.topicLabel ?? "");
@@ -235,12 +232,12 @@ export default function LessonPlansPage() {
             }
           : undefined;
 
-      const result = (await generateDraftAction({
-        outputType,
-        sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
-        targetTopicLabel: effectiveTopicLabel ?? undefined,
-        planningContext: planningContextArg,
-      })) as LessonPlanSaveResult;
+      const request = { outputType, sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
+        targetTopicLabel: effectiveTopicLabel ?? undefined, planningContext: planningContextArg };
+      const attemptId = await reviewAfterQuote(
+        () => quoteDraft({ ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") }),
+        outputType.replaceAll("_", " "), effectiveSourceIds.length);
+      const result = (await generateDraftAction({ attemptId })) as LessonPlanSaveResult;
       return result;
     } catch (error) {
       const toastMessage = getLessonPlanGenerationToast(error);
@@ -290,7 +287,7 @@ export default function LessonPlansPage() {
         </div>
       )}
 
-      {schoolId && <UsagePreflight schoolId={schoolId} itemCount={Math.max(1, effectiveSourceIds.length)} />}
+      {reviewDialog}
       {/* 3-Column Workspace flex container filling remaining height */}
       <div className="flex-1 min-h-0 w-full overflow-hidden">
         <LessonPlanWorkspaceScreen

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ExamInputMode } from "@school/shared";
+import type { SessionScoringPolicy } from "@school/shared/exam-recording";
 
 interface ComputedColumnsProps {
   ca1: number | null;
@@ -12,6 +13,9 @@ interface ComputedColumnsProps {
   gradeColor?: string;
   remark: string | null;
   examInputMode: ExamInputMode;
+  policy?: SessionScoringPolicy;
+  showScaledColumn?: boolean;
+  showMaxLabel?: boolean;
 }
 
 export function ComputedColumns({
@@ -24,8 +28,10 @@ export function ComputedColumns({
   gradeColor,
   remark,
   examInputMode,
+  policy,
+  showScaledColumn = policy ? policy.examRawMax !== policy.examContributionMax : examInputMode === "raw60_scaled_to_40",
+  showMaxLabel = false,
 }: ComputedColumnsProps) {
-  const showScaledColumn = examInputMode === "raw60_scaled_to_40";
   const isComplete =
     ca1 !== null && ca2 !== null && ca3 !== null && examScaledScore !== null;
 
@@ -35,6 +41,7 @@ export function ComputedColumns({
       {showScaledColumn && (
         <td className="bg-indigo-50/20 text-center font-heading font-black text-xs text-indigo-600 leading-none">
           {examScaledScore !== null ? examScaledScore.toFixed(2) : "--"}
+          {showMaxLabel && <span className="block text-[10px]">/{policy?.examContributionMax ?? 40}</span>}
         </td>
       )}
 

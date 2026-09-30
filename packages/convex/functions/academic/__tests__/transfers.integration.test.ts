@@ -1856,7 +1856,7 @@ describe("U6 Portal canonical identity continuity", () => {
   it("opens the current destination with the same canonical login and keeps source history explicitly selectable", async () => {
     const t = convexTest(schema, modules);
     const h = await setupTestHarness(t);
-    await t.run(async (ctx) => {
+    const historical = await t.run(async (ctx) => {
       const sessionId = await ctx.db.insert("academicSessions", {
         schoolId: h.schoolA,
         name: "2025/26 source history",
@@ -1866,7 +1866,7 @@ describe("U6 Portal canonical identity continuity", () => {
         createdAt: 1,
         updatedAt: 1,
       });
-      await ctx.db.insert("academicTerms", {
+      const termId = await ctx.db.insert("academicTerms", {
         schoolId: h.schoolA,
         sessionId,
         name: "Source historical term",
@@ -1876,6 +1876,7 @@ describe("U6 Portal canonical identity continuity", () => {
         createdAt: 1,
         updatedAt: 1,
       });
+      return { sessionId, termId };
     });
     const { accepted, acceptanceArgs, destination } = await completeTransfer(
       t,
@@ -1894,7 +1895,7 @@ describe("U6 Portal canonical identity continuity", () => {
       schoolId: h.schoolB,
       selectedStudentId: accepted.destinationStudentId,
     });
-    const current = await studentLogin.query(portalApi.getWorkspaceData, {});
+    const current = await studentLogin.query(portalApi.getWorkspaceData, { now: Date.now() });
     expect(current.selectedStudentId).toBe(accepted.destinationStudentId);
     expect(current.school.id).toBe(h.schoolB);
     expect(current.viewer.schoolId).toBe(h.schoolB);
@@ -1924,6 +1925,7 @@ describe("U6 Portal canonical identity continuity", () => {
       }),
     ).toEqual({ schoolId: h.schoolA, selectedStudentId: h.studentId });
     const sourceHistory = await studentLogin.query(portalApi.getWorkspaceData, {
+      now: Date.now(),
       studentId: h.studentId,
     });
     expect(sourceHistory.school.id).toBe(h.schoolA);
@@ -1935,9 +1937,23 @@ describe("U6 Portal canonical identity continuity", () => {
       ),
     ).rejects.toThrow("Active enrollment required");
     expect(sourceHistory.selectedStudent?.enrollmentState).toBe("historical");
-    expect(sourceHistory.history).toHaveLength(1);
-    expect(sourceHistory.history[0].sessionName).toBe("2025/26 Source History");
+    // Historical access alone does not publish the source school's results.
+    expect(sourceHistory.history).toHaveLength(0);
+    expect(sourceHistory.selectedReportCard).toBeNull();
     expect(sourceHistory.students).toHaveLength(2);
+    await t.run(async ctx => {
+      const subjectId = await ctx.db.insert("subjects", { schoolId: h.schoolA, name: "Art", code: "ART", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("classSubjects", { schoolId: h.schoolA, classId: h.classAId, subjectId, createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("classSessionReportModes", { schoolId: h.schoolA, classId: h.classAId,
+        sessionId: historical.sessionId, mode: "narrative", updatedAt: 1, updatedBy: h.adminAUserId });
+      await ctx.db.insert("narrativeReportDrafts", { schoolId: h.schoolA, classId: h.classAId,
+        sessionId: historical.sessionId, termId: historical.termId, subjectId, studentId: h.studentId,
+        comment: "Private transfer draft", updatedAt: 1, updatedBy: h.adminAUserId });
+    });
+    const narrativeHistory = await studentLogin.query(portalApi.getWorkspaceData, { studentId: h.studentId });
+    expect(narrativeHistory.history).toHaveLength(0);
+    expect(narrativeHistory.selectedNarrativeReport).toBeNull();
+    expect(JSON.stringify(narrativeHistory)).not.toContain("Private transfer draft");
 
     const replay = await destination.mutation(
       acceptDestinationTransferRef,
@@ -2019,7 +2035,7 @@ describe("U6 Portal canonical identity continuity", () => {
         updatedAt: 1,
       });
     });
-    const before = await studentLogin.query(portalApi.getWorkspaceData, {});
+    const before = await studentLogin.query(portalApi.getWorkspaceData, { now: Date.now() });
     expect(before.students.map((student) => student.studentId)).not.toContain(
       unrelated,
     );
@@ -2043,13 +2059,14 @@ describe("U6 Portal canonical identity continuity", () => {
         throw new Error("Missing destination membership fixture");
       await ctx.db.patch(membership._id, { status: "suspended" });
     });
-    const after = await studentLogin.query(portalApi.getWorkspaceData, {});
+    const after = await studentLogin.query(portalApi.getWorkspaceData, { now: Date.now() });
     expect(after.selectedStudentId).toBe(h.studentId);
     expect(after.students.map((student) => student.studentId)).toEqual([
       h.studentId,
     ]);
     await expect(
       studentLogin.query(portalApi.getWorkspaceData, {
+      now: Date.now(),
         studentId: accepted.destinationStudentId,
       }),
     ).rejects.toThrow("Student not found");
@@ -2077,7 +2094,7 @@ describe("U6 Portal canonical identity continuity", () => {
       await ctx.db.patch(user.personId, { status: "suspended" });
     });
     expect(await login.query(portalApi.canAccessPortal, {})).toBe(false);
-    await expect(login.query(portalApi.getWorkspaceData, {})).rejects.toThrow(
+    await expect(login.query(portalApi.getWorkspaceData, { now: Date.now() })).rejects.toThrow(
       "Canonical account is inactive",
     );
   });
@@ -2126,7 +2143,7 @@ describe("U6 Portal canonical identity continuity", () => {
       email: "not-the-contact@legacy.test",
     });
     expect(await trusted.query(portalApi.canAccessPortal, {})).toBe(true);
-    expect((await trusted.query(portalApi.getWorkspaceData, {})).selectedStudentId).toBe(studentId);
+    expect((await trusted.query(portalApi.getWorkspaceData, { now: Date.now() })).selectedStudentId).toBe(studentId);
     const wrongSubject = t.withIdentity({
       tokenIdentifier: "https://legacy-auth.test|not-prelinked",
       subject: "wrong-subject",

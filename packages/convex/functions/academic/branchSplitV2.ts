@@ -1,6 +1,7 @@
 import { internalAction, internalMutation, internalQuery } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { ConvexError, v } from "convex/values";
+import { assertSessionScoringAvailable, isSessionScoringLocked } from "./sessionScoring";
 import type { Id, TableNames } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import {
@@ -36,6 +37,8 @@ export const DUPLICATION_TIERS: string[][] = [
     "teacherAssignments",
     "classSessionFormTeachers",
     "assessmentEditingPolicies",
+    "sessionScoringPolicies",
+    "sessionScoringPolicyEvents",
     "classSubjectAggregations",
     "reportCardExtraBundles",
     "reportCardTermSettingGroups",
@@ -51,6 +54,7 @@ export const DUPLICATION_TIERS: string[][] = [
   ],
   // Tier 3: Depends on Tier 2
   [
+    "classSessionReportModes",
     "studentSubjectSelections",
     "studentPromotions",
     "studentGraduations",
@@ -133,6 +137,10 @@ const RETAINED_SCHOOL_SLUGS = new Set(["obhis-fedrah", "obhis-ruga"]);
 // Every school-scoped table is listed so the non-retained-school purge cannot
 // leave records behind in newer feature areas. Children precede their parents.
 export const SCHOOL_PURGE_TABLES = [
+  "classResultPublicationStudents",
+  "classResultExclusions",
+  "classResultPublications",
+  "resultReleaseControls",
   "migrationFeatureSignals",
   "stagedImportRecords",
   "importWorkspaces",
@@ -198,6 +206,9 @@ export const SCHOOL_PURGE_TABLES = [
   "knowledgeMaterials",
   "knowledgeTopics",
   "rateLimitCounters",
+  "issuedNarrativeReports",
+  "narrativeReportDrafts",
+  "classSessionReportModes",
   "studentSubjectAggregationOptOuts",
   "studentSubjectSelections",
   "studentPromotions",
@@ -214,6 +225,9 @@ export const SCHOOL_PURGE_TABLES = [
   "schoolEvents",
   "schoolAssessmentSettings",
   "assessmentEditingPolicies",
+  "sessionScoringPolicies",
+  "sessionScoringPolicyEvents",
+  "sessionScoringRegradeJobs",
   "gradingBands",
   "assessmentRecords",
   "historicalTermTotals",
@@ -307,6 +321,14 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
   schoolAssessmentSettings: [
     { field: "updatedBy", targetTable: "users" },
   ],
+  sessionScoringPolicies: [
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "updatedBy", targetTable: "users" },
+  ],
+  sessionScoringPolicyEvents: [
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "updatedBy", targetTable: "users" },
+  ],
   gradingBands: [
     { field: "updatedBy", targetTable: "users" },
   ],
@@ -346,6 +368,11 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
     { field: "classId", targetTable: "classes" },
     { field: "sessionId", targetTable: "academicSessions" },
     { field: "formTeacherId", targetTable: "users" },
+  ],
+  classSessionReportModes: [
+    { field: "classId", targetTable: "classes" },
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "updatedBy", targetTable: "users" },
   ],
   assessmentEditingPolicies: [
     { field: "sessionId", targetTable: "academicSessions" },
@@ -576,6 +603,16 @@ export const initBranchSplit = internalMutation({
       .filter((q) => q.eq(q.field("slug"), "obhis-ruga"))
       .first();
 
+    // This transaction must read scoring jobs for both branches before creating
+    // migrationState. A concurrent scan insert then conflicts with this read.
+    for (const schoolId of [sourceSchoolId, rugaSchool?._id].filter((id): id is Id<"schools"> => !!id)) {
+      for (const phase of ["scanning", "failed_scanning", "invalid", "ready", "regrading", "failed_regrading"] as const) {
+        const job = await ctx.db.query("sessionScoringRegradeJobs")
+          .withIndex("by_school_and_phase", q => q.eq("schoolId", schoolId).eq("phase", phase)).first();
+        if (job) throw new ConvexError("Finish or cancel the session scoring job before splitting the school.");
+      }
+    }
+
     let rugaSchoolId: Id<"schools">;
     if (!rugaSchool) {
       rugaSchoolId = await ctx.db.insert("schools", {
@@ -804,6 +841,15 @@ export const duplicateBatch = internalMutation({
       if (idMaps[currentTable][oldId]) {
         continue;
       }
+      if (currentTable === "assessmentRecords") {
+        await assertSessionScoringAvailable(ctx, sourceSchoolId, doc.sessionId);
+        const mappedSessionId = idMaps.academicSessions?.[String(doc.sessionId)] as Id<"academicSessions"> | undefined;
+        if (!mappedSessionId) throw new ConvexError(`Missing target session mapping for assessment ${oldId}`);
+        const targetSession = await ctx.db.get(mappedSessionId);
+        if (!targetSession || targetSession.schoolId !== targetSchoolId)
+          throw new ConvexError(`Invalid target session mapping for assessment ${oldId}`);
+        await assertSessionScoringAvailable(ctx, targetSchoolId, mappedSessionId);
+      }
 
       // Clone document and strip system fields
       const newDoc: any = { ...doc };
@@ -944,6 +990,18 @@ export const cascadeDeleteWrongBranchData = internalMutation({
     // Process the first class to delete
     const cls = classesToDelete[0];
     const classId = cls._id;
+
+    // Drain narrative children first, before deleting a class or its users.
+    // A retry processes the same first class until all three indexed ranges are empty.
+    const [modes, drafts, issued] = await Promise.all([
+      ctx.db.query("classSessionReportModes").withIndex("by_classId_and_sessionId", q => q.eq("classId", classId)).take(25),
+      ctx.db.query("narrativeReportDrafts").withIndex("by_classId_and_sessionId_and_termId_and_subjectId", q => q.eq("classId", classId)).take(25),
+      ctx.db.query("issuedNarrativeReports").withIndex("by_classId_and_sessionId", q => q.eq("classId", classId)).take(25),
+    ]);
+    if (modes.length || drafts.length || issued.length) {
+      for (const row of [...drafts, ...issued, ...modes]) await ctx.db.delete(row._id);
+      return { done: false, target, remainingClasses: classesToDelete.length };
+    }
 
     // 1. Delete class-level attendance and report card extras (indexed by classId)
     const attClassVals = await ctx.db
@@ -1088,7 +1146,10 @@ export const cascadeDeleteWrongBranchData = internalMutation({
         .query("assessmentRecords")
         .withIndex("by_student_and_session", (q) => q.eq("schoolId", schoolId).eq("studentId", studentId))
         .collect();
-      for (const a of assessments) await ctx.db.delete(a._id);
+      for (const a of assessments) {
+        await assertSessionScoringAvailable(ctx, schoolId, a.sessionId);
+        await ctx.db.delete(a._id);
+      }
 
       // Promotions & graduations
       const promos = await ctx.db
@@ -1771,6 +1832,8 @@ export const runSplitIntegrityCheck = internalQuery({
 
     const allAssessments = await ctx.db.query("assessmentRecords").collect();
     for (const a of allAssessments) {
+      if (await isSessionScoringLocked(ctx, a.schoolId, a.sessionId))
+        anomalies.push(`Assessment ${a._id} belongs to locked scoring session ${a.sessionId}`);
       const s = await ctx.db.get(a.studentId);
       if (s && s.schoolId !== a.schoolId) {
         anomalies.push(`Assessment ${a._id} schoolId (${a.schoolId}) !== student.schoolId (${s.schoolId})`);

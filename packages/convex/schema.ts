@@ -24,16 +24,18 @@ import {
 } from "./functions/foundation/contracts";
 
 const assessmentPolicySnapshotValidator = v.object({
-  source: v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override")),
-  mode: v.union(v.literal("legacy"), v.literal("inherit"), v.literal("override")),
-  groupVersion: v.number(),
-  revision: v.number(),
-  examInputMode: v.union(v.literal("raw40"), v.literal("raw60_scaled_to_40")),
+  // Reviewed imports carry provenance; a manual edit retains only numeric row policy.
+  source: v.optional(v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override"))),
+  mode: v.optional(v.union(v.literal("legacy"), v.literal("inherit"), v.literal("override"))),
+  groupVersion: v.optional(v.number()),
+  revision: v.optional(v.number()),
+  examInputMode: v.optional(v.union(v.literal("raw40"), v.literal("raw60_scaled_to_40"), v.literal("custom"))),
   ca1Max: v.number(),
   ca2Max: v.number(),
   ca3Max: v.number(),
   examContributionMax: v.number(),
   examRawMax: v.number(),
+  sessionScoringPolicyVersion: v.optional(v.number()),
 });
 const gradingPolicySnapshotValidator = v.object({
   version: v.number(),
@@ -1934,6 +1936,56 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_active", ["schoolId", "isActive"]),
 
+  sessionScoringPolicies: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    version: v.number(),
+    ca1Max: v.number(),
+    ca2Max: v.number(),
+    ca3Max: v.number(),
+    examRawMax: v.number(),
+    examContributionMax: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_sessionId", ["schoolId", "sessionId"]),
+
+  sessionScoringRegradeJobs: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    phase: v.union(v.literal("scanning"), v.literal("failed_scanning"), v.literal("ready"), v.literal("invalid"), v.literal("regrading"), v.literal("failed_regrading"), v.literal("complete")),
+    policy: v.object({ ca1Max: v.number(), ca2Max: v.number(), ca3Max: v.number(), examRawMax: v.number(), examContributionMax: v.number() }),
+    before: v.object({ ca1Max: v.number(), ca2Max: v.number(), ca3Max: v.number(), examRawMax: v.number(), examContributionMax: v.number() }),
+    expectedVersion: v.number(),
+    gradingBandsJson: v.optional(v.string()),
+    failureReason: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    scanned: v.number(),
+    batchSize: v.number(),
+    invalidCount: v.number(),
+    invalidExamples: v.array(v.object({ recordId: v.id("assessmentRecords"), studentId: v.id("students"), termId: v.id("academicTerms"), classId: v.optional(v.id("classes")), subjectId: v.optional(v.id("subjects")), field: v.string(), message: v.string() })),
+    mixedLegacyCount: v.optional(v.number()),
+    mixedLegacyExamples: v.optional(v.array(v.object({ recordId: v.id("assessmentRecords"), studentId: v.id("students"), termId: v.id("academicTerms"), classId: v.id("classes"), subjectId: v.id("subjects"), snapshot: v.object({ ca1Max: v.number(), ca2Max: v.number(), ca3Max: v.number(), examRawMax: v.number(), examContributionMax: v.number() }) }))),
+    updated: v.number(),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_phase", ["schoolId", "phase"])
+    .index("by_school_and_sessionId", ["schoolId", "sessionId"]),
+
+  sessionScoringPolicyEvents: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    version: v.number(),
+    before: v.string(),
+    after: v.string(),
+    affectedRecords: v.number(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_sessionId", ["schoolId", "sessionId"]),
+
   assessmentEditingPolicies: defineTable({
     schoolId: v.id("schools"),
     sessionId: v.id("academicSessions"),
@@ -1950,6 +2002,109 @@ export default defineSchema({
     .index("by_school", ["schoolId"])
     .index("by_school_session_term", ["schoolId", "sessionId", "termId"]),
 
+  resultReleaseControls: defineTable({
+    schoolId: v.id("schools"),
+    releasesPaused: v.boolean(),
+    reason: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  }).index("by_school", ["schoolId"]),
+
+  classResultPublications: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    releasedAt: v.number(),
+    releasedBy: v.id("users"),
+    releasedByMembershipId: v.optional(v.id("branchMemberships")),
+    releasedByPersonId: v.optional(v.id("persons")),
+    reviewKey: v.string(),
+    eligibleCount: v.number(),
+    certifiedCount: v.number(),
+    excludedCount: v.number(),
+  }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+    .index("by_school", ["schoolId"]),
+
+  classResultExclusions: defineTable({
+    schoolId: v.id("schools"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    reason: v.string(),
+    approvedBy: v.id("users"),
+    approvedAt: v.number(),
+  }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+    .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
+    .index("by_school", ["schoolId"]),
+
+  classResultPublicationStudents: defineTable({
+    schoolId: v.id("schools"),
+    publicationId: v.id("classResultPublications"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    classId: v.id("classes"),
+    releasedAt: v.number(),
+    issuedReportCardId: v.id("issuedReportCards"),
+  }).index("by_publication_and_student", ["publicationId", "studentId"])
+    .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
+    .index("by_school_and_student_and_released_at", ["schoolId", "studentId", "releasedAt"])
+    .index("by_school", ["schoolId"]),
+
+  classSessionReportModes: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    sessionId: v.id("academicSessions"),
+    mode: v.literal("narrative"),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_classId_and_sessionId", ["classId", "sessionId"])
+    .index("by_school", ["schoolId"])
+    .index("by_schoolId_and_sessionId", ["schoolId", "sessionId"]),
+
+  narrativeReportDrafts: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    subjectId: v.id("subjects"),
+    comment: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.id("users"),
+  })
+    .index("by_studentId_and_sessionId_and_termId_and_classId_and_subjectId", ["studentId", "sessionId", "termId", "classId", "subjectId"])
+    .index("by_classId_and_sessionId_and_termId_and_subjectId", ["classId", "sessionId", "termId", "subjectId"])
+    .index("by_school", ["schoolId"]),
+
+  issuedNarrativeReports: defineTable({
+    schoolId: v.id("schools"),
+    classId: v.id("classes"),
+    studentId: v.id("students"),
+    sessionId: v.id("academicSessions"),
+    termId: v.id("academicTerms"),
+    issuedAt: v.number(),
+    issuedBy: v.id("users"),
+    snapshot: v.object({
+      schoolName: v.string(),
+      primaryColor: v.optional(v.string()),
+      accentColor: v.optional(v.string()),
+      studentName: v.string(),
+      admissionNumber: v.string(),
+      className: v.string(),
+      sessionName: v.string(),
+      termName: v.string(),
+      subjects: v.array(v.object({ subjectId: v.id("subjects"), name: v.string(), order: v.number(), comment: v.string() })),
+    }),
+  })
+    .index("by_studentId_and_sessionId_and_termId", ["studentId", "sessionId", "termId"])
+    .index("by_classId_and_sessionId", ["classId", "sessionId"])
+    .index("by_classId_and_sessionId_and_termId", ["classId", "sessionId", "termId"])
+    .index("by_school", ["schoolId"]),
+
   issuedReportCards: defineTable({
     schoolId: v.id("schools"),
     studentId: v.id("students"),
@@ -1958,12 +2113,17 @@ export default defineSchema({
     classId: v.id("classes"),
     issuedAt: v.number(),
     issuedBy: v.id("users"),
+    scoringPolicyVersion: v.optional(v.number()),
     schoolLogoStorageId: v.optional(v.id("_storage")),
     studentPhotoStorageId: v.optional(v.id("_storage")),
     report: reportCardResultValidator,
   })
     .index("by_student_session_term", ["studentId", "sessionId", "termId"])
     .index("by_student_session_term_class", ["studentId", "sessionId", "termId", "classId"])
+    // This index is queried by graded class release; activation follows the #90 backfill.
+    .index("by_class_and_session_and_term", ["classId", "sessionId", "termId"])
+    // Separate narrative mode-lock backfill. No query uses this index yet.
+    .index("by_classId_and_sessionId", { fields: ["classId", "sessionId"], staged: true })
     .index("by_school_logo_storage", ["schoolLogoStorageId"])
     .index("by_student_photo_storage", ["studentPhotoStorageId"])
     .index("by_school", ["schoolId"])
@@ -2060,6 +2220,7 @@ export default defineSchema({
     remark: v.string(),
     examInputModeSnapshot: v.string(),
     examRawMaxSnapshot: v.number(),
+    sessionScoringPolicyVersion: v.optional(v.number()),
     assessmentPolicySnapshot: v.optional(assessmentPolicySnapshotValidator),
     gradingPolicySnapshot: v.optional(gradingPolicySnapshotValidator),
     status: v.literal("draft"),
@@ -3324,6 +3485,7 @@ export default defineSchema({
     draftMode: v.optional(assessmentDraftModeValidator),
     sourceSelectionSnapshot: v.optional(v.string()),
     effectiveGenerationSettings: v.optional(assessmentGenerationSettingsValidator),
+    draftRevision: v.optional(v.number()),
     bankStatus: knowledgeArtifactStatusValidator,
     title: v.string(),
     description: v.optional(v.string()),
@@ -3496,6 +3658,7 @@ export default defineSchema({
     .index("by_window_expires_at", ["windowExpiresAt"]),
 
   aiRunLogs: defineTable({
+    attemptId: v.optional(v.id("usageOperationAttempts")),
     schoolId: v.id("schools"),
     actorUserId: v.id("users"),
     actorRole: knowledgeOwnerRoleValidator,
@@ -3603,7 +3766,9 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_source_school", ["sourceSchoolId"])
-    .index("by_target_school", ["targetSchoolId"]),
+    .index("by_target_school", ["targetSchoolId"])
+    .index("by_source_school_and_status", ["sourceSchoolId", "status"])
+    .index("by_target_school_and_status", ["targetSchoolId", "status"]),
 
   importWorkspaces: defineTable({
     schoolId: v.id("schools"),
@@ -4084,7 +4249,9 @@ export default defineSchema({
     code: v.string(), version: v.number(), entitlement: usageEntitlement,
     startAt: v.number(), endAt: v.number(), status: v.union(v.literal("active"), v.literal("closed")), createdAt: v.number(),
     closedAt: v.optional(v.number()), reconciliationNote: v.optional(v.string()),
-  }).index("by_school", ["schoolId"]),
+  }).index("by_school", ["schoolId"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_startAt", ["schoolId", "startAt"]),
   usageCycleMeterSnapshots: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), meterType: usageMeterType,
     allocatedUnits: v.number(), baseUnits: v.number(), graceUnits: v.number(), topUpUnits: v.number(), exceptionUnits: v.number(), poolUnits: v.number(),
@@ -4122,12 +4289,22 @@ export default defineSchema({
   usageOperationAttempts: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), idempotencyKey: v.string(), task: heavyUsageTask,
     meterType: usageMeterType, itemCount: v.number(), estimatedUnits: v.number(), modelProfile: v.string(),
-    status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable")),
+    status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("needs_reconciliation"), v.literal("settled")),
     actorTokenIdentifier: v.string(), createdAt: v.number(), updatedAt: v.number(),
+    requestDigest: v.optional(v.string()), modelId: v.optional(v.string()),
+    requestArgs: v.optional(v.string()),
+    expiresAt: v.optional(v.number()), actualUnits: v.optional(v.number()), inputTokens: v.optional(v.number()), outputTokens: v.optional(v.number()),
+    outcome: v.optional(v.string()), evidence: v.optional(v.string()), overage: v.optional(v.boolean()), overageReviewedAt: v.optional(v.number()), resultId: v.optional(v.string()),
   }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"])
-    .index("by_school", ["schoolId"]),
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_status_and_updatedAt", ["schoolId", "status", "updatedAt"]),
+  // Private generated content staged for settlement/save recovery. Never part of the accounting ledger.
+  aiGenerationResults: defineTable({
+    attemptId: v.id("usageOperationAttempts"), aiRunLogId: v.optional(v.id("aiRunLogs")),
+    payload: v.string(), inputTokens: v.number(), outputTokens: v.number(), evidence: v.string(), createdAt: v.number(),
+  }).index("by_attempt", ["attemptId"]),
   usageOperationTransitions: defineTable({
-    attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled")), createdAt: v.number(),
+    attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled"), v.literal("needs_reconciliation"), v.literal("settled")), createdAt: v.number(),
   }).index("by_attempt", ["attemptId"]),
 
   // --- Usage Metering & Threshold Protection (H8 / MX-13) ---
@@ -4144,6 +4321,8 @@ export default defineSchema({
     // `consumedUnits` remains the quota total; buckets show where the bytes
     // currently reside without counting a storage object twice.
     consumedUnits: v.number(),
+    aiOverageRequiresReview: v.optional(v.boolean()),
+    aiOutstandingOverageCount: v.optional(v.number()),
     activeStorageBytes: v.optional(v.number()),
     trashStorageBytes: v.optional(v.number()),
     tempStorageBytes: v.optional(v.number()),

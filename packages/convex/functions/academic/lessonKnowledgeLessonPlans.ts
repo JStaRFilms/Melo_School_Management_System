@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { api, internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { buildTopicPlanningContextKey } from "@school/shared/planning-context";
 import { normalizeHumanName } from "@school/shared/name-format";
 import { getAuthenticatedSchoolMembership } from "./auth";
@@ -26,6 +26,7 @@ import {
   type SupportedInstructionTemplateOutputType,
 } from "./lessonKnowledgeTemplatesHelpers";
 import { assertBranchDoc } from "../foundation/tenantScope";
+import { assertSaveAttempt, attachSavedDraft } from "./aiSpend";
 
 const MAX_GENERATION_SOURCE_COUNT = 12;
 const MAX_PROMPT_CHUNKS_PER_SOURCE = 3;
@@ -777,7 +778,7 @@ async function loadSources(
 
   const subjectMap = await fetchSubjectsById(ctx, [...subjectIds].map((id) => id as Id<"subjects">));
 
-  const selectedSources = accessibleRows.filter((row) => row.subjectId !== null).map((row) => {
+  const selectedSources = accessibleRows.map((row) => {
     const subject = row.subjectId ? subjectMap.get(String(row.subjectId)) : null;
     return {
       ...row,
@@ -1670,7 +1671,9 @@ export const getTeacherInstructionWorkspace = query({
 
     if (sourceBundle.selectedSources.length > 1) {
       const subjectKeys = new Set(
-        sourceBundle.selectedSources.map((source) => `${String(source.subjectId)}::${source.level.toLowerCase()}`)
+        sourceBundle.selectedSources
+          .filter((source) => source.subjectId !== null)
+          .map((source) => `${String(source.subjectId)}::${source.level.toLowerCase()}`)
       );
       if (subjectKeys.size > 1) {
         warnings.push(
@@ -1812,8 +1815,7 @@ export const getTeacherInstructionArtifactRevisionContent = query({
   },
 });
 
-export const saveTeacherInstructionArtifactDraft = mutation({
-  args: {
+const aiDraftSaveArgs = v.object({
     artifactId: v.optional(v.union(v.id("instructionArtifacts"), v.null())),
     expectedRevisionNumber: v.number(),
     outputType: outputTypeValidator,
@@ -1826,12 +1828,26 @@ export const saveTeacherInstructionArtifactDraft = mutation({
     topicLabel: v.optional(v.union(v.string(), v.null())),
     planningContext: v.optional(topicPlanningContextValidator),
     revisionKind: revisionKindValidator,
-  },
+  });
+
+export const saveTeacherInstructionArtifactDraft = mutation({
+  args: aiDraftSaveArgs.fields,
   returns: saveResultValidator,
-  handler: async (ctx, args) => {
+  handler: async (ctx, args) => saveDraftHelper(ctx, args),
+});
+
+// Only an authenticated server action may attach a staged provider result.
+export const saveGeneratedInstructionArtifactDraft = internalMutation({
+  args: { ...aiDraftSaveArgs.fields, attemptId: v.id("usageOperationAttempts") },
+  returns: saveResultValidator,
+  handler: async (ctx, args) => saveDraftHelper(ctx, args),
+});
+
+async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.type & { attemptId?: Id<"usageOperationAttempts"> }) {
     const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
+    if (args.attemptId) await assertSaveAttempt(ctx, args.attemptId, schoolId, args.outputType, args.sourceIds);
     const sourceIdStrings = normalizeSourceIds(args.sourceIds.map((sourceId) => String(sourceId)));
     assertGenerationSourceCount(sourceIdStrings);
     const sourceIds = sourceIdStrings.map((sourceId) => sourceId as Id<"knowledgeMaterials">);
@@ -2013,6 +2029,7 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       changeSummary: `${existingArtifact ? "Updated" : "Created"} ${outputTypeLabel(args.outputType).toLowerCase()} draft \"${normalizedTitle}\" using ${sourceIds.length} source${sourceIds.length === 1 ? "" : "s"}.`,
     });
 
+    if (args.attemptId) await attachSavedDraft(ctx, args.attemptId, String(artifactId), "lesson");
     return {
       artifactId,
       documentId: documentResult.documentId,
@@ -2028,10 +2045,9 @@ export const saveTeacherInstructionArtifactDraft = mutation({
       templateResolutionPath: template?.resolutionPath ?? existingArtifact?.templateResolutionPath ?? null,
       savedAt: revisionResult.savedAt,
     };
-  },
-});
+};
 
-export const recordTeacherLessonPlanAiRun = mutation({
+export const recordTeacherLessonPlanAiRun = internalMutation({
   args: aiRunLogValidator,
   returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {

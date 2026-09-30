@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { buildReportCardHref } from "@school/shared";
 import type { ReportCardSheetData } from "@school/shared";
 import { useAuth } from "@/lib/AuthProvider";
+import Link from "next/link";
 
 import { CommentSection } from "./components/CommentSection";
 import { ExtrasSection } from "./components/ExtrasSection";
@@ -188,9 +189,11 @@ export default function TeacherReportCardWorkbenchPage() {
 
   // â”€â”€ Report card data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+  const mode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    selection.classId && selection.sessionId ? { classId: selection.classId, sessionId: selection.sessionId } as never : "skip") as "graded" | "narrative" | undefined;
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    selection.studentId && selection.sessionId && selection.termId
+    mode === "graded" && selection.studentId && selection.sessionId && selection.termId
       ? ({
           studentId: selection.studentId,
           sessionId: selection.sessionId,
@@ -212,7 +215,7 @@ export default function TeacherReportCardWorkbenchPage() {
 
   const subjectMatrix = useQuery(
     "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
-    selection.classId && selection.sessionId
+    mode === "graded" && selection.classId && selection.sessionId
       ? ({
           classId: selection.classId,
           sessionId: selection.sessionId,
@@ -227,7 +230,7 @@ export default function TeacherReportCardWorkbenchPage() {
   );
   const extrasEntry = useQuery(
     "functions/academic/reportCardExtras:getStudentReportCardExtrasEntry" as never,
-    selection.studentId && selection.sessionId && selection.termId && resolvedClassId
+    mode === "graded" && selection.studentId && selection.sessionId && selection.termId && resolvedClassId
       ? ({
           studentId: selection.studentId,
           sessionId: selection.sessionId,
@@ -454,6 +457,8 @@ export default function TeacherReportCardWorkbenchPage() {
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm font-semibold text-slate-500">
           Pick a class and student above to get started.
         </div>
+      ) : mode === "narrative" ? (
+        <div className="rounded-2xl border bg-white p-6 space-y-3"><h2 className="font-bold">Subject comments</h2><p>Save one draft per student and subject in the normal subject entry area. Drafts are not visible to families until an admin publishes the report.</p><Link className="underline" href={`/assessments/exams/entry?sessionId=${selection.sessionId}&termId=${selection.termId}&classId=${selection.classId}`}>Open subject comments entry</Link></div>
       ) : reportCard === undefined ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm font-semibold text-slate-500">
           Loading report card...

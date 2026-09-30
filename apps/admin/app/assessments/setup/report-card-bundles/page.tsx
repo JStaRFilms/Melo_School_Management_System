@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -75,7 +77,7 @@ export default function ReportCardBundlesPage() {
     return <MockReportCardBundlesPage />;
   }
 
-  return <LiveReportCardBundlesPage />;
+  return <><div className="p-4"><Link className="underline" href="/assessments/setup/reporting-modes">Configure reporting modes by session</Link></div><LiveReportCardBundlesPage /></>;
 }
 
 function LiveReportCardBundlesPage() {
