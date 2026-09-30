@@ -6,7 +6,7 @@ Open `obhis-homepage-review.html`. This page extends the approved Olive/You welc
 
 The page moves from the welcome to an introduction, a school photo album, the crest and uniform, campus photo albums, admissions/visit guidance and a footer. It uses no new generated artwork, Blender scene, backend connection, form, payment flow or production deployment.
 
-The user approved the heroes and their transition. The new sections still need visual review. School facts and photo publication rights remain separate approval decisions.
+The user approved the heroes, their transition and the full homepage design, including the new sections. Keep this composition for shared-platform integration. School facts and photo publication rights remain separate approval decisions.
 
 ## Content and photo trace
 

@@ -1,0 +1,22 @@
+{
+  "errors": [],
+  "captures": [
+    "next-olive-1440.png",
+    "next-you-1440.png",
+    "next-photo-viewer-1440.png",
+    "next-olive-390.png",
+    "next-you-390.png",
+    "next-olive-320.png",
+    "next-you-320.png"
+  ],
+  "touch": {
+    "390": "Welcome, culture selection, photo viewer and close passed",
+    "320": "Welcome, culture selection, photo viewer and close passed"
+  },
+  "modal": {
+    "centered": true,
+    "escape_focus_restored": true
+  },
+  "owned_server_stopped": true,
+  "server_cleanup": "The helper stopped its shell only on Windows; parent verified and stopped only its own capture-server descendants."
+}
