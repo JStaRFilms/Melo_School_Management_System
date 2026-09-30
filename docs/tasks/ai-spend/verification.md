@@ -12,9 +12,9 @@ Status: **implemented and independently reviewed; PR #97 open, not deployed or a
 
 ## Verification
 
-- `pnpm --filter @school/convex test`: **96 files, 762 passed**. This includes 20 mocked action tests for authorized lesson and assessment generation, settled usage/draft association, over-budget and foreign callers, changed sources/template/profile/model, reused key, revoked capability, one claim/no replay, ambiguous or missing usage, known failed-use charge, and saving failure followed by provider-free recovery. Existing `aiSpend.integration.test.ts` covers reserve races, expiry/cancel, settlement idempotency, zero/partial/exact/over-hold use and reconciliation; existing OCR/storage gate suites passed.
+- `pnpm --filter @school/convex test`: **96 files, 763 passed**. This includes 21 mocked action tests for authorized lesson and assessment generation, settled usage/draft association, over-budget and foreign callers, changed sources/template/profile/model, reused key, revoked capability, one claim/no replay, ambiguous or missing usage, known failed-use charge, and saving failure followed by provider-free recovery. Existing `aiSpend.integration.test.ts` covers reserve races, expiry/cancel, settlement idempotency, zero/partial/exact/over-hold use and reconciliation; existing OCR/storage gate suites passed.
 - `pnpm --filter @school/convex typecheck`, `pnpm --filter @school/teacher typecheck`, `pnpm --filter @school/admin typecheck`, `pnpm --filter @school/platform typecheck`: passed.
-- `pnpm --filter @school/teacher test`: **17 files, 79 passed**. `pnpm --filter @school/admin test`: **75 files, 333 passed**. `pnpm --filter @school/platform test`: **4 files, 11 passed**.
+- `pnpm --filter @school/teacher test`: **18 files, 83 passed**. `pnpm --filter @school/admin test`: **75 files, 333 passed**. `pnpm --filter @school/platform test`: **4 files, 11 passed**.
 - `pnpm install --frozen-lockfile --offline --ignore-scripts`: passed. `vite` is now an explicit Convex test dependency for the test's `vite/client` reference. `convex codegen --typecheck disable` required an unavailable `CONVEX_DEPLOYMENT`; the two missing API module entries were emitted from Convex's installed offline `apiCodegen` template, preserving existing generated component definitions. No deployment or env copy occurred.
 - `node scripts/audit-theme-colors.mjs`: passed, informational. No direct colours were reported for files touched in this remediation. Existing status colours and product neutrals remain unchanged. `git diff --check`: passed.
 
@@ -62,6 +62,14 @@ Verification after these fixes: 96 Convex files and 751 tests, 17 teacher files 
 No unrelated Kilo changes were made. Its five prior comments retain the overflow and legacy flag/count safeguards, treat distinct counter diagnostics as optional issue 99, and keep the safe staging-failure behavior. PR 98's staged-index prerequisite had no major Codex issue; staged-index rollout issue 100 remains a deployment prerequisite. No index was marked staged in the code that queries it, and no deployment or push was attempted here.
 
 Verification for this round: 96 Convex files, 762 tests; 17 teacher files, 79 tests; 75 Admin files, 333 tests; 4 Platform files, 11 tests. All four typechecks, the informational theme audit and `git diff --check` passed.
+
+## PR 97 last review
+
+- Codex 4144911797: the assessment screen now saves a dirty title, description, items and settings before asking the parent to prepare a quote. Generation stops when that save cannot succeed, leaving local edits intact. A rendered-screen test clicks Generate before autosave and confirms save completes before quote preparation; another fails the 1.2-second autosave and the subsequent pre-generation save, with no quote and unchanged local edits.
+- Kilo 4144963065: cancellation errors are no longer swallowed. The action preserves the original safe rate denial only when atomic cancellation refuses because another caller claimed the attempt. Other cancellation failures report that release could not be verified and direct the teacher to status; an unclaimed hold still has the scheduled quote-expiry release path. The teacher review dialog likewise distinguishes a claimed attempt from unverified cancellation without reporting a refund. Tests cover failed cancellation, retry, claim race, held balance and expiry without a provider call.
+- Kilo 4144963091: `null` remains the valid baseline for a new assessment bank. Recovery now explicitly rejects a missing, non-integer, negative or bank-inconsistent staged revision. Tests corrupt and restore staged payloads to prove malformed values fail closed while the original version check still protects newer manual edits. The existing bank baseline overflow and non-null assertion decisions remain unchanged.
+
+This round passed 96 Convex files and 763 tests, 18 teacher files and 83 tests, 75 Admin files and 333 tests, and 4 Platform files and 11 tests. All four typechecks, `git diff --check`, and the informational theme audit passed. Direct colours reported in the touched assessment screen are semantic warning/error colours and product neutrals, not tenant branding. No deployment, live AI call or push was made.
 
 ## Review and activation limits
 

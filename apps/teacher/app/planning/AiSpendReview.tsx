@@ -19,11 +19,26 @@ export function useAiSpendReview(formKey: string) {
   const confirm = useMutation(api.functions.academic.aiSpend.confirm);
   const cancel = useMutation(api.functions.academic.aiSpend.cancel);
   const status = useQuery(api.functions.academic.aiSpend.status, lastAttempt ? { attemptId: lastAttempt } : "skip");
+  async function cancelQuote(attemptId: Id<"usageOperationAttempts">): Promise<"cancelled" | "claimed" | "unverified"> {
+    try {
+      await cancel({ attemptId });
+      return "cancelled";
+    } catch (error) {
+      setLastAttempt(attemptId);
+      if (error instanceof Error && error.message.includes("Dispatched AI work cannot be cancelled")) {
+        setMessage("This AI attempt was already claimed. Check its status; do not retry the provider call.");
+        return "claimed";
+      }
+      // Raw backend/network errors can contain private data; report only status.
+      setMessage("Cancellation could not be verified. Check attempt status. An unclaimed hold expires with its quote; ask Platform if the hold remains.");
+      return "unverified";
+    }
+  }
   // Form edits invalidate the review, including a profile change made while the dialog is open.
   useEffect(() => {
     if (!pending) return;
     pending.reject(new Error("The form changed. Review a new quote."));
-    void cancel({ attemptId: pending.quote.attemptId }).catch(() => {});
+    void cancelQuote(pending.quote.attemptId);
     setPending(null);
     // Only edits, not a newly returned quote, invalidate this dialog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -33,8 +48,10 @@ export function useAiSpendReview(formKey: string) {
     const preparedKey = formKeyRef.current;
     const quote = await prepare();
     if (formKeyRef.current !== preparedKey) {
-      await cancel({ attemptId: quote.attemptId }).catch(() => {});
-      throw new Error("The form changed while preparing the quote. Review a new quote.");
+      const cancelled = await cancelQuote(quote.attemptId);
+      throw new Error(cancelled === "cancelled"
+        ? "The form changed while preparing the quote. Review a new quote."
+        : "The form changed. Cancellation was not confirmed; check the attempt status before trying again.");
     }
     setMessage("");
     setLastAttempt(quote.attemptId);
@@ -46,28 +63,34 @@ export function useAiSpendReview(formKey: string) {
     try {
       if (formKeyRef.current !== pending.formKey) throw new Error("The form changed. Review a new quote.");
       await confirm({ attemptId: pending.quote.attemptId, expectedUnits: pending.quote.estimate, confirmation: "CONFIRM" });
-      if (formKeyRef.current !== pending.formKey) {
-        await cancel({ attemptId: pending.quote.attemptId }).catch(() => {});
-        throw new Error("The form changed during confirmation. Request a new quote.");
-      }
+      if (formKeyRef.current !== pending.formKey) throw new Error("The form changed during confirmation.");
       pending.resolve(pending.quote.attemptId);
       setPending(null);
       setMessage("Reserved. Generating once; check status if the connection drops.");
     } catch (error) {
       if (formKeyRef.current !== pending.formKey) {
-        pending.reject(error instanceof Error ? error : new Error("The form changed. Request a new quote."));
+        const cancelled = await cancelQuote(pending.quote.attemptId);
+        pending.reject(new Error(cancelled === "cancelled"
+          ? "The form changed. Request a new quote."
+          : "The form changed and cancellation was not confirmed. Check the attempt status."));
         setPending(null);
-        void cancel({ attemptId: pending.quote.attemptId }).catch(() => {});
+        if (cancelled === "cancelled") setMessage("The form changed. Quote cancelled before dispatch.");
+      } else {
+        setMessage(error instanceof Error ? error.message : "Confirmation failed.");
       }
-      setMessage(error instanceof Error ? error.message : "Confirmation failed.");
     } finally { setBusy(false); }
   }
   async function dismiss() {
     if (!pending || busy) return;
     setBusy(true);
-    try { await cancel({ attemptId: pending.quote.attemptId }); pending.reject(new Error("Generation cancelled before dispatch.")); setPending(null); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "Cancellation failed. Check the attempt status."); }
-    finally { setBusy(false); }
+    try {
+      const cancelled = await cancelQuote(pending.quote.attemptId);
+      if (cancelled === "unverified") return; // Keep the dialog for a cancellation retry.
+      pending.reject(new Error(cancelled === "cancelled"
+        ? "Generation cancelled before dispatch."
+        : "This attempt was already claimed. Check its status; do not retry."));
+      setPending(null);
+    } finally { setBusy(false); }
   }
   const reviewDialog = <>
     {pending && <div role="dialog" aria-modal="true" aria-label="Review AI generation allowance" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">

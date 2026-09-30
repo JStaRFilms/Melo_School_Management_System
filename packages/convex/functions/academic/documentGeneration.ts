@@ -1319,7 +1319,18 @@ async function runBound(ctx: ActionCtx, attemptId: Id<"usageOperationAttempts">,
     // Before this action claims anything, release its hold immediately. If a
     // concurrent caller already claimed it, cancel refuses atomically and must
     // not undo that caller's provider work.
-    await ctx.runMutation(api.functions.academic.aiSpend.cancel, { attemptId }).catch(() => {});
+    try {
+      await ctx.runMutation(api.functions.academic.aiSpend.cancel, { attemptId });
+    } catch (cancelError) {
+      if (cancelError instanceof Error && cancelError.message.includes("Dispatched AI work cannot be cancelled")) {
+        // Another caller claimed first. The server must not release its hold.
+        throw error;
+      }
+      // Keep the original safe denial reason, not the raw cancellation error.
+      const denial = error instanceof Error && error.message.includes("Rate limit exceeded")
+        ? "Rate limit exceeded. " : "Pre-dispatch check failed. ";
+      throw new ConvexError(`${denial}Reservation cancellation could not be confirmed. Check attempt status. An unclaimed hold expires with its quote; ask Platform if it remains.`);
+    }
     throw error;
   }
   await ctx.runMutation(internal.functions.academic.aiSpend.claim, { attemptId, digest: bound.digest, modelId: bound.modelId });
@@ -1438,14 +1449,19 @@ async function finishStaged(ctx: ActionCtx, attemptId: Id<"usageOperationAttempt
       sourceIds: saved.sourceIds.map(String), templateId: saved.templateId ? String(saved.templateId) : null,
       generationMeta: { attempts: 1, repaired: false, validationIssues: [], sourceExcerptWarnings: data.excerptWarnings ?? [], aiRunLogId: String(aiRunLogId ?? "") } };
   }
-  if (data.kind !== "assessment" || !data.settings || !data.outputType || data.expectedBankRevision === undefined) throw new ConvexError("Staged assessment result invalid");
+  // null is the intentional baseline for a new bank; an absent or malformed
+  // revision is not. Keep staged content if validation fails.
+  const revision = data.expectedBankRevision;
+  if (data.kind !== "assessment" || !data.settings || !data.outputType || revision === undefined ||
+    (revision !== null && (!Number.isSafeInteger(revision) || revision < 0)) ||
+    (data.bankId ? revision === null : revision !== null)) throw new ConvexError("Staged assessment result invalid");
   const draft = data.outputType === "cbt_draft"
     ? mapCbtDraft(data.args.draftMode, data.generation, data.settings)
     : mapQuestionBankDraft(data.args.draftMode, data.generation, data.settings);
   const snapshot = buildAssessmentSourceSelectionSnapshot({ draftMode: data.args.draftMode, outputType: data.outputType,
     sourceIds: data.sourceIds.map(String), subjectId: String(data.subjectId), level: data.level, topicLabel: data.topic });
   const saved = await ctx.runMutation(internal.functions.academic.lessonKnowledgeAssessmentDrafts.saveGeneratedAssessmentBankDraft, {
-    attemptId, bankId: data.bankId ?? null, expectedBankRevision: data.expectedBankRevision,
+    attemptId, bankId: data.bankId ?? null, expectedBankRevision: revision as number | null,
     draftMode: data.args.draftMode, title: draft.title, description: draft.description,
     sourceIds: data.sourceIds, sourceSelectionSnapshot: snapshot, subjectId: data.subjectId, level: data.level, topicLabel: data.topic,
     planningContext: data.args.planningContext,

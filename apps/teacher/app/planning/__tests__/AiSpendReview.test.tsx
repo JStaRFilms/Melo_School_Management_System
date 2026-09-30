@@ -44,6 +44,34 @@ it("cancels a delayed quote if the form changed before the review dialog opens",
   expect(mocks.confirm).not.toHaveBeenCalled();
 });
 
+it("does not claim a refund when cancellation fails; keeps the dialog for a retry", async () => {
+  mocks.cancel.mockRejectedValueOnce(new Error("private network details"))
+    .mockResolvedValueOnce(null);
+  render(<ReviewHarness prepare={async () => quote} />);
+  fireEvent.click(screen.getByRole("button", { name: "Prepare quote" }));
+  await screen.findByRole("dialog");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await screen.findByText(/Cancellation could not be verified/);
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.queryByText(/private network details/)).toBeNull();
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(mocks.cancel).toHaveBeenCalledTimes(2);
+});
+
+it("reports an already claimed attempt without releasing its reservation", async () => {
+  mocks.cancel.mockRejectedValue(new Error("Dispatched AI work cannot be cancelled"));
+  render(<ReviewHarness prepare={async () => quote} />);
+  fireEvent.click(screen.getByRole("button", { name: "Prepare quote" }));
+  await screen.findByRole("dialog");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.getAllByText(/already claimed/)).toHaveLength(2);
+  expect(screen.queryByText(/cancelled before dispatch/)).toBeNull();
+  expect(mocks.confirm).not.toHaveBeenCalled();
+});
+
 it("invalidates an open quote before confirmation when the form changes", async () => {
   mocks.cancel.mockResolvedValue(null);
   render(<ReviewHarness prepare={async () => quote} />);

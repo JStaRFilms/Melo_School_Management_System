@@ -157,6 +157,18 @@ for (const editTiming of ["during_provider", "before_recovery"] as const) {
     if (editTiming === "before_recovery") {
       await f.t.run(ctx => ctx.db.patch(f.subjectId, { isArchived: false }));
       await f.teacher.mutation(api.functions.academic.lessonKnowledgeAssessmentDrafts.saveTeacherAssessmentBankDraft, newer);
+      const staged = await f.t.run(ctx => ctx.db.query("aiGenerationResults")
+        .withIndex("by_attempt", q => q.eq("attemptId", quoted.attemptId)).unique());
+      if (!staged) throw new Error("missing staged assessment");
+      for (const invalid of ["not-a-revision", undefined]) {
+        const malformed = JSON.parse(staged.payload) as Record<string, unknown>;
+        if (invalid === undefined) delete malformed.expectedBankRevision;
+        else malformed.expectedBankRevision = invalid;
+        await f.t.run(ctx => ctx.db.patch(staged._id, { payload: JSON.stringify(malformed) }));
+        await expect(f.teacher.action(api.functions.academic.documentGeneration.recoverTeacherGenerationDraft,
+          { attemptId: quoted.attemptId })).rejects.toThrow("Staged assessment result invalid");
+      }
+      await f.t.run(ctx => ctx.db.patch(staged._id, { payload: staged.payload }));
     }
     await expect(f.teacher.action(api.functions.academic.documentGeneration.recoverTeacherGenerationDraft,
       { attemptId: quoted.attemptId })).rejects.toThrow("Assessment draft changed");
@@ -237,6 +249,33 @@ it("immediately releases a rate-denied reservation without any provider charge",
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 0 });
   expect(await f.t.run(ctx => ctx.db.query("usageEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).take(5))).toHaveLength(0);
   expect(mock.generate).not.toHaveBeenCalled();
+});
+it("reports failed cancellation after rate denial and keeps an unclaimed hold eligible for expiry", async () => {
+  const key = "./functions/academic/aiSpend.ts";
+  const override = { ...modules, [key]: async () => ({
+    ...await (modules[key] as () => Promise<object>)(),
+    cancel: mutation({ args: { attemptId: v.id("usageOperationAttempts") }, handler: async () => {
+      throw new Error("private cancellation network details");
+    } }),
+  }) };
+  const f = await setup(override);
+  for (let i = 0; i < 10; i += 1)
+    await f.teacher.mutation(api.functions.academic.lessonKnowledgeRateLimits.consumeTeacherLessonPlanGenerationLimit, {});
+  const quoted = await f.quote(); await f.confirm(quoted.attemptId, quoted.estimate);
+  const failure = await f.teacher.action(api.functions.academic.documentGeneration.generateTeacherLessonPlanDraft,
+    { attemptId: quoted.attemptId }).then(() => null, error => error);
+  expect(String(failure)).toContain("Rate limit exceeded. Reservation cancellation could not be confirmed");
+  expect(String(failure)).not.toContain("private cancellation network details");
+  expect(await f.teacher.query(api.functions.academic.aiSpend.status, { attemptId: quoted.attemptId }))
+    .toMatchObject({ status: "reserved", actualUnits: null });
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: quoted.estimate, consumedUnits: 0 });
+  expect(mock.generate).not.toHaveBeenCalled();
+  const clock = Date.now;
+  try {
+    Date.now = () => clock() + 10 * 60_000;
+    await f.t.mutation(internal.functions.academic.aiSpend.expire, { attemptId: quoted.attemptId });
+  } finally { Date.now = clock; }
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ reservedUnits: 0, consumedUnits: 0 });
 });
 it("cannot cancel another caller's claimed attempt while handling pre-dispatch denial", async () => {
   const f = await setup();

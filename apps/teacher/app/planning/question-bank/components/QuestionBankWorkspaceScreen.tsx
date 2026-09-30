@@ -411,12 +411,9 @@ export function QuestionBankWorkspaceScreen({
   };
 
   const persistDraft = useCallback(
-    async (mode: "manual" | "autosave") => {
-      if (!canAutosave) {
-        return;
-      }
-
-      if (!workspace.planningContext?.subjectId && (!workspace.sourceContext.subjectId || !workspace.sourceContext.level)) {
+    async (mode: "manual" | "autosave" | "generation") => {
+      if (!canAutosave || (!workspace.planningContext?.subjectId && (!workspace.sourceContext.subjectId || !workspace.sourceContext.level))) {
+        if (mode === "generation") throw new Error("Save this assessment draft before generating. The current planning context cannot be saved.");
         return;
       }
 
@@ -459,6 +456,7 @@ export function QuestionBankWorkspaceScreen({
       } catch (error) {
         setSaveState("error");
         pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
+        if (mode === "generation") throw error;
       }
     },
     [canAutosave, description, effectiveGenerationSettings, items, onSaveDraft, pushNotice, title, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
@@ -516,6 +514,7 @@ export function QuestionBankWorkspaceScreen({
 
     setIsGenerating(true);
     try {
+      if (dirty) await persistDraft("generation");
       const result = await onGenerateDraft(effectiveGenerationSettings);
       setTitle(result.title);
       setDescription(result.description ?? "");
@@ -538,7 +537,7 @@ export function QuestionBankWorkspaceScreen({
     } finally {
       setIsGenerating(false);
     }
-  }, [canGenerate, effectiveGenerationSettings, onGenerateDraft, pushNotice, workspace.outputTypeLabel]);
+  }, [canGenerate, dirty, effectiveGenerationSettings, onGenerateDraft, persistDraft, pushNotice, workspace.outputTypeLabel]);
 
   const handleModeChange = useCallback(
     (next: AssessmentDraftMode) => {
