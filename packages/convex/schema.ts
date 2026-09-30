@@ -4285,12 +4285,16 @@ export default defineSchema({
   usageOperationAttempts: defineTable({
     schoolId: v.id("schools"), cycleId: v.id("usageCycles"), idempotencyKey: v.string(), task: heavyUsageTask,
     meterType: usageMeterType, itemCount: v.number(), estimatedUnits: v.number(), modelProfile: v.string(),
-    status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable")),
+    status: v.union(v.literal("quoted"), v.literal("cancelled"), v.literal("released_provider_unavailable"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("needs_reconciliation"), v.literal("settled")),
     actorTokenIdentifier: v.string(), createdAt: v.number(), updatedAt: v.number(),
+    requestDigest: v.optional(v.string()), modelId: v.optional(v.string()),
+    expiresAt: v.optional(v.number()), actualUnits: v.optional(v.number()), inputTokens: v.optional(v.number()), outputTokens: v.optional(v.number()),
+    outcome: v.optional(v.string()), evidence: v.optional(v.string()), overage: v.optional(v.boolean()), overageReviewedAt: v.optional(v.number()), resultId: v.optional(v.string()),
   }).index("by_school_and_idempotency", ["schoolId", "idempotencyKey"])
-    .index("by_school", ["schoolId"]),
+    .index("by_school", ["schoolId"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
   usageOperationTransitions: defineTable({
-    attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled")), createdAt: v.number(),
+    attemptId: v.id("usageOperationAttempts"), state: v.union(v.literal("quoted"), v.literal("reserved"), v.literal("dispatch_started"), v.literal("provider_unavailable"), v.literal("released"), v.literal("cancelled"), v.literal("needs_reconciliation"), v.literal("settled")), createdAt: v.number(),
   }).index("by_attempt", ["attemptId"]),
 
   // --- Usage Metering & Threshold Protection (H8 / MX-13) ---
@@ -4307,6 +4311,7 @@ export default defineSchema({
     // `consumedUnits` remains the quota total; buckets show where the bytes
     // currently reside without counting a storage object twice.
     consumedUnits: v.number(),
+    aiOverageRequiresReview: v.optional(v.boolean()),
     activeStorageBytes: v.optional(v.number()),
     trashStorageBytes: v.optional(v.number()),
     tempStorageBytes: v.optional(v.number()),

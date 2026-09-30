@@ -5201,7 +5201,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "2453:4a091d2c:7b41d9b2"
+    "shape": "2501:9fe196cd:a5742849"
   },
   "usageEntitlementVersions": {
     "ownership": "shared-or-global",
@@ -5209,7 +5209,7 @@
     "references": [],
     "bySchool": false,
     "storage": {},
-    "shape": "1914:cf500fe4:3890767a"
+    "shape": "1962:2c6b4a6b:28053fa1"
   },
   "usageEvents": {
     "ownership": "direct-indexed",
@@ -5319,7 +5319,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1619:25852644:cc443be2"
+    "shape": "1694:c19ca177:1d8758bd"
   },
   "usageOperationAttempts": {
     "ownership": "direct-indexed",
@@ -5338,7 +5338,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1321:47756bf7:2cb3c4f5"
+    "shape": "2212:7ff4d71f:1dbf9e79"
   },
   "usageOperationTransitions": {
     "ownership": "indirect",
@@ -5352,7 +5352,7 @@
     ],
     "bySchool": false,
     "storage": {},
-    "shape": "495:acc5f19:20a22b75"
+    "shape": "582:91234e6b:c76e90af"
   },
   "usageProviderCosts": {
     "ownership": "direct-indexed",

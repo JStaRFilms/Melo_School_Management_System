@@ -11,7 +11,7 @@ import { getContractBoundStorageReadiness } from "./knowledgeUploadReadiness";
 type Context = QueryCtx | MutationCtx;
 const DAY = 86400000;
 const taskCapability: Record<HeavyUsageTask, string> = {
-  teacher_lesson_plan: "academic.planning.use", provider_ocr: "academic.planning.use",
+  teacher_lesson_plan: "academic.planning.use", teacher_assessment: "academic.planning.use", provider_ocr: "academic.planning.use",
   knowledge_upload: "assets.upload", curriculum_generation: "academic.curriculum.manage", ai_import: "enrollment.intakes.manage",
 };
 function bounded(value: string, label: string, min = 1) {
@@ -103,7 +103,7 @@ export const startUsageCycle = mutation({
     const id = await ctx.db.insert("usageCycles", { schoolId: args.schoolId, contractId: contract._id, entitlementVersionId: version._id, code: version.code, version: version.version, entitlement: version.entitlement, startAt: args.startAt, endAt: args.endAt, status: "active", createdAt: Date.now() });
     for (const row of version.entitlement.allowances) {
       const existing = await ctx.db.query("usageMeterAllocations").withIndex("by_school_and_meter", q => q.eq("schoolId", args.schoolId).eq("meterType", row.meterType)).take(2);
-      if (existing.length > 1 || existing[0]?.reservedUnits) throw new ConvexError("Existing meter requires reviewed cycle reconciliation");
+      if (existing.length > 1 || existing[0]?.reservedUnits || existing[0]?.aiOverageRequiresReview) throw new ConvexError("Existing meter requires reviewed cycle reconciliation");
       if (existing[0]?.cycleId) {
         const [priorCycle, snapshot] = await Promise.all([
           ctx.db.get(existing[0].cycleId),
@@ -148,7 +148,7 @@ export const closeUsageCycle = mutation({
       // instead mean effective at the cycle's exclusive end boundary, never cumulative issued.
       const effectiveAtClose = await effectiveAllowance(ctx, cycle, allowance.meterType, cycle.endAt);
       if (meter.cycleId !== cycle._id || !reviewed || !effectiveAtClose || effectiveAtClose.allocatedUnits !== reviewed.allocatedUnits || meter.consumedUnits !== reviewed.consumedUnits) throw new ConvexError("Effective-at-close usage balances changed; reload and reconcile");
-      if (meter.reservedUnits !== 0) throw new ConvexError("Usage cycle has active reservations");
+      if (meter.reservedUnits !== 0 || meter.aiOverageRequiresReview) throw new ConvexError("Usage cycle has active reservations or unreviewed AI overage");
       await ctx.db.insert("usageCycleMeterSnapshots", {
         schoolId: args.schoolId, cycleId: cycle._id, meterType: meter.meterType,
         allocatedUnits: effectiveAtClose.allocatedUnits, baseUnits: effectiveAtClose.baseUnits, graceUnits: effectiveAtClose.graceUnits,
