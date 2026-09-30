@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
-import { assertTeacherAssignment, getAuthenticatedSchoolMembership, teacherHasClassAccess } from "./auth";
+import { getAuthenticatedSchoolMembership } from "./auth";
+import { assertTeacherAssignment, teacherHasClassAccess } from "./teacherAccess";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
 import { deriveNarrativeSubjectSelectionIds } from "./subjectAggregationSelectionHelpers";
 import { requireCapability } from "./rbac";
