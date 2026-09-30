@@ -19,7 +19,8 @@ ValidationErrors,
 } from "@/lib/types";
 import type { ExamInputMode } from "@school/shared";
 import { appToast } from "@school/shared/toast";
-import { scoreSheetDraftKey, useScoreSheetDraft, readScoreSheetPolicyStamp, writeScoreSheetPolicyStamp } from "@school/shared/drafts";
+import { scoreSheetDraftKey, useScoreSheetDraft, readScoreSheetPolicyStamp, writeScoreSheetPolicyStamp, scoreRowBaseline } from "@school/shared/drafts";
+import type { ScoreRowBaseline } from "@school/shared/drafts";
 import { useCallback,useEffect,useMemo,useState } from "react";
 import { EmptyRoster } from "./EmptyRoster";
 import { LoadingSkeleton } from "./LoadingSkeleton";
@@ -38,6 +39,7 @@ interface SaveArgs {
     ca2: number;
     ca3: number;
     examRawScore: number;
+    expectedRow: ScoreRowBaseline;
   }>;
 }
 
@@ -100,8 +102,9 @@ export function ExamEntryWorkspace({
   );
 
   const draftKey = scoreSheetDraftKey(schoolId, selection.sessionId, selection.termId, selection.classId, selection.subjectId);
-  const [draftScores, setDraftScores] = useScoreSheetDraft<Id<"students">, ScoreField>(draftKey);
+  const [draftScores, setDraftScores, draftBaselines, captureBaseline] = useScoreSheetDraft<Id<"students">, ScoreField>(draftKey);
   const hasUnsavedChanges = draftScores.size > 0;
+  const draftHasMissingBaseline = [...draftScores.keys()].some(studentId => !draftBaselines.has(studentId));
   const policyStamp = `${sheetData?.settings?.sessionPolicyVersion ?? 0}:${sheetData?.settings?.examRawMax ?? sheetData?.settings?.examInputMode ?? "raw40"}`;
   const [reviewedPolicyStamp, setReviewedPolicyStamp] = useState<string | null>(null);
   const savedPolicyStamp = readScoreSheetPolicyStamp(draftKey);
@@ -132,7 +135,7 @@ export function ExamEntryWorkspace({
 
   const handleScoreChange = useCallback(
     (studentId: Id<"students">, field: ScoreField, value: number | null) => {
-      if (sheetData && !sheetData.editingState.canEdit) {
+      if (!sheetData || !sheetData.editingState.canEdit) {
         return;
       }
 
@@ -147,6 +150,7 @@ export function ExamEntryWorkspace({
         });
       }
 
+      captureBaseline(studentId, scoreRowBaseline(rosterEntry?.assessmentRecord));
       setDraftScores((prev) => {
         const next = new Map(prev);
         const existing = next.get(studentId) ?? {};
@@ -187,7 +191,7 @@ export function ExamEntryWorkspace({
         return next;
       });
     },
-    [rosterById, sheetData, draftKey, policyStamp, setDraftScores]
+    [rosterById, sheetData, draftKey, policyStamp, setDraftScores, captureBaseline]
   );
 
   const clearedScoreCount = useMemo(() => {
@@ -253,6 +257,14 @@ export function ExamEntryWorkspace({
       throw createHandledSaveError(sheetData.editingState.message);
     }
 
+    if (draftHasMissingBaseline || [...draftScores.keys()].some(studentId => !rosterById.has(studentId))) {
+      appToast.warning("Review required before saving", {
+        id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
+        description: "This draft has no safe score baseline. Discard it, check the latest scores, and enter your changes again.",
+      });
+      throw createHandledSaveError("Draft has no safe score baseline.");
+    }
+
     const examInputMode: ExamInputMode =
       sheetData.settings?.examInputMode ?? "raw40";
     const scorePolicy = sheetData?.settings?.examRawMax !== undefined ? { ...sheetData.settings, examRawMax: sheetData.settings.examRawMax } : undefined;
@@ -316,7 +328,7 @@ export function ExamEntryWorkspace({
         ca3 !== null &&
         examRawScore !== null
       ) {
-        records.push({ studentId, ca1, ca2, ca3, examRawScore });
+        records.push({ studentId, ca1, ca2, ca3, examRawScore, expectedRow: draftBaselines.get(studentId)! });
       }
     }
 
@@ -386,7 +398,7 @@ export function ExamEntryWorkspace({
 
       appToast.warning("Save blocked by validation", {
         id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
-        description: `${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention. Review the highlighted rows and try again.`,
+        description: result.errors.find(error => error.field === "record")?.message ?? `${result.errors.length} row${result.errors.length === 1 ? "" : "s"} still need attention. Review the highlighted rows and try again.`,
       });
       throw createHandledSaveError("Save blocked by row-level validation errors.");
     }
@@ -397,7 +409,7 @@ export function ExamEntryWorkspace({
     setShowErrorBanner(false);
     setExtraErrorSummaries([]);
     return result;
-  }, [draftScores, isSheetReady, onSaveRecords, rosterById, selection, sheetData, policyChanged, draftKey, setDraftScores]);
+  }, [draftScores, draftBaselines, draftHasMissingBaseline, isSheetReady, onSaveRecords, rosterById, selection, sheetData, policyChanged, draftKey, setDraftScores]);
 
   const handleCancel = useCallback(() => {
     setDraftScores(new Map());
@@ -464,6 +476,10 @@ export function ExamEntryWorkspace({
         isLoadingSubjects={isLoadingSubjects}
         onBeforeSelectionChange={handleBeforeSelectionChange}
       />
+
+      {draftHasMissingBaseline && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">This recovered draft has no safe score baseline. Discard it, check the latest scores, and enter your changes again.</div>}
+
+      {showErrorBanner && extraErrorSummaries.length > 0 && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{extraErrorSummaries.map((error, index) => <p key={index}>{error.studentName}: {error.message}</p>)}</div>}
 
       {policyChanged && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">The scoring policy changed while this draft was unsaved. Check every score against the new limits before saving. <button type="button" className="underline font-bold" onClick={() => setReviewedPolicyStamp(policyStamp)}>I reviewed this draft</button></div>}
 

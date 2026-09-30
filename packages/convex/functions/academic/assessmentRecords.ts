@@ -26,6 +26,7 @@ import {
 import { resolveSessionScoringPolicy } from "./sessionScoring";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
 import { pickMostRecentDoc } from "./docSelection";
+import { matchesScoreRowBaseline, scoreRowBaseline } from "@school/shared/drafts/scoreRowBaseline";
 import { assertBranchDoc } from "../foundation/tenantScope";
 
 function entrySheetRecord(record: Doc<"assessmentRecords">) {
@@ -338,6 +339,11 @@ export const upsertAssessmentRecordsBulk = mutation({
         ca2: v.number(),
         ca3: v.number(),
         examRawScore: v.number(),
+        // Optional to keep existing bulk-import callers compatible. Score-sheet drafts always supply it.
+        expectedRow: v.optional(v.union(v.null(), v.object({
+          id: v.string(), updatedAt: v.number(), ca1: v.number(), ca2: v.number(),
+          ca3: v.number(), examRawScore: v.number(),
+        }))),
       })
     ),
   },
@@ -471,6 +477,12 @@ export const upsertAssessmentRecordsBulk = mutation({
         )
         .collect()
         .then((docs: any[]) => pickMostRecentDoc(docs));
+      if (record.expectedRow !== undefined &&
+        !matchesScoreRowBaseline(scoreRowBaseline(existingRecord), record.expectedRow)) {
+        errors.push({ studentId: record.studentId, field: "record",
+          message: "This row changed since you started editing. Discard the draft and review the latest scores before entering them again." });
+        continue;
+      }
       const rowPolicy = settings.source === "legacy" && existingRecord
         ? { ca1Max: existingRecord.assessmentPolicySnapshot?.ca1Max ?? 20,
             ca2Max: existingRecord.assessmentPolicySnapshot?.ca2Max ?? 20,

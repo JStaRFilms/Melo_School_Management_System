@@ -30,7 +30,7 @@ vi.mock("convex/react", () => ({
     if (name.endsWith(":getSubjectsByClass")) return [{ id: "branch-subject", name: "Math" }];
     if (name.endsWith(":getExamEntrySheet")) return {
       roster: [{ studentId: "branch-student", studentName: "Ada", assessmentRecord: {
-        ca1: 10, ca2: 10, ca3: 15, examRawScore: 30,
+        _id: "branch-record", updatedAt: 1, ca1: 10, ca2: 10, ca3: 15, examRawScore: 30,
       } }], gradingBands: [],
       settings: { examInputMode: "raw40", ca1Max: 20, ca2Max: 20, ca3Max: 20,
         examRawMax: 40, examContributionMax: 40, sessionPolicyVersion: 0 },
@@ -71,5 +71,5 @@ it("follows a non-default branch invalid-score link and saves the corrected row 
   fireEvent.click(screen.getByRole("button", { name: "Correct Ada's score" }));
   fireEvent.click(screen.getByRole("button", { name: "Save scores" }));
   await waitFor(() => expect(state.saves).toEqual([{ schoolId: "branch-school", sessionId: "branch-session", termId: "branch-term",
-    classId: "branch-class", subjectId: "branch-subject", records: [{ studentId: "branch-student", ca1: 10, ca2: 10, ca3: 8, examRawScore: 30 }] }]));
+    classId: "branch-class", subjectId: "branch-subject", records: [{ studentId: "branch-student", ca1: 10, ca2: 10, ca3: 8, examRawScore: 30, expectedRow: { id: "branch-record", updatedAt: 1, ca1: 10, ca2: 10, ca3: 15, examRawScore: 30 } }] }]));
 });

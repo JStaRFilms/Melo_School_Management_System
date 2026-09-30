@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { expect, it } from "vitest";
 import schema from "../../../schema";
 import { api } from "../../../_generated/api";
+import { scoreRowBaseline } from "@school/shared/drafts/scoreRowBaseline";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**/*.ts", "!../../../**/*.test.ts"]))
@@ -45,19 +46,38 @@ it("lets an admin correct a selected branch score, retains default routing, and 
   expect(await viewer.query(selectors.getSubjectsByClass, { schoolId: f.branch.schoolId, classId: f.branch.classId })).toMatchObject([{ id: f.branch.subjectId }]);
   const sheetArgs = { schoolId: f.branch.schoolId, sessionId: f.branch.sessionId, termId: f.branch.termId,
     classId: f.branch.classId, subjectId: f.branch.subjectId };
-  expect((await viewer.query(records.getExamEntrySheet, sheetArgs)).roster).toMatchObject([
+  const originalSheet = await viewer.query(records.getExamEntrySheet, sheetArgs);
+  expect(originalSheet.roster).toMatchObject([
     { studentId: f.branch.studentId, assessmentRecord: { ca3: 15 } },
   ]);
+  const recoveredBaseline = scoreRowBaseline(originalSheet.roster[0].assessmentRecord);
+  const draft = { studentId: f.branch.studentId, ca1: 10, ca2: 10, ca3: 8, examRawScore: 30, expectedRow: recoveredBaseline };
+  // An unmodified recovered draft saves with its original expected row.
+  expect(await viewer.mutation(records.upsertAssessmentRecordsBulk, { ...sheetArgs, records: [draft] }))
+    .toMatchObject({ updated: 1, errors: [] });
+  // A second teacher's change after that draft was captured cannot be overwritten.
+  const freshBaseline = scoreRowBaseline(await t.run(ctx => ctx.db.get(f.branch.recordId)));
   expect(await viewer.mutation(records.upsertAssessmentRecordsBulk, { ...sheetArgs, records: [
-    { studentId: f.branch.studentId, ca1: 10, ca2: 10, ca3: 8, examRawScore: 30 },
+    { ...draft, ca3: 9, expectedRow: freshBaseline },
   ] })).toMatchObject({ updated: 1, errors: [] });
-  expect(await t.run(ctx => ctx.db.get(f.branch.recordId))).toMatchObject({ ca3: 8 });
+  const newStudentId = await t.run(async ctx => ctx.db.insert("students", { schoolId: f.branch.schoolId,
+    userId: (await ctx.db.get(f.branch.recordId))!.enteredBy, classId: f.branch.classId,
+    admissionNumber: "456", isArchived: false, createdAt: 1, updatedAt: 1 }));
+  const newRow = { studentId: newStudentId, ca1: 10, ca2: 10, ca3: 10, examRawScore: 30, expectedRow: null };
+  // A stale row cannot block an unrelated, newly entered row in the same batch.
+  expect(await viewer.mutation(records.upsertAssessmentRecordsBulk, { ...sheetArgs, records: [draft, newRow] }))
+    .toMatchObject({ updated: 0, created: 1, errors: [{ studentId: f.branch.studentId, field: "record", message: expect.stringContaining("changed") }] });
+  expect(await t.run(ctx => ctx.db.get(f.branch.recordId))).toMatchObject({ ca3: 9 });
+  expect(await viewer.mutation(records.upsertAssessmentRecordsBulk, { ...sheetArgs, records: [newRow] }))
+    .toMatchObject({ updated: 0, errors: [{ studentId: newStudentId, field: "record" }] });
   expect(await t.run(ctx => ctx.db.get(f.base.recordId))).toMatchObject({ ca3: 15 });
-  expect((await viewer.query(records.getExamEntrySheet, { sessionId: f.base.sessionId, termId: f.base.termId,
-    classId: f.base.classId, subjectId: f.base.subjectId })).roster).toMatchObject([{ studentId: f.base.studentId }]);
+  const defaultSheet = await viewer.query(records.getExamEntrySheet, { sessionId: f.base.sessionId, termId: f.base.termId,
+    classId: f.base.classId, subjectId: f.base.subjectId });
+  expect(defaultSheet.roster).toMatchObject([{ studentId: f.base.studentId }]);
   expect(await viewer.mutation(records.upsertAssessmentRecordsBulk, { sessionId: f.base.sessionId, termId: f.base.termId,
     classId: f.base.classId, subjectId: f.base.subjectId, records: [
-      { studentId: f.base.studentId, ca1: 10, ca2: 10, ca3: 14, examRawScore: 30 },
+      { studentId: f.base.studentId, ca1: 10, ca2: 10, ca3: 14, examRawScore: 30,
+        expectedRow: scoreRowBaseline(defaultSheet.roster[0].assessmentRecord) },
     ] })).toMatchObject({ updated: 1, errors: [] });
   for (const schoolId of [f.branch.schoolId, f.foreign.schoolId]) {
     const sessionId = schoolId === f.branch.schoolId ? f.base.sessionId : f.foreign.sessionId;

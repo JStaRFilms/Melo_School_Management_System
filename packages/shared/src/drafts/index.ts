@@ -6,3 +6,5 @@ export * from "./useFormDraft";
 export * from "./registry";
 export * from "./DepartureGuard";
 export { scoreSheetDraftKey, useScoreSheetDraft, readScoreSheetPolicyStamp, writeScoreSheetPolicyStamp } from "./useScoreSheetDraft";
+export { scoreRowBaseline, matchesScoreRowBaseline } from "./scoreRowBaseline";
+export type { ScoreRowBaseline } from "./scoreRowBaseline";
