@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="900" viewBox="0 0 1100 900">
+  <title>Colourful shared table seen from above</title>
+  <desc>An original illustration of a cyan table, a multicoloured fabric runner, paper colour studies, and an empty place. This is not actual pupil work or a campus model.</desc>
+  <defs>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="12"/></filter>
+    <filter id="paper-shadow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>
+    <pattern id="fabric" width="59" height="65" patternUnits="userSpaceOnUse" patternTransform="rotate(8)">
+      <rect width="59" height="65" fill="#203644"/>
+      <ellipse cx="11" cy="15" rx="12" ry="15" fill="#49c3d9" transform="rotate(-23 11 15)"/>
+      <ellipse cx="40" cy="47" rx="12" ry="17" fill="#f28a48" transform="rotate(21 40 47)"/>
+      <ellipse cx="42" cy="10" rx="10" ry="11" fill="#ecaaaa"/>
+      <ellipse cx="9" cy="48" rx="8" ry="10" fill="#d7b94b"/>
+    </pattern>
+    <clipPath id="clip"><rect x="140" y="166" width="780" height="493" rx="83"/></clipPath>
+  </defs>
+  <!-- Uniform-inspired motifs, not a reproduction of the source textile. -->
+  <g transform="rotate(-9 550 450)">
+    <rect x="60" y="354" width="165" height="178" rx="46" fill="#183544" opacity=".17" filter="url(#shadow)"/>
+    <rect x="19" y="315" width="151" height="205" rx="40" fill="#fafcfc"/>
+    <path d="M47 343V491" stroke="#cedadd" stroke-width="5" stroke-linecap="round"/>
+    <rect x="425" y="66" width="184" height="154" rx="49" fill="#203644"/>
+    <rect x="449" y="75" width="134" height="119" rx="28" fill="url(#fabric)"/>
+    <rect x="887" y="328" width="175" height="190" rx="42" fill="#d5bd55"/>
+    <path d="M1034 355V493" stroke="#b99b2e" stroke-width="5" stroke-linecap="round"/>
+    <rect x="139" y="188" width="784" height="494" rx="83" fill="#183544" opacity=".2" filter="url(#shadow)"/>
+    <rect x="140" y="178" width="780" height="493" rx="83" fill="#2097ae"/>
+    <rect x="140" y="166" width="780" height="493" rx="83" fill="#49c3d9"/>
+    <g clip-path="url(#clip)">
+      <rect x="706" y="105" width="160" height="620" fill="url(#fabric)"/>
+      <path d="M712 105V725M860 105V725" stroke="#f8fafa" stroke-width="3" opacity=".75" stroke-dasharray="5 4"/>
+    </g>
+    <g transform="translate(337 294) rotate(11)">
+      <rect x="-55" y="-28" width="243" height="248" fill="#193844" opacity=".14" filter="url(#paper-shadow)"/>
+      <path d="M-61-42H150L185-7V206H-61Z" fill="#fffefa"/>
+      <path d="M150-42V-7H185Z" fill="#d8e3de"/>
+      <path d="M-21 22Q27-4 58 28T134 35" fill="none" stroke="#ef704d" stroke-width="16" stroke-linecap="round"/>
+      <path d="M-15 84Q20 112 61 77T136 93" fill="none" stroke="#49c3d9" stroke-width="12" stroke-linecap="round"/>
+      <path d="M-15 145Q35 113 68 147" fill="none" stroke="#d5bd55" stroke-width="14" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(594 349) rotate(-13)">
+      <ellipse cx="0" cy="13" rx="44" ry="34" fill="#193844" opacity=".2" filter="url(#paper-shadow)"/>
+      <path d="M-43-26H35V33H-43Z" fill="#ef704d"/>
+      <path d="M-43-26 0-68 43-26Z" fill="#f39372"/>
+      <circle cx="17" cy="80" r="39" fill="#e8aaaa"/>
+      <path d="M-50 120H25V164H-50Z" fill="#f8fafa"/>
+      <path d="M-50 120-28 94 47 94 25 120Z" fill="#dcebec"/>
+      <path d="M25 120 47 94V138L25 164Z" fill="#bfd3d5"/>
+    </g>
+    <g transform="translate(265 545) rotate(-17)">
+      <rect x="-8" y="6" width="216" height="14" rx="7" fill="#16323e" opacity=".15" filter="url(#paper-shadow)"/>
+      <rect width="178" height="12" rx="6" fill="#d5bd55"/>
+      <path d="M178 0 200 6 178 12Z" fill="#fafcfc"/>
+      <path d="M194 4 200 6 194 8Z" fill="#203644"/>
+    </g>
+    <g transform="translate(485 628)">
+      <rect x="-39" y="84" width="183" height="146" rx="37" fill="#183544" opacity=".17" filter="url(#shadow)"/>
+      <rect x="-51" y="37" width="190" height="180" rx="44" fill="#df563d"/>
+      <rect x="-51" y="19" width="190" height="170" rx="44" fill="#ef704d"/>
+      <path d="M-23 163H111" stroke="#fa9d80" stroke-width="5" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
