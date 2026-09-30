@@ -29,6 +29,7 @@ build/
 coverage/
 playwright-report/
 test-results/
+.qa/
 .npm
 *.log
 
