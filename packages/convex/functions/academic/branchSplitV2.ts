@@ -592,17 +592,22 @@ export const initBranchSplit = internalMutation({
     }
 
     const sourceSchoolId = sourceSchool._id;
-    for (const phase of ["scanning", "failed_scanning", "invalid", "ready", "regrading", "failed_regrading"] as const) {
-      const job = await ctx.db.query("sessionScoringRegradeJobs")
-        .withIndex("by_school_and_phase", q => q.eq("schoolId", sourceSchoolId).eq("phase", phase)).first();
-      if (job) throw new ConvexError("Finish or cancel the session scoring job before splitting the school.");
-    }
 
     // Check or create Ruga school
     let rugaSchool = await ctx.db
       .query("schools")
       .filter((q) => q.eq(q.field("slug"), "obhis-ruga"))
       .first();
+
+    // This transaction must read scoring jobs for both branches before creating
+    // migrationState. A concurrent scan insert then conflicts with this read.
+    for (const schoolId of [sourceSchoolId, rugaSchool?._id].filter((id): id is Id<"schools"> => !!id)) {
+      for (const phase of ["scanning", "failed_scanning", "invalid", "ready", "regrading", "failed_regrading"] as const) {
+        const job = await ctx.db.query("sessionScoringRegradeJobs")
+          .withIndex("by_school_and_phase", q => q.eq("schoolId", schoolId).eq("phase", phase)).first();
+        if (job) throw new ConvexError("Finish or cancel the session scoring job before splitting the school.");
+      }
+    }
 
     let rugaSchoolId: Id<"schools">;
     if (!rugaSchool) {

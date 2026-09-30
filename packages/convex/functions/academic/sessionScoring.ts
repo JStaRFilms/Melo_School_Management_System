@@ -161,12 +161,25 @@ export const previewSessionScoringChange = query({
   },
 });
 
+async function assertNoActiveBranchSplit(ctx: MutationCtx, schoolId: Id<"schools">) {
+  // Read both indexed ranges in the same transaction that creates the scoring job.
+  // A failed partial duplication is still unsafe to regrade until repaired.
+  for (const status of ["running", "failed"] as const) {
+    const [source, target] = await Promise.all([
+      ctx.db.query("migrationState").withIndex("by_source_school_and_status", q => q.eq("sourceSchoolId", schoolId).eq("status", status)).first(),
+      ctx.db.query("migrationState").withIndex("by_target_school_and_status", q => q.eq("targetSchoolId", schoolId).eq("status", status)).first(),
+    ]);
+    if (source || target) throw new ConvexError("Branch duplication is in progress or requires repair. Finish it before starting a session scoring scan.");
+  }
+}
+
 /** Locks the session before preflight reads. An invalid or complete scan can be replaced; cancel a ready scan first. */
 export const startSessionScoringScan = mutation({
   args: { sessionId: v.id("academicSessions"), policy: v.object(policyFields),
     expectedVersion: v.number(), expectedPolicy: v.object(policyFields) },
   handler: async (ctx, args) => {
     const { schoolId, userId } = await requirePolicyAdmin(ctx, args.sessionId, true);
+    await assertNoActiveBranchSplit(ctx, schoolId);
     const errors = validateSessionScoringPolicy(args.policy);
     if (errors.length) throw new ConvexError(errors.join("; "));
     const current = await resolveSessionScoringPolicy(ctx, schoolId, args.sessionId, true);

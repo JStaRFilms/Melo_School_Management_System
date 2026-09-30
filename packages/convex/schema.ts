@@ -3711,7 +3711,9 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_source_school", ["sourceSchoolId"])
-    .index("by_target_school", ["targetSchoolId"]),
+    .index("by_target_school", ["targetSchoolId"])
+    .index("by_source_school_and_status", ["sourceSchoolId", "status"])
+    .index("by_target_school_and_status", ["targetSchoolId", "status"]),
 
   importWorkspaces: defineTable({
     schoolId: v.id("schools"),
