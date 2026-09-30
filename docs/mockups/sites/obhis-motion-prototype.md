@@ -8,6 +8,12 @@ One shared header and page surround two hero states. Olive introduces the school
 
 Campus/contact details and admissions destinations remain unconfirmed placeholders. School photographs remain private fixtures pending publication rights and child permissions. The generated artwork is imagined, not evidence of facilities or pupil work.
 
+## Approval
+
+The user has approved the Olive and You hero layouts and the motion prototype. Keep this direction for the remaining homepage work. Approval covers design and interaction only, not school facts, admissions destinations, photo publication rights or deployment.
+
+The full homepage continuation is `obhis-homepage-review.html`. It reuses this welcome unchanged and adds school-folder photography, campus album studies and admissions/visit guidance. This motion-only source remains the approved checkpoint.
+
 ## Motion law
 
 A white page moves across the coral composition. The You headline and artwork settle within that page. Returning to Olive reverses the same movement. The real logo, navigation and admissions link remain outside the moving stage. The stage keeps the larger composition's height so the shared page below does not jump.
