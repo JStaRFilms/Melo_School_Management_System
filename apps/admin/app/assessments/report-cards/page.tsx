@@ -18,6 +18,8 @@ import {
 import { ZoomIn, ZoomOut } from "lucide-react";
 import { ReportCardAdminPanel } from "./components/ReportCardAdminPanel";
 import { ReportCardLauncher } from "./components/ReportCardLauncher";
+import { NarrativeReview } from "./components/NarrativeReview";
+import { NarrativeClassPrint } from "./components/NarrativeClassPrint";
 
 export default function AdminReportCardPage() {
   return (
@@ -135,29 +137,36 @@ function AdminReportCardPageContent() {
     touchStartDistanceRef.current = null;
   };
 
+  const inferred = useQuery("functions/academic/narrativeReports:getStaffPeriodReportMode" as never,
+    !classIdParam && studentId && sessionId && termId
+      ? { studentId, sessionId, termId } as never : "skip") as { classId: string; mode: "graded" | "narrative" } | null | undefined;
+  const selectedClassId = classIdParam ?? inferred?.classId ?? null;
+  const explicitMode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    classIdParam && sessionId ? { classId: classIdParam, sessionId } as never : "skip") as "graded" | "narrative" | undefined;
+  const mode = classIdParam ? explicitMode : inferred?.mode;
   const reportCard = useQuery(
     "functions/academic/reportCards:getStudentReportCard" as never,
-    studentId && sessionId && termId
+    studentId && sessionId && termId && selectedClassId && mode === "graded"
       ? ({
           studentId,
           sessionId,
           termId,
-          ...(classIdParam ? { classId: classIdParam } : {}),
+          classId: selectedClassId,
         } as never)
       : ("skip" as never)
   ) as ReportCardSheetData | undefined | null;
-  const resolvedClassId = classIdParam ?? (reportCard && typeof reportCard === 'object' ? reportCard.classId : null) ?? null;
+  const resolvedClassId = selectedClassId;
 
   const batchStudents = useQuery(
     "functions/academic/reportCards:getStudentsForReportCardBatch" as never,
-    sessionId && termId && resolvedClassId
+    mode === "graded" && sessionId && termId && resolvedClassId
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardBatchStudent[] | undefined;
 
   const classReportCards = useQuery(
     "functions/academic/reportCards:getClassReportCards" as never,
-    isPrintClassMode && sessionId && termId && resolvedClassId
+    isPrintClassMode && mode === "graded" && sessionId && termId && resolvedClassId
       ? ({ classId: resolvedClassId, sessionId, termId } as never)
       : ("skip" as never)
   ) as ReportCardSheetData[] | undefined;
@@ -238,10 +247,21 @@ function AdminReportCardPageContent() {
     return () => window.removeEventListener("afterprint", handleAfterPrint);
   }, [exitFullClassPrint, isPrintClassMode, batchContext]);
 
+  // Narrative class printing uses the issued-only backend batch, not a graded
+  // roster or a seed student. Keep the graded route's student requirement.
+  if (isPrintClassMode && classIdParam && sessionId && termId) {
+    if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+    if (mode === "narrative") return <NarrativeClassPrint key={`${classIdParam}-${sessionId}-${termId}`} classId={classIdParam} sessionId={sessionId} termId={termId} onExit={exitFullClassPrint} />;
+  }
+
   if (!studentId || !sessionId || !termId) {
     return <ReportCardLauncher />;
   }
 
+  if (!classIdParam && inferred === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (!selectedClassId) return <div className="mx-auto max-w-3xl p-6 text-slate-700">No verified class was found for this period. <Link href="/assessments/report-cards" className="underline">Choose a student and class</Link>.</div>;
+  if (mode === undefined) return <ReportCardPageFallback message="Checking reporting mode..." />;
+  if (mode === "narrative") return <NarrativeReview key={`${studentId}-${sessionId}-${termId}-${selectedClassId}`} studentId={studentId} sessionId={sessionId} termId={termId} classId={selectedClassId} />;
   if (reportCard === undefined) {
     return <ReportCardPageFallback message="Loading student report card..." />;
   }

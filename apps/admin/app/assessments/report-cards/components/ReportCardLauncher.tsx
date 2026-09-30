@@ -60,6 +60,8 @@ export function ReportCardLauncher() {
   const [selectedClassId, setSelectedClassId] = useState<string>(
     searchParams.get("classId") || ""
   );
+  const reportMode = useQuery("functions/academic/narrativeReports:getClassMode" as never,
+    selectedClassId && selectedSessionId ? ({ classId: selectedClassId, sessionId: selectedSessionId } as never) : "skip") as "graded" | "narrative" | undefined;
 
   useEffect(() => {
     if (!selectedClassId && rawClasses && rawClasses.length > 0) {
@@ -118,8 +120,13 @@ export function ReportCardLauncher() {
     );
   };
 
+  const canPrintNarrative = reportMode === "narrative" && Boolean(selectedSessionId && selectedTermId && selectedClassId);
   const handlePrintClass = () => {
-    if (!filteredStudents.length) return;
+    if (canPrintNarrative) {
+      router.push(`/assessments/report-cards?sessionId=${selectedSessionId}&termId=${selectedTermId}&classId=${selectedClassId}&printClass=1`);
+      return;
+    }
+    if (reportMode !== "graded" || !filteredStudents.length) return;
     router.push(
       `/assessments/report-cards?sessionId=${selectedSessionId}&termId=${selectedTermId}&classId=${selectedClassId}&studentId=${filteredStudents[0].studentId}&printClass=1`
     );
@@ -251,14 +258,15 @@ export function ReportCardLauncher() {
                 />
               </div>
 
-              {filteredStudents.length > 0 && (
+              {(canPrintNarrative || (reportMode === "graded" && filteredStudents.length > 0)) && (
                 <button
                   type="button"
                   onClick={handlePrintClass}
-                  className="h-9 px-4 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95 shrink-0"
+                  title={canPrintNarrative ? "Print issued progress reports only; unissued students are skipped." : undefined}
+                  className="h-9 px-4 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 active:scale-95 shrink-0"
                 >
                   <Printer size={13} />
-                  Print Class Batch
+                  {canPrintNarrative ? "Print issued reports" : "Print Class Batch"}
                 </button>
               )}
             </div>
@@ -274,7 +282,9 @@ export function ReportCardLauncher() {
               <p className="text-xs text-slate-400">
                 {searchQuery
                   ? "No students match your search filter."
-                  : "No students are currently enrolled in this class."}
+                  : reportMode === "narrative"
+                    ? "No students in this list. Use Print issued reports to check published reports for this class."
+                    : "No students are currently enrolled in this class."}
               </p>
             </div>
           ) : (

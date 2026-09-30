@@ -74,6 +74,7 @@ interface ExamEntryWorkspaceProps {
   isLoadingTerms?: boolean;
   isLoadingClasses?: boolean;
   isLoadingSubjects?: boolean;
+  subjectUnavailable?: boolean;
   modeNotice?: string;
   onSaveRecords: (args: SaveArgs) => Promise<UpsertResponse>;
 }
@@ -91,6 +92,7 @@ export function ExamEntryWorkspace({
   isLoadingTerms = false,
   isLoadingClasses = false,
   isLoadingSubjects = false,
+  subjectUnavailable = false,
   modeNotice,
   onSaveRecords,
 }: ExamEntryWorkspaceProps) {
@@ -495,7 +497,11 @@ export function ExamEntryWorkspace({
         </div>
       ) : null}
 
-      {isLoadingSheet ? (
+      {subjectUnavailable ? (
+        <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-sm text-slate-700">Choose an available subject from the selector to load a score sheet.</p>
+      ) : isLoadingSubjects && selection.subjectId ? (
+        <p role="status" className="p-6 text-sm text-slate-600">Loading available subjects...</p>
+      ) : isLoadingSheet ? (
         <LoadingSkeleton />
       ) : !isSheetReady ? (
         <EmptyRoster />

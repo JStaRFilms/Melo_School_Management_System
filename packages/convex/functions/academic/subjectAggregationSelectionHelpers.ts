@@ -37,6 +37,17 @@ export function deriveEffectiveSubjectSelectionIds(args: {
   return effectiveSubjectIds;
 }
 
+// Narrative entry is per selectable component. Aggregation umbrellas are computed
+// for graded reports, but have no score-free teacher entry row of their own.
+export function deriveNarrativeSubjectSelectionIds(args: {
+  explicitSubjectIds: Iterable<string>;
+  aggregations: LoadedClassSubjectAggregation[];
+}): Set<string> {
+  const ids = new Set(args.explicitSubjectIds);
+  for (const aggregation of args.aggregations) ids.delete(String(aggregation.umbrellaSubjectId));
+  return ids;
+}
+
 export async function listStudentAggregationOptOuts(
   ctx: any,
   args: {

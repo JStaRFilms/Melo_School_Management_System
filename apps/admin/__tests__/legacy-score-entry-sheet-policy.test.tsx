@@ -13,6 +13,7 @@ vi.mock("convex/react", () => ({
     if (name.endsWith(":getTermsBySession")) return [{ id: "term1", name: "Term" }];
     if (name.endsWith(":getAllClasses")) return [{ id: "class1", name: "Class" }];
     if (name.endsWith(":getSubjectsByClass")) return [{ id: "subject1", name: "Math" }];
+    if (name.endsWith(":getEntryClassMode")) return { mode: "graded", canEnterNarrative: false };
     if (name.endsWith(":getExamEntrySheet")) return {
       roster: [{ studentId: "student1", studentName: "Ada", assessmentRecord: null }], gradingBands: [],
       settings: { examInputMode: "raw40", ca1Max: 20, ca2Max: 20, ca3Max: 10, examRawMax: 80, examContributionMax: 50, sessionPolicyVersion: 0 },
@@ -37,5 +38,5 @@ it("renders and saves a new raw /80 row under the legacy version-zero sheet poli
   }
   fireEvent.click(screen.getByRole("button", { name: "COMMIT BATCH" }));
   await waitFor(() => expect(state.saves).toHaveLength(1));
-  expect(state.saves[0]).toMatchObject({ records: [{ studentId: "student1", ca1: 20, ca2: 20, ca3: 10, examRawScore: 80 }] });
+  expect(state.saves[0]).toMatchObject({ schoolId: "school1", records: [{ studentId: "student1", ca1: 20, ca2: 20, ca3: 10, examRawScore: 80, expectedRow: null }] });
 });

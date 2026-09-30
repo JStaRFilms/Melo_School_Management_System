@@ -1748,6 +1748,35 @@
     "storage": {},
     "shape": "741:e3f15afc:2e920ab2"
   },
+  "classSessionReportModes": {
+    "ownership": "direct-indexed",
+    "reason": "School-owned class/session narrative mode; by_school purge and demo seed cleanup remove it before its class and session parents. No file claims.",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "485:b67096db:e39c4267"
+  },
   "classSessionFormTeachers": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
@@ -2785,6 +2814,50 @@
     "storage": {},
     "shape": "2651:2f3deb8c:16b33d54"
   },
+  "issuedNarrativeReports": {
+    "ownership": "direct-indexed",
+    "reason": "School-owned immutable narrative snapshots; by_school purge and demo seed cleanup remove them before student, class, session, term and subject parents. Snapshot has no storage IDs or URLs.",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "issuedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "snapshot.subjects[].subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1486:e0b8a384:c2b6d63c"
+  },
   "issuedReportCards": {
     "ownership": "direct-indexed",
     "reason": "School-owned issued snapshots with student, class and report references; by_school purge precedes those parents. Optional logo and photo IDs are file claims subject to retained-owner checks, not exclusive deletion authority.",
@@ -3198,6 +3271,50 @@
     "bySchool": false,
     "storage": {},
     "shape": "914:93421be8:ff441d5e"
+  },
+  "narrativeReportDrafts": {
+    "ownership": "direct-indexed",
+    "reason": "School-owned per-student subject drafts; by_school purge and demo seed cleanup remove them before their student, class, session, term and subject parents. No file claims.",
+    "references": [
+      {
+        "path": "classId",
+        "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": false
+      },
+      {
+        "path": "studentId",
+        "target": "students",
+        "optional": false
+      },
+      {
+        "path": "subjectId",
+        "target": "subjects",
+        "optional": false
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": false
+      },
+      {
+        "path": "updatedBy",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "709:ff81bb2a:eed8c33c"
   },
   "paymentAllocations": {
     "ownership": "direct-indexed",

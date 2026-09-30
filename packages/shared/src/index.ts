@@ -14,6 +14,8 @@ export * from "./planning-context";
 export * from "./toast";
 
 // Components
+export { NarrativeSubjectEntry } from "./features/narrative";
+export type { CommentRow } from "./features/narrative";
 export { WorkspaceNavbar } from "./components/WorkspaceNavbar";
 export type { WorkspaceNavbarProps } from "./components/WorkspaceNavbar";
 export { ReportCardSheet } from "./components/ReportCardSheet";

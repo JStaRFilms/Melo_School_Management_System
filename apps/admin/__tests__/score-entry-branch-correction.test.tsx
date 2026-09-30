@@ -28,6 +28,7 @@ vi.mock("convex/react", () => ({
     if (name.endsWith(":getTermsBySession")) return [{ id: "branch-term", name: "Branch Term" }];
     if (name.endsWith(":getAllClasses")) return [{ id: "branch-class", name: "Branch Class" }];
     if (name.endsWith(":getSubjectsByClass")) return [{ id: "branch-subject", name: "Math" }];
+    if (name.endsWith(":getEntryClassMode")) return { mode: "graded", canEnterNarrative: false };
     if (name.endsWith(":getExamEntrySheet")) return {
       roster: [{ studentId: "branch-student", studentName: "Ada", assessmentRecord: {
         _id: "branch-record", updatedAt: 1, ca1: 10, ca2: 10, ca3: 15, examRawScore: 30,
@@ -65,6 +66,7 @@ it("follows a non-default branch invalid-score link and saves the corrected row 
   expect(state.calls).toContainEqual({ name: "functions/academic/adminSelectors:getTermsBySession", args: { schoolId: "branch-school", sessionId: "branch-session" } });
   expect(state.calls).toContainEqual({ name: "functions/academic/adminSelectors:getAllClasses", args: { schoolId: "branch-school" } });
   expect(state.calls).toContainEqual({ name: "functions/academic/adminSelectors:getSubjectsByClass", args: { schoolId: "branch-school", classId: "branch-class" } });
+  expect(state.calls).toContainEqual({ name: "functions/academic/narrativeReports:getEntryClassMode", args: { schoolId: "branch-school", sessionId: "branch-session", classId: "branch-class" } });
   expect(state.calls).toContainEqual({ name: "functions/academic/assessmentRecords:getExamEntrySheet", args: {
     schoolId: "branch-school", sessionId: "branch-session", termId: "branch-term", classId: "branch-class", subjectId: "branch-subject",
   } });

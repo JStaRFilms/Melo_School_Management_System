@@ -1420,6 +1420,15 @@ export const certifyStudentReportCard = mutation({
       args.confirmation !== student.admissionNumber
     )
       throw new ConvexError("Confirm the student's admission number");
+    const narrativeMode = await ctx.db.query("classSessionReportModes")
+      .withIndex("by_classId_and_sessionId", q =>
+        q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (narrativeMode && narrativeMode.schoolId === schoolId)
+      throw new ConvexError("This class uses narrative reports for this session");
+    const issuedNarrative = await ctx.db.query("issuedNarrativeReports")
+      .withIndex("by_studentId_and_sessionId_and_termId", q =>
+        q.eq("studentId", args.studentId).eq("sessionId", args.sessionId).eq("termId", args.termId)).first();
+    if (issuedNarrative) throw new ConvexError("A narrative report was already issued for this period");
     const report = await buildStudentReportCard(ctx, {
       ...args,
       schoolId,

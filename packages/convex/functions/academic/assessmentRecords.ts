@@ -153,6 +153,10 @@ export const getExamEntrySheet = query({
     const termDoc = await ctx.db.get(args.termId);
     assertBranchDoc(termDoc, schoolId);
 
+    const narrativeMode = await ctx.db.query("classSessionReportModes")
+      .withIndex("by_classId_and_sessionId", q => q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (narrativeMode) throw new ConvexError("This class uses narrative reports for this session");
+
     // Authorization check
     if (role === "teacher" && !isSchoolAdmin) {
       await assertTeacherAssignment(ctx, userId, args.classId, args.subjectId);
@@ -382,6 +386,10 @@ export const upsertAssessmentRecordsBulk = mutation({
     // Verify term belongs to user's school
     const termDoc = await ctx.db.get(args.termId);
     assertBranchDoc(termDoc, schoolId);
+
+    const narrativeMode = await ctx.db.query("classSessionReportModes")
+      .withIndex("by_classId_and_sessionId", q => q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();
+    if (narrativeMode) throw new ConvexError("This class uses narrative reports for this session");
 
     // Authorization check
     if (role === "teacher" && !isSchoolAdmin) {
