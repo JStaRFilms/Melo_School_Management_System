@@ -9,6 +9,7 @@ const build = join(root, "apps/sites/.next");
 const assetPaths = [
   "obhis-homepage-prototype-assets/school-logo.png",
   "obhis-generated-study/hero-cutout.webp",
+  "obhis-generated-study/hero-composed.webp",
   "obhis-generated-study/you-hero.webp",
   "obhis-homepage-prototype-assets/classroom-moment.webp",
   ...["school-friends", "classroom-table", "cultural-day-abuja", "cultural-day-rugam", "uniform-detail"].map(key => `obhis-homepage-review-assets/${key}.webp`),

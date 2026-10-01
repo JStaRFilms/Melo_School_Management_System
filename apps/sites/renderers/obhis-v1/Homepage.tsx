@@ -42,19 +42,19 @@ export function Homepage({ context }: { context: PrivateReviewContext }) {
       </div>
       <p className="sr-only" id="scene-status" role="status" aria-live="polite"></p>
       <div className="scene scene-olive" data-panel="olive">
-        <div className="olive-top">
-          <p className="eyebrow">{context.displayName}</p><h1 aria-label="Meet Olive."><span className="headline-line" aria-hidden="true">Meet</span></h1>
-        </div>
-        <div className="olive-bottom">
-          <div className="olive-art"><img draggable={false} src={context.assets["hero-cutout"]} width="1448" height="781" fetchPriority="high" alt="Imagined layered paper lettering, patterned cotton and a fan of paper on a cyan surface." /></div>
+        <div className="welcome-canvas">
+          <div className="olive-top"><h1 aria-label="Meet Olive."><span className="headline-line" aria-hidden="true">Meet</span></h1></div>
+          <div className="olive-art"><img draggable={false} src={context.assets["hero-cutout"]} width="1448" height="706" fetchPriority="high" alt="Imagined layered paper lettering and patterned cotton on a cyan surface." /></div>
           <HeroPhoto assets={context.assets} />
         </div>
       </div>
       <div className="scene scene-you" data-panel="you" aria-hidden="true" hidden>
-        <div className="you-copy">
-          <h1 aria-label="A place for you."><span className="headline-line" aria-hidden="true"><span className="line-text">A place</span></span><span className="headline-line" aria-hidden="true"><span className="line-text">for</span></span></h1>
+        <div className="welcome-canvas">
+          <div className="you-copy">
+            <h1 aria-label="A place for you."><span className="headline-line" aria-hidden="true"><span className="line-text">A place</span></span><span className="headline-line" aria-hidden="true"><span className="line-text">for</span></span></h1>
+          </div>
+          <figure className="you-art"><img draggable={false} src={context.assets["you-hero"]} width="1402" height="700" alt="Imagined layered paper lettering and patterned cotton with soft contact shadows." /></figure>
         </div>
-        <figure className="you-art"><img draggable={false} src={context.assets["you-hero"]} width="1402" height="700" alt="Imagined layered paper lettering and patterned cotton with soft contact shadows." /></figure>
       </div>
       <a className="hero-link secondary-link" href="#school-life">Explore school life <span aria-hidden="true">↓</span></a>
     </section>

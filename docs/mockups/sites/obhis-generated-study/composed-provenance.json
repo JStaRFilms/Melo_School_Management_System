@@ -1,0 +1,20 @@
+{
+  "source": "hero-cutout.webp",
+  "source_sha256": "4f1275defdd21f7282939cd2994f8aca32a33e63a3451b2026682d7625963b0f",
+  "output": "hero-composed.webp",
+  "output_sha256": "6e9ef7a4aad3e3f90514a568ae6582c6dd8792d37d6200d261fd5cc327815012",
+  "dimensions": [
+    1448,
+    706
+  ],
+  "bytes": 763168,
+  "operation": "Local texture clone removing the paper fan, with the plain foreground shortened to match the user's composition reference.",
+  "outside_clone_mask_pixels_unchanged_before_surface_resize": true,
+  "foreground_resize": {
+    "start_row": 480,
+    "original_height": 301,
+    "output_height": 226
+  },
+  "lettering_and_fabric_not_resized": true,
+  "restriction": "Imagined artwork for private review. Original artwork and all school photographs remain unchanged."
+}
