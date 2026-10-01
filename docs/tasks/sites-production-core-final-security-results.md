@@ -1,0 +1,23 @@
+# Final sites security corrections
+
+Status: local offline correction pass complete. This is not deployed runtime or launch clearance. No secrets, live provider or DNS, remote backend, deployment, codegen, commits or pushes were used.
+
+## Corrections and evidence
+
+- `approvedAsset` now denies an asset classified `contains_children` unless it has a consent evidence pointer, then checks that exact pointed row for subject, independent reviewer, revocation and expiry. The regression in `sites.test.ts` publishes with live consent, reclassifies to `no_children` and back to `contains_children`, confirms the old consent is still unexpired but the pointer is gone, denies publication, then permits publication only after a new explicit consent. It also checks expiry of the new consent.
+- A provider-write reservation clears ownership, provider routing and TLS observations in the same transaction that sets `providerOperation`. It advances the verification generation without rotating the TXT token, so a check started before the write cannot commit after it. Finishing a successful write or reconciling an uncertain result clears the operation but never reinstates observations. Active remains the lifecycle status while `ready` denies traffic and activation. `failedCheck` cannot clear observations during an operation or clear a newer successful check using an old snapshot. The action-backed `activation.test.ts` starts with an active publicly available host, performs a mocked provider POST, proves public denial and activation denial, rejects a pre-write check snapshot, runs the actual readiness action with mocked TXT, provider and TLS, and confirms public return. It repeats denial and recovery across an uncertain POST and read-only reconciliation. No direct test insertion claims post-write readiness.
+- `schoolViewAtTime` separates full management grants from `site.revert` and `site.domain.request`. Revert-only access returns the profile and bounded published revision summaries, not current draft content, pending asset details or domains; domain-only access still returns its bounded domain workflow without draft/history/assets. Domain summaries require the domain-request grant even when a user has unrelated management grants. The revert mutation still requires its own grant and can clone a historical publication without granting read access to the new private draft. The Admin page displays history and the clone button for the limited reverter but hides draft fields, upload/review and unrelated domain controls. Backend and component regressions cover these cases.
+
+## Verification
+
+| Command | Result |
+| --- | --- |
+| `pnpm --filter @school/convex exec vitest run functions/sites/sites.test.ts functions/sites/domains.test.ts functions/sites/activation.test.ts functions/sites/providerActions.test.ts` | 4 files, 9 tests passed |
+| `pnpm --filter @school/convex exec vitest run functions/sites` | 10 files, 28 tests passed, including fresh headless Chromium. An intermittent Vite WebSocket port-in-use warning did not fail the run. |
+| `pnpm --filter @school/convex exec vitest run functions/sites/activation.test.ts functions/sites/sites.test.ts functions/sites/browser-bridge.test.ts` | Final rerun after the domain-grant assertion: 3 files, 8 tests passed, including fresh headless Chromium. |
+| `pnpm --filter @school/admin exec vitest run __tests__/site-management.test.tsx __tests__/site-upload-proxy.test.ts` | 2 files, 6 tests passed |
+| `pnpm --filter @school/shared typecheck && pnpm --filter @school/convex typecheck && pnpm --filter @school/admin typecheck && pnpm --filter @school/platform typecheck && pnpm --filter @school/sites typecheck` | All five passed after final edits |
+| `pnpm --filter @school/convex exec eslint functions/sites/shared.ts functions/sites/domains.ts functions/sites/domainActions.ts functions/sites/management.ts functions/sites/sites.test.ts functions/sites/activation.test.ts`; `pnpm --filter @school/admin exec eslint app/admin/settings/site/page.tsx __tests__/site-management.test.tsx` | Passed without output before the last assertion-only test edit |
+| `node scripts/audit-theme-colors.mjs`; `git diff --check` | Audit completed; it lists existing unrelated files. The touched Admin settings colours are slate product neutrals and red semantic error, not tenant branding. Diff check passed. |
+
+The integration test runs actual in-process Convex functions and Admin/Platform pages against synthetic identities, mocked network checks and a fresh local Chromium. It cannot establish real Vercel ingress, deployed Convex runtime, live DNS or provider readiness. These remain the documented prelaunch checks.

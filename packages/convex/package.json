@@ -19,6 +19,9 @@
     "ai": "^6.0.168",
     "better-auth": "^1.2.0",
     "convex": "^1.0.0",
+    "fast-png": "^8.0.0",
+    "fflate": "^0.8.3",
+    "jpeg-js": "^0.4.4",
     "jszip": "^3.10.1",
     "mammoth": "^1.11.0",
     "pdf-lib": "^1.17.1",
@@ -26,6 +29,7 @@
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
+    "@types/jpeg-js": "^0.3.7",
     "@types/node": "^20.0.0",
     "convex-test": "^0.0.54",
     "typescript": "^5.4.0",

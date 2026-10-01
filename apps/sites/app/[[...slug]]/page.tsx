@@ -1,61 +1,38 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
-import {
-  buildCanonicalPublicOrigin,
-  buildMissingSiteMetadata,
-  buildPageMetadata,
-  resolveRequestedPage,
-  resolveSiteRequest,
-} from "@/site";
-import { PublicSchoolPage } from "@/site-ui";
+import { notFound } from "next/navigation";
+import { resolvePath } from "../../core/gateway";
+import { hasRenderer, renderSite } from "../../core/registry";
+import { legacyDemoFromHeaders, LegacyDemo } from "../../core/legacy";
+import { safePath } from "../../core/public";
+import { deniedMetadata, jsonLd, seo } from "../../core/seo";
 
 export const dynamic = "force-dynamic";
-
-interface RouteParams {
-  slug?: string[];
-}
-
-interface RouteProps {
-  params: Promise<RouteParams>;
-}
-
-export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
-  const resolvedParams = await params;
+type Props = {params:Promise<{slug?:string[]}>};
+const pathname = (slug?:string[]) => {
+  const path = slug?.length ? `/${slug.join("/")}` : "/";
+  return safePath(path) ? path : null;
+};
+export async function generateMetadata({params}:Props):Promise<Metadata> {
+  const path = pathname((await params).slug);
+  if (!path) return deniedMetadata;
   const requestHeaders = await headers();
-  const resolution = resolveSiteRequest(requestHeaders);
-
-  if (resolution.status !== "active" || !resolution.school || !resolution.template) {
-    return buildMissingSiteMetadata();
-  }
-
-  const page = resolveRequestedPage(resolution.school, resolvedParams.slug);
-  if (!page) {
-    return buildMissingSiteMetadata();
-  }
-
-  return buildPageMetadata({ origin: buildCanonicalPublicOrigin({ headers: requestHeaders, resolution }), school: resolution.school, page });
+  const result = await resolvePath(requestHeaders,path);
+  if (result.status === "available" && result.routeId && hasRenderer(result.site)) return seo(result.site,result.routeId);
+  const demo = path === "/" ? legacyDemoFromHeaders(requestHeaders) : null;
+  return demo ? {title:demo.name,robots:{index:false,follow:false}} : deniedMetadata;
 }
-
-export default async function SitePage({ params }: RouteProps) {
-  const resolvedParams = await params;
+export default async function Page({params}:Props) {
+  const path = pathname((await params).slug);
+  if (!path) notFound();
   const requestHeaders = await headers();
-  const resolution = resolveSiteRequest(requestHeaders);
-
-  if (resolution.status !== "active" || !resolution.school || !resolution.template) {
+  const result = await resolvePath(requestHeaders,path);
+  if (result.status !== "available" || !result.routeId) {
+    const demo = path === "/" ? legacyDemoFromHeaders(requestHeaders) : null;
+    if (demo) return <LegacyDemo name={demo.name} />;
     notFound();
   }
-
-  const page = resolveRequestedPage(resolution.school, resolvedParams.slug);
-  if (!page) {
-    notFound();
-  }
-
-  const canonicalOrigin = buildCanonicalPublicOrigin({ headers: requestHeaders, resolution });
-
-  if (resolution.redirectToHostname && resolution.redirectToHostname !== resolution.hostname) {
-    redirect(new URL(page.canonicalPath, canonicalOrigin).toString());
-  }
-
-  return <PublicSchoolPage school={resolution.school} template={resolution.template} page={page} canonicalOrigin={canonicalOrigin} />;
+  if (!hasRenderer(result.site)) notFound();
+  const structured = jsonLd(result.site,result.routeId);
+  return <><script type="application/ld+json" dangerouslySetInnerHTML={{__html:structured}} />{renderSite(result.site,result.routeId)}</>;
 }
