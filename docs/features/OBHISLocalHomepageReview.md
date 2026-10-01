@@ -99,19 +99,31 @@ Seven new PNGs and `parent-visual-verification.json` are in `deliverables/obhis-
 
 The capture helper stopped its shell but left its child server running on Windows. The parent verified the exact owned process chain, stopped only those descendants and confirmed the review port closed. No pre-existing server, desktop process or personal browser was touched. The installed helper was not modified.
 
-## User-requested composition refinements
+## First composition refinements
 
 The user approved a swipeable hero rather than two separate scrolling sections. The renderer now removes the top review strip and capped outer page rails, keeps readable inner gutters, reduces the desktop header to 76 pixels and uses a compact arrow/counter cue instead of Olive/You tabs. Footer, album and viewer permission notices remain. The development gate and non-indexing metadata are unchanged.
 
-The Olive headline is now "Welcome to Olive." The disconnected right-hand prose and duplicate campus button are removed. A short introduction and one school-life link sit with the heading. The You message is "A place for you." No school facts, programmes or application destinations were invented.
+The first refined Olive headline was "Welcome to Olive." The disconnected right-hand prose and duplicate campus button are removed. A short introduction and one school-life link sit with the heading. The You message is "A place for you." No school facts, programmes or application destinations were invented.
 
-Three existing school photographs can be selected manually inside the hero print. There is no autoplay timer. Mouse drag and native horizontal touch select welcomes; normal vertical wheel/touch scrolling and pinch zoom remain native. Scroll input gives the artwork and print a bounded upward drift. Reduced-motion preferences remove that drift, slide travel and photo arrival animation. `welcome-motion.ts` owns the gesture and input-driven scroll behavior; shared abort cleanup releases capture, listeners and frames.
+At this stage, three existing school photographs could be selected manually inside the hero print. There was no autoplay timer. Mouse drag and native horizontal touch select welcomes; normal vertical wheel/touch scrolling and pinch zoom remain native. Scroll input gives the artwork and print a bounded upward drift. Reduced-motion preferences remove that drift, slide travel and photo arrival animation. `welcome-motion.ts` owns the gesture and input-driven scroll behavior; shared abort cleanup releases capture, listeners and frames.
 
 Parent verification passed 19 headless tests, including seven widths from 1920 to 320, stable downstream positions, manual moment cycling, actual Chromium touch injection, mouse drag, vertical scrolling, keyboard/history/focus, viewer behavior, reduced motion, no-JavaScript content, private-route gates and legacy separation. A temporary runner used only the proven owned loopback preview, leaving the user's server running. The normal committed runner still refuses occupied ports.
 
 The first refinement run passed 17 tests and exposed two failures. Touch's implicit image capture bubbled a capture-transfer event, incorrectly cancelling the gesture. The handler now responds only to capture lost by the stage itself. The wide-layout assertion incorrectly included the browser's reserved scrollbar gutter; diagnostics confirmed every chapter fills the drawable body width. The corrected full suite passed.
 
 Sites typecheck and focused lint passed. The first directory-wide lint invocation timed out; the explicit changed-file invocation passed with zero warnings. Desktop welcome and mobile captures are in `deliverables/obhis-composition-refinement/`. They are private local evidence, not public export assets.
+
+## Automatic welcome cycle
+
+The user then requested automatic three-second scene changes and rejected the repeated headline words, photo caption and typography. The hero now pairs "Meet" with the existing Olive lettering and "A place for" with the You lettering. Complete accessible headings remain. Both scenes use the same rounded system-font stack, one shared school-life link and a fixed stage height. The white scene has no duplicate photograph or caption. Each return to Olive advances one of five existing curated photographs. No source media or body sections changed.
+
+`welcome-cycle.ts` owns one three-second timeout. Automatic changes do not write history, move focus or update the live announcement. Manual navigation, keyboard focus in the hero, touch/drag and opening the viewer pause playback until the visitor presses Play. The timer also stops offscreen, in a hidden document and during page suspension. Reduced-motion preference disables automatic playback. Cleanup clears the timer and disconnects the observer alongside the existing listener/frame cleanup. Without JavaScript, the Olive introduction, album photographs and native guidance remain available.
+
+A wide capture exposed horizontal scrolling inside the clipped stage after early focus. The stage now uses `overflow:clip` rather than a hidden scroll container. Responsive checks assert zero internal horizontal scroll. The corrected eight captures show complete settled scenes, no overflow, no running animations while paused and no page errors. They remain private in `deliverables/obhis-welcome-cycle/`.
+
+All 21 headless checks passed, including seven responsive widths, the automatic sequence, photograph rotation, pause/resume, focus/history/announcement stability, offscreen suspension, a simulated document-visibility event, reduced motion, native mouse/touch, viewer behaviour, no-JavaScript content and private gate contracts. Sites typecheck, focused zero-warning lint, whitespace and the informational theme audit passed. Ink and white are product neutrals; fixed illustration/paper-shadow colours remain code-owned. Tenant branding still uses the shared two-input tokens.
+
+The existing production-artifact/source-preservation scan passed. A fresh production build was not rerun for this renderer-only change. The document-visibility event was simulated in an isolated headless page, not tested by controlling a personal browser. Real-device and other-engine checks remain pending.
 
 ## Public code-only sharing
 

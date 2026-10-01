@@ -10,12 +10,13 @@ const heroPhotos = [
   { key: "classroom-moment", width: 1400, height: 935, alt: "Two pupils at a classroom desk in white and cyan tops with patterned uniform details." },
   { key: "school-friends", width: 1600, height: 1069, alt: "Pupils in white shirts and patterned school ties, with one smiling towards the camera." },
   { key: "classroom-table", width: 1600, height: 1069, alt: "Children seated around colourful classroom tables in their white shirts and patterned ties." },
+  { key: "cultural-day-abuja", width: 1600, height: 1067, alt: "Children wearing patterned cultural dress and coral-coloured beads, with their arms raised." },
+  { key: "cultural-day-rugam", width: 1600, height: 1067, alt: "An adult in patterned dress holding a child wearing black and coral-coloured beads." },
 ] as const;
 
-function HeroPhoto({ assets, className = "" }: { assets: PrivateReviewContext["assets"]; className?: string }) {
-  return <figure className={`photo-print ${className}`}>
+function HeroPhoto({ assets }: { assets: PrivateReviewContext["assets"] }) {
+  return <figure className="photo-print" aria-label="Photographs from the private school albums">
     <div className="hero-photo-stack">{heroPhotos.map((photo, index) => <img key={photo.key} draggable={false} data-hero-photo={index} hidden={index !== 0} src={assets[photo.key]} width={photo.width} height={photo.height} alt={photo.alt} />)}</div>
-    <figcaption><span>A glimpse of school life.</span><div className="hero-photo-controls" role="group" aria-label="Choose a school moment" hidden><button type="button" data-hero-photo-step="-1" aria-label="Previous school moment">←</button><span data-hero-photo-position aria-live="polite">1 / 3</span><button type="button" data-hero-photo-step="1" aria-label="Next school moment">→</button></div></figcaption>
   </figure>;
 }
 
@@ -36,29 +37,26 @@ export function Homepage({ context }: { context: PrivateReviewContext }) {
   <main id="main" tabIndex={-1}>
     <section className="hero-stage" id="hero-stage" data-scene="olive" aria-label="Olive and you">
       <div className="scene-controls" role="group" aria-label="Choose a welcome" tabIndex={0} hidden>
-        <span className="scene-hint">Drag or swipe to explore</span><span className="scene-position" data-scene-position>01 / 02</span>
+        <button type="button" data-welcome-play aria-label="Pause welcome slideshow" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path className="pause-icon" d="M8 6v12M16 6v12" /><path className="play-icon" d="m9 6 9 6-9 6Z" /></svg></button><span className="scene-position" data-scene-position>01 / 02</span>
         <button type="button" data-scene-choice="olive" aria-label="Previous welcome, Olive" aria-controls="hero-stage" disabled>←</button><button type="button" data-scene-choice="you" aria-label="Next welcome, You" aria-controls="hero-stage">→</button>
       </div>
       <p className="sr-only" id="scene-status" role="status" aria-live="polite"></p>
       <div className="scene scene-olive" data-panel="olive">
         <div className="olive-top">
-          <p className="eyebrow">{context.displayName}</p><h1 aria-label="Welcome to Olive."><span className="headline-line" aria-hidden="true">Welcome</span><span className="headline-line" aria-hidden="true">to Olive.</span></h1>
-          <p className="hero-intro">A look inside our school.</p><a className="hero-link secondary-link" href="#school-life">Explore school life <span aria-hidden="true">↓</span></a>
+          <p className="eyebrow">{context.displayName}</p><h1 aria-label="Meet Olive."><span className="headline-line" aria-hidden="true">Meet</span></h1>
         </div>
         <div className="olive-bottom">
-          <div className="olive-art"><img draggable={false} src={context.assets["hero-cutout"]} width="1448" height="781" fetchPriority="high" alt="Imagined layered paper letters spelling olive, patterned cotton and a fan of paper on a cyan surface." /></div>
+          <div className="olive-art"><img draggable={false} src={context.assets["hero-cutout"]} width="1448" height="781" fetchPriority="high" alt="Imagined layered paper lettering, patterned cotton and a fan of paper on a cyan surface." /></div>
           <HeroPhoto assets={context.assets} />
         </div>
       </div>
       <div className="scene scene-you" data-panel="you" aria-hidden="true" hidden>
         <div className="you-copy">
-          <p className="eyebrow"><span className="dot" aria-hidden="true"></span>Olive Blessed Crest Academy</p>
-          <h1 aria-label="A place for you."><span className="headline-line" aria-hidden="true"><span className="line-text">A place</span></span><span className="headline-line" aria-hidden="true"><span className="line-text">for <em>you.</em></span></span></h1>
-          <p className="hero-intro">Start with the people. Take a look around.</p><a className="hero-link secondary-link" href="#school-life">Explore school life <span aria-hidden="true">↓</span></a>
+          <h1 aria-label="A place for you."><span className="headline-line" aria-hidden="true"><span className="line-text">A place</span></span><span className="headline-line" aria-hidden="true"><span className="line-text">for</span></span></h1>
         </div>
-        <figure className="you-art"><img draggable={false} src={context.assets["you-hero"]} width="1402" height="700" alt="Imagined cyan, coral and gold layered paper letters spelling you, with patterned cotton behind and soft contact shadows." /><figcaption>A place for you.</figcaption></figure>
-        <HeroPhoto assets={context.assets} className="you-photo" />
+        <figure className="you-art"><img draggable={false} src={context.assets["you-hero"]} width="1402" height="700" alt="Imagined layered paper lettering and patterned cotton with soft contact shadows." /></figure>
       </div>
+      <a className="hero-link secondary-link" href="#school-life">Explore school life <span aria-hidden="true">↓</span></a>
     </section>
     <noscript><p className="no-script">The Olive introduction is shown. All school photographs and the links below work without animation.</p></noscript>
     <div className="fabric-rule" aria-hidden="true"></div>
