@@ -86,6 +86,18 @@ test("supplied desktop composition overlaps the artwork and puts controls at the
   })).toBe(true);
 });
 
+test("wide Olive photo moves right without covering the final letter", async ({ page }) => {
+  await page.setViewportSize({ width:1920, height:1080 });
+  await openReview(page);
+  expect(await page.locator('.scene-olive').evaluate(panel => {
+    const canvas = panel.querySelector('.welcome-canvas')?.getBoundingClientRect();
+    const art = panel.querySelector('.olive-art')?.getBoundingClientRect();
+    const photo = panel.querySelector('.photo-print')?.getBoundingClientRect();
+    if (!canvas || !art || !photo) return false;
+    return photo.left >= art.left + art.width * .84 && photo.right < innerWidth && photo.width >= canvas.width * .36;
+  })).toBe(true);
+});
+
 test("keyboard, history, reload and rapid reversal preserve control focus", async ({ page }) => {
   await openReview(page);
   const olive = page.locator('[data-scene-choice="olive"]');

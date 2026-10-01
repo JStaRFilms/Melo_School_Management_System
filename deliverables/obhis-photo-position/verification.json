@@ -1,0 +1,171 @@
+{
+  "captures": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "filename": "photo-right-1920.png",
+      "stage": {
+        "left": 0,
+        "right": 1905,
+        "top": 76,
+        "bottom": 1076,
+        "width": 1905,
+        "height": 1000
+      },
+      "photo": {
+        "left": 1231.692138671875,
+        "right": 1791.6986083984375,
+        "top": 309.07098388671875,
+        "bottom": 753.9133911132812,
+        "width": 560.0064697265625,
+        "height": 444.8424072265625
+      },
+      "art": {
+        "left": 189.3125,
+        "right": 1398.90625,
+        "top": 369.296875,
+        "bottom": 959.046875,
+        "width": 1209.59375,
+        "height": 589.75
+      },
+      "right": "-105.594px",
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "filename": "photo-right-1440.png",
+      "stage": {
+        "left": 0,
+        "right": 1425,
+        "top": 76,
+        "bottom": 900,
+        "width": 1425,
+        "height": 824
+      },
+      "photo": {
+        "left": 884.9857177734375,
+        "right": 1384.9674072265625,
+        "top": 249.71673583984375,
+        "bottom": 648.0020141601562,
+        "width": 499.981689453125,
+        "height": 398.2852783203125
+      },
+      "art": {
+        "left": 31.21875,
+        "right": 1110.984375,
+        "top": 303.46875,
+        "bottom": 829.921875,
+        "width": 1079.765625,
+        "height": 526.453125
+      },
+      "right": "-17.5625px",
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    },
+    {
+      "width": 1047,
+      "height": 749,
+      "filename": "photo-right-1047.png",
+      "stage": {
+        "left": 0,
+        "right": 1032,
+        "top": 76,
+        "bottom": 749,
+        "width": 1032,
+        "height": 673
+      },
+      "photo": {
+        "left": 623.8749389648438,
+        "right": 1025.4219970703125,
+        "top": 221.2149200439453,
+        "bottom": 543.1444244384766,
+        "width": 401.54705810546875,
+        "height": 321.92950439453125
+      },
+      "art": {
+        "left": -30.953125,
+        "right": 835.921875,
+        "top": 264.359375,
+        "bottom": 687.015625,
+        "width": 866.875,
+        "height": 422.65625
+      },
+      "right": "16.4375px",
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "filename": "photo-right-390.png",
+      "stage": {
+        "left": 0,
+        "right": 375,
+        "top": 68,
+        "bottom": 844,
+        "width": 375,
+        "height": 776
+      },
+      "photo": {
+        "left": 69.4683609008789,
+        "right": 358.03165435791016,
+        "top": 425.6069641113281,
+        "bottom": 658.4867553710938,
+        "width": 288.56329345703125,
+        "height": 232.87979125976562
+      },
+      "art": {
+        "left": -26.25,
+        "right": 401.25,
+        "top": 218,
+        "bottom": 426.421875,
+        "width": 427.5,
+        "height": 208.421875
+      },
+      "right": "22.5px",
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "filename": "photo-right-320.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 62,
+        "bottom": 762,
+        "width": 305,
+        "height": 700
+      },
+      "photo": {
+        "left": 56.460445404052734,
+        "right": 291.25829696655273,
+        "top": 385.2175598144531,
+        "bottom": 576.766845703125,
+        "width": 234.7978515625,
+        "height": 191.54928588867188
+      },
+      "art": {
+        "left": -21.34375,
+        "right": 326.34375,
+        "top": 212,
+        "bottom": 381.515625,
+        "width": 347.6875,
+        "height": 169.515625
+      },
+      "right": "18.2969px",
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    }
+  ],
+  "errors": [],
+  "note": "Private paused captures. Photo size and six-second cycle retained. Wide layouts use spare outer room; narrow/mobile layouts stay within the stage. No fresh production build or real-device audit."
+}

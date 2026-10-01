@@ -145,6 +145,12 @@ The print now uses 37 percent of the desktop artboard instead of 31 percent, and
 
 The full browser run timed out after 15 successful checks during native-touch verification. The seven remaining checks passed in a standalone run, covering touch, viewer, reduced motion, no JavaScript, private routing and legacy separation. The owned worker had exited; no pre-existing process was stopped. Together all 22 checks passed. Typecheck, focused zero-warning lint, informational theme audit, whitespace and the existing production/source-preservation scan also passed. All ten private images and 43 protected files remain unchanged. Captures show no errors, overflow, internal horizontal scroll or paused animation. No new production build or real-device audit was run.
 
+## Wide-screen photo position
+
+The larger print now moves into unused outer space on wide screens so it no longer covers the final Olive letter. Its width, angle and crop stay unchanged. The offset scales with the gap between the viewport and bounded artboard, capped at eight percent. At 1920 pixels the print has 128 pixels of clear space to the viewport edge. At 1047 pixels and below, it remains inside the stage; mobile keeps its existing six-percent right inset.
+
+All 23 browser checks passed, including seven responsive widths, both composition contracts and the complete interaction/private-route suite. Five paused captures in `deliverables/obhis-photo-position/` report no errors, overflow, internal scroll or running animation. The six-second timer, source artwork, photo sequence, body sections and private gate are unchanged. Typecheck, focused zero-warning lint, informational theme audit and the existing production/source-preservation scan passed. No fresh production build or real-device audit was run.
+
 ## Public code-only sharing
 
 The repository is public. After being told that the full local history contains pending-permission school photos, the user authorized a code-only public branch. `feature/obhis-website-code` starts from existing public master, excluding the private feature ancestry and all 55 image entries. Its initial verified source snapshot is `9484213`. The image-bearing `feature/obhis-website` branch stays local and must not be pushed to the public remote.

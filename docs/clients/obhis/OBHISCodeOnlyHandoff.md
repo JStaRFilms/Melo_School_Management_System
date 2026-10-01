@@ -38,6 +38,12 @@ The latest source snapshot is local checkpoint `35d7233`. The hero print is larg
 
 All 22 browser checks passed across the initial 15 successful checks and a focused seven-check run after a runner timeout. Typecheck, focused lint, theme audit, whitespace and the existing production/source-preservation scan passed. Four new private captures are omitted, bringing the total to 87 omitted image entries. The receipt includes source-edge measurements but no image bytes. No production build, release or photo approval accompanies this update.
 
+## Wide-screen print position
+
+The latest source snapshot is local checkpoint `e55596a`. The enlarged print now uses spare space outside the bounded artboard on wide screens, keeping the final Olive letter readable. Its size, angle and crop are unchanged. Narrow and mobile widths remain inside the stage. The six-second cycle, artwork and body sections are unchanged.
+
+All 23 browser checks passed, plus typecheck, focused zero-warning lint, theme audit, whitespace and the existing production/source-preservation scan. Five new private captures are omitted, bringing the total to 92 omitted image entries. The text receipt records geometry and contains no image bytes. No production build, release or photo approval accompanies this update.
+
 ## For the production-core agent
 
 Fetch `origin/feature/obhis-website-code` and inspect this branch read-only while implementing production infrastructure on your separate branch. Use paths relative to your checkout. The absolute Windows paths in the earlier task prompt refer to the original development computer.
