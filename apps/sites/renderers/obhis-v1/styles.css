@@ -3,7 +3,7 @@
 .obhis-review h1,.obhis-review h2,.obhis-review h3 { font-family:inherit; font-size:inherit; font-weight:inherit; letter-spacing:normal; }
 .obhis-review p { margin:1em 0; }
 .obhis-review .guide-body ul { list-style:disc; }
-.obhis-review { --ink:#142c38; --cyan:var(--school-accent); --coral:#ef704d; --white:#fff; --line:#dbe3e6; --page-ease:cubic-bezier(.76,0,.24,1); --settle-ease:cubic-bezier(.16,1,.3,1); }
+.obhis-review { --gutter:clamp(20px,5.4vw,104px); --ink:#142c38; --cyan:var(--school-accent); --coral:#ef704d; --white:#fff; --line:#dbe3e6; --page-ease:cubic-bezier(.76,0,.24,1); --settle-ease:cubic-bezier(.16,1,.3,1); }
 .obhis-review * { box-sizing:border-box; }
 html:has(.obhis-review) { scroll-behavior:auto; }
 .obhis-review { margin:0; color:var(--ink); background:var(--white); font-family:Arial,Helvetica,sans-serif; }
@@ -16,13 +16,10 @@ html:has(.obhis-review) { scroll-behavior:auto; }
 .obhis-review .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
 .obhis-review .skip { position:fixed; top:-80px; left:20px; padding:14px 20px; background:var(--white); z-index:30; }
 .obhis-review .skip:focus { top:12px; }
-.obhis-review .review-notice { min-height:34px; display:flex; justify-content:center; align-items:center; gap:12px; padding:8px 20px; background:var(--ink); color:var(--white); font-size:11px; line-height:1.4; text-align:center; }
-.obhis-review .review-notice strong { white-space:nowrap; }
-.obhis-review .review-notice span { opacity:.8; }
-.obhis-review .site-header { position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:space-between; min-height:112px; max-width:1600px; margin:auto; padding:23px 5.4%; gap:25px; background:var(--white); }
-.obhis-review .brand { display:flex; align-items:center; gap:15px; flex-shrink:0; }
-.obhis-review .brand img { width:57px; height:57px; object-fit:contain; }
-.obhis-review .brand-name { font-size:15px; line-height:1.3; font-weight:750; letter-spacing:-.02em; }
+.obhis-review .site-header { position:sticky; top:0; z-index:10; display:flex; align-items:center; justify-content:space-between; min-height:76px; padding:12px var(--gutter); gap:25px; background:var(--white); }
+.obhis-review .brand { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.obhis-review .brand img { width:44px; height:44px; object-fit:contain; }
+.obhis-review .brand-name { font-size:13px; line-height:1.3; font-weight:750; letter-spacing:-.02em; }
 .obhis-review .brand-name span { display:block; }
 .obhis-review .nav { display:flex; align-items:center; gap:30px; font-size:13px; font-weight:600; }
 .obhis-review .nav a { display:inline-flex; align-items:center; min-height:44px; }
@@ -31,100 +28,102 @@ html:has(.obhis-review) { scroll-behavior:auto; }
 .obhis-review .arrow { font-size:23px; line-height:1; font-weight:400; }
 .obhis-review .eyebrow { display:flex; align-items:center; gap:11px; margin:0; font-size:12px; font-weight:650; }
 .obhis-review .dot { width:9px; height:9px; border-radius:50%; background:var(--school-primary); }
-.obhis-review .button-row { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
 .obhis-review .primary-link { display:inline-flex; align-items:center; justify-content:space-between; min-height:56px; padding:0 24px; gap:26px; border-radius:5px; background:var(--school-primary); color:var(--school-primary-contrast); font-size:14px; font-weight:650; }
 .obhis-review .primary-link:hover { filter:brightness(.94); }
 .obhis-review .secondary-link { display:inline-flex; gap:16px; align-items:center; min-height:48px; font-size:14px; font-weight:600; }
 .obhis-review .secondary-link:hover { text-decoration:underline; text-underline-offset:6px; }
-.obhis-review .hero-stage { position:relative; display:grid; isolation:isolate; max-width:1600px; margin:auto; overflow:hidden; background:var(--coral); }
+.obhis-review .hero-stage { position:relative; display:grid; isolation:isolate; overflow:hidden; background:var(--coral); --hero-drift:0px; --welcome-drag:0px; }
+.obhis-review .hero-stage[data-gestures] { touch-action:pan-y pinch-zoom; }
+.obhis-review .hero-stage[data-gestures] :is(.olive-art,.you-art,.photo-print) { cursor:grab; }
+.obhis-review .hero-stage[data-dragging] :is(.olive-art,.you-art,.photo-print) { cursor:grabbing; }
 /* Removing motion-ready must cancel transitions, not merely change their duration. */
 .obhis-review .scene { grid-area:1 / 1; min-width:0; transition:none; }
-.obhis-review .scene-controls { position:absolute; top:16px; right:5.4%; z-index:4; display:flex; align-items:center; gap:4px; padding:3px; border:1px solid var(--ink); border-radius:6px; background:var(--white); }
-.obhis-review .scene-controls button { min-width:63px; min-height:44px; padding:0 12px; border:0; border-radius:3px; background:transparent; color:var(--ink); font-size:13px; font-weight:650; }
-.obhis-review .scene-controls button[aria-pressed="true"] { background:var(--ink); color:var(--white); }
-.obhis-review .scene-controls button:hover { text-decoration:underline; text-underline-offset:4px; }
-.obhis-review .scene-controls span { margin:0 5px; font-size:14px; }
-.obhis-review .scene-olive { z-index:1; padding:74px 5.4% 0; background:var(--coral); transform:translateX(0); }
-.obhis-review .olive-top { position:relative; display:grid; grid-template-columns:1.6fr 1fr; gap:55px; align-items:start; }
-.obhis-review .scene-olive h1 { margin:22px 0 0; font-family:'Trebuchet MS',Arial,sans-serif; font-weight:800; font-size:clamp(64px,6.5vw,104px); letter-spacing:-.072em; line-height:1.01; }
+.obhis-review .scene-controls { position:absolute; top:22px; right:var(--gutter); z-index:4; display:flex; align-items:center; gap:9px; border-radius:28px; }
+.obhis-review .scene-controls:focus-visible { outline:3px solid var(--ink); outline-offset:6px; }
+.obhis-review .scene-controls button { width:44px; height:44px; border:1px solid var(--ink); border-radius:50%; background:transparent; color:var(--ink); font-size:23px; }
+.obhis-review .scene-controls button:disabled { opacity:.3; cursor:default; }
+.obhis-review .scene-controls button:not(:disabled):hover { background:var(--ink); color:var(--white); }
+.obhis-review .scene-position { min-width:48px; font-size:12px; font-weight:650; font-variant-numeric:tabular-nums; }
+.obhis-review .scene-hint { margin-right:12px; font-size:11px; }
+.obhis-review .scene-olive { z-index:1; padding:60px var(--gutter) 0; background:var(--coral); transform:translateX(var(--welcome-drag)); }
+.obhis-review .olive-top { position:relative; z-index:1; width:54%; }
+.obhis-review .scene-olive h1 { margin:20px 0 0; font-family:'Trebuchet MS',Arial,sans-serif; font-weight:800; font-size:clamp(64px,6.5vw,104px); letter-spacing:-.072em; line-height:1.01; }
 .obhis-review .headline-line { display:block; }
 .obhis-review h1 em { font-style:normal; }
-.obhis-review .scene-olive h1 em { color:var(--white); }
-.obhis-review .olive-intro { padding-top:64px; max-width:350px; justify-self:end; }
-.obhis-review .olive-intro p { font-size:17px; line-height:1.65; margin:0 0 24px; }
-.obhis-review .scene-olive .primary-link { background:var(--white); color:var(--ink); }
-.obhis-review .olive-bottom { height:540px; position:relative; }
-.obhis-review .olive-art { position:absolute; left:-6.1%; bottom:0; width:76%; }
+.obhis-review .hero-intro { margin:20px 0 4px; max-width:360px; font-size:18px; line-height:1.5; }
+.obhis-review .hero-link { text-decoration:underline; text-underline-offset:6px; }
+.obhis-review .olive-bottom { height:clamp(450px,32vw,620px); position:relative; }
+.obhis-review .olive-art { position:absolute; left:-6.1%; bottom:0; width:76%; transform:translateY(calc(-1 * var(--hero-drift))); }
 .obhis-review .olive-art img { width:100%; }
-.obhis-review .photo-print { position:absolute; right:2%; top:152px; width:32%; margin:0; padding:13px 13px 34px; background:#fffdf8; transform:rotate(6deg); box-shadow:5px 12px 0 #bc5138; }
-.obhis-review .photo-print img { width:100%; aspect-ratio:1.34; object-fit:cover; }
-.obhis-review .photo-print figcaption { font:15px 'Trebuchet MS',sans-serif; margin-top:16px; letter-spacing:-.01em; }
-.obhis-review .scene-you { z-index:2; display:grid; grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr); gap:40px; align-items:center; padding:74px 5.4% 72px; background:var(--white); transform:translateX(100%); }
+.obhis-review .photo-print { position:absolute; right:2%; top:-130px; width:32%; margin:0; padding:13px 13px 15px; background:#fffdf8; transform:translateY(calc(-1.3 * var(--hero-drift))) rotate(5deg); box-shadow:5px 12px 0 #bc5138; }
+.obhis-review .hero-photo-stack { overflow:hidden; }
+.obhis-review .hero-photo-stack img { width:100%; aspect-ratio:1.34; object-fit:cover; animation:obhis-photo-arrive 240ms var(--settle-ease); }
+.obhis-review .photo-print figcaption { display:flex; align-items:center; justify-content:space-between; gap:10px; font:14px/1.4 'Trebuchet MS',sans-serif; margin-top:12px; letter-spacing:-.01em; }
+.obhis-review .hero-photo-controls { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.obhis-review .hero-photo-controls button { width:44px; height:44px; padding:0; border:0; background:transparent; color:var(--ink); font-size:20px; }
+.obhis-review .hero-photo-controls button:hover { background:var(--line); }
+.obhis-review .hero-photo-controls span { min-width:27px; text-align:center; font:11px Arial,sans-serif; }
+.obhis-review .scene-you { z-index:2; display:grid; grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr); gap:40px; align-items:center; padding:74px var(--gutter) 72px; background:var(--white); transform:translateX(calc(100% + var(--welcome-drag))); }
 .obhis-review .you-copy { position:relative; }
-.obhis-review .scene-you h1 { margin:35px 0 27px; font-family:Bahnschrift,'Arial Rounded MT Bold',Arial,sans-serif; font-size:clamp(66px,6.6vw,105px); font-weight:800; line-height:.98; letter-spacing:-.063em; }
+.obhis-review .scene-you h1 { margin:25px 0 22px; font-family:Bahnschrift,'Arial Rounded MT Bold',Arial,sans-serif; font-size:clamp(66px,6.6vw,105px); font-weight:800; line-height:.98; letter-spacing:-.063em; }
 .obhis-review .scene-you h1 em { color:#da5737; }
 .obhis-review .scene-you .headline-line { overflow:hidden; }
 .obhis-review .line-text { display:block; transform:translateY(28px); opacity:0; transition:none; }
-.obhis-review .scene-you .intro { margin:0 0 27px; max-width:330px; font-size:16px; line-height:1.7; }
 .obhis-review .you-art { width:108%; margin:0 0 0 -4%; transform:translateY(22px); opacity:0; transition:none; }
-.obhis-review .you-art img { width:100%; }
+.obhis-review .you-art img { width:100%; transform:translateY(calc(-1 * var(--hero-drift))); }
 .obhis-review .you-art figcaption { margin:10px 0 0; text-align:center; font:16px 'Trebuchet MS',sans-serif; }
 .obhis-review .you-photo { display:none; }
-.obhis-review .hero-stage[data-scene="you"] .scene-you { transform:translateX(0); }
-.obhis-review .hero-stage[data-scene="you"] .scene-olive { transform:translateX(-5%); }
+.obhis-review .hero-stage[data-scene="you"] .scene-you { transform:translateX(var(--welcome-drag)); }
+.obhis-review .hero-stage[data-scene="you"] .scene-olive { transform:translateX(calc(-5% + var(--welcome-drag))); }
+.obhis-review .hero-stage[data-dragging] .scene { transition:none; }
 .obhis-review .hero-stage[data-scene="you"] .line-text,.obhis-review .hero-stage[data-scene="you"] .you-art { transform:translateY(0); opacity:1; }
 .obhis-review .motion-ready .scene { transition:transform 900ms var(--page-ease); }
 .obhis-review .motion-ready .line-text { transition:transform 560ms var(--settle-ease),opacity 400ms ease; }
 .obhis-review .motion-ready .you-art { transition:transform 650ms var(--settle-ease),opacity 500ms ease; }
 .obhis-review .motion-ready[data-scene="you"] .headline-line:nth-child(1) .line-text { transition-delay:180ms; }
 .obhis-review .motion-ready[data-scene="you"] .headline-line:nth-child(2) .line-text { transition-delay:225ms; }
-.obhis-review .motion-ready[data-scene="you"] .headline-line:nth-child(3) .line-text { transition-delay:270ms; }
 .obhis-review .motion-ready[data-scene="you"] .you-art { transition-delay:220ms; }
 .obhis-review .fabric-rule { height:14px; background-color:var(--ink); background-image:radial-gradient(ellipse at 16px 6px,var(--school-accent) 0 7px,transparent 8px),radial-gradient(ellipse at 40px 13px,#ef704d 0 8px,transparent 9px),radial-gradient(ellipse at 60px 3px,#e7a5b0 0 7px,transparent 8px); background-size:74px 26px; }
 .obhis-review .section-kicker { font-size:12px; font-weight:650; margin:0 0 17px; }
 .obhis-review .no-script { margin:0; padding:12px; text-align:center; }
-@media(min-width:1601px)  { .obhis-review .hero-stage { border-radius:12px; } }
 @media(max-width:1050px)  {
   .obhis-review .nav { gap:19px; }
   .obhis-review .nav .school-link { display:none; }
   .obhis-review .scene-you { gap:24px; }
   .obhis-review .scene-you h1 { font-size:clamp(54px,7.1vw,76px); }
-  .obhis-review .olive-top { gap:30px; }
   .obhis-review .scene-olive h1 { font-size:76px; }
-  .obhis-review .olive-intro { padding-top:45px; }
-  .obhis-review .olive-bottom { height:440px; }
-  .obhis-review .photo-print { top:126px; }
+  .obhis-review .olive-bottom { height:450px; }
+  .obhis-review .photo-print { top:-80px; width:35%; }
+  .obhis-review .photo-print figcaption { flex-wrap:wrap; gap:4px; }
+  .obhis-review .hero-photo-controls { margin-left:auto; }
+  .obhis-review .scene-hint { display:none; }
 }
 @media(max-width:760px)  {
-  .obhis-review .review-notice { font-size:10px; flex-wrap:wrap; gap:4px 9px; padding:9px 14px; }
-  .obhis-review .review-notice span { max-width:280px; }
-  .obhis-review .site-header { min-height:94px; padding:17px 6%; }
-  .obhis-review .brand { gap:10px; }
-  .obhis-review .brand img { width:43px; height:43px; }
+  .obhis-review { --gutter:6%; }
+  .obhis-review .site-header { min-height:68px; padding:10px var(--gutter); gap:12px; }
+  .obhis-review .brand { gap:8px; }
+  .obhis-review .brand img { width:38px; height:38px; }
   .obhis-review .brand-name { font-size:12px; }
   .obhis-review .nav { gap:0; }
   .obhis-review .nav a:not(.admissions) { display:none; }
   .obhis-review .nav .admissions { font-size:11px; padding:0 12px; gap:12px; }
-  .obhis-review .scene-controls { top:16px; left:6%; right:auto; }
-  .obhis-review .scene-olive { padding:92px 6% 24px; }
-  .obhis-review .olive-top { grid-template-columns:1fr; gap:0; }
-  .obhis-review .scene-olive h1 { font-size:clamp(58px,12.5vw,88px); margin:21px 0 22px; }
-  .obhis-review .olive-intro { padding:0; justify-self:start; max-width:350px; }
-  .obhis-review .olive-intro p { font-size:15px; margin-bottom:19px; }
-  .obhis-review .olive-bottom { display:flex; flex-direction:column; height:auto; padding-top:10px; }
+  .obhis-review .scene-controls { top:16px; right:var(--gutter); }
+  .obhis-review .scene-olive { padding:86px var(--gutter) 24px; }
+  .obhis-review .olive-top { width:100%; }
+  .obhis-review .scene-olive h1 { font-size:clamp(58px,12.5vw,88px); margin:18px 0 20px; }
+  .obhis-review .hero-intro { font-size:16px; margin-top:18px; }
+  .obhis-review .olive-bottom { display:flex; flex-direction:column; height:auto; padding-top:20px; }
   .obhis-review .olive-art { position:relative; left:-7%; bottom:auto; width:114%; max-width:none; }
-  .obhis-review .photo-print { position:relative; top:auto; right:auto; width:73%; margin:-10px 2% 22px auto; padding:10px 10px 24px; transform:rotate(3deg); }
-  .obhis-review .photo-print figcaption { font-size:13px; margin-top:12px; }
-  .obhis-review .scene-you { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:0; padding:92px 6% 35px; }
+  .obhis-review .photo-print { position:relative; top:auto; right:auto; width:78%; margin:-10px 2% 22px auto; padding:10px 10px 12px; transform:translateY(calc(-1.3 * var(--hero-drift))) rotate(3deg); }
+  .obhis-review .photo-print figcaption { font-size:13px; margin-top:10px; }
+  .obhis-review .scene-you { display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:0; padding:86px var(--gutter) 35px; }
   .obhis-review .scene-you h1 { font-size:clamp(52px,12.5vw,88px); margin:25px 0 23px; line-height:1; max-width:560px; }
-  .obhis-review .scene-you .intro { font-size:15px; max-width:340px; margin-bottom:20px; }
   .obhis-review .you-art { width:110%; margin:24px -5% 0; }
   .obhis-review .you-art figcaption { font-size:15px; }
-  .obhis-review .you-photo { display:block; width:55%; margin:18px 3% 0 auto; transform:rotate(-3deg); }
+  .obhis-review .you-photo { display:block; width:72%; margin:18px 3% 0 auto; transform:translateY(calc(-1.3 * var(--hero-drift))) rotate(-3deg); }
   .obhis-review .you-photo figcaption { font-size:12px; }
   .obhis-review .primary-link { min-height:52px; padding:0 18px; font-size:13px; }
   .obhis-review .secondary-link { font-size:13px; }
-  .obhis-review .button-row { gap:15px; }
 }
 @media(max-width:360px)  {
   .obhis-review .brand-name { font-size:11px; }
@@ -133,10 +132,11 @@ html:has(.obhis-review) { scroll-behavior:auto; }
 }
 @media(prefers-reduced-motion:reduce)  {
   .obhis-review *,.obhis-review *::before,.obhis-review *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+  .obhis-review .hero-stage { --hero-drift:0px !important; --welcome-drag:0px !important; }
 }
 
 html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
-.obhis-review .page-section { max-width:1440px; margin:auto; padding:76px 6.8%; scroll-margin-top:130px; }
+.obhis-review .page-section { padding:76px var(--gutter); scroll-margin-top:92px; }
 .obhis-review .section-title { margin:0; font:750 clamp(42px,4.3vw,66px)/1.06 Bahnschrift,Arial,sans-serif; letter-spacing:-.055em; }
 .obhis-review .school-intro { display:grid; grid-template-columns:1fr 1fr; gap:9%; padding-top:88px; padding-bottom:68px; }
 .obhis-review .school-intro-copy { max-width:420px; padding-top:27px; }
@@ -164,15 +164,15 @@ html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
 .obhis-review .album-foot { display:flex; justify-content:space-between; align-items:center; gap:30px; margin-top:22px; }
 .obhis-review .album-foot p { max-width:470px; margin:0; font-size:11px; line-height:1.6; color:#45606a; }
 .obhis-review .album-foot a { flex-shrink:0; }
-.obhis-review .crest-story { display:grid; grid-template-columns:1fr .55fr; gap:12%; align-items:center; max-width:1600px; margin:auto; padding:65px 10%; color:var(--white); background:var(--ink); }
+.obhis-review .crest-story { display:grid; grid-template-columns:1fr 1fr; gap:8%; align-items:center; padding:65px var(--gutter); color:var(--white); background:var(--ink); }
 .obhis-review .crest-story h2 { margin:20px 0 24px; font:750 clamp(58px,6.4vw,96px)/1.02 Bahnschrift,Arial,sans-serif; letter-spacing:-.055em; }
 .obhis-review .crest-story h2 span { color:var(--cyan); }
 .obhis-review .crest-copy > p:not(.section-kicker) { font-size:16px; line-height:1.7; }
 .obhis-review .crest-story a:focus-visible { outline-color:var(--white); }
-.obhis-review .uniform-print { width:100%; max-width:295px; margin:0; padding:10px 10px 25px; background:var(--white); color:var(--ink); transform:rotate(4deg); }
+.obhis-review .uniform-print { width:100%; max-width:340px; justify-self:center; margin:0; padding:10px 10px 25px; background:var(--white); color:var(--ink); transform:rotate(4deg); }
 .obhis-review .uniform-print img { width:100%; }
 .obhis-review .uniform-print figcaption { margin-top:14px; padding:0 3px; font:13px/1.4 'Trebuchet MS',Arial,sans-serif; }
-.obhis-review .campus-section { max-width:1600px; margin:auto; padding:80px 8.5% 65px; background:var(--cyan); scroll-margin-top:112px; }
+.obhis-review .campus-section { padding:80px var(--gutter) 65px; background:var(--cyan); scroll-margin-top:92px; }
 .obhis-review .campus-intro { max-width:350px; }
 .obhis-review .campus-intro > p:first-child { margin:0 0 15px; font-size:22px; font-weight:600; letter-spacing:-.025em; }
 .obhis-review .content-note { margin:0; font-size:12px; line-height:1.6; }
@@ -192,7 +192,7 @@ html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
 .obhis-review .admissions-copy > p:not(.section-kicker):not(.admissions-note) { max-width:370px; margin:24px 0; font-size:17px; line-height:1.7; }
 .obhis-review .admissions-note { max-width:340px; margin:17px 0 0; font-size:11px; line-height:1.6; color:#45606a; }
 .obhis-review .admissions-guides { padding-top:15px; }
-.obhis-review .admissions-guides details { border-top:1px solid var(--line); scroll-margin-top:130px; }
+.obhis-review .admissions-guides details { border-top:1px solid var(--line); scroll-margin-top:92px; }
 .obhis-review .admissions-guides details:last-child { border-bottom:1px solid var(--line); }
 .obhis-review .admissions-guides summary { display:flex; align-items:center; justify-content:space-between; min-height:78px; padding:20px 0; gap:25px; list-style:none; cursor:pointer; font-size:17px; font-weight:600; }
 .obhis-review .admissions-guides summary::-webkit-details-marker { display:none; }
@@ -206,7 +206,7 @@ html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
 .obhis-review .guide-body ul { padding-left:20px; margin:0 0 22px; }
 .obhis-review .guide-body li { padding-left:4px; margin-bottom:8px; }
 .obhis-review .guide-body .availability-note { font-size:12px; line-height:1.65; padding-left:14px; border-left:2px solid var(--ink); color:#45606a; margin-bottom:0; }
-.obhis-review .school-footer { max-width:1600px; margin:auto; padding:55px 6.8% 23px; background:var(--ink); color:var(--white); }
+.obhis-review .school-footer { padding:55px var(--gutter) 23px; background:var(--ink); color:var(--white); }
 .obhis-review .footer-top { display:flex; align-items:start; justify-content:space-between; gap:50px; }
 .obhis-review .footer-welcome { margin:25px 0 0; font:700 clamp(42px,4.2vw,62px)/1.07 Bahnschrift,Arial,sans-serif; letter-spacing:-.05em; }
 .obhis-review .footer-links { display:grid; grid-template-columns:1fr 1fr; gap:3px 44px; padding-top:3px; }
@@ -232,20 +232,19 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
 .obhis-review .viewer-controls button:hover,.obhis-review .viewer-top button:hover { background:var(--ink); color:var(--white); }
 .obhis-review #viewer-position { min-width:37px; text-align:center; font-size:12px; }
 @media(max-width:1050px)  {
-  .obhis-review .page-section { padding-left:6%; padding-right:6%; }
   .obhis-review .school-intro,.obhis-review .admissions-section { gap:7%; }
   .obhis-review .section-top { gap:25px; }
   .obhis-review .album-grid { gap:5%; }
   .obhis-review .album-sheet figcaption { gap:12px; }
-  .obhis-review .crest-story { padding:55px 8%; gap:9%; grid-template-columns:1fr .65fr; }
-  .obhis-review .campus-section { padding:65px 6% 45px; }
+  .obhis-review .crest-story { padding:55px var(--gutter); gap:9%; grid-template-columns:1fr .65fr; }
+  .obhis-review .campus-section { padding:65px var(--gutter) 45px; }
   .obhis-review .campus-intro { max-width:300px; }
   .obhis-review .campus-grid { gap:22px; }
   .obhis-review .campus-label { padding:18px 5px 0; }
   .obhis-review .campus-status { margin-left:5px; margin-right:5px; }
 }
 @media(max-width:760px)  {
-  .obhis-review .page-section { padding:48px 6%; scroll-margin-top:108px; }
+  .obhis-review .page-section { padding:48px var(--gutter); scroll-margin-top:84px; }
   .obhis-review .section-title { font-size:clamp(38px,8.5vw,52px); }
   .obhis-review .school-intro { grid-template-columns:1fr; gap:20px; padding-bottom:30px; }
   .obhis-review .school-intro-copy { max-width:480px; padding:0; }
@@ -263,12 +262,12 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
   .obhis-review .photo-open { font-size:10px; padding:8px 10px; right:9px; bottom:9px; }
   .obhis-review .album-foot { align-items:flex-start; flex-direction:column; gap:8px; margin-top:16px; }
   .obhis-review .album-foot p { font-size:10px; }
-  .obhis-review .crest-story { grid-template-columns:1fr; gap:28px; padding:45px 8% 55px; }
+  .obhis-review .crest-story { grid-template-columns:1fr; gap:28px; padding:45px var(--gutter) 55px; }
   .obhis-review .crest-story h2 { font-size:clamp(56px,12vw,84px); }
   .obhis-review .crest-copy > p:not(.section-kicker) { font-size:15px; }
   .obhis-review .uniform-print { width:62%; max-width:280px; justify-self:end; margin-right:3%; }
   .obhis-review .uniform-print figcaption { font-size:12px; }
-  .obhis-review .campus-section { padding:48px 6% 35px; scroll-margin-top:94px; }
+  .obhis-review .campus-section { padding:48px var(--gutter) 35px; scroll-margin-top:84px; }
   .obhis-review .campus-intro { max-width:480px; }
   .obhis-review .campus-intro > p:first-child { font-size:20px; margin-bottom:10px; }
   .obhis-review .content-note { font-size:11px; }
@@ -278,10 +277,10 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
   .obhis-review .admissions-section { grid-template-columns:1fr; gap:30px; padding-top:55px; padding-bottom:55px; }
   .obhis-review .admissions-copy > p:not(.section-kicker):not(.admissions-note) { font-size:15px; margin:20px 0; }
   .obhis-review .admissions-guides { padding:0; }
-  .obhis-review .admissions-guides details { scroll-margin-top:108px; }
+  .obhis-review .admissions-guides details { scroll-margin-top:84px; }
   .obhis-review .admissions-guides summary { min-height:70px; font-size:16px; }
   .obhis-review .guide-body { padding-right:5px; }
-  .obhis-review .school-footer { padding:40px 6% 24px; }
+  .obhis-review .school-footer { padding:40px var(--gutter) 24px; }
   .obhis-review .footer-top { flex-direction:column; gap:26px; }
   .obhis-review .footer-welcome { font-size:43px; margin-top:20px; }
   .obhis-review .footer-links { gap:0 35px; }

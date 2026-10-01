@@ -6,6 +6,19 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import type { PrivateReviewContext } from "../../core/private-review";
 import { mountInteractions } from "./interactions";
 
+const heroPhotos = [
+  { key: "classroom-moment", width: 1400, height: 935, alt: "Two pupils at a classroom desk in white and cyan tops with patterned uniform details." },
+  { key: "school-friends", width: 1600, height: 1069, alt: "Pupils in white shirts and patterned school ties, with one smiling towards the camera." },
+  { key: "classroom-table", width: 1600, height: 1069, alt: "Children seated around colourful classroom tables in their white shirts and patterned ties." },
+] as const;
+
+function HeroPhoto({ assets, className = "" }: { assets: PrivateReviewContext["assets"]; className?: string }) {
+  return <figure className={`photo-print ${className}`}>
+    <div className="hero-photo-stack">{heroPhotos.map((photo, index) => <img key={photo.key} draggable={false} data-hero-photo={index} hidden={index !== 0} src={assets[photo.key]} width={photo.width} height={photo.height} alt={photo.alt} />)}</div>
+    <figcaption><span>A glimpse of school life.</span><div className="hero-photo-controls" role="group" aria-label="Choose a school moment" hidden><button type="button" data-hero-photo-step="-1" aria-label="Previous school moment">←</button><span data-hero-photo-position aria-live="polite">1 / 3</span><button type="button" data-hero-photo-step="1" aria-label="Next school moment">→</button></div></figcaption>
+  </figure>;
+}
+
 export function Homepage({ context }: { context: PrivateReviewContext }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -16,36 +29,35 @@ export function Homepage({ context }: { context: PrivateReviewContext }) {
   return <div className="obhis-review" ref={root} style={style}>
 
   <a className="skip" href="#main">Skip to the school introduction</a>
-  <div className="review-notice"><strong>Private homepage review</strong><span>Imagined artwork. Draft copy and photo permissions pending.</span></div>
   <header className="site-header">
-    <a className="brand" href="#main" aria-label="Olive Blessed Crest Academy home"><img src={context.assets["school-logo"]} width="57" height="57" alt="School logo: Integrity and Service" /><div className="brand-name"><span>Olive Blessed Crest</span><span>Academy</span></div></a>
+    <a className="brand" href="#main" aria-label="Olive Blessed Crest Academy home"><img src={context.assets["school-logo"]} width="44" height="44" alt="School logo: Integrity and Service" /><div className="brand-name"><span>Olive Blessed Crest</span><span>Academy</span></div></a>
     <nav className="nav" aria-label="School navigation"><a className="school-link" href="#our-school">Our school</a><a href="#school-life">School life</a><a href="#campuses">Our campuses</a><a className="admissions" href="#admissions">Admissions <span className="arrow" aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main" tabIndex={-1}>
     <section className="hero-stage" id="hero-stage" data-scene="olive" aria-label="Olive and you">
-      <div className="scene-controls" role="group" aria-label="Choose a welcome" hidden>
-        <button type="button" data-scene-choice="olive" aria-pressed="true" aria-controls="hero-stage">Olive</button><span aria-hidden="true">→</span><button type="button" data-scene-choice="you" aria-pressed="false" aria-controls="hero-stage">You</button>
+      <div className="scene-controls" role="group" aria-label="Choose a welcome" tabIndex={0} hidden>
+        <span className="scene-hint">Drag or swipe to explore</span><span className="scene-position" data-scene-position>01 / 02</span>
+        <button type="button" data-scene-choice="olive" aria-label="Previous welcome, Olive" aria-controls="hero-stage" disabled>←</button><button type="button" data-scene-choice="you" aria-label="Next welcome, You" aria-controls="hero-stage">→</button>
       </div>
       <p className="sr-only" id="scene-status" role="status" aria-live="polite"></p>
       <div className="scene scene-olive" data-panel="olive">
         <div className="olive-top">
-          <div><p className="eyebrow">{context.displayName}</p><h1 aria-label="A place for all your colours."><span className="headline-line" aria-hidden="true">A place for</span><span className="headline-line" aria-hidden="true">all your <em>colours.</em></span></h1></div>
-          <div className="olive-intro"><p>Come with your questions.<br />Your ideas. Your bright little self.<br />Let&apos;s see what happens next.</p><div className="button-row"><a className="primary-link" href="#school-life">Get to know Olive <span className="arrow" aria-hidden="true">↗</span></a><a className="secondary-link" href="#campuses">Our campuses <span aria-hidden="true">→</span></a></div></div>
+          <p className="eyebrow">{context.displayName}</p><h1 aria-label="Welcome to Olive."><span className="headline-line" aria-hidden="true">Welcome</span><span className="headline-line" aria-hidden="true">to Olive.</span></h1>
+          <p className="hero-intro">A look inside our school.</p><a className="hero-link secondary-link" href="#school-life">Explore school life <span aria-hidden="true">↓</span></a>
         </div>
         <div className="olive-bottom">
-          <div className="olive-art"><img src={context.assets["hero-cutout"]} width="1448" height="781" fetchPriority="high" alt="Imagined layered paper letters spelling olive, patterned cotton and a fan of paper on a cyan surface." /></div>
-          <figure className="photo-print"><img src={context.assets["classroom-moment"]} width="1400" height="935" alt="Two pupils at a classroom desk in white and cyan tops with patterned uniform details." /><figcaption>A little glimpse of our world.</figcaption></figure>
+          <div className="olive-art"><img draggable={false} src={context.assets["hero-cutout"]} width="1448" height="781" fetchPriority="high" alt="Imagined layered paper letters spelling olive, patterned cotton and a fan of paper on a cyan surface." /></div>
+          <HeroPhoto assets={context.assets} />
         </div>
       </div>
       <div className="scene scene-you" data-panel="you" aria-hidden="true" hidden>
         <div className="you-copy">
           <p className="eyebrow"><span className="dot" aria-hidden="true"></span>Olive Blessed Crest Academy</p>
-          <h1 aria-label="Bring your whole bright self."><span className="headline-line" aria-hidden="true"><span className="line-text">Bring your</span></span><span className="headline-line" aria-hidden="true"><span className="line-text">whole <em>bright</em></span></span><span className="headline-line" aria-hidden="true"><span className="line-text">self.</span></span></h1>
-          <p className="intro">Big questions. Little discoveries.<br />A place to find your own colours.</p>
-          <div className="button-row"><a className="primary-link" href="#school-life">Meet Olive <span className="arrow" aria-hidden="true">↗</span></a><a className="secondary-link" href="#campuses">Find our campuses <span aria-hidden="true">→</span></a></div>
+          <h1 aria-label="A place for you."><span className="headline-line" aria-hidden="true"><span className="line-text">A place</span></span><span className="headline-line" aria-hidden="true"><span className="line-text">for <em>you.</em></span></span></h1>
+          <p className="hero-intro">Start with the people. Take a look around.</p><a className="hero-link secondary-link" href="#school-life">Explore school life <span aria-hidden="true">↓</span></a>
         </div>
-        <figure className="you-art"><img src={context.assets["you-hero"]} width="1402" height="700" alt="Imagined cyan, coral and gold layered paper letters spelling you, with patterned cotton behind and soft contact shadows." /><figcaption>A place for you.</figcaption></figure>
-        <figure className="photo-print you-photo"><img src={context.assets["classroom-moment"]} width="1400" height="935" alt="Two pupils at a classroom desk in white and cyan tops with patterned uniform details." /><figcaption>A little glimpse of our world.</figcaption></figure>
+        <figure className="you-art"><img draggable={false} src={context.assets["you-hero"]} width="1402" height="700" alt="Imagined cyan, coral and gold layered paper letters spelling you, with patterned cotton behind and soft contact shadows." /><figcaption>A place for you.</figcaption></figure>
+        <HeroPhoto assets={context.assets} className="you-photo" />
       </div>
     </section>
     <noscript><p className="no-script">The Olive introduction is shown. All school photographs and the links below work without animation.</p></noscript>
@@ -92,8 +104,8 @@ export function Homepage({ context }: { context: PrivateReviewContext }) {
   </main>
 
   <footer className="school-footer">
-    <div className="footer-top"><div><p className="section-kicker">Olive Blessed Crest Academy</p><p className="footer-welcome">A place for all<br />your colours.</p></div><div className="footer-links"><a href="#our-school">Our school</a><a href="#school-life">School life</a><a href="#campuses">Our campuses</a><a href="#admissions">Admissions</a><a href="https://www.facebook.com/profile.php?id=100010370084416" target="_blank" rel="noopener noreferrer">Facebook ↗</a><a href="#main">Back to the top ↑</a></div></div>
-    <div className="footer-bottom"><p>Private homepage review. School facts and photo publication permissions remain pending.</p><p>Integrity &amp; Service</p></div>
+    <div className="footer-top"><div><p className="section-kicker">Olive Blessed Crest Academy</p><p className="footer-welcome">Welcome<br />to Olive.</p></div><div className="footer-links"><a href="#our-school">Our school</a><a href="#school-life">School life</a><a href="#campuses">Our campuses</a><a href="#admissions">Admissions</a><a href="https://www.facebook.com/profile.php?id=100010370084416" target="_blank" rel="noopener noreferrer">Facebook ↗</a><a href="#main">Back to the top ↑</a></div></div>
+    <div className="footer-bottom"><p>Private homepage review. Imagined artwork. School facts and photo publication permissions remain pending.</p><p>Integrity &amp; Service</p></div>
   </footer>
 
   <dialog className="photo-viewer" id="photo-viewer" aria-labelledby="viewer-heading" aria-describedby="viewer-permission">

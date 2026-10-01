@@ -8,6 +8,14 @@ All 55 image entries from the local feature changes were omitted. There are no n
 
 The full image-bearing `feature/obhis-website` branch remains local. Do not push or merge that original history into the public repository while the photo permissions remain pending. Removing images in a later commit does not remove earlier image blobs from history.
 
+## Refined renderer snapshot
+
+The next source export copies the verified composition refinements from local checkpoint `09a8663`. It includes the slimmer header, full-width chapters, clearer welcome copy, arrow/counter navigation, mouse/touch gestures, manual hero photo selection and reduced-motion-safe scroll drift. All 19 headless checks passed in the full local worktree, plus a final seven-width responsive recheck, typecheck, focused lint and informational theme audits.
+
+`welcome-motion.ts` is a new renderer-local module. The private context and server gate have not changed. The current Olive headline uses ink on coral at 4.90:1, replacing the original 2.96:1 white/coral headline. This is a specific contrast correction, not full accessibility or publication approval.
+
+Nine additional private capture images are omitted from this update, for 64 omitted image entries across both exports. The text-only verification receipt lists capture names but contains no image bytes. Original approved prototypes remain unchanged. The public branch still has no private review ancestry.
+
 ## For the production-core agent
 
 Fetch `origin/feature/obhis-website-code` and inspect this branch read-only while implementing production infrastructure on your separate branch. Use paths relative to your checkout. The absolute Windows paths in the earlier task prompt refer to the original development computer.
