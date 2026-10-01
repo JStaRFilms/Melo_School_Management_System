@@ -35,6 +35,11 @@ for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
       expect(await inactive.evaluate(element => element instanceof HTMLElement && element.inert)).toBe(true);
       const active = page.locator(`[data-panel="${scene}"]`);
       expect(await active.locator("h1").evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(50);
+      expect(await page.locator('.hero-stage').evaluate(stage => {
+        const controls = stage.querySelector('.scene-controls')?.getBoundingClientRect();
+        const link = stage.querySelector('.hero-link')?.getBoundingClientRect();
+        return !!controls && !!link && (controls.left >= link.right || controls.top >= link.bottom);
+      })).toBe(true);
     }
     await expect(page.locator('.scene-olive [data-hero-photo="1"]')).toBeVisible();
     expect(await sectionPositions(page)).toEqual(positions);
@@ -48,6 +53,37 @@ for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
     expect(await page.locator(".obhis-review img").evaluateAll(images => images.every(image => image instanceof HTMLImageElement && !image.src.includes("/_next/image")))).toBe(true);
   });
 }
+
+test("supplied desktop composition overlaps the artwork and puts controls at the foot", async ({ page }) => {
+  await page.setViewportSize({ width:1047, height:749 });
+  await openReview(page);
+  await expect(page.locator('.scene-olive .eyebrow')).toHaveCount(0);
+  await expect(page.locator('.nav .school-link')).toBeVisible();
+  expect(await page.locator('.scene-olive h1').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(155);
+  expect(await page.locator('.olive-art img').evaluate(image => image instanceof HTMLImageElement && image.naturalWidth === 1448 && image.naturalHeight === 706)).toBe(true);
+  expect(await page.locator('.hero-stage').evaluate(stage => {
+    const art = stage.querySelector('.olive-art')?.getBoundingClientRect();
+    const photo = stage.querySelector('.photo-print')?.getBoundingClientRect();
+    const controls = stage.querySelector('.scene-controls')?.getBoundingClientRect();
+    const link = stage.querySelector('.hero-link')?.getBoundingClientRect();
+    const bottom = stage.getBoundingClientRect().bottom;
+    return !!art && !!photo && !!controls && !!link && photo.left < art.right - art.width * .1 && photo.top < art.top + art.height * .2 && controls.top > bottom - 100 && Math.abs((controls.top + controls.height / 2) - (link.top + link.height / 2)) < 10;
+  })).toBe(true);
+  await page.locator('[data-scene-choice="you"]').click();
+  await page.waitForTimeout(1250);
+  expect(await page.locator('.scene-you').evaluate(panel => {
+    const heading = panel.querySelector('h1')?.getBoundingClientRect();
+    const art = panel.querySelector('.you-art')?.getBoundingClientRect();
+    return !!heading && !!art && heading.top < art.top && heading.bottom > art.top && heading.left < art.left;
+  })).toBe(true);
+  expect(await page.locator('.scene-you .headline-line').first().evaluate(line => {
+    const text = line.querySelector('.line-text');
+    if (!text) throw new Error('Missing headline text');
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    return line.getBoundingClientRect().right - range.getBoundingClientRect().right >= Number.parseFloat(getComputedStyle(line).fontSize) * .1;
+  })).toBe(true);
+});
 
 test("keyboard, history, reload and rapid reversal preserve control focus", async ({ page }) => {
   await openReview(page);
@@ -107,19 +143,21 @@ test("full-width chapters, composed headings, cycling photographs and scroll lif
   await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'olive');
 });
 
-test("automatic welcomes run every three seconds without moving focus, history or announcements", async ({ page }) => {
+test("automatic welcomes wait six seconds without moving focus, history or announcements", async ({ page }) => {
+  await page.clock.install();
   await openReview(page, "", true);
   const stage = page.locator('.hero-stage');
   const positions = await sectionPositions(page);
   const before = await page.evaluate(() => ({ history: history.length, url: location.href }));
   await expect(stage).toHaveAttribute('data-playing', 'true');
-  await page.clock.install();
+  await page.clock.fastForward(3000);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
   await page.clock.fastForward(3001);
   await expect(stage).toHaveAttribute('data-scene', 'you');
-  await page.clock.fastForward(3001);
+  await page.clock.fastForward(6001);
   await expect(stage).toHaveAttribute('data-scene', 'olive');
   await expect(page.locator('[data-hero-photo="1"]')).toBeVisible();
-  await page.clock.fastForward(3001);
+  await page.clock.fastForward(6001);
   await expect(stage).toHaveAttribute('data-scene', 'you');
   expect(await sectionPositions(page)).toEqual(positions);
   expect(await page.evaluate(() => ({ history: history.length, url: location.href }))).toEqual(before);
@@ -131,7 +169,7 @@ test("automatic welcomes run every three seconds without moving focus, history o
   await expect(stage).toHaveAttribute('data-scene', 'you');
   await play.click();
   await expect(play).toBeFocused();
-  await page.clock.fastForward(3001);
+  await page.clock.fastForward(6001);
   await expect(stage).toHaveAttribute('data-scene', 'olive');
   await expect(page.locator('[data-hero-photo="2"]')).toBeVisible();
   await expect(play).toBeFocused();
@@ -167,7 +205,7 @@ test("offscreen and hidden documents suspend the automatic cycle", async ({ page
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await expect(stage).toHaveAttribute('data-playing', 'true');
-  await page.clock.fastForward(3001);
+  await page.clock.fastForward(6001);
   await expect(stage).toHaveAttribute('data-scene', scene === 'olive' ? 'you' : 'olive');
 });
 

@@ -1,4 +1,4 @@
-/** One three-second scene timer. Automatic changes never steal focus or history. */
+/** One six-second scene timer. Automatic changes never steal focus or history. */
 export function mountWelcomeCycle(stage: HTMLElement, button: HTMLButtonElement, advance: () => void, signal: AbortSignal) {
   const options = { signal };
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -24,7 +24,7 @@ export function mountWelcomeCycle(stage: HTMLElement, button: HTMLButtonElement,
       timer = 0;
       advance();
       update();
-    }, 3000);
+    }, 6000);
   }
 
   function pause() {

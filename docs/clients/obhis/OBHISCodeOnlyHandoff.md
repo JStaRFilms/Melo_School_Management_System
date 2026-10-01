@@ -16,13 +16,21 @@ The next source export copies the verified composition refinements from local ch
 
 Nine additional private capture images are omitted from this update, for 64 omitted image entries across both exports. The text-only verification receipt lists capture names but contains no image bytes. Original approved prototypes remain unchanged. The public branch still has no private review ancestry.
 
-## Automatic welcome snapshot
+## First automatic welcome snapshot
 
-The latest source export copies local checkpoint `e72b2f4`. It replaces the earlier manual-only hero with the user-requested three-second Olive/You cycle. "Meet" and "A place for" now pair with the material lettering rather than repeating it. Captions and the duplicate white-scene photo are removed. Each return to Olive advances one of five existing curated photographs. Body-section work remains paused.
+The preceding source export copies local checkpoint `e72b2f4`. It replaces the earlier manual-only hero with the user-requested three-second Olive/You cycle. "Meet" and "A place for" now pair with the material lettering rather than repeating it. Captions and the duplicate white-scene photo are removed. Each return to Olive advances one of five existing curated photographs. Body-section work remains paused.
 
 The new `welcome-cycle.ts` owns the timer, pause/resume, offscreen/visibility suspension and reduced-motion opt-out. Automatic changes leave focus, history and live announcements alone. All 21 headless checks passed in the full local worktree, plus typecheck, focused zero-warning lint, theme audit, whitespace and the existing production-artifact/source-preservation scan. No fresh production build or real-device audit accompanies this UI update.
 
 All eight new private capture images are omitted. The three exports omit 72 image entries in total. The text-only receipt contains measurements and capture filenames, not image bytes. Private gates, source media and original prototypes remain unchanged. The full local image-bearing branch must still never be pushed to this public repository.
+
+## Supplied composition and six-second cycle
+
+The current source snapshot is local checkpoint `e3bb001`. It matches the user's edited composition, with larger headings, the overlapping Olive print, the You prefix above the lettering, and controls at the bottom-right. The final "e" has extra glyph clearance. The visitor now gets six seconds before each automatic transition. Body sections and the private gate remain unchanged.
+
+The stable `hero-cutout` asset key now reads the separate `hero-composed.webp` derivative. The private preparation recipe and provenance explain removal of the paper fan and shortening of the plain foreground. The original artwork and all school photographs remain intact. The derivative itself is absent from this public branch; include it only in a separately authorized local asset package. OpenCV, NumPy and Pillow are preparation tools, not new product dependencies.
+
+All 22 headless checks, typecheck, focused zero-warning lint, theme audit, whitespace and the existing production/source-preservation scan passed in the full local worktree. No fresh production build or real-device audit was run. The derivative and ten new screenshots are omitted, bringing the total to 83 omitted image entries. Only source, provenance and text measurements are shared here.
 
 ## For the production-core agent
 

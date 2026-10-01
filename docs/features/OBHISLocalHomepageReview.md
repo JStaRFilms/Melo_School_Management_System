@@ -113,7 +113,7 @@ The first refinement run passed 17 tests and exposed two failures. Touch's impli
 
 Sites typecheck and focused lint passed. The first directory-wide lint invocation timed out; the explicit changed-file invocation passed with zero warnings. Desktop welcome and mobile captures are in `deliverables/obhis-composition-refinement/`. They are private local evidence, not public export assets.
 
-## Automatic welcome cycle
+## First automatic welcome cycle
 
 The user then requested automatic three-second scene changes and rejected the repeated headline words, photo caption and typography. The hero now pairs "Meet" with the existing Olive lettering and "A place for" with the You lettering. Complete accessible headings remain. Both scenes use the same rounded system-font stack, one shared school-life link and a fixed stage height. The white scene has no duplicate photograph or caption. Each return to Olive advances one of five existing curated photographs. No source media or body sections changed.
 
@@ -124,6 +124,18 @@ A wide capture exposed horizontal scrolling inside the clipped stage after early
 All 21 headless checks passed, including seven responsive widths, the automatic sequence, photograph rotation, pause/resume, focus/history/announcement stability, offscreen suspension, a simulated document-visibility event, reduced motion, native mouse/touch, viewer behaviour, no-JavaScript content and private gate contracts. Sites typecheck, focused zero-warning lint, whitespace and the informational theme audit passed. Ink and white are product neutrals; fixed illustration/paper-shadow colours remain code-owned. Tenant branding still uses the shared two-input tokens.
 
 The existing production-artifact/source-preservation scan passed. A fresh production build was not rerun for this renderer-only change. The document-visibility event was simulated in an isolated headless page, not tested by controlling a personal browser. Real-device and other-engine checks remain pending.
+
+## Supplied composition and six-second correction
+
+The user supplied an edited two-scene composition and approved the resulting local layout. The renderer now has a larger "Meet" without the repeated school-name eyebrow, a photograph overlapping the Olive artwork, the "A place for" prefix above the You lettering, and scene controls at the bottom-right. A bounded renderer-local artboard keeps these relationships on wide screens while the background bands remain full width. Phones use a separate vertical arrangement, with the link and controls on separate rows. The desktop school-navigation link remains visible at the reference width.
+
+The reference also removes the paper fan. `prepare_composed.py` makes a separate `hero-composed.webp` from the original imagined artwork, cloning existing cyan-surface texture over the fan and shortening only the plain foreground below row 480. The lettering and fabric are not resized. The original `hero-cutout.webp` and all school photographs remain unchanged. `composed-provenance.json` records hashes and the operation. Pillow, NumPy and OpenCV are local preparation tools, not product dependencies. The existing exact `hero-cutout` review key now reads this derivative from the same private directory. No gate, schema or asset-key contract changed.
+
+The user then pointed out clipping on the final "e" in "A place" and requested six seconds before each transition. The clipped headline lines now reserve right-side glyph space without moving the text. The single timer waits 6,000 milliseconds; each return to Olive still changes the photograph. Automatic history, focus, announcement, pause and reduced-motion behaviour is unchanged.
+
+Verification passed 22 headless checks, including composition geometry, overlapping art/photo, footer controls, unobstructed link/control targets, glyph clearance, the six-second delay and the existing responsive/interaction/private contracts. The first six-second test run passed 21 checks and exposed a test-clock setup error. Installing the clock before navigation now captures the first timer rather than relying on an already-running native timer. Sites typecheck, focused zero-warning lint, whitespace and informational theme audit passed. A parallel lint run timed out; the standalone focused rerun passed, with no remaining owned lint process. The existing production scan excludes all ten private image files, including both artwork versions, and preserves the original protected sources. No fresh production build was run while the user's development preview remained active.
+
+Ten private review captures and a text receipt are in `deliverables/obhis-reference-composition/`. They show no overflow, internal horizontal scroll, page errors or running animation while paused. Body-section changes remain paused. Images, publication approval and production infrastructure are still outside the public source export.
 
 ## Public code-only sharing
 

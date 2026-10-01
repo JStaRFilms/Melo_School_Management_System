@@ -4,7 +4,7 @@ import { privateReviewEnabled, type ReviewAssetKey } from "./private-review";
 
 const files: Readonly<Record<ReviewAssetKey, readonly [string, string, string]>> = {
   "school-logo": ["obhis-homepage-prototype-assets", "school-logo.png", "image/png"],
-  "hero-cutout": ["obhis-generated-study", "hero-cutout.webp", "image/webp"],
+  "hero-cutout": ["obhis-generated-study", "hero-composed.webp", "image/webp"],
   "you-hero": ["obhis-generated-study", "you-hero.webp", "image/webp"],
   "classroom-moment": ["obhis-homepage-prototype-assets", "classroom-moment.webp", "image/webp"],
   "school-friends": ["obhis-homepage-review-assets", "school-friends.webp", "image/webp"],
