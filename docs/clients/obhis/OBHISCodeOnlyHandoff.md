@@ -16,6 +16,14 @@ The next source export copies the verified composition refinements from local ch
 
 Nine additional private capture images are omitted from this update, for 64 omitted image entries across both exports. The text-only verification receipt lists capture names but contains no image bytes. Original approved prototypes remain unchanged. The public branch still has no private review ancestry.
 
+## Automatic welcome snapshot
+
+The latest source export copies local checkpoint `e72b2f4`. It replaces the earlier manual-only hero with the user-requested three-second Olive/You cycle. "Meet" and "A place for" now pair with the material lettering rather than repeating it. Captions and the duplicate white-scene photo are removed. Each return to Olive advances one of five existing curated photographs. Body-section work remains paused.
+
+The new `welcome-cycle.ts` owns the timer, pause/resume, offscreen/visibility suspension and reduced-motion opt-out. Automatic changes leave focus, history and live announcements alone. All 21 headless checks passed in the full local worktree, plus typecheck, focused zero-warning lint, theme audit, whitespace and the existing production-artifact/source-preservation scan. No fresh production build or real-device audit accompanies this UI update.
+
+All eight new private capture images are omitted. The three exports omit 72 image entries in total. The text-only receipt contains measurements and capture filenames, not image bytes. Private gates, source media and original prototypes remain unchanged. The full local image-bearing branch must still never be pushed to this public repository.
+
 ## For the production-core agent
 
 Fetch `origin/feature/obhis-website-code` and inspect this branch read-only while implementing production infrastructure on your separate branch. Use paths relative to your checkout. The absolute Windows paths in the earlier task prompt refer to the original development computer.

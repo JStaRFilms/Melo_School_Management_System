@@ -1,11 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 
-async function openReview(page: Page, query = "") {
+async function openReview(page: Page, query = "", autoplay = false) {
   // The untouched legacy layout imports Google fonts. The review uses system
   // fonts, so keep this headless run offline without changing that layout.
   await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ contentType: "text/css", body: "" }));
   await page.goto(`/review/obhis${query}`);
   await expect(page.locator(".scene-controls")).toBeVisible();
+  await expect(page.locator('.hero-stage')).toHaveCSS('overflow-x', 'clip');
+  const play = page.locator('[data-welcome-play]');
+  if (!autoplay && !(await play.isDisabled())) await play.click();
   await page.locator(".hero-stage img").evaluateAll(images => Promise.all(images.map(image => image instanceof HTMLImageElement ? image.decode() : Promise.resolve())));
 }
 
@@ -25,6 +28,7 @@ for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
       await expect(page.locator(".hero-stage")).toHaveAttribute("data-scene", scene);
       await page.waitForTimeout(1250);
       expect(await sectionPositions(page)).toEqual(positions);
+      expect(await page.locator('.hero-stage').evaluate(element => element.scrollLeft)).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       const inactive = page.locator(`[data-panel="${scene === "you" ? "olive" : "you"}"]`);
       await expect(inactive).toHaveAttribute("aria-hidden", "true");
@@ -32,8 +36,7 @@ for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
       const active = page.locator(`[data-panel="${scene}"]`);
       expect(await active.locator("h1").evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(50);
     }
-    await page.locator('.scene-olive [data-hero-photo-step="1"]').click();
-    await expect(page.locator('.scene-olive [data-hero-photo-position]')).toHaveText("2 / 3");
+    await expect(page.locator('.scene-olive [data-hero-photo="1"]')).toBeVisible();
     expect(await sectionPositions(page)).toEqual(positions);
     await page.locator('[data-collection-choice="culture"]').click();
     await expect(page.locator('.album-sheet:not([hidden])')).toHaveCount(2);
@@ -46,7 +49,7 @@ for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
   });
 }
 
-test("keyboard, history, reload and rapid reversal settle focus", async ({ page }) => {
+test("keyboard, history, reload and rapid reversal preserve control focus", async ({ page }) => {
   await openReview(page);
   const olive = page.locator('[data-scene-choice="olive"]');
   const you = page.locator('[data-scene-choice="you"]');
@@ -55,11 +58,8 @@ test("keyboard, history, reload and rapid reversal settle focus", async ({ page 
   await page.keyboard.press("ArrowRight");
   await expect(controls).toBeFocused();
   await expect(page).toHaveURL(/scene=you/);
-  await page.locator('.scene-you .hero-link').focus();
-  expect(await page.locator(".scene-you").evaluate(element => {
-    const parent = element.parentElement;
-    return parent !== null && Math.abs(element.getBoundingClientRect().left - parent.getBoundingClientRect().left) < 1;
-  })).toBe(true);
+  await page.locator('.hero-link').focus();
+  await expect(page.locator('.hero-link')).toBeFocused();
   await olive.click();
   await you.click();
   await olive.click();
@@ -67,7 +67,7 @@ test("keyboard, history, reload and rapid reversal settle focus", async ({ page 
   await expect(you).toBeDisabled();
   await page.reload();
   await expect(you).toBeDisabled();
-  await page.locator('.scene-you .hero-link').focus();
+  await controls.focus();
   await page.evaluate(() => history.back());
   await expect(controls).toBeFocused();
   await expect(olive).toBeDisabled();
@@ -79,7 +79,7 @@ test("keyboard, history, reload and rapid reversal settle focus", async ({ page 
   await expect(day).toBeFocused();
 });
 
-test("full-width chapters, slim header, manual moments and scroll lift", async ({ page }) => {
+test("full-width chapters, composed headings, cycling photographs and scroll lift", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await openReview(page);
   await expect(page.locator('.review-notice')).toHaveCount(0);
@@ -88,21 +88,87 @@ test("full-width chapters, slim header, manual moments and scroll lift", async (
     const rect = element.getBoundingClientRect();
     return Math.abs(rect.left) < 1 && Math.abs(rect.right - document.body.clientWidth) < 1;
   }))).toBe(true);
-  await expect(page.locator('.scene-olive h1')).toHaveAccessibleName('Welcome to Olive.');
+  await expect(page.locator('.scene-olive h1')).toHaveAccessibleName('Meet Olive.');
+  await expect(page.locator('.scene-olive h1')).toHaveText('Meet');
+  await expect(page.locator('.photo-print figcaption,.you-art figcaption,.you-photo')).toHaveCount(0);
+  await expect(page.locator('.hero-stage .hero-link')).toHaveCount(1);
   const positions = await sectionPositions(page);
-  const image = page.locator('.scene-olive [data-hero-photo="0"]');
-  const source = await image.getAttribute('src');
-  for (const count of ['2 / 3', '3 / 3', '1 / 3']) {
-    await page.locator('.scene-olive [data-hero-photo-step="1"]').click();
-    await expect(page.locator('.scene-olive [data-hero-photo-position]')).toHaveText(count);
+  for (const index of [1, 2, 3, 4, 0]) {
+    await page.locator('[data-scene-choice="you"]').click();
+    await expect(page.locator('.scene-you h1')).toHaveAccessibleName('A place for you.');
+    await expect(page.locator('.scene-you h1 .headline-line')).toHaveText(['A place', 'for']);
+    await page.locator('[data-scene-choice="olive"]').click();
+    await expect(page.locator(`.scene-olive [data-hero-photo="${index}"]`)).toBeVisible();
     expect(await sectionPositions(page)).toEqual(positions);
   }
-  await expect(image).toBeVisible();
-  expect(await image.getAttribute('src')).toBe(source);
   await page.mouse.wheel(0, 400);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
   await expect.poll(() => page.locator('.hero-stage').evaluate(element => Number.parseFloat(element.style.getPropertyValue('--hero-drift')))).toBeGreaterThan(0);
   await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'olive');
+});
+
+test("automatic welcomes run every three seconds without moving focus, history or announcements", async ({ page }) => {
+  await openReview(page, "", true);
+  const stage = page.locator('.hero-stage');
+  const positions = await sectionPositions(page);
+  const before = await page.evaluate(() => ({ history: history.length, url: location.href }));
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  await page.clock.install();
+  await page.clock.fastForward(3001);
+  await expect(stage).toHaveAttribute('data-scene', 'you');
+  await page.clock.fastForward(3001);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
+  await expect(page.locator('[data-hero-photo="1"]')).toBeVisible();
+  await page.clock.fastForward(3001);
+  await expect(stage).toHaveAttribute('data-scene', 'you');
+  expect(await sectionPositions(page)).toEqual(positions);
+  expect(await page.evaluate(() => ({ history: history.length, url: location.href }))).toEqual(before);
+  await expect(page.locator('#scene-status')).toBeEmpty();
+  const play = page.locator('[data-welcome-play]');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-pressed', 'true');
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', 'you');
+  await play.click();
+  await expect(play).toBeFocused();
+  await page.clock.fastForward(3001);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
+  await expect(page.locator('[data-hero-photo="2"]')).toBeVisible();
+  await expect(play).toBeFocused();
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  await page.locator('.scene-controls').focus();
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
+  await expect(stage).toHaveAttribute('data-playing', 'false');
+});
+
+test("offscreen and hidden documents suspend the automatic cycle", async ({ page }) => {
+  await openReview(page, "", true);
+  const stage = page.locator('.hero-stage');
+  await page.locator('#school-life').scrollIntoViewIfNeeded();
+  await expect(stage).toHaveAttribute('data-playing', 'false');
+  const scene = await stage.getAttribute('data-scene');
+  if (scene !== 'olive' && scene !== 'you') throw new Error('Expected an initialized welcome');
+  await page.clock.install();
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', scene);
+  await stage.scrollIntoViewIfNeeded();
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  // Simulate the visibility event in this isolated page; no personal tab control.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(stage).toHaveAttribute('data-playing', 'false');
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', scene);
+  await page.evaluate(() => {
+    Reflect.deleteProperty(document, 'hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  await page.clock.fastForward(3001);
+  await expect(stage).toHaveAttribute('data-scene', scene === 'olive' ? 'you' : 'olive');
 });
 
 test("mouse drag changes the welcome without capturing vertical wheel", async ({ page }) => {
@@ -191,6 +257,10 @@ test("native viewer, manual controls, modified clicks and visit reopening", asyn
 test("reduced motion retains choices without travel or album animation", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openReview(page, "?scene=you");
+  await expect(page.locator('[data-welcome-play]')).toBeDisabled();
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-playing', 'false');
+  await page.waitForTimeout(3300);
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
   await page.locator('[data-scene-choice="olive"]').click();
   await page.locator('[data-collection-choice="culture"]').click();
   expect(await page.locator('.scene').evaluateAll(elements => elements.every(element => getComputedStyle(element).transitionDuration === "0s"))).toBe(true);
@@ -209,7 +279,7 @@ test("no JavaScript exposes all photographs and native guidance", async ({ brows
   await expect(page.locator(".scene-you")).not.toBeVisible();
   await expect(page.locator(".scene-controls")).not.toBeVisible();
   await expect(page.locator(".album-sheet:not([hidden])")).toHaveCount(4);
-  for (const controls of await page.locator('.hero-photo-controls').all()) await expect(controls).not.toBeVisible();
+  await expect(page.locator('.scene-olive [data-hero-photo="0"]')).toBeVisible();
   for (const photo of await page.locator(".album-photo").all()) await expect(photo).toBeVisible();
   await page.locator("#application-guide summary").click();
   await expect(page.locator("#application-guide")).toHaveAttribute("open", "");

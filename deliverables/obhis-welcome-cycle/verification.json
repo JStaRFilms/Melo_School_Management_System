@@ -1,0 +1,102 @@
+{
+  "captures": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "scene": "olive",
+      "filename": "olive-1920.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 996,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "scene": "you",
+      "filename": "you-1920.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 996,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scene": "olive",
+      "filename": "olive-1440.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 882.390625,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "scene": "you",
+      "filename": "you-1440.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 882.390625,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scene": "olive",
+      "filename": "olive-390.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 844,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scene": "you",
+      "filename": "you-390.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 844,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "scene": "olive",
+      "filename": "olive-320.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 768,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "scene": "you",
+      "filename": "you-320.png",
+      "playing": "false",
+      "internalScroll": 0,
+      "bottom": 768,
+      "overflow": false,
+      "heading": "\"Arial Rounded MT Bold\", \"Trebuchet MS\", Arial, sans-serif",
+      "animations": 0
+    }
+  ],
+  "errors": [],
+  "note": "Paused review captures from owned loopback preview. Automatic timing, focus, history, offscreen/visibility suspension and reduced motion checked separately in 21 passing headless tests. No fresh production build or real-device certification."
+}

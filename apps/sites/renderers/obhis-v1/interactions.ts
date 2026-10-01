@@ -1,4 +1,5 @@
 import { mountWelcomeMotion } from "./welcome-motion";
+import { mountWelcomeCycle } from "./welcome-cycle";
 
 function required<T extends Element>(root: HTMLElement, selector: string): T {
   const element = root.querySelector<T>(selector);
@@ -15,8 +16,7 @@ export function mountInteractions(root: HTMLElement) {
   const sceneButtons = [...sceneControls.querySelectorAll<HTMLButtonElement>("[data-scene-choice]")];
   const scenePosition = required<HTMLElement>(stage, "[data-scene-position]");
   const heroImages = [...stage.querySelectorAll<HTMLImageElement>("[data-hero-photo]")];
-  const heroPhotoControls = [...stage.querySelectorAll<HTMLElement>(".hero-photo-controls")];
-  const heroPositions = [...stage.querySelectorAll<HTMLElement>("[data-hero-photo-position]")];
+  const playButton = required<HTMLButtonElement>(stage, "[data-welcome-play]");
   const momentCount = required<HTMLElement>(stage, ".hero-photo-stack").children.length;
   const panels = [...stage.querySelectorAll<HTMLElement>("[data-panel]")];
   const sceneStatus = required<HTMLElement>(root, "#scene-status");
@@ -50,7 +50,7 @@ export function mountInteractions(root: HTMLElement) {
     return new URLSearchParams(window.location.search).get("scene") === "you" ? "you" : "olive";
   }
 
-  function setScene(scene: "olive" | "you", updateUrl = true) {
+  function setScene(scene: "olive" | "you", updateUrl = true, announce = true) {
     if (scene === currentScene) return;
     const previous = currentScene;
     const controlsHadFocus = sceneControls.contains(document.activeElement);
@@ -58,6 +58,7 @@ export function mountInteractions(root: HTMLElement) {
     const leavingPanel = focusedPanel && focusedPanel.dataset.panel !== scene;
     if (leavingPanel) sceneControls.focus({ preventScroll: true });
     currentScene = scene;
+    if (scene === "olive" && previous !== null) chooseMoment(currentMoment + 1);
     stage.dataset.scene = scene;
     for (const panel of panels) {
       const active = panel.dataset.panel === scene;
@@ -67,8 +68,8 @@ export function mountInteractions(root: HTMLElement) {
     }
     for (const button of sceneButtons) button.disabled = button.dataset.sceneChoice === scene;
     scenePosition.textContent = scene === "you" ? "02 / 02" : "01 / 02";
-    if (controlsHadFocus) sceneControls.focus({ preventScroll: true });
-    if (previous !== null) sceneStatus.textContent = scene === "you" ? "You. A place for you." : "Olive. Welcome to Olive.";
+    if (controlsHadFocus && announce) sceneControls.focus({ preventScroll: true });
+    if (previous !== null && announce) sceneStatus.textContent = scene === "you" ? "A place for you." : "Meet Olive.";
     if (updateUrl) {
       const url = new URL(window.location.href);
       url.searchParams.set("scene", scene);
@@ -112,15 +113,15 @@ export function mountInteractions(root: HTMLElement) {
   function chooseMoment(index: number) {
     currentMoment = (index + momentCount) % momentCount;
     for (const image of heroImages) image.hidden = Number(image.dataset.heroPhoto) !== currentMoment;
-    for (const position of heroPositions) position.textContent = `${currentMoment + 1} / ${momentCount}`;
   }
 
   root.addEventListener("click", event => {
     if (!(event.target instanceof Element)) return;
     const scene = event.target.closest<HTMLButtonElement>("[data-scene-choice]")?.dataset.sceneChoice;
-    if (scene === "olive" || scene === "you") setScene(scene);
-    const momentStep = event.target.closest<HTMLButtonElement>("[data-hero-photo-step]")?.dataset.heroPhotoStep;
-    if (momentStep === "1" || momentStep === "-1") chooseMoment(currentMoment + Number(momentStep));
+    if (scene === "olive" || scene === "you") {
+      cycle.pause();
+      setScene(scene);
+    }
     const collection = event.target.closest<HTMLButtonElement>("[data-collection-choice]")?.dataset.collectionChoice;
     if (collection === "day" || collection === "culture") chooseCollection(collection);
     const link = event.target.closest<HTMLAnchorElement>("a");
@@ -129,6 +130,7 @@ export function mountInteractions(root: HTMLElement) {
     const photo = link.dataset.photo;
     if (photo !== undefined && typeof viewer.showModal === "function") {
       event.preventDefault();
+      cycle.pause();
       opener = link;
       showPhoto(Number(photo));
       viewer.showModal();
@@ -140,6 +142,7 @@ export function mountInteractions(root: HTMLElement) {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
     event.preventDefault();
     const scene = event.key === "ArrowRight" ? "you" : "olive";
+    cycle.pause();
     setScene(scene);
     sceneControls.focus({ preventScroll: true });
   }, options);
@@ -153,7 +156,10 @@ export function mountInteractions(root: HTMLElement) {
   stage.addEventListener("focusin", event => {
     if (event.target instanceof Element && event.target.closest(".scene")) settleMotion();
   }, options);
-  window.addEventListener("popstate", () => setScene(sceneFromUrl(), false), options);
+  window.addEventListener("popstate", () => {
+    cycle.pause();
+    setScene(sceneFromUrl(), false);
+  }, options);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) settleMotion();
   }, options);
@@ -192,22 +198,27 @@ export function mountInteractions(root: HTMLElement) {
   chooseCollection("day");
   sceneControls.hidden = false;
   collectionControls.hidden = false;
-  for (const controls of heroPhotoControls) controls.hidden = false;
   chooseMoment(0);
   albumGrid.dataset.enhanced = "true";
   settleMotion();
-  const stopWelcomeMotion = mountWelcomeMotion(stage, setScene, controller.signal);
+  const cycle = mountWelcomeCycle(stage, playButton, () => {
+    setScene(currentScene === "olive" ? "you" : "olive", false, false);
+  }, controller.signal);
+  const stopWelcomeMotion = mountWelcomeMotion(stage, scene => {
+    cycle.pause();
+    setScene(scene);
+  }, controller.signal);
 
   return () => {
     controller.abort();
     stopWelcomeMotion();
+    cycle.stop();
     cancelAnimationFrame(readinessFrame);
     stage.classList.remove("motion-ready");
     if (viewer.open) viewer.close();
     opener = null;
     sceneControls.hidden = true;
     collectionControls.hidden = true;
-    for (const controls of heroPhotoControls) controls.hidden = true;
     chooseMoment(0);
     scenePosition.textContent = "01 / 02";
     for (const button of sceneButtons) button.disabled = button.dataset.sceneChoice === "olive";
