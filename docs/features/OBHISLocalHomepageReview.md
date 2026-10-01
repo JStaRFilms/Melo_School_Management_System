@@ -137,6 +137,14 @@ Verification passed 22 headless checks, including composition geometry, overlapp
 
 Ten private review captures and a text receipt are in `deliverables/obhis-reference-composition/`. They show no overflow, internal horizontal scroll, page errors or running animation while paused. Body-section changes remain paused. Images, publication approval and production infrastructure are still outside the public source export.
 
+## Larger photo and source-edge check
+
+The user requested a larger framed photograph and asked whether the two circled cyan-surface cuts were introduced here. Both already meet the supplied image's frame boundary. In the original cutout, column zero is opaque at rows 641 through 796, and the final row is opaque at columns 1098 through 1334. The prepared artwork retains the same bottom span with the existing one-pixel mask inset. The original RGB image also visibly ends there. No artwork, alpha mask or preparation recipe changed in this update.
+
+The print now uses 37 percent of the desktop artboard instead of 31 percent, and 74 percent on phones instead of 68 percent. Its photograph sequence, crop ratio, six-second timer and the rest of the homepage are unchanged. Four private paused captures and the edge finding are in `deliverables/obhis-photo-size/`.
+
+The full browser run timed out after 15 successful checks during native-touch verification. The seven remaining checks passed in a standalone run, covering touch, viewer, reduced motion, no JavaScript, private routing and legacy separation. The owned worker had exited; no pre-existing process was stopped. Together all 22 checks passed. Typecheck, focused zero-warning lint, informational theme audit, whitespace and the existing production/source-preservation scan also passed. All ten private images and 43 protected files remain unchanged. Captures show no errors, overflow, internal horizontal scroll or paused animation. No new production build or real-device audit was run.
+
 ## Public code-only sharing
 
 The repository is public. After being told that the full local history contains pending-permission school photos, the user authorized a code-only public branch. `feature/obhis-website-code` starts from existing public master, excluding the private feature ancestry and all 55 image entries. Its initial verified source snapshot is `9484213`. The image-bearing `feature/obhis-website` branch stays local and must not be pushed to the public remote.

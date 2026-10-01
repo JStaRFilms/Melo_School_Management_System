@@ -26,11 +26,17 @@ All eight new private capture images are omitted. The three exports omit 72 imag
 
 ## Supplied composition and six-second cycle
 
-The current source snapshot is local checkpoint `e3bb001`. It matches the user's edited composition, with larger headings, the overlapping Olive print, the You prefix above the lettering, and controls at the bottom-right. The final "e" has extra glyph clearance. The visitor now gets six seconds before each automatic transition. Body sections and the private gate remain unchanged.
+This composition snapshot is local checkpoint `e3bb001`. It matches the user's edited composition, with larger headings, the overlapping Olive print, the You prefix above the lettering, and controls at the bottom-right. The final "e" has extra glyph clearance. The visitor now gets six seconds before each automatic transition. Body sections and the private gate remain unchanged.
 
 The stable `hero-cutout` asset key now reads the separate `hero-composed.webp` derivative. The private preparation recipe and provenance explain removal of the paper fan and shortening of the plain foreground. The original artwork and all school photographs remain intact. The derivative itself is absent from this public branch; include it only in a separately authorized local asset package. OpenCV, NumPy and Pillow are preparation tools, not new product dependencies.
 
 All 22 headless checks, typecheck, focused zero-warning lint, theme audit, whitespace and the existing production/source-preservation scan passed in the full local worktree. No fresh production build or real-device audit was run. The derivative and ten new screenshots are omitted, bringing the total to 83 omitted image entries. Only source, provenance and text measurements are shared here.
+
+## Larger photograph and source edges
+
+The latest source snapshot is local checkpoint `35d7233`. The hero print is larger, using 37 percent of the desktop artboard and 74 percent on phones. Both cyan-surface boundaries circled by the user already reach the supplied source image's frame, so artwork and its preparation recipe were left unchanged. Six-second playback and the rest of the homepage are unchanged.
+
+All 22 browser checks passed across the initial 15 successful checks and a focused seven-check run after a runner timeout. Typecheck, focused lint, theme audit, whitespace and the existing production/source-preservation scan passed. Four new private captures are omitted, bringing the total to 87 omitted image entries. The receipt includes source-edge measurements but no image bytes. No production build, release or photo approval accompanies this update.
 
 ## For the production-core agent
 
