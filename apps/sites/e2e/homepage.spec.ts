@@ -67,7 +67,8 @@ test("supplied desktop composition overlaps the artwork and puts controls at the
     const controls = stage.querySelector('.scene-controls')?.getBoundingClientRect();
     const link = stage.querySelector('.hero-link')?.getBoundingClientRect();
     const bottom = stage.getBoundingClientRect().bottom;
-    return !!art && !!photo && !!controls && !!link && photo.left < art.right - art.width * .1 && photo.top < art.top + art.height * .2 && controls.top > bottom - 100 && Math.abs((controls.top + controls.height / 2) - (link.top + link.height / 2)) < 10;
+    const canvas = stage.querySelector('.welcome-canvas')?.getBoundingClientRect();
+    return !!art && !!photo && !!controls && !!link && !!canvas && photo.width >= canvas.width * .36 && photo.left < art.right - art.width * .1 && photo.top < art.top + art.height * .2 && controls.top > bottom - 100 && Math.abs((controls.top + controls.height / 2) - (link.top + link.height / 2)) < 10;
   })).toBe(true);
   await page.locator('[data-scene-choice="you"]').click();
   await page.waitForTimeout(1250);

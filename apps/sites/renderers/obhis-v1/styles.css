@@ -53,7 +53,7 @@ html:has(.obhis-review) { scroll-behavior:auto; }
 .obhis-review .hero-link { position:absolute; left:var(--canvas-gutter); bottom:26px; z-index:4; text-decoration:underline; text-underline-offset:6px; }
 .obhis-review .olive-art { position:absolute; left:-3%; bottom:5.4cqw; width:84%; transform:translateY(calc(-1 * var(--hero-drift))); }
 .obhis-review .olive-art img { width:100%; }
-.obhis-review .photo-print { position:absolute; right:2%; top:23%; z-index:2; width:31%; margin:0; padding:10px 10px 16px; background:#fffdf8; transform:translateY(calc(-1.3 * var(--hero-drift))) rotate(4deg); box-shadow:3px 8px 0 #bc5138; }
+.obhis-review .photo-print { position:absolute; right:2%; top:23%; z-index:2; width:37%; margin:0; padding:10px 10px 16px; background:#fffdf8; transform:translateY(calc(-1.3 * var(--hero-drift))) rotate(4deg); box-shadow:3px 8px 0 #bc5138; }
 .obhis-review .hero-photo-stack { overflow:hidden; }
 .obhis-review .hero-photo-stack img { width:100%; aspect-ratio:1.34; object-fit:cover; animation:obhis-photo-arrive 240ms var(--settle-ease); }
 .obhis-review .scene-you { z-index:2; display:grid; place-items:center; background:var(--white); transform:translateX(calc(100% + var(--welcome-drag))); }
@@ -99,7 +99,7 @@ html:has(.obhis-review) { scroll-behavior:auto; }
   .obhis-review .olive-top { top:28px; left:6%; }
   .obhis-review .scene-olive h1 { font-size:clamp(80px,22cqw,116px); }
   .obhis-review .olive-art { left:-7%; top:150px; bottom:auto; width:114%; }
-  .obhis-review .photo-print { top:47%; right:6%; width:68%; padding:9px 9px 16px; transform:translateY(calc(-1.3 * var(--hero-drift))) rotate(3deg); }
+  .obhis-review .photo-print { top:47%; right:6%; width:74%; padding:9px 9px 16px; transform:translateY(calc(-1.3 * var(--hero-drift))) rotate(3deg); }
   .obhis-review .scene-you .welcome-canvas { display:flex; flex-direction:column; justify-content:center; gap:0; padding:40px 6% 130px; }
   .obhis-review .you-copy { position:relative; left:auto; bottom:auto; }
   .obhis-review .scene-you h1 { font-size:clamp(52px,14cqw,88px); }
