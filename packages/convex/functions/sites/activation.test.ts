@@ -35,7 +35,7 @@ test("fresh independent proof, publication, canonical, alias and public gates",a
   const operator = t.withIdentity(ident("operator")); const publisher = t.withIdentity(ident("publisher")); const reviewer = t.withIdentity(ident("reviewer"));
   await operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
   const content = {fields:[{fieldId:"school_name",value:{kind:"text" as const,value:"Synthetic School"}},{fieldId:"intro",value:{kind:"text" as const,value:"Hello"}}],routeSeo:[{routeId:"home",title:"Synthetic School"}]};
-  await publisher.mutation(api.functions.sites.content.saveDraft,{schoolId,content,expectedDraftVersion:0});
+  const saved = await publisher.mutation(api.functions.sites.content.saveDraft,{schoolId,content,expectedDraftVersion:0});
   const first = await publisher.mutation(api.functions.sites.domains.requestDomain,{schoolId,hostname:"canonical.synthetic.edu",canonicalIntent:"canonical"});
   const alias = await publisher.mutation(api.functions.sites.domains.requestDomain,{schoolId,hostname:"alias.synthetic.edu",canonicalIntent:"redirect"});
   const second = await publisher.mutation(api.functions.sites.domains.requestDomain,{schoolId,hostname:"other.synthetic.edu",canonicalIntent:"canonical"});
@@ -45,7 +45,7 @@ test("fresh independent proof, publication, canonical, alias and public gates",a
   // The approver has no publish grant; evidence is bound to the draft's typed value.
   const candidate = await reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId,fieldId:"school_name"});
   await reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId,candidate:{kind:"field",fieldId:"school_name",expectedDigest:candidate.digest},evidenceReference:"Fictional signed source",expiresAt:Date.now()+86_400_000,confirmed:true});
-  await publisher.mutation(api.functions.sites.content.publishDraft,{schoolId,expectedDraftVersion:1});
+  await publisher.mutation(api.functions.sites.content.publishDraft,{schoolId,expectedDraftVersion:saved.draftVersion});
   await operator.mutation(api.functions.sites.domains.activateDomain,{domainId:first.domainId});
   await expect(operator.mutation(api.functions.sites.domains.activateDomain,{domainId:second.domainId})).rejects.toThrow();
   await operator.mutation(api.functions.sites.domains.activateDomain,{domainId:alias.domainId,canonicalDomainId:first.domainId});

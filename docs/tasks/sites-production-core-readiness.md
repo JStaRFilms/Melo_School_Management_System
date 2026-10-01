@@ -15,12 +15,12 @@ Local verification completed on 2026-09-30 in `/Users/toji/Documents/johnsax/sit
 
 | Check | Result |
 | --- | --- |
-| Convex Sites, schema coverage and foundation focused tests | 14 files, 42 passed |
+| Convex Sites, schema coverage and foundation focused tests | 14 files, 43 passed |
 | Sites core tests | 4 files, 11 passed |
 | Shared manifest and canonical admissions link tests | 2 files, 8 passed |
-| Admin site management/upload tests | 2 files, 6 passed |
+| Admin site management/upload tests | 2 files, 7 passed |
 | Apply compatibility tests for inherited base changes | 2 files, 23 passed |
-| Total targeted tests | 90 passed |
+| Total targeted tests | 92 passed |
 | Typechecks | Shared, Convex, Sites, Admin, Platform and Apply passed |
 | Lint | Sites, Admin, Platform, Apply and touched Convex code passed with no errors. Full Convex lint separately reports two existing academic `.mts` parser failures outside this change |
 | Production builds | Sites, Platform, Apply passed without backend configuration. Admin passed with synthetic `NEXT_PUBLIC_CONVEX_URL=https://sites-test.convex.cloud` for compile/prerender only |
@@ -33,12 +33,12 @@ Lint warnings remain informational: one intentional uncached first-party image w
 
 ## Reviews
 
-Two independent focused review lanes covered backend security and frontend/management boundaries. Confirmed findings were corrected with regressions. Parent staged-diff inspection also corrected the hardcoded synthetic route seam; renderer page paths now resolve through the exact published manifest without editing core per school, and development demo Host aliases work with ports. Final review found three further security defects, now fixed and parent-retested: cleared child-consent pointer reuse, stale readiness after provider writes, and private data in a revert-only projection. No optional follow-up issues or unrelated cleanup were created. External Codex feedback and GitHub checks have separate head-specific dispositions in the PR report.
+Two independent focused review lanes covered backend security and frontend/management boundaries. Confirmed findings were corrected with regressions. Parent staged-diff inspection also corrected the hardcoded synthetic route seam; renderer page paths now resolve through the exact published manifest without editing core per school, and development demo Host aliases work with ports. Final review found three further security defects, now fixed and parent-retested: cleared child-consent pointer reuse, stale readiness after provider writes, and private data in a revert-only projection. No optional follow-up issues or unrelated cleanup were created. Codex reviewed implementation commit `393eb83e` in PR #101 and identified repeat publication from the same draft version. The correction atomically consumes that version, returns the next editor version and has retry/concurrent-client/UI regressions. Parent reran the affected tests. Thread reply/resolution and final GitHub application checks have separate head-specific dispositions in the PR report.
 
 ## Readiness distinctions
 
 - Code-ready: local focused tests, typechecks and relevant builds pass. Admin build needs a syntactically valid public Convex URL, not an actual remote test backend.
-- Review-ready: local confirmed blockers are corrected. The requested GitHub Codex pass must receive its own disposition before claiming external review completion.
+- Review-ready: local confirmed blockers and the requested Codex finding are corrected. Codex inspected `393eb83e`, not a later correction or preview-only commit; thread disposition records the fix and its regression tests, not a fresh Codex approval.
 - Preview-ready: not established locally. Requires final application build checks on the settled PR head, not the Vercel comment integration alone.
 - Runtime-ready: not established for deployed applications. In-process synthetic integration passes; real configured Convex/Vercel ingress, egress, TLS and coordinated app behavior still need authorized testing.
 - Release-ready: not established. Backend-first rollout, deployment/cutover authorization and real school approvals are outstanding.

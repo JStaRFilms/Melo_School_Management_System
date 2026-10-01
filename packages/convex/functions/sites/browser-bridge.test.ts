@@ -124,6 +124,7 @@ test("fresh Chromium drives actual Admin and Platform pages through authenticate
     await page.goto(`${base}/admin`);
     await page.getByRole("button",{name:"Publish saved draft"}).click();
     await browserExpect(page.getByText(/Revision 1/)).toBeVisible();
+    await browserExpect(page.getByText(/Draft version: 2/)).toBeVisible();
     await page.getByLabel("Hostname, without scheme or port").fill("canonical.synthetic.edu");
     await page.getByRole("button",{name:"Request hostname"}).click();
     const instructions = await page.getByText(/Publish TXT _school-site-verify/).innerText();
@@ -151,6 +152,7 @@ test("fresh Chromium drives actual Admin and Platform pages through authenticate
     await page.goto(`${base}/admin`);
     await page.getByLabel("intro (required)").fill("A private revision only");
     await page.getByRole("button",{name:"Save draft"}).click();
+    await browserExpect(page.getByText(/Draft version: 3/)).toBeVisible();
     await page.goto(`${base}/public`);
     await browserExpect(page.getByText("Welcome to Fictional Academy")).toBeVisible();
     expect(await page.locator("body").innerText()).not.toContain("A private revision only");

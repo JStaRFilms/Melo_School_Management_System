@@ -65,7 +65,8 @@ export const publishDraft = mutation({
     const profile = await ownedProfile(ctx, schoolId);
     if (profile.status === "suspended" || profile.status === "retired") return deny();
     const draft = profile.draftRevisionId ? await ctx.db.get(profile.draftRevisionId) : null;
-    if (!draft || draft.schoolId !== schoolId || draft.state !== "draft" || draft.expectedDraftVersion !== expectedDraftVersion || draft.rendererKey !== profile.rendererKey || draft.rendererSchemaVersion !== profile.rendererSchemaVersion) return deny();
+    if (!draft || draft.schoolId !== schoolId || draft.state !== "draft" || draft.rendererKey !== profile.rendererKey || draft.rendererSchemaVersion !== profile.rendererSchemaVersion) return deny();
+    if (draft.expectedDraftVersion !== expectedDraftVersion) throw Error("DRAFT_VERSION_CONFLICT");
     const checked = await validatePublication(ctx, profile, draft.content, actor, now);
     if (checked.sensitive) await schoolActor(ctx, schoolId, "site.publish.sensitive", now);
     const referencedAssets = new Set([
@@ -75,9 +76,11 @@ export const publishDraft = mutation({
     for (const assetId of referencedAssets) await ctx.db.patch(assetId, {status: "published", updatedAt: now});
     const last = await ctx.db.query("schoolSiteRevisions").withIndex("by_school_and_revision_number", q => q.eq("schoolId", schoolId)).order("desc").take(1);
     const publishedId = await ctx.db.insert("schoolSiteRevisions", { schoolId, revisionNumber: (last[0]?.revisionNumber ?? 0) + 1, state: "published", rendererKey: draft.rendererKey, rendererSchemaVersion: draft.rendererSchemaVersion, content: draft.content, contentDigest: checked.digest, sourceRevisionId: draft._id, approvalEvidenceIds: checked.evidenceIds, expectedDraftVersion: draft.expectedDraftVersion, publishedAt: now, publishedByUserId: actor, createdAt: now, updatedAt: now });
+    const draftVersion = expectedDraftVersion + 1;
+    await ctx.db.patch(draft._id, {expectedDraftVersion: draftVersion, updatedAt: now});
     await ctx.db.patch(profile._id, {publishedRevisionId: publishedId, status: "published", updatedAt: now});
     await ctx.db.insert("schoolSiteAuditEvents", {schoolId, actorUserId: actor, eventType: "published", outcome: "success", summary: "Published validated site revision", revisionId: publishedId, createdAt: now});
-    return {publishedId};
+    return {publishedId, draftVersion};
   },
 });
 

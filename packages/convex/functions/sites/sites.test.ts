@@ -40,7 +40,7 @@ describe("managed site boundary", () => {
     await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"field",fieldId:"school_name",expectedDigest:candidate.digest},evidenceReference:"Synthetic identity source",expiresAt:Date.now()+60_000,confirmed:true});
     const published = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
     const privateContent = {...content,fields:[content.fields[0],{fieldId:"intro",value:{kind:"text" as const,value:"Private pending text"}}]};
-    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content:privateContent,expectedDraftVersion:1});
+    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content:privateContent,expectedDraftVersion:published.draftVersion});
     await f.t.run(async ctx => {
       for (const [name,capability] of [["dns","site.domain.request"],["reverter","site.revert"]] as const) {
         const userId = await ctx.db.insert("users",{schoolId:f.schoolA,authId:name,authTokenIdentifier:`test|${name}`,name,email:`${name}@example.test`,role:"staff",createdAt:now,updatedAt:now});
@@ -121,30 +121,66 @@ describe("managed site boundary", () => {
     await f.editor.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"asset_child_applicability",assetId,expectedChecksum:storageDigest(metadata!.sha256)!,classification:"no_children"},evidenceReference:"Self-classified synthetic asset",expiresAt:Date.now()+60_000,confirmed:true});
     await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).rejects.toThrow();
     const assertion = await approval("asset_child_applicability");
-    await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
+    let published = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
     await f.t.run(ctx => ctx.db.patch(oldRights.evidenceId,{revokedAt:Date.now()}));
-    await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
+    published = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion});
     await f.t.run(ctx => ctx.db.patch(renewedRights.evidenceId,{expiresAt:Date.now()-1}));
-    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).rejects.toThrow();
+    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion})).rejects.toThrow();
     await approval("asset_rights");
     await f.reviewer.mutation(api.functions.sites.evidence.revokeEvidence,{schoolId:f.schoolA,evidenceId:assertion.evidenceId});
-    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).rejects.toThrow();
+    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion})).rejects.toThrow();
     await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"asset_child_applicability",assetId,expectedChecksum:storageDigest(metadata!.sha256)!,classification:"contains_children"},evidenceReference:"Synthetic classification source",expiresAt:Date.now()+60_000,confirmed:true});
-    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).rejects.toThrow();
+    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion})).rejects.toThrow();
     const consent = await approval("asset_child_consent");
-    await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
+    published = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion});
     await approval("asset_child_applicability"); // no_children clears the consent pointer
     await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"asset_child_applicability",assetId,expectedChecksum:storageDigest(metadata!.sha256)!,classification:"contains_children"},evidenceReference:"Reclassified synthetic image",expiresAt:Date.now()+60_000,confirmed:true});
     const afterReclassification = await f.t.run(ctx => ctx.db.get(assetId));
     expect(afterReclassification?.childConsentEvidenceId).toBeUndefined();
     // The old consent is still current, but it cannot authorize this new classification.
-    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).rejects.toThrow();
+    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion})).rejects.toThrow();
     const newConsent = await approval("asset_child_consent");
     expect(newConsent.evidenceId).not.toBe(consent.evidenceId);
-    await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
+    published = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion});
     await f.t.run(async ctx => ctx.db.patch(newConsent.evidenceId,{expiresAt:Date.now()-1}));
-    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).rejects.toThrow();
+    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:published.draftVersion})).rejects.toThrow();
     expect((await f.t.fetch("/sites/asset-bytes", {method:"POST"})).status).toBe(404);
+  });
+  test("publish consumes the draft version across retries and two authorized clients", async () => {
+    const f = await fixture();
+    await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
+    const saved = await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content,expectedDraftVersion:0});
+    await f.t.run(async ctx => {
+      const now = Date.now();
+      const second = await ctx.db.insert("users",{schoolId:f.schoolA,authId:"second",authTokenIdentifier:"test|second",name:"Second publisher",email:"second@example.test",role:"staff",createdAt:now,updatedAt:now});
+      await ctx.db.insert("schoolCapabilityGrants",{schoolId:f.schoolA,userId:second,capability:"site.publish.standard",scope:"school",grantedByUserId:second,reason:"synthetic second client",isBreakGlass:false,createdAt:now});
+    });
+    const candidate = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId:"school_name"});
+    await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"field",fieldId:"school_name",expectedDigest:candidate.digest},evidenceReference:"Fictional signed source",expiresAt:Date.now()+60_000,confirmed:true});
+    const args = {schoolId:f.schoolA,expectedDraftVersion:saved.draftVersion};
+    const attempts = await Promise.allSettled([
+      f.editor.mutation(api.functions.sites.content.publishDraft,args),
+      f.t.withIdentity(ident("second")).mutation(api.functions.sites.content.publishDraft,args),
+    ]);
+    const successes = attempts.filter(result => result.status === "fulfilled");
+    const failures = attempts.filter(result => result.status === "rejected");
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(String((failures[0] as PromiseRejectedResult).reason)).toContain("DRAFT_VERSION_CONFLICT");
+    const published = (successes[0] as PromiseFulfilledResult<{publishedId: typeof saved.draftId; draftVersion: number}>).value;
+    expect(published.draftVersion).toBe(saved.draftVersion + 1);
+    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,args)).rejects.toThrow("DRAFT_VERSION_CONFLICT");
+    await f.t.run(async ctx => {
+      const profile = await ctx.db.query("schoolSiteProfiles").withIndex("by_school",q => q.eq("schoolId",f.schoolA)).unique();
+      const revisions = await ctx.db.query("schoolSiteRevisions").withIndex("by_school_and_revision_number",q => q.eq("schoolId",f.schoolA)).take(10);
+      const audit = await ctx.db.query("schoolSiteAuditEvents").withIndex("by_school_and_created_at",q => q.eq("schoolId",f.schoolA)).take(10);
+      expect(revisions.filter(row => row.state === "published")).toHaveLength(1);
+      expect(audit.filter(row => row.eventType === "published")).toHaveLength(1);
+      expect(profile?.publishedRevisionId).toBe(published.publishedId);
+      expect(revisions.find(row => row._id === saved.draftId)?.expectedDraftVersion).toBe(published.draftVersion);
+    });
+    const next = await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content:{...content,fields:[content.fields[0],{fieldId:"intro",value:{kind:"text",value:"Next intentional edit"}}]},expectedDraftVersion:published.draftVersion});
+    expect(next.draftVersion).toBe(published.draftVersion + 1);
   });
   test("expired grants and changed identity values cannot borrow approval", async () => {
     const f = await fixture();
@@ -181,7 +217,7 @@ describe("managed site boundary", () => {
     await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).rejects.toThrow();
     const approval = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"field",fieldId:"school_name",expectedDigest:candidate.digest},evidenceReference:"Verified synthetic identity",expiresAt:Date.now()+60000,confirmed:true});
     const published = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
-    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content:{...content,fields:[content.fields[0],{fieldId:"intro",value:{kind:"text",value:"Changed"}}]},expectedDraftVersion:1});
+    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content:{...content,fields:[content.fields[0],{fieldId:"intro",value:{kind:"text",value:"Changed"}}]},expectedDraftVersion:published.draftVersion});
     await f.t.run(async ctx => { const revision = await ctx.db.get(published.publishedId); expect(revision?.content.fields[1].value).toEqual({kind:"text",value:"Hello"}); });
     const revert = await f.editor.mutation(api.functions.sites.content.revertToDraft,{schoolId:f.schoolA,sourceRevisionId:published.publishedId});
     expect(revert.draftId).not.toBe(first.draftId);
