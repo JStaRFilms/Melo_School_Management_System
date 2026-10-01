@@ -2,7 +2,7 @@
 
 ## Goal and scope
 
-Bring the visually approved Olive homepage into the existing `apps/sites` Next.js app without publishing it. Preserve the composition, companion heroes and manual Olive/You motion in `docs/mockups/sites/obhis-homepage-review.html`. The original prototypes remain unchanged.
+Bring the Olive homepage into the existing `apps/sites` Next.js app without publishing it. The initial port preserved the approved composition and manual Olive/You transition. The user subsequently requested composition, copy and interaction refinements, recorded below. The original approved prototypes remain unchanged.
 
 This is a bounded implementation toward ADR-009, not completion of B4 or public B5 activation. Persistent published loaders, authenticated school previews, domain activation, admin editors and deployment are not included.
 
@@ -10,7 +10,7 @@ This is a bounded implementation toward ADR-009, not completion of B4 or public 
 
 A code-owned `obhis-v1` renderer displays the approved homepage. Its interactions retain native disclosures, manual welcome and album selection, URL/history behavior, keyboard controls, reduced motion, modal focus restoration and no-JavaScript content. Event listeners, animation frames and modal state must clean up on unmount and React Strict Mode remount.
 
-Styles stay scoped to the renderer. Tenant configuration accepts only `primaryColor` and `accentColor`; school UI tokens come from `@school/shared/theme`. Fixed illustration colours from the approved private art study are code-owned, not additional tenant settings or a public theme contract. Branded controls use the shared contrast tokens. The inherited white-on-coral display-text finding remains recorded and blocks publication.
+Styles stay scoped to the renderer. Tenant configuration accepts only `primaryColor` and `accentColor`; school UI tokens come from `@school/shared/theme`. Fixed illustration colours from the approved private art study are code-owned, not additional tenant settings or a public theme contract. Branded controls use the shared contrast tokens. The original white-on-coral display-text finding remains recorded for the archived prototypes. The refined renderer replaces that headline with ink on coral, measured at 4.90:1. This specific correction is not a full accessibility approval.
 
 ## Server components and data flow
 
@@ -36,7 +36,7 @@ No schema or backend changes. Existing B0 site records do not authorize this pri
 
 ## Approval and verification
 
-Visual approval does not approve facts or photographs for publication. Abuja and Rugam remain album labels. Photographer rights, child-publication permissions, current operational facts, canonical application/visit destinations, the inherited hero contrast issue and real-device review remain open. See `../clients/obhis/OBHISContentApprovalSheet.md`.
+Visual approval does not approve facts or photographs for publication. Abuja and Rugam remain album labels. Photographer rights, child-publication permissions, current operational facts, canonical application/visit destinations and real-device review remain open. See `../clients/obhis/OBHISContentApprovalSheet.md`.
 
 Focused checks cover development opt-in denial, production denial, exact asset keys and traversal, no private image bytes in production output/traces, unchanged legacy behavior, six viewport widths, both heroes, stable content positions, keyboard/history, modal focus, reduced motion and no-JavaScript content. Use an isolated sites-only headless runner, not the multi-app default test setup. Run sites typecheck, focused lint and the informational theme audit.
 
@@ -59,18 +59,18 @@ Open `http://127.0.0.1:3215/review/obhis`. The server-only `OBHIS_LOCAL_REVIEW=1
 - `apps/sites/core/renderer-registry.ts` matches only `obhis-v1` with schema version `1`. Unknown keys and versions return no renderer.
 - `apps/sites/app/review/obhis/page.tsx` checks the development gate before loading the fixture/registry. Denied metadata omits the review school name. Production compilation removes the development import branch.
 - The asset route and `core/private-review-assets.ts` both gate access before reads. Nine exact keys map to existing docs fixtures. Successful and denied asset responses are `private, no-store` and non-indexable. No user-supplied paths, public copies, image imports or optimizer URLs were added. The page is dynamic and non-indexable; Next dev supplies its own `no-cache, must-revalidate` page header.
-- `renderers/obhis-v1` retains the approved markup, system fonts, artwork and finite manual motion. The effect owns scoped listeners, global history/page-lifecycle listeners, its readiness frame and native viewer cleanup. Tailwind heading/list resets are restored locally. The inactive server-rendered hero is hidden; enhancement applies inert/ARIA states to both motion poses. All four album photos remain available without JavaScript.
+- `renderers/obhis-v1` retains the system fonts, intact artwork and finite manual transition. User-requested composition changes are recorded below. The effect owns scoped listeners, global history/page-lifecycle listeners, readiness and scroll frames, pointer capture and native viewer cleanup. Tailwind heading/list resets are restored locally. The inactive server-rendered hero is hidden; enhancement applies inert/ARIA states to both motion poses. All four album photos remain available without JavaScript.
 - No host resolution, catch-all, proxy, SEO, shared contract, backend, schema, admissions logic, other app or dependency configuration changed. The pre-existing edited `obhis-homepage-review.md` and untracked Blender work were left untouched.
 
 ## Theme audit classification
 
 The explicit-file informational audit reports `#176c49` and `#39bcd3` in the private fixture. They are the only tenant inputs, primary and accent. Actual school tokens come from `deriveSchoolTheme`. Green-filled controls use `--school-primary-contrast`; the cyan chapter uses `--school-accent-contrast`. Its white photo sheets retain neutral ink.
 
-The audit does not scan CSS, so the scoped stylesheet was classified separately. Coral `#ef704d`, its highlight/shadow variants `#da5737` and `#bc5138`, and pattern pink `#e7a5b0` are code-owned colours from this private artwork study. They are not configurable tenant roles. Ink `#142c38`, white, warm paper `#fffdf8`, line `#dbe3e6`, muted ink `#45606a`, footer text `#ccd9df` and the ink modal backdrop are product neutrals. No status, grade-policy or print colours changed. The known white-on-coral hero contrast remains 2.96:1 and is not fixed or approved for publication.
+The audit does not scan CSS, so the scoped stylesheet was classified separately. Coral `#ef704d`, its highlight/shadow variants `#da5737` and `#bc5138`, and pattern pink `#e7a5b0` are code-owned colours from this private artwork study. They are not configurable tenant roles. Ink `#142c38`, white, warm paper `#fffdf8`, line `#dbe3e6`, muted ink `#45606a`, footer text `#ccd9df` and the ink modal backdrop are product neutrals. No status, grade-policy or print colours changed. The archived white-on-coral headline remains 2.96:1. The current renderer no longer uses it. Current ink/coral headline and supporting copy measure 4.90:1. Dark coral You display text on white measures 3.89:1, above the large-text threshold. Full accessibility and publication review remain required.
 
-## Checks actually run
+## Initial port checks
 
-All test servers were owned by this run, bound to `127.0.0.1` and stopped by the isolated runner. No personal browser profile, desktop control, credentials, backend scripts, deployment, push or commit was used.
+During the coder's initial verification, all test servers were owned by that run, bound to `127.0.0.1` and stopped by the isolated runner. No personal browser profile, desktop control, credentials, backend scripts, deployment, push or commit was used in that initial verification.
 
 | Command | Result |
 | --- | --- |
@@ -99,6 +99,26 @@ Seven new PNGs and `parent-visual-verification.json` are in `deliverables/obhis-
 
 The capture helper stopped its shell but left its child server running on Windows. The parent verified the exact owned process chain, stopped only those descendants and confirmed the review port closed. No pre-existing server, desktop process or personal browser was touched. The installed helper was not modified.
 
+## User-requested composition refinements
+
+The user approved a swipeable hero rather than two separate scrolling sections. The renderer now removes the top review strip and capped outer page rails, keeps readable inner gutters, reduces the desktop header to 76 pixels and uses a compact arrow/counter cue instead of Olive/You tabs. Footer, album and viewer permission notices remain. The development gate and non-indexing metadata are unchanged.
+
+The Olive headline is now "Welcome to Olive." The disconnected right-hand prose and duplicate campus button are removed. A short introduction and one school-life link sit with the heading. The You message is "A place for you." No school facts, programmes or application destinations were invented.
+
+Three existing school photographs can be selected manually inside the hero print. There is no autoplay timer. Mouse drag and native horizontal touch select welcomes; normal vertical wheel/touch scrolling and pinch zoom remain native. Scroll input gives the artwork and print a bounded upward drift. Reduced-motion preferences remove that drift, slide travel and photo arrival animation. `welcome-motion.ts` owns the gesture and input-driven scroll behavior; shared abort cleanup releases capture, listeners and frames.
+
+Parent verification passed 19 headless tests, including seven widths from 1920 to 320, stable downstream positions, manual moment cycling, actual Chromium touch injection, mouse drag, vertical scrolling, keyboard/history/focus, viewer behavior, reduced motion, no-JavaScript content, private-route gates and legacy separation. A temporary runner used only the proven owned loopback preview, leaving the user's server running. The normal committed runner still refuses occupied ports.
+
+The first refinement run passed 17 tests and exposed two failures. Touch's implicit image capture bubbled a capture-transfer event, incorrectly cancelling the gesture. The handler now responds only to capture lost by the stage itself. The wide-layout assertion incorrectly included the browser's reserved scrollbar gutter; diagnostics confirmed every chapter fills the drawable body width. The corrected full suite passed.
+
+Sites typecheck and focused lint passed. The first directory-wide lint invocation timed out; the explicit changed-file invocation passed with zero warnings. Desktop welcome and mobile captures are in `deliverables/obhis-composition-refinement/`. They are private local evidence, not public export assets.
+
+## Public code-only sharing
+
+The repository is public. After being told that the full local history contains pending-permission school photos, the user authorized a code-only public branch. `feature/obhis-website-code` starts from existing public master, excluding the private feature ancestry and all 55 image entries. Its initial verified source snapshot is `9484213`. The image-bearing `feature/obhis-website` branch stays local and must not be pushed to the public remote.
+
+Public source exports include a handoff note explaining that private review image fixtures and image-dependent checks are unavailable there. GitHub source sharing is not a school-site deployment or photo-publication approval.
+
 ## Remaining publication review
 
-Real-device performance, other browser engines and full production accessibility auditing remain unrun. Touch emulation is not real-phone certification. These local checks do not approve school facts, photographer rights, child-publication permissions, a canonical application/visit destination or public release. The inherited coral hero contrast at `apps/sites/renderers/obhis-v1/styles.css:52` remains a publication blocker.
+Real-device performance, other browser engines and full production accessibility auditing remain unrun. Touch emulation is not real-phone certification. These local checks do not approve school facts, photographer rights, child-publication permissions, a canonical application/visit destination or public release.

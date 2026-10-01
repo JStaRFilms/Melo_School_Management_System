@@ -1,0 +1,36 @@
+{
+  "headless_tests_passed": 19,
+  "responsive_widths": [
+    1920,
+    1440,
+    1024,
+    768,
+    760,
+    390,
+    320
+  ],
+  "typecheck": "passed",
+  "focused_lint": "passed",
+  "theme_audit": "passed, informational",
+  "private_boundary": "unchanged; enabled/private and pure production-denial contract checks passed",
+  "existing_production_scan": "127 files, 12 traces, 9 private images excluded; 40 protected sources unchanged. Production build not rerun for this UI-only refinement.",
+  "copy_contrast": {
+    "ink_on_coral": 4.9,
+    "large_dark_coral_on_white": 3.89
+  },
+  "captures": [
+    "refined-homepage-1920.png",
+    "refined-olive-1920.png",
+    "refined-you-1920.png",
+    "refined-homepage-390.png",
+    "refined-olive-390.png",
+    "refined-you-390.png",
+    "refined-homepage-320.png",
+    "refined-olive-320.png",
+    "refined-you-320.png"
+  ],
+  "errors": [],
+  "owned_preview_left_running": true,
+  "publication_permissions": "pending",
+  "public_images_uploaded": false
+}

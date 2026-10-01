@@ -13,7 +13,7 @@ async function sectionPositions(page: Page) {
   return page.locator("#our-school,#school-life,.crest-story,#campuses,#admissions").evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top + window.scrollY));
 }
 
-for (const width of [1440, 1024, 768, 760, 390, 320]) {
+for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
   test(`both welcomes and albums stay stable at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     const errors: string[] = [];
@@ -32,6 +32,9 @@ for (const width of [1440, 1024, 768, 760, 390, 320]) {
       const active = page.locator(`[data-panel="${scene}"]`);
       expect(await active.locator("h1").evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(50);
     }
+    await page.locator('.scene-olive [data-hero-photo-step="1"]').click();
+    await expect(page.locator('.scene-olive [data-hero-photo-position]')).toHaveText("2 / 3");
+    expect(await sectionPositions(page)).toEqual(positions);
     await page.locator('[data-collection-choice="culture"]').click();
     await expect(page.locator('.album-sheet:not([hidden])')).toHaveCount(2);
     expect(await sectionPositions(page)).toEqual(positions);
@@ -47,11 +50,12 @@ test("keyboard, history, reload and rapid reversal settle focus", async ({ page 
   await openReview(page);
   const olive = page.locator('[data-scene-choice="olive"]');
   const you = page.locator('[data-scene-choice="you"]');
-  await olive.focus();
+  const controls = page.locator('.scene-controls');
+  await controls.focus();
   await page.keyboard.press("ArrowRight");
-  await expect(you).toBeFocused();
+  await expect(controls).toBeFocused();
   await expect(page).toHaveURL(/scene=you/);
-  await page.locator('.scene-you .primary-link').focus();
+  await page.locator('.scene-you .hero-link').focus();
   expect(await page.locator(".scene-you").evaluate(element => {
     const parent = element.parentElement;
     return parent !== null && Math.abs(element.getBoundingClientRect().left - parent.getBoundingClientRect().left) < 1;
@@ -60,19 +64,91 @@ test("keyboard, history, reload and rapid reversal settle focus", async ({ page 
   await you.click();
   await olive.click();
   await page.goBack();
-  await expect(you).toHaveAttribute("aria-pressed", "true");
+  await expect(you).toBeDisabled();
   await page.reload();
-  await expect(you).toHaveAttribute("aria-pressed", "true");
-  await page.locator('.scene-you .primary-link').focus();
+  await expect(you).toBeDisabled();
+  await page.locator('.scene-you .hero-link').focus();
   await page.evaluate(() => history.back());
-  await expect(olive).toBeFocused();
-  await expect(olive).toHaveAttribute("aria-pressed", "true");
+  await expect(controls).toBeFocused();
+  await expect(olive).toBeDisabled();
   const day = page.locator('[data-collection-choice="day"]');
   await day.focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.locator('[data-collection-choice="culture"]')).toBeFocused();
   await page.keyboard.press("ArrowLeft");
   await expect(day).toBeFocused();
+});
+
+test("full-width chapters, slim header, manual moments and scroll lift", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await openReview(page);
+  await expect(page.locator('.review-notice')).toHaveCount(0);
+  expect(await page.locator('.site-header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(80);
+  expect(await page.locator('.hero-stage,.crest-story,#campuses,.school-footer').evaluateAll(elements => elements.every(element => {
+    const rect = element.getBoundingClientRect();
+    return Math.abs(rect.left) < 1 && Math.abs(rect.right - document.body.clientWidth) < 1;
+  }))).toBe(true);
+  await expect(page.locator('.scene-olive h1')).toHaveAccessibleName('Welcome to Olive.');
+  const positions = await sectionPositions(page);
+  const image = page.locator('.scene-olive [data-hero-photo="0"]');
+  const source = await image.getAttribute('src');
+  for (const count of ['2 / 3', '3 / 3', '1 / 3']) {
+    await page.locator('.scene-olive [data-hero-photo-step="1"]').click();
+    await expect(page.locator('.scene-olive [data-hero-photo-position]')).toHaveText(count);
+    expect(await sectionPositions(page)).toEqual(positions);
+  }
+  await expect(image).toBeVisible();
+  expect(await image.getAttribute('src')).toBe(source);
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  await expect.poll(() => page.locator('.hero-stage').evaluate(element => Number.parseFloat(element.style.getPropertyValue('--hero-drift')))).toBeGreaterThan(0);
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'olive');
+});
+
+test("mouse drag changes the welcome without capturing vertical wheel", async ({ page }) => {
+  await openReview(page);
+  const image = await page.locator('.olive-art img').boundingBox();
+  if (!image) throw new Error('Olive artwork not measurable');
+  const x = image.x + image.width * .42;
+  const y = image.y + image.height * .6;
+  await page.mouse.move(x + 100, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 100, y, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+  await expect(page).toHaveURL(/scene=you/);
+  await expect(page.locator('.hero-stage')).not.toHaveAttribute('data-dragging');
+  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 250);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before + 100);
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+});
+
+test("native touch swipe changes welcomes and vertical touch still scrolls", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  try {
+    const page = await context.newPage();
+    await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css', body: '' }));
+    await page.goto('/review/obhis');
+    await expect(page.locator('.scene-controls')).toBeVisible();
+    const session = await context.newCDPSession(page);
+    const image = await page.locator('.olive-art img').boundingBox();
+    if (!image) throw new Error('Touch artwork not measurable');
+    const x = 280;
+    const y = Math.min(650, image.y + image.height * .5);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let step = 1; step <= 8; step++) await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - step * 20, y }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+    await page.waitForTimeout(1250);
+    const before = await page.evaluate(() => window.scrollY);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 160, y: 650 }] });
+    for (let step = 1; step <= 6; step++) await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 160, y: 650 - step * 30 }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before + 20);
+    await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+    await expect(page.locator('.hero-stage')).not.toHaveAttribute('data-dragging');
+  } finally { await context.close(); }
 });
 
 test("native viewer, manual controls, modified clicks and visit reopening", async ({ page }) => {
@@ -120,6 +196,8 @@ test("reduced motion retains choices without travel or album animation", async (
   expect(await page.locator('.scene').evaluateAll(elements => elements.every(element => getComputedStyle(element).transitionDuration === "0s"))).toBe(true);
   expect(await page.locator('.album-photo img').evaluateAll(elements => elements.every(element => getComputedStyle(element).animationName === "none"))).toBe(true);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
+  await page.evaluate(() => window.scrollTo(0, 300));
+  expect(await page.locator('.hero-stage').evaluate(element => getComputedStyle(element).getPropertyValue('--hero-drift').trim())).toBe('0px');
 });
 
 test("no JavaScript exposes all photographs and native guidance", async ({ browser, baseURL }) => {
@@ -131,6 +209,7 @@ test("no JavaScript exposes all photographs and native guidance", async ({ brows
   await expect(page.locator(".scene-you")).not.toBeVisible();
   await expect(page.locator(".scene-controls")).not.toBeVisible();
   await expect(page.locator(".album-sheet:not([hidden])")).toHaveCount(4);
+  for (const controls of await page.locator('.hero-photo-controls').all()) await expect(controls).not.toBeVisible();
   for (const photo of await page.locator(".album-photo").all()) await expect(photo).toBeVisible();
   await page.locator("#application-guide summary").click();
   await expect(page.locator("#application-guide")).toHaveAttribute("open", "");
