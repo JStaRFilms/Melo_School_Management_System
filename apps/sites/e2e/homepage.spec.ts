@@ -94,8 +94,9 @@ test("wide Olive photo moves right without covering the final letter", async ({ 
     const art = panel.querySelector('.olive-art')?.getBoundingClientRect();
     const photo = panel.querySelector('.photo-print')?.getBoundingClientRect();
     if (!canvas || !art || !photo) return false;
-    return photo.left >= art.left + art.width * .78 && photo.right < innerWidth && photo.width >= canvas.width * .28;
+    return photo.left >= art.left + art.width * .85 && photo.right < innerWidth && photo.width >= canvas.width * .36;
   })).toBe(true);
+  expect(await page.locator('.scene-olive h1').evaluate(heading => Number.parseFloat(getComputedStyle(heading).fontSize))).toBeGreaterThanOrEqual(210);
 });
 
 test("school-life and values type stay prominent without crowding", async ({ page }) => {
@@ -139,6 +140,33 @@ test("uniform postcard has presence without clipping at desktop or phone widths"
         !!copy && (innerWidth > 760 ? rect.left >= copy.right : rect.top >= copy.bottom) &&
         document.documentElement.scrollWidth <= innerWidth;
     }, minimum)).toBe(true);
+  }
+});
+
+test("phone welcome controls stay inside the visible screen on both scenes", async ({ page }) => {
+  await openReview(page);
+  const stage = page.locator('.hero-stage');
+  for (const [width, height] of [[390, 844], [320, 740], [390, 700], [320, 700], [390, 568], [320, 568], [280, 568], [320, 480]]) {
+    await page.setViewportSize({ width, height });
+    for (const scene of ['olive', 'you'] as const) {
+      if (scene === 'you') await page.locator('[data-scene-choice="you"]').click();
+      await expect(stage).toHaveAttribute('data-scene', scene);
+      expect(await stage.evaluate(element => {
+        const controls = element.querySelector('.scene-controls')?.getBoundingClientRect();
+        const link = element.querySelector('.hero-link')?.getBoundingClientRect();
+        const bounds = element.getBoundingClientRect();
+        const photo = element.querySelector('.photo-print')?.getBoundingClientRect();
+        const art = element.querySelector('.olive-art')?.getBoundingClientRect();
+        const canvas = element.querySelector('.welcome-canvas')?.getBoundingClientRect();
+        return !!controls && !!link && !!photo && !!art && !!canvas && bounds.bottom <= innerHeight + 1 &&
+          (innerHeight < 740 || photo.width >= canvas.width * .7) &&
+          (innerHeight <= 450 || innerHeight >= 740 || photo.top >= art.bottom - 20) &&
+          controls.left >= 0 && controls.right <= innerWidth && controls.bottom <= innerHeight - 8 &&
+          link.left >= 0 && link.right <= innerWidth && link.bottom <= controls.top - 8 &&
+          document.documentElement.scrollWidth <= innerWidth;
+      })).toBe(true);
+    }
+    await page.locator('[data-scene-choice="olive"]').click();
   }
 });
 

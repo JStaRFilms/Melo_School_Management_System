@@ -64,6 +64,14 @@ The latest local source checkpoint is `067ad14`. The original uniform-detail pho
 
 All 26 enabled browser checks passed, plus typecheck, focused lint, theme audit, whitespace and the existing production/source-preservation scan. Four private section captures are omitted, bringing the cumulative omitted image-entry count to 116. The receipt contains only screenshot names and dimensions. No fresh production build, real-device audit or deployment was performed. Campus and admissions destination dependencies remain open.
 
+## Larger welcome and visible phone controls
+
+The latest local source checkpoint is `74faa07`. "Meet" and its existing tilted classroom photo are larger. On short phones, the hero now fits below the 68-pixel header so the school-life link and playback/arrows stay on screen. The short-screen collage makes room for the Olive letters; no image bytes or six-second timing changed.
+
+All 27 enabled browser checks passed in the full local worktree, including both scenes on phones as short as 480 pixels. Sites typecheck, focused lint, theme audit, whitespace and the existing production-artifact scan passed. Fifteen private captures were omitted. The new receipt contains dimensions and filenames, never image bytes. This is not a fresh production build or real-device review.
+
+The owner has supplied new contact details for **private local review only**. They are not included in this source export. Keep future contact details, application guidance and donation copy out of this public branch until separately approved for public source sharing.
+
 ## For the production-core agent
 
 Fetch `origin/feature/obhis-website-code` and inspect this branch read-only while implementing production infrastructure on your separate branch. Use paths relative to your checkout. The absolute Windows paths in the earlier task prompt refer to the original development computer.
