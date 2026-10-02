@@ -94,15 +94,25 @@ export function Homepage({ context }: { context: PrivateReviewContext }) {
     <section className="admissions-section page-section" id="admissions" aria-labelledby="admissions-heading">
       <div className="admissions-copy"><h2 className="section-title" id="admissions-heading">Come with <br />your questions.</h2><p>Choosing a school is personal. Start with the things that matter to your family.</p></div>
       <div className="admissions-guides">
-        <details id="visit-guide"><summary><span>Visiting Olive</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>Visiting details are not available on this page yet.</p></div></details>
-        <details id="application-guide"><summary><span>How to apply</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>Application details are not available on this page yet.</p></div></details>
+        <details id="visit-guide"><summary><span>Visiting Olive</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>Find us at Plot 18C3, Habiscus Street, Federal Housing Estate, Karu Roundabout, Nyanya, Abuja, FCT. Have a question before you come? <a href="#contact">Contact the school</a>.</p></div></details>
+        <details id="application-guide"><summary><span>How to apply</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>Application links will be added shortly. Until then, use the <a href="#contact">contact information below</a> to ask about applying.</p></div></details>
       </div>
+    </section>
+
+    <section className="contact-section page-section" id="contact" aria-labelledby="contact-heading">
+      <div><p className="section-kicker">Contact</p><h2 className="section-title" id="contact-heading">Get in touch.</h2><p>Questions about visiting or applying? You can reach the school by phone or email.</p></div>
+      <div className="contact-methods"><div><span>Phone</span><a href="tel:+2348057755997">+234 805 775 5997</a></div><div><span>Email</span><a href="mailto:obhischool@gmail.com">obhischool@gmail.com</a></div></div>
+    </section>
+
+    <section className="donations-section page-section" id="donations" aria-labelledby="donations-heading">
+      <div><p className="section-kicker">Donations</p><h2 className="section-title" id="donations-heading">Support Olive.</h2><p>Donation links and QR codes will be added here shortly.</p></div>
+      <div className="donation-qr-space" aria-label="Space reserved for donation QR codes"><div>QR code coming soon</div><div>QR code coming soon</div></div>
     </section>
   </main>
 
   <footer className="school-footer">
-    <div className="footer-top"><div className="footer-brand"><img src={context.assets["school-logo"]} width="52" height="52" alt="" /><div><strong>Olive Blessed Crest Academy</strong><p>Integrity &amp; Service</p></div></div><div className="footer-links"><a href="#our-school">Our school</a><a href="#school-life">School life</a><a href="#campuses">Our campuses</a><a href="#admissions">Admissions</a><a href="https://www.facebook.com/profile.php?id=100010370084416" target="_blank" rel="noopener noreferrer">Facebook ↗</a><a href="#main">Back to top ↑</a></div></div>
-    <p className="footer-disclaimer">Private homepage review. Imagined artwork. School facts and photo publication permissions remain pending.</p>
+    <div className="footer-top"><div className="footer-brand"><img src={context.assets["school-logo"]} width="52" height="52" alt="" /><div><strong>Olive Blessed Crest Academy</strong><p>Integrity &amp; Service</p></div></div><div className="footer-links"><a href="#our-school">Our school</a><a href="#school-life">School life</a><a href="#campuses">Our campuses</a><a href="#admissions">Admissions</a><a href="#contact">Contact</a><a href="#donations">Donations</a><a href="https://www.facebook.com/profile.php?id=100010370084416" target="_blank" rel="noopener noreferrer">Facebook ↗</a><a href="#main">Back to top ↑</a></div></div>
+    <p className="footer-disclaimer">Private homepage review. Imagined artwork. Contact details supplied for review; photo publication permissions remain pending.</p>
   </footer>
 
   <dialog className="photo-viewer" id="photo-viewer" aria-labelledby="viewer-heading" aria-describedby="viewer-permission">

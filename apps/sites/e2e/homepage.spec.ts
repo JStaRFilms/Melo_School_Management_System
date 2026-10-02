@@ -364,6 +364,17 @@ test("story copy, gallery caption actions, campus labels and navigation remain h
   await expect(page.locator('.campus-album h3')).toHaveText(['Abuja', 'Rugam']);
   await expect(page.locator('.campus-album a,#campuses [data-photo],.admissions-copy a')).toHaveCount(0);
   await expect(page.locator('#visit-guide summary,#application-guide summary')).toHaveText(['Visiting Olive', 'How to apply']);
+  await expect(page.locator('#visit-guide .guide-body')).toContainText('Plot 18C3, Habiscus Street, Federal Housing Estate, Karu Roundabout, Nyanya, Abuja, FCT.');
+  await expect(page.locator('#visit-guide .guide-body a')).toHaveAttribute('href', '#contact');
+  await expect(page.locator('#application-guide .guide-body a')).toHaveAttribute('href', '#contact');
+  await expect(page.locator('#application-guide .guide-body')).toContainText('Application links will be added shortly.');
+  await expect(page.locator('#contact h2')).toHaveText('Get in touch.');
+  await expect(page.locator('#contact a')).toHaveText(['+234 805 775 5997', 'obhischool@gmail.com']);
+  await expect(page.locator('#contact a').first()).toHaveAttribute('href', 'tel:+2348057755997');
+  await expect(page.locator('#contact a').last()).toHaveAttribute('href', 'mailto:obhischool@gmail.com');
+  await expect(page.locator('#donations h2')).toHaveText('Support Olive.');
+  await expect(page.locator('#donations .donation-qr-space > div')).toHaveCount(2);
+  await expect(page.locator('#donations a,#donations img')).toHaveCount(0);
   await expect(page.locator('.footer-welcome,.campus-status,.photo-open')).toHaveCount(0);
   expect(await page.locator('.nav a,.footer-links a').evaluateAll(links => links.every(link => {
     const href = link.getAttribute('href');
@@ -402,6 +413,10 @@ test("native viewer, manual controls, modified clicks and disclosures", async ({
   await page.locator("#application-guide summary").focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#application-guide")).toHaveAttribute("open", "");
+  await page.locator('#application-guide .guide-body a').click();
+  await expect(page).toHaveURL(/#contact$/);
+  await page.locator('.footer-links a[href="#donations"]').click();
+  await expect(page).toHaveURL(/#donations$/);
 });
 
 test("reduced motion retains choices without travel or album animation", async ({ page }) => {
