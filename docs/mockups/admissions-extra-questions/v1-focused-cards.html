@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>V1 — Focused cards · Extra questions</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:#f6f5fb;color:#191627}
+.top{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.9);backdrop-filter:blur(8px);border-bottom:1px solid #e7e3f5}
+.top-in{max-width:760px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:12px}
+.crumb{font-size:12px;color:#6f6a8a;font-weight:600;letter-spacing:.04em}.crumb b{color:#191627}
+.count{background:#efe7ff;color:#5600d1;font-weight:800;font-size:12px;border-radius:99px;padding:4px 10px}
+.spacer{flex:1}.btn{border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:14px;cursor:pointer}
+.btn-primary{background:#5600d1;color:#fff}.btn-ghost{background:#fff;border:1px solid #ddd6f2;color:#3c3658}
+.wrap{max-width:760px;margin:0 auto;padding:24px 20px 120px}
+.hero h1{font-size:22px;margin:0}.hero p{color:#5c5678;font-size:14px;margin:6px 0 0}
+.covered{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.pill{font-size:12px;background:#fff;border:1px solid #e2ddf3;border-radius:99px;padding:6px 12px;color:#4a4563}.pill b{color:#191627}
+.q{position:relative;background:#fff;border:1.5px solid #e4e0f3;border-radius:16px;margin-top:16px;display:flex;overflow:hidden}
+.q:focus-within,.q.active{border-color:#5600d1;box-shadow:0 8px 28px rgba(86,0,209,.12)}
+.rail{width:40px;background:#faf9ff;border-right:1px solid #ece8f7;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px;color:#a39dc2}
+.num{font-size:12px;font-weight:800;background:#191627;color:#fff;width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center}
+.grip{cursor:grab;letter-spacing:2px;font-size:12px}
+.body{flex:1;padding:16px 16px 12px}
+.qinput{width:100%;border:0;font-size:17px;font-weight:650;padding:2px 0;outline:none;border-bottom:2px solid transparent}
+.qinput:focus{border-color:#5600d1}
+.meta{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.select{border:1px solid #ddd6f2;border-radius:10px;padding:9px 12px;font-size:13px;font-weight:600;background:#faf9fe}
+.switch{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#4a4563}
+.toggle{width:36px;height:21px;border-radius:99px;background:#5600d1;position:relative;display:inline-block}.toggle:after{content:"";position:absolute;right:2px;top:2px;width:17px;height:17px;background:#fff;border-radius:50%}
+.toggle.off{background:#c9c4de}.toggle.off:after{left:2px;right:auto}
+.choices{margin-top:12px;display:grid;gap:8px}
+.choice{display:flex;gap:8px;align-items:center}
+.dot{width:18px;height:18px;border:2px solid #b9b2d8;border-radius:50%;flex:none}
+.cinput{flex:1;border:1px solid #e2ddf3;border-radius:10px;padding:9px 12px;font-size:14px}
+.cinput.err{border-color:#e5484d;background:#fff5f5}
+.x{border:1px solid #e2ddf3;background:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;color:#6f6a8a}
+.addopt{border:1px dashed #b9aef0;color:#5600d1;background:#fbfaff;border-radius:10px;padding:9px;font-weight:700;font-size:13px;cursor:pointer}
+.toolbar{display:flex;align-items:center;gap:4px;border-top:1px solid #f0edf9;margin-top:14px;padding-top:8px}
+.tbtn{border:0;background:transparent;border-radius:8px;padding:8px 10px;font-size:13px;font-weight:600;color:#5c5678;cursor:pointer;display:flex;gap:6px;align-items:center}
+.tbtn:hover{background:#f3f0ff;color:#2a2440}
+.toolbar .right{margin-left:auto;display:flex;gap:4px}
+.iconbtn{border:1px solid #e2ddf3;background:#fff;width:32px;height:32px;border-radius:9px;cursor:pointer;color:#5c5678}
+.savebar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#191627;color:#fff;border-radius:14px;padding:10px 10px 10px 18px;display:flex;gap:14px;align-items:center;font-size:13px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.savebar .btn-primary{padding:9px 18px}
+.note{max-width:760px;margin:0 auto;padding:0 20px 40px;color:#5c5678;font-size:13px;line-height:1.6}
+a.back{font-size:13px;color:#5600d1;font-weight:700;text-decoration:none}
+</style></head>
+<body>
+<div class="top"><div class="top-in"><a class="back" href="index.html">← All concepts</a><span class="crumb">ADMIN › <b>Admissions</b></span><span class="count">3 questions</span><span class="spacer"></span><button class="btn btn-ghost">Preview parent view</button><button class="btn btn-primary">+ Add question</button></div></div>
+<div class="wrap">
+<div class="hero"><h1>3. Extra questions</h1><p>Child profile + primary contact are already covered — only add what you still need.</p>
+<div class="covered"><span class="pill"><b>Already asked:</b> child name · DOB · gender</span><span class="pill">contact name · email · phone</span><span class="pill" style="border-style:dashed">See full list</span></div></div>
+
+<div class="q"><div class="rail"><span class="num">1</span><span class="grip">⋮⋮</span></div>
+<div class="body"><input class="qinput" value="Previous school attended (if any)"><div class="meta"><select class="select"><option>Short answer</option><option>Long answer</option><option>Choose one</option><option>Date</option><option>File upload</option></select><span class="switch"><span class="toggle off"></span> Required <span style="color:#a39dc2">· optional</span></span></div>
+<div class="toolbar"><button class="tbtn">⧉ Duplicate</button><button class="tbtn">🗑 Delete</button><span class="right"><button class="iconbtn" title="Move up">↑</button><button class="iconbtn" title="Move down">↓</button></span></div></div></div>
+
+<div class="q active"><div class="rail"><span class="num">2</span><span class="grip">⋮⋮</span></div>
+<div class="body"><input class="qinput" value="Does the child have any allergies or medical needs?">
+<div class="meta"><select class="select"><option>Choose one</option><option>Short answer</option><option>Choose several</option><option>Yes / No</option></select><span class="switch"><span class="toggle"></span> Required</span></div>
+<div class="choices">
+<div class="choice"><span class="dot"></span><input class="cinput" value="No known allergies"><button class="x">×</button></div>
+<div class="choice"><span class="dot"></span><input class="cinput" value="Yes — details below"><button class="x">×</button></div>
+<div class="choice"><span class="dot"></span><input class="cinput err" value="" placeholder="Add another option…"><button class="x">×</button></div>
+<button class="addopt">+ Add option &nbsp;·&nbsp; + “Other, please specify”</button>
+</div>
+<div class="toolbar"><button class="tbtn">⧉ Duplicate</button><button class="tbtn">🗑 Delete</button><span class="right"><button class="iconbtn">↑</button><button class="iconbtn">↓</button></span></div></div></div>
+
+<div class="q"><div class="rail"><span class="num">3</span><span class="grip">⋮⋮</span></div>
+<div class="body"><input class="qinput" value="How will the child get to school?"><div class="meta"><select class="select"><option>Choose several</option><option>Choose one</option><option>Short answer</option></select><span class="switch"><span class="toggle"></span> Required</span></div>
+<div class="choices"><div class="choice"><span class="dot" style="border-radius:5px"></span><input class="cinput" value="School bus"><button class="x">×</button></div><div class="choice"><span class="dot" style="border-radius:5px"></span><input class="cinput" value="Parent drop-off"><button class="x">×</button></div></div>
+<button class="addopt" style="margin-top:8px">+ Add option</button>
+<div class="toolbar"><button class="tbtn">⧉ Duplicate</button><button class="tbtn">🗑 Delete</button><span class="right"><button class="iconbtn">↑</button><button class="iconbtn">↓</button></span></div></div></div>
+</div>
+<div class="savebar"><span>● Unsaved changes · autosaves in 3s</span><button class="btn btn-ghost" style="border-color:#444">Discard</button><button class="btn btn-primary">Save draft</button></div>
+<div class="note"><b>Why this is better:</b> question number + drag rail gives order at a glance · Duplicate/Delete are quiet text actions, not giant buttons · Required is a switch, not a lonely checkbox · active card is the only one with a purple ring, the rest recede · choices show their parent shape (○ single vs ▢ multi).</div>
+</body></html>

@@ -10,6 +10,7 @@ import {
   uploadAdmissionsDocument,
 } from "./functions/admissions/uploadHttp";
 import { streamAdmissionsDocument } from "./functions/admissions/accessHttp";
+import { uploadWebsiteAsset, streamWebsiteAsset } from "./functions/sites/assets";
 
 const http = httpRouter();
 
@@ -44,5 +45,8 @@ http.route({
   method: "POST",
   handler: streamAdmissionsDocument,
 });
+
+http.route({ path: "/sites/asset-upload", method: "POST", handler: uploadWebsiteAsset });
+http.route({ path: "/sites/asset-bytes", method: "POST", handler: streamWebsiteAsset });
 
 export default http;

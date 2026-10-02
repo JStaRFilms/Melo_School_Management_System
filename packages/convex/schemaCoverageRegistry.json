@@ -4093,7 +4093,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1560:a98eb2bc:1915ed0e"
+    "shape": "3851:2c2918af:95989293"
   },
   "schoolEmailDomains": {
     "ownership": "direct-indexed",
@@ -4279,6 +4279,11 @@
         "optional": true
       },
       {
+        "path": "childConsentEvidenceId",
+        "target": "schoolApprovalEvidence",
+        "optional": true
+      },
+      {
         "path": "schoolId",
         "target": "schools",
         "optional": false
@@ -4293,12 +4298,17 @@
     "storage": {
       "storageId": "legacy-extractor"
     },
-    "shape": "1598:928501d4:d0407a36"
+    "shape": "2010:88c5e03e:e92ede0a"
   },
   "schoolSiteAuditEvents": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
     "references": [
+      {
+        "path": "actorPlatformAdminId",
+        "target": "platformAdmins",
+        "optional": true
+      },
       {
         "path": "actorUserId",
         "target": "users",
@@ -4317,7 +4327,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "930:bececf88:84194702"
+    "shape": "1117:20464f16:ca1ee2c2"
   },
   "schoolSiteProfiles": {
     "ownership": "direct-indexed",

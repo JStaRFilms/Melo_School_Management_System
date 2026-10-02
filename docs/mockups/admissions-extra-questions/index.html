@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Extra questions — mockup hub</title>
+<style>body{font-family:Inter,system-ui,sans-serif;background:#f4f2fb;color:#1e1b2e;margin:0}main{max-width:860px;margin:48px auto;padding:0 20px}h1{font-size:28px;margin:0} p.sub{color:#5b5675}.grid{display:grid;gap:16px;margin-top:24px}@media(min-width:700px){.grid{grid-template-columns:1fr 1fr}}.card{background:#fff;border:1px solid #e5e1f5;border-radius:16px;padding:20px;text-decoration:none;color:inherit;display:block}.card:hover{border-color:#5b00e0;box-shadow:0 8px 24px rgba(91,0,224,.12)}.card b{font-size:17px}.card span{display:block;margin-top:8px;color:#5b5675;font-size:14px;line-height:1.5}.tag{display:inline-block;font-size:12px;font-weight:700;background:#efe7ff;color:#5b00e0;border-radius:99px;padding:3px 10px;margin-bottom:10px}.fix{margin-top:28px;background:#1e1b2e;color:#fff;border-radius:16px;padding:20px;font-size:14px;line-height:1.6}.fix li{margin-bottom:6px}</style></head>
+<body><main>
+<h1>3. Extra questions — 4 redesign directions</h1>
+<p class="sub">Meridian Crest Academy · Admin → Admissions. Each file is standalone, open it in a browser. Pick one direction, or mix them.</p>
+<div class="grid">
+<a class="card" href="v1-focused-cards.html"><span class="tag">V1 · Recommended</span><b>Focused cards</b><span>Google-Forms-style done right. Numbered cards, left drag rail, icon-only row actions, choices inline. Fixes the giant Duplicate / Remove buttons.</span></a>
+<a class="card" href="v2-dense-list.html"><span class="tag">V2 · For long forms</span><b>Dense reorderable list</b><span>One row per question with type pill + required switch. Click to expand. Built for 15–30 questions where cards get too tall.</span></a>
+<a class="card" href="v3-split-preview.html"><span class="tag">V3 · Confidence builder</span><b>Builder + live parent preview</b><span>Left: compact editor. Right: phone preview of exactly what parents see. Kills “will this look right?” anxiety.</span></a>
+<a class="card" href="v4-templates-empty.html"><span class="tag">V4 · Onboarding</span><b>Templates + smart empty state</b><span>Starts from common school questions (previous school, medical, sibling, transport). One click to add, then tweak. Best first-run experience.</span></a>
+</div>
+<div class="fix"><b>What’s wrong in the current screenshot:</b><ul>
+<li>Duplicate + Remove are full-width primary-sized buttons — they visually outweigh the question itself.</li>
+<li>Up/down arrows are orphaned, tiny, no drag affordance, no question numbers.</li>
+<li>“Question / Answer type / Required” labels repeat identically on every card — noisy.</li>
+<li>Choices (“Option 1yes”, “Option ss”, “hehe”) have no validation state and the × buttons look like text inputs.</li>
+<li>Sticky “Saving… / Cancel” bar overlaps the next card. No progress (“2 of 5”) or parent preview.</li>
+</ul></div>
+</main></body></html>

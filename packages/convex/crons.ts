@@ -12,6 +12,8 @@ crons.interval(
   {},
 );
 
+crons.interval("refresh active school site domains", { minutes: 5 }, internal.functions.sites.domains.maintenance, {});
+
 crons.interval(
   "clean admissions documents",
   { hours: 6 },
