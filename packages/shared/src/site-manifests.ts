@@ -1,4 +1,5 @@
 import type { ApplicationLinkV1 } from "./admissions-foundation";
+import { normalizeThemeColor } from "./theme/themeDerivation";
 
 export type SiteFieldValueV1 =
   | { kind: "text" | "rich_text"; value: string }
@@ -15,10 +16,10 @@ export type SiteManifestV1 = Readonly<{
   rendererKey: string;
   schemaVersion: string;
   routes: readonly Readonly<{ routeId: string; path: string }>[];
-  fields: readonly Readonly<{ fieldId: string; kind: SiteFieldValueV1["kind"]; required: boolean; maxLength?: number; evidence?: SiteEvidenceClass; assetKind?: string }>[];
+  fields: readonly Readonly<{ fieldId: string; kind: SiteFieldValueV1["kind"]; required: boolean; maxLength?: number; evidence?: SiteEvidenceClass; assetKind?: string; altFieldId?: string }>[];
 }>;
 
-// Explicitly selected test renderer. No implicit renderer or OBHIS registration.
+// Exact compiled renderers only. Neither descriptor is a default.
 export const SITE_MANIFESTS_V1: readonly SiteManifestV1[] = Object.freeze([{
   rendererKey: "school-core-synthetic-v1", schemaVersion: "1",
   routes: [{ routeId: "home", path: "/" }, { routeId: "about", path: "/about" }, { routeId: "contact", path: "/contact" }],
@@ -26,6 +27,16 @@ export const SITE_MANIFESTS_V1: readonly SiteManifestV1[] = Object.freeze([{
     { fieldId: "school_name", kind: "text", required: true, maxLength: 120, evidence: "identity" },
     { fieldId: "intro", kind: "text", required: true, maxLength: 1000 },
     { fieldId: "hero_image", kind: "asset_ref", required: false, assetKind: "hero" },
+  ],
+}, {
+  rendererKey: "obhis-v1", schemaVersion: "1",
+  routes: [{ routeId: "home", path: "/" }],
+  fields: [
+    ...["school_name", "short_name", "motto", "intro", "album_heading", "album_intro", "album_day_label", "album_culture_label", "values_heading", "values_intro", "integrity_label", "service_label", "integrity_copy", "service_copy", "campus_heading", "campus_abuja", "campus_rugam", "admissions_heading", "admissions_intro", "visit_address", "application_notice", "contact_intro", "phone", "email", "donations_intro", "caption_friends", "caption_table", "caption_abuja", "caption_rugam", "primary_color", "accent_color"].map(fieldId => ({fieldId, kind: "text" as const, required: true, maxLength: 1000, ...(fieldId === "school_name" ? {evidence: "identity" as const} : {evidence: "sensitive_public" as const})})),
+    ...(["school_logo", "hero_cutout", "you_hero", "classroom_moment", "school_friends", "classroom_table", "cultural_day_abuja", "cultural_day_rugam", "uniform_detail"] as const).flatMap(fieldId => [
+      {fieldId, kind: "asset_ref" as const, required: true, assetKind: fieldId === "school_logo" ? "logo" : fieldId === "hero_cutout" || fieldId === "you_hero" ? "hero" : "gallery", altFieldId: `${fieldId}_alt`},
+      {fieldId: `${fieldId}_alt`, kind: "text" as const, required: true, maxLength: 300, evidence: "sensitive_public" as const},
+    ]),
   ],
 }]);
 
@@ -37,6 +48,15 @@ export function siteManifest(rendererKey: string, version: string): SiteManifest
 export function routeIdAtPath(manifest: Pick<SiteManifestV1,"routes">, path: string): string | null {
   if (typeof path !== "string" || path.length > 1024 || !path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u001f\u007f%?#]/.test(path) || path.split("/").some(segment => segment === "." || segment === "..")) return null;
   return manifest.routes.find(route => route.path === path)?.routeId ?? null;
+}
+
+export function validSiteEmail(value: string): boolean {
+  const parts = value.split("@");
+  return parts.length === 2 && parts[0].length <= 64 && parts[0].split(".").every(atom => /^[a-zA-Z0-9_+-]+$/.test(atom)) && parts[1].length <= 253 && parts[1].includes(".") && parts[1].split(".").every(label => label.length <= 63 && /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(label));
+}
+/** Olive metadata repeats independently approved visible fields, never separate claims. */
+export function oliveSeoCopyMatches(seo: { title?: string; description?: string }, name: string | undefined, intro: string | undefined): boolean {
+  return (seo.title === undefined || seo.title === name) && (seo.description === undefined || seo.description === intro);
 }
 
 function plainText(value: string, max: number): boolean {
@@ -58,6 +78,9 @@ export function validateSiteContent(content: SiteContentV1, manifest: SiteManife
     if (value.kind === "text" || value.kind === "rich_text") {
       // No renderer currently registers rich text. Future manifests must add an AST parser first.
       if (value.kind === "rich_text" || !exact(value, ["kind", "value"]) || !plainText(value.value, def.maxLength ?? 500)) throw Error("Invalid site text");
+      if (["primary_color", "accent_color"].includes(field.fieldId) && (manifest.rendererKey !== "obhis-v1" || !normalizeThemeColor(value.value) || normalizeThemeColor(value.value) !== value.value.toLowerCase())) throw Error("Invalid theme colour");
+      if (manifest.rendererKey === "obhis-v1" && field.fieldId === "email" && !validSiteEmail(value.value)) throw Error("Invalid email");
+      if (manifest.rendererKey === "obhis-v1" && field.fieldId === "phone" && !/^\+[1-9]\d{6,14}$/.test(value.value)) throw Error("Invalid phone");
     } else if (value.kind === "asset_ref") {
       if (!exact(value, ["kind", "assetId"]) || !def.assetKind || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.assetId)) throw Error("Invalid asset reference");
     } else if (value.kind === "boolean") {
@@ -81,6 +104,15 @@ export function validateSiteContent(content: SiteContentV1, manifest: SiteManife
     if (!manifest.routes.some(r => r.routeId === seo.routeId) || routes.has(seo.routeId) || !exact(seo, ["routeId", "title", "description", "shareAssetId"]) ||
       (seo.title !== undefined && !plainText(seo.title, 120)) || (seo.description !== undefined && !plainText(seo.description, 300)) ||
       (seo.shareAssetId !== undefined && !/^[a-zA-Z0-9_-]{8,100}$/.test(seo.shareAssetId))) throw Error("Invalid route SEO");
+    if (manifest.rendererKey === "obhis-v1") {
+      // A separately reviewed social-image/alt contract has not been supplied.
+      if (seo.shareAssetId !== undefined) throw Error("Olive social images unavailable");
+      const textField = (id: string) => {
+        const value = content.fields.find(field => field.fieldId === id)?.value;
+        return value?.kind === "text" ? value.value : undefined;
+      };
+      if (!oliveSeoCopyMatches(seo, textField("school_name"), textField("intro"))) throw Error("Unapproved Olive SEO copy");
+    }
     routes.add(seo.routeId);
   }
 }

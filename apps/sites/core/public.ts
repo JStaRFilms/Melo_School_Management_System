@@ -1,5 +1,6 @@
 import type { PublicSiteV1, PublicAssetV1, PublicFieldValueV1, SiteManifestV1 } from "@school/shared/site-manifests";
-import { siteManifest, routeIdAtPath } from "@school/shared/site-manifests";
+import { siteManifest, routeIdAtPath, validSiteEmail, oliveSeoCopyMatches } from "@school/shared/site-manifests";
+import { normalizeThemeColor } from "@school/shared/theme";
 
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown ? T : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> } : T;
 export type ProductionSiteContext = DeepReadonly<PublicSiteV1>;
@@ -71,11 +72,27 @@ export function admitSite(value: unknown, routeId: string, host: string): SiteRe
     fields.add(f.fieldId);
     const def = m.fields.find(d => d.fieldId === f.fieldId);
     if (!def || !validPublicFieldValue(def,f.value)) return unavailable;
+    if (m.rendererKey === "obhis-v1" && f.value.kind === "asset_ref" && (f.value.asset.decorative || !f.value.asset.altText)) return unavailable;
+    if (m.rendererKey === "obhis-v1" && f.value.kind === "text") {
+      if (["primary_color", "accent_color"].includes(f.fieldId) && (!normalizeThemeColor(f.value.value) || normalizeThemeColor(f.value.value) !== f.value.value.toLowerCase())) return unavailable;
+      if (f.fieldId === "phone" && !/^\+[1-9]\d{6,14}$/.test(f.value.value)) return unavailable;
+      if (f.fieldId === "email" && !validSiteEmail(f.value.value)) return unavailable;
+    }
   }
   if (m.fields.some(f => f.required && !fields.has(f.fieldId))) return unavailable;
+  const textField = (id: string) => {
+    const value = s.fields.find(field => field.fieldId === id)?.value;
+    return value?.kind === "text" ? value.value : undefined;
+  };
+  for (const def of m.fields) {
+    if (!def.altFieldId) continue;
+    const value = s.fields.find(field => field.fieldId === def.fieldId)?.value;
+    if (value?.kind !== "asset_ref" || value.asset.altText !== textField(def.altFieldId)) return unavailable;
+  }
   const seo = new Set<string>();
   for (const r of s.routeSeo) {
     if (!exact(r,["routeId","title","description","shareAsset"]) || seo.has(r.routeId) || !m.routes.some(mr => mr.routeId === r.routeId) || (r.title !== undefined && !text(r.title,120)) || (r.description !== undefined && !text(r.description,300)) || (r.shareAsset !== undefined && (!validAsset(r.shareAsset) || r.shareAsset.kind !== "social_share"))) return unavailable;
+    if (m.rendererKey === "obhis-v1" && (r.shareAsset !== undefined || !oliveSeoCopyMatches(r, textField("school_name"), textField("intro")))) return unavailable;
     seo.add(r.routeId);
   }
   return {status:"available",site:freeze(structuredClone(s))};

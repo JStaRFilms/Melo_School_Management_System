@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { resolvePath } from "../../core/gateway";
 import { hasRenderer, renderSite } from "../../core/registry";
+import "../../renderers/obhis-v1/styles.css";
 import { legacyDemoFromHeaders, LegacyDemo } from "../../core/legacy";
 import { safePath } from "../../core/public";
 import { deniedMetadata, jsonLd, seo } from "../../core/seo";

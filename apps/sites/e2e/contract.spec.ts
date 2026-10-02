@@ -14,7 +14,7 @@ test("exact renderer lookup and validated immutable private context", () => {
   expect(Object.keys(obhisReviewFixture.brand)).toEqual(["primaryColor", "accentColor"]);
   expect(obhisReviewFixture.theme["--school-primary"]).toBe("#176c49");
   expect(obhisReviewFixture.theme["--school-accent"]).toBe("#39bcd3");
-  expect(obhisReviewFixture.publicationRights).toBe("pending");
+  expect(obhisReviewFixture.publicationRights).toBe("unverified-backend-records");
   expect(obhisReviewFixture.application).toBeNull();
   expect(() => validatePrivateReviewFixture({ ...obhisReviewFixture, rendererKey: "unknown", application: null })).toThrow();
   expect(() => validatePrivateReviewFixture({ ...obhisReviewFixture, publicationRights: "approved", application: null })).toThrow();

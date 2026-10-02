@@ -1,5 +1,7 @@
 # OBHIS local homepage review
 
+The implementation history below preserves earlier review decisions. For current approval and integration status, see [Production integration update](#production-integration-update). The full `feature/obhis-website` branch is now the working source; `feature/obhis-website-code` is an older source-only handoff.
+
 ## Goal and scope
 
 Bring the Olive homepage into the existing `apps/sites` Next.js app without publishing it. The initial port preserved the approved composition and manual Olive/You transition. The user subsequently requested composition, copy and interaction refinements, recorded below. The original approved prototypes remain unchanged.
@@ -190,6 +192,10 @@ Three private captures each of the admissions guide, contact section, donations 
 The repository is public. After being told that the full local history contains pending-permission school photos, the user authorized a code-only public branch. `feature/obhis-website-code` starts from existing public master, excluding the private feature ancestry and all 55 image entries. Its initial verified source snapshot is `9484213`. The image-bearing `feature/obhis-website` branch stays local and must not be pushed to the public remote.
 
 Public source exports include a handoff note explaining that private review image fixtures and image-dependent checks are unavailable there. GitHub source sharing is not a school-site deployment or photo-publication approval.
+
+## Production integration update
+
+The owner later approved the existing Olive photos and campus details, and public source inclusion of the current address, phone and email. That supersedes the older private-only and blocked-contact statements above as an owner decision. The historical review steps remain intact. Source inclusion is not a backend approval record or permission to deploy. The production adapter now accepts only an admitted, frozen `PublicSiteV1` with the exact `obhis-v1/1` manifest. The private fixture remains behind the development gate. Each public image still needs a clean PNG/JPEG derivative and independently reviewed rights, child classification, consent where needed, stored checksum and current unrevoked evidence. The local fixture labels its backend records unverified rather than asserting that owner permissions are pending. Required image alt text has separate exact sensitive-field evidence and must match the uploaded description; SEO copy repeats approved visible fields only, and social share imagery stays unavailable. No docs image supplies a production fallback. Campus detail and donation destinations remain visible placeholders; only an open `ApplicationLinkV1` provides an apply action. See `../tasks/obhis-production-integration-results.md` for checks and limits.
 
 ## Remaining publication review
 

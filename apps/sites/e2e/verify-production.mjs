@@ -49,7 +49,7 @@ const protectedPaths = [
   "docs/mockups/sites/obhis-homepage-review.html", "docs/mockups/sites/obhis-homepage-review.css", "docs/mockups/sites/obhis-homepage-review.js",
   "docs/mockups/sites/obhis-motion-prototype.html", "docs/mockups/sites/obhis-motion-prototype.css", "docs/mockups/sites/obhis-motion-prototype.js",
   "docs/mockups/sites/obhis-homepage-prototype-assets", "docs/mockups/sites/obhis-homepage-review-assets", "docs/mockups/sites/obhis-generated-study",
-  "apps/sites/lib/site.ts", "apps/sites/lib/site-ui.tsx", "apps/sites/proxy.ts", "apps/sites/app/[[...slug]]/page.tsx",
+  "apps/sites/lib/site.ts", "apps/sites/lib/site-ui.tsx", "apps/sites/proxy.ts",
   "apps/sites/app/layout.tsx", "apps/sites/app/globals.css", "apps/sites/app/robots.ts", "apps/sites/app/sitemap.ts", "apps/sites/app/manifest.ts",
   "package.json", "pnpm-lock.yaml", "apps/sites/package.json",
 ];
@@ -63,4 +63,10 @@ for (const path of tracked) {
   const unchangedCheckout = !requiresExactBytes && Buffer.from(committed.toString("utf8").replaceAll("\n", "\r\n")).equals(current);
   assert(committed.equals(current) || unchangedCheckout, `Protected source changed: ${path}`);
 }
+// The integration adds only the scoped stylesheet import to the public route.
+const routePath = "apps/sites/app/[[...slug]]/page.tsx";
+const coreBaseline = "72a985e430451cbd83627a11a158ec7115d3f097";
+const priorRoute = execFileSync("git", ["show", `${coreBaseline}:${routePath}`], { cwd: root }).toString("utf8");
+const currentRoute = await readFile(join(root, routePath), "utf8");
+assert.equal(currentRoute, priorRoute.replace('import { hasRenderer, renderSite } from "../../core/registry";', 'import { hasRenderer, renderSite } from "../../core/registry";\nimport "../../renderers/obhis-v1/styles.css";'), "Public route changed outside the stylesheet integration");
 console.log(`PASS: ${outputCount} production files, ${traceCount} traces, ${images.length} private images excluded; ${tracked.length} protected files unchanged, with exact approved prototype/media bytes and checkout CRLF accounted for in other text files.`);

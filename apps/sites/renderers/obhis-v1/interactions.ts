@@ -68,7 +68,7 @@ export function mountInteractions(root: HTMLElement) {
     for (const button of sceneButtons) button.disabled = button.dataset.sceneChoice === scene;
     scenePosition.textContent = scene === "you" ? "02 / 02" : "01 / 02";
     if (controlsHadFocus && announce) sceneControls.focus({ preventScroll: true });
-    if (previous !== null && announce) sceneStatus.textContent = scene === "you" ? "A place for you." : "Meet Olive.";
+    if (previous !== null && announce) sceneStatus.textContent = required<HTMLElement>(stage, `[data-panel="${scene}"] h1`).getAttribute("aria-label") ?? "";
     if (updateUrl) {
       const url = new URL(window.location.href);
       url.searchParams.set("scene", scene);
@@ -97,7 +97,7 @@ export function mountInteractions(root: HTMLElement) {
     currentCollection = collection;
     for (const sheet of sheets) sheet.hidden = sheet.dataset.collection !== collection;
     for (const button of collectionButtons) button.setAttribute("aria-pressed", String(button.dataset.collectionChoice === collection));
-    if (previous !== null) albumStatus.textContent = collection === "day" ? "Two school-day photographs." : "Two cultural-day photographs.";
+    if (previous !== null) albumStatus.textContent = `Two ${collectionButtons.find(button => button.dataset.collectionChoice === collection)?.textContent ?? "school"} photographs.`;
   }
 
   function showPhoto(index: number) {

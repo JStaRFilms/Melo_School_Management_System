@@ -1,9 +1,15 @@
 # OBHIS Public Content Approval Sheet
 
-**Status:** D2 approval-control artifact; no row is approved merely because it appears here.
+**Status:** The D2 matrix below is historical source evidence, not current launch status. The owner has since approved the existing Olive photos and campus details, and public source inclusion of the exact address, phone and email listed below. Backend records are unverified in this checkout. Deployment and activation require separate authorization.
 **Applies to:** `obhis-v1` website content, public SEO, public assets, and website CTA labels.
 **Design specification:** `OBHISWebsiteDesignSpecification.md`
 **Evidence brief:** `OBHISPublicWebsiteBrief.md`
+
+## Current owner decision and backend records
+
+The owner approved the existing Olive photos and campus details. The current address is Plot 18C3, Habiscus Street, Federal Housing Estate, Karu Roundabout, Nyanya, Abuja, FCT. The current phone is +234 805 775 5997 and the email is obhischool@gmail.com. The older Plot 1 address and other booklet phone numbers remain historical only. No campus detail, application or donation destination has been supplied.
+
+This owner decision does not create a Convex approval. Before publication, a separate authorized reviewer must approve the exact published identity and each sensitive field with a digest-bound, unexpired record. Each uploaded image needs its own current rights and child-applicability evidence, plus child-consent evidence if it contains children. Evidence references need real inspection and an independent reviewer. The WebP originals in docs are not deployable assets. Prepare clean PNG or JPEG derivatives, review their appearance and alt/captions, then use the authenticated upload and record the resulting storage checksum when uploading is authorized. Each required image also has a sensitive-public `<asset_field>_alt` field. Independently approve its exact description; publication compares it to the uploaded alt text. Rights approval alone does not approve identifying names or captions. Olive SEO title and description may only repeat the approved `school_name` and `intro` fields. Social share imagery remains unavailable until its own reviewed image/alt contract exists. Do not publish or activate a host merely because these files exist.
 
 ## How to use this sheet
 
@@ -26,7 +32,10 @@ An authorized OBHIS owner must approve the exact publishable value/asset—not a
 
 A reviewer must verify exact spelling, format, supported claim scope, and the audience-visible label. A general “website approved” response is insufficient for contacts, fees, legal/policy language, medical/safety claims, programme claims, images of children, and public structured data.
 
-## Source-of-truth matrix
+## Historical D2 source-of-truth matrix
+
+The following rows preserve the D2 assessment. For the later owner decision on Olive photographs, campus details and current contacts, use the current decision above; D2's older blanket blocks on these items are superseded by that decision, which does not replace backend evidence or authorize deployment.
+
 
 ### A. Identity, brand, and editorial copy
 

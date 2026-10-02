@@ -13,7 +13,7 @@ export interface PrivateReviewContext {
   readonly rendererKey: "obhis-v1";
   readonly schemaVersion: 1;
   readonly displayName: "Olive Blessed Crest Academy";
-  readonly publicationRights: "pending";
+  readonly publicationRights: "unverified-backend-records";
   readonly brand: Readonly<SchoolThemeInputs>;
   readonly theme: Readonly<SchoolThemeDerivation>;
   readonly assets: Readonly<Record<ReviewAssetKey, string>>;
@@ -30,7 +30,7 @@ export function validatePrivateReviewFixture(input: {
   application: null;
 }): PrivateReviewContext {
   if (input.kind !== "private-local-review" || input.rendererKey !== "obhis-v1" || input.schemaVersion !== 1 ||
-      input.displayName !== "Olive Blessed Crest Academy" || input.publicationRights !== "pending" ||
+      input.displayName !== "Olive Blessed Crest Academy" || input.publicationRights !== "unverified-backend-records" ||
       input.application !== null || Object.keys(input.brand).length !== 2 ||
       !normalizeThemeColor(input.brand.primaryColor) || !normalizeThemeColor(input.brand.accentColor)) {
     throw new Error("Invalid private homepage fixture");
@@ -52,7 +52,7 @@ export function validatePrivateReviewFixture(input: {
     rendererKey: "obhis-v1",
     schemaVersion: 1,
     displayName: "Olive Blessed Crest Academy",
-    publicationRights: "pending",
+    publicationRights: "unverified-backend-records",
     brand: Object.freeze({ ...input.brand }),
     theme: Object.freeze(deriveSchoolTheme(input.brand.primaryColor, input.brand.accentColor)),
     assets: Object.freeze(assets),

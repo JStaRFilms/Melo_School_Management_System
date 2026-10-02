@@ -151,20 +151,21 @@ test("phone welcome controls stay inside the visible screen on both scenes", asy
     for (const scene of ['olive', 'you'] as const) {
       if (scene === 'you') await page.locator('[data-scene-choice="you"]').click();
       await expect(stage).toHaveAttribute('data-scene', scene);
-      expect(await stage.evaluate(element => {
+      const geometry = await stage.evaluate(element => {
         const controls = element.querySelector('.scene-controls')?.getBoundingClientRect();
         const link = element.querySelector('.hero-link')?.getBoundingClientRect();
         const bounds = element.getBoundingClientRect();
         const photo = element.querySelector('.photo-print')?.getBoundingClientRect();
         const art = element.querySelector('.olive-art')?.getBoundingClientRect();
         const canvas = element.querySelector('.welcome-canvas')?.getBoundingClientRect();
-        return !!controls && !!link && !!photo && !!art && !!canvas && bounds.bottom <= innerHeight + 1 &&
-          (innerHeight < 740 || photo.width >= canvas.width * .7) &&
-          (innerHeight <= 450 || innerHeight >= 740 || photo.top >= art.bottom - 20) &&
-          controls.left >= 0 && controls.right <= innerWidth && controls.bottom <= innerHeight - 8 &&
-          link.left >= 0 && link.right <= innerWidth && link.bottom <= controls.top - 8 &&
-          document.documentElement.scrollWidth <= innerWidth;
-      })).toBe(true);
+        return {boundsBottom: bounds.bottom, controls: controls && {left:controls.left,right:controls.right,top:controls.top,bottom:controls.bottom}, link: link && {left:link.left,right:link.right,top:link.top,bottom:link.bottom}, photo: photo && {top:photo.top,width:photo.width}, artBottom:art?.bottom, canvasWidth:canvas?.width, scrollWidth:document.documentElement.scrollWidth, overflowing:[...document.querySelectorAll('.obhis-review *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).slice(0,10).map(e => ({tag:e.tagName, class:e.className, right:e.getBoundingClientRect().right})), innerWidth, innerHeight};
+      });
+      expect(!!geometry.controls && !!geometry.link && !!geometry.photo && !!geometry.artBottom && !!geometry.canvasWidth && geometry.boundsBottom <= height + 1 &&
+        (height < 740 || geometry.photo.width >= geometry.canvasWidth * .7) &&
+        (height <= 450 || height >= 740 || geometry.photo.top >= geometry.artBottom - 20) &&
+        geometry.controls.left >= 0 && geometry.controls.right <= width && geometry.controls.bottom <= height - 8 &&
+        geometry.link.left >= 0 && geometry.link.right <= width && geometry.link.bottom <= geometry.controls.top - 8 &&
+        geometry.scrollWidth <= width, JSON.stringify({width,height,scene,geometry})).toBe(true);
     }
     await page.locator('[data-scene-choice="olive"]').click();
   }
@@ -385,11 +386,20 @@ test("story copy, gallery caption actions, campus labels and navigation remain h
 test("native viewer, manual controls, modified clicks and disclosures", async ({ page }) => {
   await openReview(page);
   const opener = page.locator('.album-photo[data-photo="0"]');
-  expect(await opener.evaluate(link => {
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true });
-    link.dispatchEvent(event);
-    return event.defaultPrevented;
-  })).toBe(false);
+  const originalUrl = page.url();
+  // Cancel at document after the renderer's bubble listener. This tests both
+  // modifier paths without letting Chromium navigate on macOS synthetic Ctrl-click.
+  for (const modifier of ['ctrlKey', 'metaKey'] as const) {
+    expect(await opener.evaluate((link, key) => {
+      let rendererPrevented: boolean | null = null;
+      const guard = (event: MouseEvent) => { rendererPrevented = event.defaultPrevented; event.preventDefault(); };
+      document.addEventListener('click', guard, { once: true });
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, [key]: true }));
+      return rendererPrevented;
+    }, modifier)).toBe(false);
+    expect(page.url()).toBe(originalUrl);
+    await expect(page.locator('.photo-viewer')).not.toBeVisible();
+  }
   await opener.focus();
   await page.keyboard.press("Enter");
   const dialog = page.locator(".photo-viewer");

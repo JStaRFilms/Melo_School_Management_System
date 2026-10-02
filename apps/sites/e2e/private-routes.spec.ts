@@ -33,12 +33,15 @@ test("unknown keys and traversal never return private bytes", async ({ request }
 
 test("legacy demo, aliases, unknown and inactive hosts stay separate", async ({ request }) => {
   const active = await request.get("/", { headers: { host: "greenfield.schoolos.localhost" } });
-  expect(active.status()).toBe(200);
-  expect(await active.text()).toContain("Greenfield");
-  expect(await active.text()).not.toContain("Private homepage review");
-  const alias = await request.get("/admissions?source=test", { headers: { host: "greenfield.localhost" }, maxRedirects: 0 });
-  expect(alias.status()).toBe(308);
-  expect(alias.headers().location).toContain("greenfield.schoolos.localhost/admissions?source=test");
+  expect(active.status()).toBe(process.env.OBHIS_TEST_MODE === 'production' ? 404 : 200);
+  if (process.env.OBHIS_TEST_MODE !== 'production') {
+    expect(await active.text()).toContain("Greenfield demo");
+    expect(await active.text()).not.toContain("Private homepage review");
+  }
+  const alias = await request.get("/", { headers: { host: "greenfield.localhost" } });
+  expect(alias.status()).toBe(process.env.OBHIS_TEST_MODE === 'production' ? 404 : 200);
+  const removed = await request.get("/admissions?source=test", { headers: { host: "greenfield.localhost" }, maxRedirects: 0 });
+  expect(removed.status()).toBe(404);
   const unknown = await request.get("/", { headers: { host: "unconfigured.invalid" } });
   expect(unknown.status()).toBe(404);
   expect(await unknown.text()).toContain("noindex");
