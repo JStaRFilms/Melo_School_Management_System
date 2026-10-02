@@ -2,8 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
+import dns from 'node:dns';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+
+// Match the app's stable Node networking mode on this host. This is local
+// process configuration, not a backend or global machine setting.
+net.setDefaultAutoSelectFamily(false);
+dns.setDefaultResultOrder('ipv4first');
 
 export const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const QA_DIR = path.join(ROOT, '.qa');
@@ -153,20 +159,26 @@ export async function inspectBackend(values) {
   let result;
   try {
     result = await Promise.race([
-      client.action(makeFunctionReference('functions/academic/demoPreflightAction:inspectDemoSchool'), {
+      client.action(makeFunctionReference('functions/academic/qaInspection:inspectQaEnvironment'), {
         operatorToken: values.DEMO_SEED_OPERATOR_TOKEN,
         targetIdentity: values.DEMO_SEED_DEPLOYMENT_IDENTITY,
       }),
       new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Inspection timeout')), 60_000); timer.unref(); }),
     ]);
   } catch { throw new Error('Read-only backend inspection failed. No seed/reset was invoked. Check the operator profile and server configuration privately.'); }
-  if (result.cloudUrl !== TARGET.cloudUrl || result.school?.name !== 'Demo Academy' ||
-      result.e2eOriginsTrusted !== true || result.ready !== true || result.blockers?.length) {
-    throw new Error('Backend identity, demo cohort, or trusted origins failed inspection. No seed/reset was invoked.');
+  return validateQaInspection(result);
+}
+
+export function validateQaInspection(result) {
+  if (result.cloudUrl !== TARGET.cloudUrl || result.schoolName !== 'Demo Academy' || result.qaReady !== true ||
+      result.originsTrusted !== true || result.baselineStudents !== 36 || result.baselineClasses !== 3 || !/^[a-f0-9]{64}$/.test(result.baselineDigest ?? '')) {
+    throw new Error('QA identity, original cohort, or trusted origins failed inspection. This is not reset readiness; no seed/reset was invoked.');
   }
-  const counts = Object.fromEntries(['students', 'classes', 'studentInvoices', 'assessmentRecords'].map(name => [name, result.tables?.find(row => row.name === name)?.count]));
-  if (Object.values(counts).some(count => !Number.isInteger(count) || count < 1)) throw new Error('Required demo fixtures are missing; no automatic repair.');
-  return { deployment: TARGET.deployment, school: 'Demo Academy', originsTrusted: true, counts };
+  const counts = result.counts;
+  if (!counts || ['students', 'classes', 'studentInvoices', 'assessmentRecords'].some(name => !Number.isInteger(counts[name]) || counts[name] < 1) || counts.students < 36 || counts.classes < 3) throw new Error('Required QA fixtures are missing; no automatic repair.');
+  return { deployment: TARGET.deployment, school: 'Demo Academy', originsTrusted: true, counts,
+    baseline: { students: 36, classes: 3, digest: result.baselineDigest },
+    activePeriod: { session: result.activeSession, term: result.activeTerm }, retainedQaClaims: result.retainedQaClaims };
 }
 
 export async function doctor(profile, apps, { requireFreePorts = true } = {}) {

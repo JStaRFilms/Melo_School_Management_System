@@ -6,7 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import {
   TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable,
-  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker,
+  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, validateQaInspection,
 } from './core.mjs';
 import { options, validateOptions } from './cli.mjs';
 import { reportHtml } from './report.mjs';
@@ -112,6 +112,13 @@ test('known deployed template validator drift is a blocker, not a hidden pass', 
   assert.equal(isBackendContractBlocker(['ArgumentValidationError: Object contains extra field `formatHint`']), true);
   assert.equal(isBackendContractBlocker(['User is unauthorized']), false);
   assert.equal(isBackendContractBlocker(['ArgumentValidationError: missing required field']), false);
+});
+test('ordinary QA accepts attested additions without accepting reset readiness as authority', () => {
+  const result = { cloudUrl: TARGET.cloudUrl, schoolName: 'Demo Academy', qaReady: true, originsTrusted: true, baselineStudents: 36, baselineClasses: 3, baselineDigest: 'a'.repeat(64), counts: { students: 37, classes: 4, studentInvoices: 36, assessmentRecords: 757 }, activeSession: 'QA-RC-TEST', activeTerm: 'QA-RC-TEST', retainedQaClaims: 1 };
+  assert.equal(validateQaInspection(result).counts.students, 37);
+  assert.throws(() => validateQaInspection({ ...result, qaReady: undefined, ready: true }), /QA identity/);
+  assert.throws(() => validateQaInspection({ ...result, baselineStudents: 35 }), /QA identity/);
+  assert.throws(() => validateQaInspection({ ...result, cloudUrl: 'https://scrupulous-chinchilla-25.eu-west-1.convex.cloud' }), /QA identity/);
 });
 test('HTML report escapes content and refuses unsafe evidence names', () => {
   const run = { id: 'qa-test', mode: 'feature', status: 'blocked', deployment: TARGET.deployment, scope: '<script>alert(1)</script>', checks: [{ name: '<img onerror=oops>', status: 'blocked' }], screenshots: ['desktop.png'] };
