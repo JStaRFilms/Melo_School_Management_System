@@ -1,0 +1,512 @@
+import { test, expect, type Page } from "@playwright/test";
+
+async function openReview(page: Page, query = "", autoplay = false) {
+  // The untouched legacy layout imports Google fonts. The review uses system
+  // fonts, so keep this headless run offline without changing that layout.
+  await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ contentType: "text/css", body: "" }));
+  await page.goto(`/review/obhis${query}`);
+  await expect(page.locator(".scene-controls")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.hero-stage')).toHaveCSS('overflow-x', 'clip');
+  const play = page.locator('[data-welcome-play]');
+  if (!autoplay && !(await play.isDisabled())) await play.click();
+  // Decode only the visible scene. Hidden lazy images must wait for selection,
+  // rather than having the test helper preload every rotating photograph.
+  await page.locator(".hero-stage img").evaluateAll(images => Promise.all(images.filter(image => image.getClientRects().length > 0).map(image => image instanceof HTMLImageElement ? image.decode() : Promise.resolve())));
+}
+
+async function sectionPositions(page: Page) {
+  return page.locator("#our-school,#school-life,.crest-story,#campuses,#admissions").evaluateAll(elements => elements.map(element => element.getBoundingClientRect().top + window.scrollY));
+}
+
+for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
+  test(`both welcomes and albums stay stable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await openReview(page);
+    const positions = await sectionPositions(page);
+    for (const scene of ["you", "olive"] as const) {
+      await page.locator(`[data-scene-choice="${scene}"]`).click();
+      await expect(page.locator(".hero-stage")).toHaveAttribute("data-scene", scene);
+      await page.waitForTimeout(1250);
+      expect(await sectionPositions(page)).toEqual(positions);
+      expect(await page.locator('.hero-stage').evaluate(element => element.scrollLeft)).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const inactive = page.locator(`[data-panel="${scene === "you" ? "olive" : "you"}"]`);
+      await expect(inactive).toHaveAttribute("aria-hidden", "true");
+      expect(await inactive.evaluate(element => element instanceof HTMLElement && element.inert)).toBe(true);
+      const active = page.locator(`[data-panel="${scene}"]`);
+      expect(await active.locator("h1").evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(50);
+      expect(await page.locator('.hero-stage').evaluate(stage => {
+        const controls = stage.querySelector('.scene-controls')?.getBoundingClientRect();
+        const link = stage.querySelector('.hero-link')?.getBoundingClientRect();
+        return !!controls && !!link && (controls.left >= link.right || controls.top >= link.bottom);
+      })).toBe(true);
+    }
+    await expect(page.locator('.scene-olive [data-hero-photo="1"]')).toBeVisible();
+    expect(await sectionPositions(page)).toEqual(positions);
+    await page.locator('[data-collection-choice="culture"]').click();
+    await expect(page.locator('.album-sheet:not([hidden])')).toHaveCount(2);
+    expect(await sectionPositions(page)).toEqual(positions);
+    await page.locator('[data-collection-choice="day"]').click();
+    expect(await sectionPositions(page)).toEqual(positions);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+    expect(await page.locator(".obhis-review img").evaluateAll(images => images.every(image => image instanceof HTMLImageElement && !image.src.includes("/_next/image")))).toBe(true);
+  });
+}
+
+test("inactive hero photographs defer their own requests and load when selected", async ({ page, browser }) => {
+  await openReview(page);
+  const photographs = page.locator('[data-hero-photo]');
+  await expect(photographs).toHaveCount(5);
+  await expect(photographs.first()).toHaveAttribute('loading', 'eager');
+  for (let index = 1; index < 5; index++) {
+    await expect(photographs.nth(index)).toHaveAttribute('loading', 'lazy');
+    await expect(photographs.nth(index)).not.toBeVisible();
+  }
+  // Gallery cards legitimately share these URLs and may warm the page cache.
+  // Isolate the real hero markup with distinct query URLs to measure its own
+  // native lazy-loading policy without changing the homepage or its photos.
+  const fixture = await page.locator('.hero-photo-stack').evaluate(stack => {
+    const copy = stack.cloneNode(true) as HTMLElement;
+    const sources = [...stack.querySelectorAll('img')];
+    const urls = [...copy.querySelectorAll('img')].map((image, index) => {
+      image.src = `${sources[index].src}?hero-loading-test=1`;
+      return image.src;
+    });
+    return { html: copy.outerHTML, urls };
+  });
+  const context = await browser.newContext();
+  try {
+    const isolated = await context.newPage();
+    const requests: string[] = [];
+    isolated.on('request', request => {
+      if (fixture.urls.includes(request.url())) requests.push(request.url());
+    });
+    await isolated.setContent(fixture.html);
+    await expect.poll(() => isolated.locator('[data-hero-photo="0"]').evaluate(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
+    expect(requests).toEqual([fixture.urls[0]]);
+    for (let index = 1; index < 5; index++) {
+      await isolated.locator('[data-hero-photo]').evaluateAll((images, selected) => images.forEach((image, position) => { (image as HTMLImageElement).hidden = position !== selected; }), index);
+      await expect.poll(() => isolated.locator(`[data-hero-photo="${index}"]`).evaluate(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
+      expect(requests).toEqual(fixture.urls.slice(0, index + 1));
+    }
+  } finally { await context.close(); }
+  for (let index = 1; index < 5; index++) {
+    await page.locator('[data-scene-choice="you"]').click();
+    await page.locator('[data-scene-choice="olive"]').click();
+    const photograph = photographs.nth(index);
+    await expect(photograph).toBeVisible();
+    await expect.poll(() => photograph.evaluate(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
+  }
+});
+
+test("supplied desktop composition overlaps the artwork and puts controls at the foot", async ({ page }) => {
+  await page.setViewportSize({ width:1047, height:749 });
+  await openReview(page);
+  await expect(page.locator('.scene-olive .eyebrow')).toHaveCount(0);
+  await expect(page.locator('.nav .school-link')).toBeVisible();
+  expect(await page.locator('.scene-olive h1').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(110);
+  expect(await page.locator('.olive-art img').evaluate(image => image instanceof HTMLImageElement && image.naturalWidth === 1448 && image.naturalHeight === 706)).toBe(true);
+  expect(await page.locator('.hero-stage').evaluate(stage => {
+    const art = stage.querySelector('.olive-art')?.getBoundingClientRect();
+    const photo = stage.querySelector('.photo-print')?.getBoundingClientRect();
+    const controls = stage.querySelector('.scene-controls')?.getBoundingClientRect();
+    const link = stage.querySelector('.hero-link')?.getBoundingClientRect();
+    const bottom = stage.getBoundingClientRect().bottom;
+    const canvas = stage.querySelector('.welcome-canvas')?.getBoundingClientRect();
+    return !!art && !!photo && !!controls && !!link && !!canvas && photo.width >= canvas.width * .28 && photo.width < canvas.width * .32 && photo.left < art.right - art.width * .05 && photo.top < art.top + art.height * .2 && controls.top > bottom - 100 && Math.abs((controls.top + controls.height / 2) - (link.top + link.height / 2)) < 10;
+  })).toBe(true);
+  await page.locator('[data-scene-choice="you"]').click();
+  await page.waitForTimeout(1250);
+  expect(await page.locator('.scene-you').evaluate(panel => {
+    const heading = panel.querySelector('h1')?.getBoundingClientRect();
+    const art = panel.querySelector('.you-art')?.getBoundingClientRect();
+    return !!heading && !!art && heading.top < art.top && heading.bottom > art.top && heading.left < art.left;
+  })).toBe(true);
+  expect(await page.locator('.scene-you .headline-line').first().evaluate(line => {
+    const text = line.querySelector('.line-text');
+    if (!text) throw new Error('Missing headline text');
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    return line.getBoundingClientRect().right - range.getBoundingClientRect().right >= Number.parseFloat(getComputedStyle(line).fontSize) * .1;
+  })).toBe(true);
+});
+
+test("wide Olive photo moves right without covering the final letter", async ({ page }) => {
+  await page.setViewportSize({ width:1920, height:1080 });
+  await openReview(page);
+  expect(await page.locator('.scene-olive').evaluate(panel => {
+    const canvas = panel.querySelector('.welcome-canvas')?.getBoundingClientRect();
+    const art = panel.querySelector('.olive-art')?.getBoundingClientRect();
+    const photo = panel.querySelector('.photo-print')?.getBoundingClientRect();
+    if (!canvas || !art || !photo) return false;
+    return photo.left >= art.left + art.width * .85 && photo.right < innerWidth && photo.width >= canvas.width * .36;
+  })).toBe(true);
+  expect(await page.locator('.scene-olive h1').evaluate(heading => Number.parseFloat(getComputedStyle(heading).fontSize))).toBeGreaterThanOrEqual(210);
+});
+
+test("school-life and values type stay prominent without crowding", async ({ page }) => {
+  await page.setViewportSize({ width:1920, height:1080 });
+  await openReview(page);
+  expect(await page.evaluate(() => {
+    const size = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing heading or copy: ${selector}`);
+      return Number.parseFloat(getComputedStyle(element).fontSize);
+    };
+    return size('#school-life h2') >= 80 && size('.album-intro > p') >= 23 &&
+      size('.crest-story h2') >= 110 && size('.crest-intro') >= 25 &&
+      size('.values-grid p') >= 20;
+  })).toBe(true);
+  await page.setViewportSize({ width:1047, height:1000 });
+  expect(await page.locator('#school-life h2').evaluate(heading => {
+    const style = getComputedStyle(heading);
+    return heading.getBoundingClientRect().height / Number.parseFloat(style.lineHeight) <= 2.1;
+  })).toBe(true);
+  await page.setViewportSize({ width:390, height:844 });
+  expect(await page.evaluate(() => {
+    const value = document.querySelector('.values-grid p');
+    const introduction = document.querySelector('.album-intro > p');
+    const grid = document.querySelector('.values-grid');
+    return !!value && !!introduction && !!grid && Number.parseFloat(getComputedStyle(value).fontSize) >= 18 &&
+      Number.parseFloat(getComputedStyle(introduction).fontSize) >= 18 &&
+      getComputedStyle(grid).gridTemplateColumns.split(' ').length === 1 &&
+      document.documentElement.scrollWidth <= innerWidth;
+  })).toBe(true);
+});
+
+test("uniform postcard has presence without clipping at desktop or phone widths", async ({ page }) => {
+  await openReview(page);
+  for (const [width, minimum] of [[1920, 430], [1440, 380], [1047, 300], [390, 260], [320, 215]]) {
+    await page.setViewportSize({ width, height:1000 });
+    expect(await page.locator('.uniform-print').evaluate((figure, target) => {
+      const rect = figure.getBoundingClientRect();
+      const copy = figure.parentElement?.querySelector('.crest-copy')?.getBoundingClientRect();
+      return rect.width >= target && rect.left >= 0 && rect.right <= document.body.clientWidth &&
+        !!copy && (innerWidth > 760 ? rect.left >= copy.right : rect.top >= copy.bottom) &&
+        document.documentElement.scrollWidth <= innerWidth;
+    }, minimum)).toBe(true);
+  }
+});
+
+test("phone welcome controls stay inside the visible screen on both scenes", async ({ page }) => {
+  await openReview(page);
+  const stage = page.locator('.hero-stage');
+  for (const [width, height] of [[390, 844], [320, 740], [390, 700], [320, 700], [390, 568], [320, 568], [280, 568], [320, 480]]) {
+    await page.setViewportSize({ width, height });
+    for (const scene of ['olive', 'you'] as const) {
+      if (scene === 'you') await page.locator('[data-scene-choice="you"]').click();
+      await expect(stage).toHaveAttribute('data-scene', scene);
+      const geometry = await stage.evaluate(element => {
+        const controls = element.querySelector('.scene-controls')?.getBoundingClientRect();
+        const link = element.querySelector('.hero-link')?.getBoundingClientRect();
+        const bounds = element.getBoundingClientRect();
+        const photo = element.querySelector('.photo-print')?.getBoundingClientRect();
+        const art = element.querySelector('.olive-art')?.getBoundingClientRect();
+        const canvas = element.querySelector('.welcome-canvas')?.getBoundingClientRect();
+        return {boundsBottom: bounds.bottom, controls: controls && {left:controls.left,right:controls.right,top:controls.top,bottom:controls.bottom}, link: link && {left:link.left,right:link.right,top:link.top,bottom:link.bottom}, photo: photo && {top:photo.top,width:photo.width}, artBottom:art?.bottom, canvasWidth:canvas?.width, scrollWidth:document.documentElement.scrollWidth, overflowing:[...document.querySelectorAll('.obhis-review *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).slice(0,10).map(e => ({tag:e.tagName, class:e.className, right:e.getBoundingClientRect().right})), innerWidth, innerHeight};
+      });
+      expect(!!geometry.controls && !!geometry.link && !!geometry.photo && !!geometry.artBottom && !!geometry.canvasWidth && geometry.boundsBottom <= height + 1 &&
+        (height < 740 || geometry.photo.width >= geometry.canvasWidth * .7) &&
+        (height <= 450 || height >= 740 || geometry.photo.top >= geometry.artBottom - 20) &&
+        geometry.controls.left >= 0 && geometry.controls.right <= width && geometry.controls.bottom <= height - 8 &&
+        geometry.link.left >= 0 && geometry.link.right <= width && geometry.link.bottom <= geometry.controls.top - 8 &&
+        geometry.scrollWidth <= width, JSON.stringify({width,height,scene,geometry})).toBe(true);
+    }
+    await page.locator('[data-scene-choice="olive"]').click();
+  }
+});
+
+test("keyboard, history, reload and rapid reversal preserve control focus", async ({ page }) => {
+  await openReview(page);
+  const olive = page.locator('[data-scene-choice="olive"]');
+  const you = page.locator('[data-scene-choice="you"]');
+  const controls = page.locator('.scene-controls');
+  await controls.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(controls).toBeFocused();
+  await expect(page).toHaveURL(/scene=you/);
+  await page.locator('.hero-link').focus();
+  await expect(page.locator('.hero-link')).toBeFocused();
+  await olive.click();
+  await you.click();
+  await olive.click();
+  await page.goBack();
+  await expect(you).toBeDisabled();
+  await page.reload();
+  await expect(you).toBeDisabled();
+  await controls.focus();
+  await page.evaluate(() => history.back());
+  await expect(controls).toBeFocused();
+  await expect(olive).toBeDisabled();
+  const day = page.locator('[data-collection-choice="day"]');
+  await day.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator('[data-collection-choice="culture"]')).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(day).toBeFocused();
+});
+
+test("full-width chapters, composed headings, cycling photographs and scroll lift", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await openReview(page);
+  await expect(page.locator('.review-notice')).toHaveCount(0);
+  expect(await page.locator('.site-header').evaluate(element => element.getBoundingClientRect().height)).toBeLessThanOrEqual(80);
+  expect(await page.locator('.hero-stage,.crest-story,#campuses,.school-footer').evaluateAll(elements => elements.every(element => {
+    const rect = element.getBoundingClientRect();
+    return Math.abs(rect.left) < 1 && Math.abs(rect.right - document.body.clientWidth) < 1;
+  }))).toBe(true);
+  await expect(page.locator('.scene-olive h1')).toHaveAccessibleName('Meet Olive.');
+  await expect(page.locator('.scene-olive h1')).toHaveText('Meet');
+  await expect(page.locator('.photo-print figcaption,.you-art figcaption,.you-photo')).toHaveCount(0);
+  await expect(page.locator('.hero-stage .hero-link')).toHaveCount(1);
+  const positions = await sectionPositions(page);
+  for (const index of [1, 2, 3, 4, 0]) {
+    await page.locator('[data-scene-choice="you"]').click();
+    await expect(page.locator('.scene-you h1')).toHaveAccessibleName('A place for you.');
+    await expect(page.locator('.scene-you h1 .headline-line')).toHaveText(['A place', 'for']);
+    await page.locator('[data-scene-choice="olive"]').click();
+    await expect(page.locator(`.scene-olive [data-hero-photo="${index}"]`)).toBeVisible();
+    expect(await sectionPositions(page)).toEqual(positions);
+  }
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
+  await expect.poll(() => page.locator('.hero-stage').evaluate(element => Number.parseFloat(element.style.getPropertyValue('--hero-drift')))).toBeGreaterThan(0);
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'olive');
+});
+
+test("automatic welcomes wait six seconds without moving focus, history or announcements", async ({ page }) => {
+  await page.clock.install();
+  await openReview(page, "", true);
+  const stage = page.locator('.hero-stage');
+  const positions = await sectionPositions(page);
+  const before = await page.evaluate(() => ({ history: history.length, url: location.href }));
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  await page.clock.fastForward(3000);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
+  await page.clock.fastForward(3001);
+  await expect(stage).toHaveAttribute('data-scene', 'you');
+  await page.clock.fastForward(6001);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
+  await expect(page.locator('[data-hero-photo="1"]')).toBeVisible();
+  await page.clock.fastForward(6001);
+  await expect(stage).toHaveAttribute('data-scene', 'you');
+  expect(await sectionPositions(page)).toEqual(positions);
+  expect(await page.evaluate(() => ({ history: history.length, url: location.href }))).toEqual(before);
+  await expect(page.locator('#scene-status')).toBeEmpty();
+  const play = page.locator('[data-welcome-play]');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-pressed', 'true');
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', 'you');
+  await play.click();
+  await expect(play).toBeFocused();
+  await page.clock.fastForward(6001);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
+  await expect(page.locator('[data-hero-photo="2"]')).toBeVisible();
+  await expect(play).toBeFocused();
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  await page.locator('.scene-controls').focus();
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', 'olive');
+  await expect(stage).toHaveAttribute('data-playing', 'false');
+});
+
+test("offscreen and hidden documents suspend the automatic cycle", async ({ page }) => {
+  await openReview(page, "", true);
+  const stage = page.locator('.hero-stage');
+  await page.locator('#school-life').scrollIntoViewIfNeeded();
+  await expect(stage).toHaveAttribute('data-playing', 'false');
+  const scene = await stage.getAttribute('data-scene');
+  if (scene !== 'olive' && scene !== 'you') throw new Error('Expected an initialized welcome');
+  await page.clock.install();
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', scene);
+  await stage.scrollIntoViewIfNeeded();
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  // Simulate the visibility event in this isolated page; no personal tab control.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(stage).toHaveAttribute('data-playing', 'false');
+  await page.clock.fastForward(9000);
+  await expect(stage).toHaveAttribute('data-scene', scene);
+  await page.evaluate(() => {
+    Reflect.deleteProperty(document, 'hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(stage).toHaveAttribute('data-playing', 'true');
+  await page.clock.fastForward(6001);
+  await expect(stage).toHaveAttribute('data-scene', scene === 'olive' ? 'you' : 'olive');
+});
+
+test("mouse drag changes the welcome without capturing vertical wheel", async ({ page }) => {
+  await openReview(page);
+  const image = await page.locator('.olive-art img').boundingBox();
+  if (!image) throw new Error('Olive artwork not measurable');
+  const x = image.x + image.width * .42;
+  const y = image.y + image.height * .6;
+  await page.mouse.move(x + 100, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 100, y, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+  await expect(page).toHaveURL(/scene=you/);
+  await expect(page.locator('.hero-stage')).not.toHaveAttribute('data-dragging');
+  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 250);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before + 100);
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+});
+
+test("native touch swipe changes welcomes and vertical touch still scrolls", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  try {
+    const page = await context.newPage();
+    await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css', body: '' }));
+    await page.goto('/review/obhis');
+    await expect(page.locator('.scene-controls')).toBeVisible();
+    const session = await context.newCDPSession(page);
+    const image = await page.locator('.olive-art img').boundingBox();
+    if (!image) throw new Error('Touch artwork not measurable');
+    const x = 280;
+    const y = Math.min(650, image.y + image.height * .5);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let step = 1; step <= 8; step++) await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - step * 20, y }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+    await page.waitForTimeout(1250);
+    const before = await page.evaluate(() => window.scrollY);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 160, y: 650 }] });
+    for (let step = 1; step <= 6; step++) await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 160, y: 650 - step * 30 }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before + 20);
+    await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+    await expect(page.locator('.hero-stage')).not.toHaveAttribute('data-dragging');
+  } finally { await context.close(); }
+});
+
+test("story copy, gallery caption actions, campus labels and navigation remain honest", async ({ page }) => {
+  await openReview(page);
+  await expect(page.locator('#our-school p')).toHaveText('Olive Blessed Crest Academy is a school with roots in Nyanya, Abuja, and a belief that learning and character grow together. We want children to ask questions, take pride in their progress, and learn to care for the people around them.');
+  await expect(page.locator('#school-life h2')).toHaveText('The people make the place.');
+  await expect(page.locator('#school-life .album-intro > p')).toHaveText('A shared table. A familiar face. The excitement of cultural day. Get to know Olive through the everyday moments and celebrations that bring our school together.');
+  await expect(page.locator('.album-sheet:not([hidden])')).toHaveCount(2);
+  await expect(page.locator('.album-sheet:not([hidden]) .album-photo')).toHaveText(['View photo ↗', 'View photo ↗']);
+  await expect(page.locator('.album-sheet > img')).toHaveCount(4);
+  await page.locator('[data-collection-choice="culture"]').click();
+  await expect(page.locator('.album-sheet:not([hidden]) .album-photo')).toHaveCount(2);
+  await page.locator('.album-sheet:not([hidden]) .album-photo').first().click();
+  await expect(page.locator('#viewer-position')).toHaveText('3 of 4');
+  await page.locator('#viewer-close').click();
+  await expect(page.locator('.crest-story .section-kicker')).toHaveText('What we stand for');
+  await expect(page.locator('.crest-story .values-grid h3')).toHaveText(['Integrity', 'Service']);
+  await expect(page.locator('.crest-intro')).toHaveText('Learning shapes what a child knows. It should also help shape how they treat others.');
+  await expect(page.locator('.values-grid p')).toHaveText([
+    'Being honest about our work, keeping our word, and taking responsibility when we get something wrong. Integrity grows through the choices we make every day.',
+    'Noticing when someone needs help and choosing to act. Making room for a classmate, sharing what we know, and caring for the spaces we use together.',
+  ]);
+  await expect(page.locator('.admissions-copy > p')).toHaveText('Choosing a school is personal. Start with the things that matter to your family.');
+  await expect(page.locator('.campus-album h3')).toHaveText(['Abuja', 'Rugam']);
+  await expect(page.locator('.campus-album a,#campuses [data-photo],.admissions-copy a')).toHaveCount(0);
+  await expect(page.locator('#visit-guide summary,#application-guide summary')).toHaveText(['Visiting Olive', 'How to apply']);
+  await expect(page.locator('#visit-guide .guide-body')).toContainText('Plot 18C3, Habiscus Street, Federal Housing Estate, Karu Roundabout, Nyanya, Abuja, FCT.');
+  await expect(page.locator('#visit-guide .guide-body a')).toHaveAttribute('href', '#contact');
+  await expect(page.locator('#application-guide .guide-body a')).toHaveAttribute('href', '#contact');
+  await expect(page.locator('#application-guide .guide-body')).toContainText('Application links will be added shortly.');
+  await expect(page.locator('#contact h2')).toHaveText('Get in touch.');
+  await expect(page.locator('#contact a')).toHaveText(['+234 805 775 5997', 'obhischool@gmail.com']);
+  await expect(page.locator('#contact a').first()).toHaveAttribute('href', 'tel:+2348057755997');
+  await expect(page.locator('#contact a').last()).toHaveAttribute('href', 'mailto:obhischool@gmail.com');
+  await expect(page.locator('#donations h2')).toHaveText('Support Olive.');
+  await expect(page.locator('#donations .donation-qr-space > div')).toHaveCount(2);
+  await expect(page.locator('#donations a,#donations img')).toHaveCount(0);
+  await expect(page.locator('.footer-welcome,.campus-status,.photo-open')).toHaveCount(0);
+  expect(await page.locator('.nav a,.footer-links a').evaluateAll(links => links.every(link => {
+    const href = link.getAttribute('href');
+    return href?.startsWith('#') ? !!document.querySelector(href) : href === 'https://www.facebook.com/profile.php?id=100010370084416';
+  }))).toBe(true);
+});
+
+test("native viewer, manual controls, modified clicks and disclosures", async ({ page }) => {
+  await openReview(page);
+  const opener = page.locator('.album-photo[data-photo="0"]');
+  const originalUrl = page.url();
+  // Cancel at document after the renderer's bubble listener. This tests both
+  // modifier paths without letting Chromium navigate on macOS synthetic Ctrl-click.
+  for (const modifier of ['ctrlKey', 'metaKey'] as const) {
+    expect(await opener.evaluate((link, key) => {
+      let rendererPrevented: boolean | null = null;
+      const guard = (event: MouseEvent) => { rendererPrevented = event.defaultPrevented; event.preventDefault(); };
+      document.addEventListener('click', guard, { once: true });
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, [key]: true }));
+      return rendererPrevented;
+    }, modifier)).toBe(false);
+    expect(page.url()).toBe(originalUrl);
+    await expect(page.locator('.photo-viewer')).not.toBeVisible();
+  }
+  await opener.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.locator(".photo-viewer");
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("#viewer-close")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("#viewer-next")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.locator("#viewer-close")).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("#viewer-position")).toHaveText("4 of 4");
+  await page.locator("#viewer-next").click();
+  await expect(page.locator("#viewer-position")).toHaveText("1 of 4");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).not.toBe("hidden");
+  await expect(page.locator('.campus-album a')).toHaveCount(0);
+  await page.locator("#visit-guide summary").click();
+  await expect(page.locator("#visit-guide")).toHaveAttribute("open", "");
+  await page.locator("#application-guide summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#application-guide")).toHaveAttribute("open", "");
+  await page.locator('#application-guide .guide-body a').click();
+  await expect(page).toHaveURL(/#contact$/);
+  await page.locator('.footer-links a[href="#donations"]').click();
+  await expect(page).toHaveURL(/#donations$/);
+});
+
+test("reduced motion retains choices without travel or album animation", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openReview(page, "?scene=you");
+  await expect(page.locator('[data-welcome-play]')).toBeDisabled();
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-playing', 'false');
+  await page.waitForTimeout(3300);
+  await expect(page.locator('.hero-stage')).toHaveAttribute('data-scene', 'you');
+  await page.locator('[data-scene-choice="olive"]').click();
+  await page.locator('[data-collection-choice="culture"]').click();
+  expect(await page.locator('.scene').evaluateAll(elements => elements.every(element => getComputedStyle(element).transitionDuration === "0s"))).toBe(true);
+  expect(await page.locator('.album-sheet > img').evaluateAll(elements => elements.every(element => getComputedStyle(element).animationName === "none"))).toBe(true);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
+  await page.evaluate(() => window.scrollTo(0, 300));
+  expect(await page.locator('.hero-stage').evaluate(element => getComputedStyle(element).getPropertyValue('--hero-drift').trim())).toBe('0px');
+});
+
+test("no JavaScript exposes all photographs and native guidance", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false, baseURL });
+  const page = await context.newPage();
+  await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ contentType: "text/css", body: "" }));
+  await page.goto("/review/obhis?scene=you");
+  await expect(page.locator(".scene-olive")).toBeVisible();
+  await expect(page.locator(".scene-you")).not.toBeVisible();
+  await expect(page.locator(".scene-controls")).not.toBeVisible();
+  await expect(page.locator(".album-sheet:not([hidden])")).toHaveCount(4);
+  await expect(page.locator('.scene-olive [data-hero-photo="0"]')).toBeVisible();
+  for (const photo of await page.locator(".album-photo").all()) await expect(photo).toBeVisible();
+  await page.locator("#application-guide summary").click();
+  await expect(page.locator("#application-guide")).toHaveAttribute("open", "");
+  await page.locator('.album-photo[data-photo="0"]').click();
+  expect(page.url()).toContain("/review/obhis/assets/school-friends");
+  await context.close();
+});

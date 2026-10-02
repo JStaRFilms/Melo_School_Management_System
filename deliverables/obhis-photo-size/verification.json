@@ -1,0 +1,135 @@
+{
+  "captures": [
+    {
+      "width": 1920,
+      "height": 1080,
+      "filename": "larger-photo-1920.png",
+      "stage": {
+        "left": 0,
+        "right": 1905,
+        "top": 76,
+        "bottom": 1076,
+        "width": 1905,
+        "height": 1000
+      },
+      "photo": {
+        "left": 1097.301513671875,
+        "right": 1657.3079833984375,
+        "top": 309.07098388671875,
+        "bottom": 753.9133911132812,
+        "width": 560.0064697265625,
+        "height": 444.8424072265625
+      },
+      "art": {
+        "left": 189.3125,
+        "right": 1398.90625,
+        "top": 369.296875,
+        "bottom": 959.046875,
+        "width": 1209.59375,
+        "height": 589.75
+      },
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    },
+    {
+      "width": 1047,
+      "height": 749,
+      "filename": "larger-photo-1047.png",
+      "stage": {
+        "left": 0,
+        "right": 1032,
+        "top": 76,
+        "bottom": 749,
+        "width": 1032,
+        "height": 673
+      },
+      "photo": {
+        "left": 619.6874389648438,
+        "right": 1021.2344360351562,
+        "top": 221.2149200439453,
+        "bottom": 543.1444244384766,
+        "width": 401.5469970703125,
+        "height": 321.92950439453125
+      },
+      "art": {
+        "left": -30.953125,
+        "right": 835.921875,
+        "top": 264.359375,
+        "bottom": 687.015625,
+        "width": 866.875,
+        "height": 422.65625
+      },
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "filename": "larger-photo-390.png",
+      "stage": {
+        "left": 0,
+        "right": 375,
+        "top": 68,
+        "bottom": 844,
+        "width": 375,
+        "height": 776
+      },
+      "photo": {
+        "left": 69.4683609008789,
+        "right": 358.03165435791016,
+        "top": 425.6069641113281,
+        "bottom": 658.4867553710938,
+        "width": 288.56329345703125,
+        "height": 232.87979125976562
+      },
+      "art": {
+        "left": -26.25,
+        "right": 401.25,
+        "top": 218,
+        "bottom": 426.421875,
+        "width": 427.5,
+        "height": 208.421875
+      },
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "filename": "larger-photo-320.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 62,
+        "bottom": 762,
+        "width": 305,
+        "height": 700
+      },
+      "photo": {
+        "left": 56.460445404052734,
+        "right": 291.25829696655273,
+        "top": 385.2175598144531,
+        "bottom": 576.766845703125,
+        "width": 234.7978515625,
+        "height": 191.54928588867188
+      },
+      "art": {
+        "left": -21.34375,
+        "right": 326.34375,
+        "top": 212,
+        "bottom": 381.515625,
+        "width": 347.6875,
+        "height": 169.515625
+      },
+      "overflow": false,
+      "internalScroll": 0,
+      "animations": 0
+    }
+  ],
+  "errors": [],
+  "edgeFinding": "Both circled cyan-surface cuts meet the original supplied image boundary. Source alpha is opaque on column 0 at rows 641..796 and on the last row at columns 1098..1334. Prepared bottom-edge columns 1099..1333 reflect the existing one-pixel alpha inset. No artwork or preparation change was made.",
+  "note": "Private paused captures. Six-second playback retained. No fresh production build or real-device audit."
+}

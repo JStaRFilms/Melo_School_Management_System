@@ -87,7 +87,16 @@ export async function validatePublication(ctx: SiteCtx, profile: Doc<"schoolSite
       evidenceIds.push(evidence._id);
       if (def.evidence === "sensitive_public") sensitive = true;
     }
-    if (value.kind === "asset_ref") { await approvedAsset(ctx, profile.schoolId, value.assetId as Id<"schoolSiteAssets">, def.assetKind ?? "", now, publisher); sensitive = true; }
+    if (value.kind === "asset_ref") {
+      const asset = await approvedAsset(ctx, profile.schoolId, value.assetId as Id<"schoolSiteAssets">, def.assetKind ?? "", now, publisher);
+      if (def.altFieldId) {
+        const reviewedAlt = content.fields.find(field => field.fieldId === def.altFieldId)?.value;
+        // This text field has its own exact digest approval. Neither upload nor
+        // image rights approval authorizes editor-supplied child names or copy.
+        if (reviewedAlt?.kind !== "text" || asset.decorative || !asset.altText || asset.altText !== reviewedAlt.value) return deny();
+      }
+      sensitive = true;
+    }
   }
   for (const seo of content.routeSeo) if (seo.shareAssetId) { await approvedAsset(ctx, profile.schoolId, seo.shareAssetId as Id<"schoolSiteAssets">, "social_share", now, publisher); sensitive = true; }
   return { evidenceIds, sensitive, digest: await sha256(contentCanonical(content)) };

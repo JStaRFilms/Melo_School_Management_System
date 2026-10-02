@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en" data-variant="A">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Olive homepage concepts | Private prototype</title>
+  <!--
+    Two structurally different homepage studies, switchable via ?variant=A or B.
+    Private, throwaway design review. No live forms, tenant data, or destinations.
+    School display name and all copy are draft. Image publication consent is pending.
+    Art is original SVG illustration, not Blender output or actual campus imagery.
+    Reference constraints: UI.md requires shareable variant state and keyboard controls;
+    frontend-design requires subject-led materials, not generic education decoration;
+    creative-web-development requires immediate utility and no invented school facts.
+    Tenant colours here are art-direction studies, not additional theme configuration.
+  -->
+  <style>
+    :root { --ink:#142c38; --cyan:#39bcd3; --coral:#ef704d; --gold:#cfaa4b; --white:#fff; --line:#dbe3e6; --school-primary:#176c49; --school-primary-contrast:#fff; --school-accent:#39bcd3; --school-accent-contrast:#142c38; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:auto; }
+    body { margin:0; color:var(--ink); background:var(--white); font-family:Arial,Helvetica,sans-serif; }
+    button, a { -webkit-tap-highlight-color:transparent; }
+    button { font:inherit; cursor:pointer; }
+    a { color:inherit; text-decoration:none; }
+    a:focus-visible, button:focus-visible { outline:3px solid var(--ink); outline-offset:5px; }
+    img { display:block; max-width:100%; height:auto; }
+    svg { display:block; }
+    [hidden] { display:none !important; }
+    .skip { position:absolute; top:-80px; left:20px; padding:14px 20px; background:var(--white); z-index:10; }
+    .skip:focus { top:50px; }
+    .review-notice { min-height:34px; display:flex; align-items:center; justify-content:center; gap:12px; padding:8px 20px; background:var(--ink); color:var(--white); font-size:11px; letter-spacing:.02em; line-height:1.4; text-align:center; }
+    .review-notice strong { font-weight:700; white-space:nowrap; }
+    .review-notice span { opacity:.8; }
+    .site-header { display:flex; align-items:center; justify-content:space-between; min-height:112px; max-width:1600px; margin:auto; padding:23px 5.4%; gap:25px; }
+    .brand { display:flex; align-items:center; gap:15px; flex-shrink:0; }
+    .brand img { width:57px; height:57px; object-fit:contain; }
+    .brand-name { font-size:15px; line-height:1.3; font-weight:750; letter-spacing:-.02em; }
+    .brand-name span { display:block; }
+    .nav { display:flex; align-items:center; gap:30px; font-size:13px; font-weight:600; }
+    .nav a { display:inline-flex; align-items:center; min-height:44px; }
+    .nav a:hover { text-decoration:underline; text-underline-offset:5px; }
+    .nav .admissions { display:flex; gap:18px; align-items:center; border:1px solid var(--ink); border-radius:5px; padding:0 18px; }
+    .arrow { font-size:23px; line-height:1; font-weight:400; }
+    .eyebrow { display:flex; align-items:center; gap:11px; font-size:12px; font-weight:650; letter-spacing:.02em; }
+    .eyebrow .dot { width:9px; height:9px; border-radius:50%; background:var(--school-primary); }
+    .button-row { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+    .primary-link { display:inline-flex; align-items:center; justify-content:space-between; min-height:56px; padding:0 24px; gap:26px; border-radius:5px; background:var(--school-primary); color:var(--school-primary-contrast); font-size:14px; font-weight:650; }
+    .primary-link:hover { filter:brightness(.94); }
+    .secondary-link { display:inline-flex; gap:16px; align-items:center; min-height:48px; font-size:14px; font-weight:600; }
+    .secondary-link:hover { text-decoration:underline; text-underline-offset:6px; }
+    .page-a .hero { max-width:1600px; margin:auto; position:relative; min-height:728px; padding:70px 5.4% 82px; overflow:hidden; }
+    .page-a .hero-copy { position:relative; width:44%; z-index:1; }
+    .page-a h1 { margin:35px 0 27px; font-family:Bahnschrift,'Arial Rounded MT Bold',Arial,sans-serif; font-size:clamp(66px,6.6vw,105px); font-weight:800; line-height:.98; letter-spacing:-.063em; }
+    .page-a h1 .bright { color:#da5737; }
+    .page-a .intro { margin:0 0 27px; max-width:330px; font-size:16px; line-height:1.7; }
+    .page-a .hero-art { position:absolute; width:64%; right:-1%; top:-5px; }
+    .page-a .art-ground { position:absolute; width:82%; aspect-ratio:1.06; background:#e4f6f7; border-radius:48% 52% 47% 53%; top:55px; right:4%; }
+    .page-a .hero-art img { position:relative; width:100%; }
+    .page-a .illustration-note { position:absolute; right:6.5%; bottom:66px; font-size:11px; color:#4d6771; }
+    .page-a .place-caption { position:absolute; right:19%; bottom:97px; display:flex; align-items:center; gap:10px; font-family:'Trebuchet MS',sans-serif; font-size:16px; transform:rotate(-5deg); }
+    .page-a .place-caption svg { width:57px; height:38px; }
+    .fabric-rule { height:14px; background-color:var(--ink); background-image:radial-gradient(ellipse at 16px 6px,#39bcd3 0 7px,transparent 8px),radial-gradient(ellipse at 40px 13px,#ef704d 0 8px,transparent 9px),radial-gradient(ellipse at 60px 3px,#e7a5b0 0 7px,transparent 8px); background-size:74px 26px; }
+    .page-a .life { max-width:1600px; display:grid; grid-template-columns:1fr 1.25fr; margin:auto; gap:85px; padding:68px 8% 95px; align-items:center; }
+    .section-kicker { font-size:12px; font-weight:650; letter-spacing:.025em; margin:0 0 17px; }
+    .life h2 { margin:0 0 21px; font-family:Bahnschrift,Arial,sans-serif; font-size:44px; line-height:1.07; letter-spacing:-.045em; }
+    .life p:not(.section-kicker) { font-size:16px; line-height:1.7; max-width:380px; }
+    .life figure { margin:0; }
+    .life figure img { width:100%; aspect-ratio:1.65; object-fit:cover; object-position:center 42%; border-radius:5px; }
+    .life figcaption { font-size:11px; margin-top:10px; color:#526973; line-height:1.5; }
+    .page-b { background:#fffdf8; }
+    .page-b .site-header { background:#fffdf8; }
+    .page-b .hero { background:#ef704d; max-width:1600px; margin:auto; padding:48px 5.4% 0; position:relative; overflow:hidden; min-height:783px; }
+    .page-b .hero-top { position:relative; z-index:1; display:grid; grid-template-columns:1.6fr 1fr; gap:55px; align-items:start; }
+    .page-b h1 { margin:22px 0 0; font-family:'Trebuchet MS',Arial,sans-serif; font-weight:800; font-size:clamp(64px,6.5vw,104px); letter-spacing:-.072em; line-height:1.01; }
+    .page-b h1 em { font-style:normal; color:var(--white); }
+    .page-b .hero-intro { padding-top:64px; max-width:350px; justify-self:end; }
+    .page-b .hero-intro p { font-size:17px; line-height:1.65; margin:0 0 24px; }
+    .page-b .primary-link { background:var(--white); color:var(--ink); }
+    .page-b .hero-bottom { height:475px; position:relative; }
+    .page-b .table-art { position:absolute; left:-3%; bottom:-64px; width:63%; }
+    .page-b .photo-print { position:absolute; right:2%; top:48px; width:32%; margin:0; padding:13px 13px 34px; background:#fffdf8; transform:rotate(6deg); box-shadow:5px 12px 0 #bc5138; }
+    .page-b .photo-print img { width:100%; aspect-ratio:1.34; object-fit:cover; object-position:center; }
+    .page-b .photo-print figcaption { font:15px 'Trebuchet MS',sans-serif; margin-top:16px; letter-spacing:-.01em; }
+    .page-b .paper-note { position:absolute; left:54%; top:235px; width:147px; padding:21px 19px 24px; background:#d7bd5a; transform:rotate(-7deg); font:21px/1.15 'Trebuchet MS',sans-serif; letter-spacing:-.04em; box-shadow:3px 4px 0 #bf593b; }
+    .page-b .material-note { position:absolute; right:3%; bottom:19px; font-size:11px; }
+    .page-b .life { max-width:1600px; display:grid; grid-template-columns:1fr 1fr; padding:64px 8% 92px; gap:60px; }
+    .page-b .life h2 { font-family:'Trebuchet MS',sans-serif; font-size:42px; }
+    .page-b .life .life-copy { align-self:center; }
+    .review-section { max-width:1360px; margin:auto; padding:30px 5.4% 132px; border-top:1px solid var(--line); display:grid; grid-template-columns:1fr 1fr; gap:45px; }
+    .review-section h2 { font-size:20px; margin:0 0 12px; letter-spacing:-.035em; }
+    .review-section p { font-size:14px; line-height:1.65; margin:0; color:#526973; max-width:510px; }
+    .switcher { position:fixed; z-index:5; bottom:20px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:14px; padding:9px; border:1px solid #415865; border-radius:12px; background:var(--ink); color:var(--white); box-shadow:0 7px 22px #142c3833; }
+    .switcher button { width:44px; height:44px; border:1px solid #536c78; border-radius:7px; background:transparent; color:var(--white); font-size:22px; }
+    .switcher button:hover { background:#2e4c5a; }
+    .switcher button:focus-visible { outline-color:var(--cyan); }
+    .switcher-info { min-width:225px; text-align:center; padding:0 3px; }
+    .switcher-info small { display:block; font-size:9px; letter-spacing:.11em; text-transform:uppercase; color:#a8c4ce; margin-bottom:4px; }
+    .switcher-info span { display:block; font-size:13px; font-weight:600; }
+    .no-script { margin:0; padding:12px; text-align:center; background:#fff; }
+    @media(min-width:1601px) { .page-b .hero { border-radius:12px; } }
+    @media(max-width:1050px) {
+      .nav { gap:19px; }
+      .nav .school-link { display:none; }
+      .page-a .hero { min-height:653px; padding-top:55px; }
+      .page-a h1 { font-size:76px; }
+      .page-a .hero-art { top:74px; width:63%; right:-5%; }
+      .page-a .hero-copy { width:47%; }
+      .page-a .place-caption { bottom:53px; right:17%; }
+      .page-a .illustration-note { bottom:25px; }
+      .page-b .hero { min-height:710px; }
+      .page-b .hero-top { gap:30px; }
+      .page-b h1 { font-size:76px; }
+      .page-b .hero-intro { padding-top:45px; }
+      .page-b .hero-bottom { height:400px; }
+      .page-b .table-art { width:68%; bottom:-28px; }
+      .page-b .photo-print { width:33%; }
+      .page-b .paper-note { left:53%; top:215px; }
+    }
+    @media(max-width:760px) {
+      .review-notice { font-size:10px; flex-wrap:wrap; gap:4px 9px; padding:9px 14px; }
+      .review-notice span { max-width:280px; }
+      .site-header { min-height:94px; padding:17px 6%; }
+      .brand { gap:10px; }
+      .brand img { width:43px; height:43px; }
+      .brand-name { font-size:12px; }
+      .nav { gap:0; }
+      .nav a:not(.admissions) { display:none; }
+      .nav .admissions { font-size:11px; padding:0 12px; gap:12px; }
+      .page-a .hero { display:flex; flex-direction:column; padding:28px 6% 35px; min-height:0; }
+      .page-a .hero-copy { width:100%; }
+      .page-a h1 { font-size:clamp(61px,12.5vw,88px); margin:25px 0 23px; line-height:1; max-width:560px; }
+      .page-a .intro { font-size:15px; max-width:340px; margin-bottom:20px; }
+      .page-a .hero-art { position:relative; top:auto; right:auto; width:112%; margin:0 -6%; }
+      .page-a .art-ground { top:28px; }
+      .page-a .place-caption { position:relative; right:auto; bottom:auto; justify-content:center; margin:-23px 0 8px; font-size:15px; }
+      .page-a .illustration-note { position:relative; bottom:auto; right:auto; text-align:center; margin:10px 0 0; }
+      .primary-link { min-height:52px; padding:0 18px; font-size:13px; }
+      .secondary-link { font-size:13px; }
+      .button-row { gap:15px; }
+      .page-a .life, .page-b .life { grid-template-columns:1fr; padding:40px 6% 48px; gap:24px; }
+      .life h2, .page-b .life h2 { font-size:36px; }
+      .page-b .hero { padding:31px 6% 24px; min-height:0; }
+      .page-b .hero-top { grid-template-columns:1fr; gap:0; }
+      .page-b h1 { font-size:clamp(58px,12.5vw,88px); margin:21px 0 22px; }
+      .page-b .hero-intro { padding:0; justify-self:start; max-width:350px; }
+      .page-b .hero-intro p { font-size:15px; margin-bottom:19px; }
+      .page-b .hero-bottom { height:auto; padding-top:10px; }
+      .page-b .table-art { position:relative; left:-11%; bottom:auto; width:120%; max-width:none; }
+      .page-b .photo-print { position:relative; top:auto; right:auto; width:73%; margin:-25px 0 32px 10%; padding:10px 10px 24px; }
+      .page-b .photo-print figcaption { font-size:13px; margin-top:12px; }
+      .page-b .paper-note { display:none; }
+      .page-b .material-note { position:relative; right:auto; bottom:auto; text-align:center; margin-top:10px; }
+      .review-section { grid-template-columns:1fr; padding:28px 6% 125px; gap:24px; }
+      .switcher { bottom:13px; gap:6px; padding:7px; max-width:calc(100% - 24px); }
+      .switcher-info { min-width:190px; }
+      .switcher-info span { font-size:12px; }
+      .switcher button { flex-shrink:0; }
+    }
+    @media(max-width:360px) { .brand-name { font-size:11px; } .brand img { width:37px; height:37px; } .nav .admissions { padding:0 8px; gap:7px; } .switcher-info { min-width:172px; } }
+    @media(prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#concept-main">Skip to the concept</a>
+  <div class="review-notice"><strong>Private design study</strong><span>Draft copy. Photo permissions pending. Illustrations, not campus renders.</span></div>
+  <noscript><p class="no-script">JavaScript is off. The sculptural concept is shown. Enable JavaScript to compare both studies.</p></noscript>
+  <main id="concept-main" tabindex="-1">
+    <article class="page-a" data-concept="A" aria-label="Concept A: bold and sculptural">
+      <header class="site-header">
+        <a class="brand" href="#concept-main" aria-label="Olive Blessed Crest Academy, concept home"><img src="obhis-homepage-prototype-assets/school-logo.png" width="57" height="57" alt="School logo: Integrity and Service"><div class="brand-name"><span>Olive Blessed Crest</span><span>Academy</span></div></a>
+        <nav class="nav" aria-label="Concept A navigation"><a class="school-link" href="#life-a">Our school</a><a href="#life-a">School life</a><a href="#campuses-a">Our campuses</a><a class="admissions" href="#admissions-a">Admissions <span class="arrow" aria-hidden="true">↗</span></a></nav>
+      </header>
+      <section class="hero" aria-labelledby="heading-a">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="dot" aria-hidden="true"></span>Olive Blessed Crest Academy</div>
+          <h1 id="heading-a">Bring your<br>whole <span class="bright">bright</span><br>self.</h1>
+          <p class="intro">Big questions. Little discoveries.<br>A place to find your own colours.</p>
+          <div class="button-row"><a class="primary-link" href="#life-a">Meet Olive <span class="arrow" aria-hidden="true">↗</span></a><a class="secondary-link" href="#campuses-a">Find our campuses <span aria-hidden="true">→</span></a></div>
+        </div>
+        <div class="hero-art"><div class="art-ground" aria-hidden="true"></div><img src="obhis-homepage-prototype-assets/sculptural-table.svg" width="1100" height="940" alt="Illustration of a cyan shared table, uniform-inspired fabric, colourful shapes, and a white chair left open."></div>
+        <div class="place-caption"><svg viewBox="0 0 60 40" aria-hidden="true"><path d="M4 31Q36 36 51 6M40 10 52 4 56 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>A place for you.</div>
+        <p class="illustration-note">Illustrated world. Real school.</p>
+      </section>
+      <div class="fabric-rule" aria-hidden="true"></div>
+      <section class="life" id="life-a" aria-labelledby="life-heading-a">
+        <div><p class="section-kicker">A closer look at Olive</p><h2 id="life-heading-a">The people make<br>the place.</h2><p>A glimpse from the school's own photo collection. The finished site will pair this illustrated world with approved moments from school life.</p><a class="secondary-link" href="#campuses-a">Explore the school <span aria-hidden="true">→</span></a></div>
+        <figure><img src="obhis-homepage-prototype-assets/school-gathering.webp" width="1400" height="935" loading="lazy" alt="Pupils in white shirts and brightly patterned uniforms gathered with adults at school."><figcaption>Private review fixture from the supplied school-visit collection. Public-use permission is not yet confirmed.</figcaption></figure>
+      </section>
+      <section class="review-section" aria-label="Concept A content placeholders"><div id="campuses-a"><h2>Our campuses</h2><p>Campus names, locations, and contact details will appear here after confirmation. Nothing in this prototype represents a verified campus listing.</p></div><div id="admissions-a"><h2>Admissions</h2><p>This is a visual study. No application is collected here. The finished website will link to the school's configured admissions experience.</p></div></section>
+    </article>
+    <article class="page-b" data-concept="B" aria-label="Concept B: tactile and patterned" hidden>
+      <header class="site-header">
+        <a class="brand" href="#concept-main" aria-label="Olive Blessed Crest Academy, concept home"><img src="obhis-homepage-prototype-assets/school-logo.png" width="57" height="57" alt="School logo: Integrity and Service"><div class="brand-name"><span>Olive Blessed Crest</span><span>Academy</span></div></a>
+        <nav class="nav" aria-label="Concept B navigation"><a class="school-link" href="#life-b">Our school</a><a href="#life-b">School life</a><a href="#campuses-b">Our campuses</a><a class="admissions" href="#admissions-b">Admissions <span class="arrow" aria-hidden="true">↗</span></a></nav>
+      </header>
+      <section class="hero" aria-labelledby="heading-b">
+        <div class="hero-top"><div><div class="eyebrow">Olive Blessed Crest Academy</div><h1 id="heading-b">A place for<br>all your <em>colours.</em></h1></div><div class="hero-intro"><p>Come with your questions.<br>Your ideas. Your bright little self.<br>Let's see what happens next.</p><div class="button-row"><a class="primary-link" href="#life-b">Get to know Olive <span class="arrow" aria-hidden="true">↗</span></a><a class="secondary-link" href="#campuses-b">Our campuses <span aria-hidden="true">→</span></a></div></div></div>
+        <div class="hero-bottom">
+          <img class="table-art" src="obhis-homepage-prototype-assets/patterned-table.svg" width="1100" height="900" alt="Overhead illustration of a colourful table, patterned fabric, paper colour studies, and an open chair.">
+          <figure class="photo-print"><img src="obhis-homepage-prototype-assets/classroom-moment.webp" width="1400" height="935" alt="Two pupils at a classroom desk, wearing white and cyan tops with patterned uniform details."><figcaption>A little glimpse of our world.</figcaption></figure>
+          <div class="paper-note" aria-hidden="true">Leave room<br>for wonder.</div>
+          <p class="material-note">Illustration + school photography. Private review only.</p>
+        </div>
+      </section>
+      <section class="life" id="life-b" aria-labelledby="life-heading-b"><div class="life-copy"><p class="section-kicker">A closer look at Olive</p><h2 id="life-heading-b">Many personalities.<br>A shared place.</h2><p>The uniform's colours and patterns lead this direction. Photography brings us back to the actual people and spaces.</p></div><figure><img src="obhis-homepage-prototype-assets/school-gathering.webp" width="1400" height="935" loading="lazy" alt="Pupils in the school's multicoloured patterned uniforms gathered outside with adults."><figcaption>Private review fixture. Photographer rights and permission to publish identifiable children must be confirmed.</figcaption></figure></section>
+      <section class="review-section" aria-label="Concept B content placeholders"><div id="campuses-b"><h2>Our campuses</h2><p>Campus names, locations, and contact details will appear here after confirmation. Nothing in this prototype represents a verified campus listing.</p></div><div id="admissions-b"><h2>Admissions</h2><p>This is a visual study. No application is collected here. The finished website will link to the school's configured admissions experience.</p></div></section>
+    </article>
+  </main>
+  <div class="switcher" role="group" aria-label="Compare homepage concepts"><button type="button" id="previous" aria-label="Previous concept">←</button><div class="switcher-info"><small>Homepage concept · use ← →</small><span id="variant-label" aria-live="polite">A · Bold &amp; sculptural</span></div><button type="button" id="next" aria-label="Next concept">→</button></div>
+  <script>
+    const variants = ['A', 'B'];
+    const labels = { A: 'A · Bold & sculptural', B: 'B · Tactile & patterned' };
+    let current = new URLSearchParams(location.search).get('variant') === 'B' ? 'B' : 'A';
+    function showVariant(variant, updateUrl = true) {
+      current = variant;
+      document.documentElement.dataset.variant = variant;
+      document.querySelectorAll('[data-concept]').forEach(article => { article.hidden = article.dataset.concept !== variant; });
+      document.getElementById('variant-label').textContent = labels[variant];
+      document.title = `${labels[variant]} | Olive private prototype`;
+      if (updateUrl) {
+        const url = new URL(location.href);
+        url.searchParams.set('variant', variant);
+        url.hash = '';
+        history.replaceState(null, '', url);
+        window.scrollTo(0, 0);
+      }
+    }
+    function cycle(direction) { showVariant(variants[(variants.indexOf(current) + direction + variants.length) % variants.length]); }
+    document.getElementById('previous').addEventListener('click', () => cycle(-1));
+    document.getElementById('next').addEventListener('click', () => cycle(1));
+    document.addEventListener('keydown', event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.target.closest('input,textarea,select,[contenteditable]')) return;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        cycle(event.key === 'ArrowRight' ? 1 : -1);
+      }
+    });
+    window.addEventListener('popstate', () => showVariant(new URLSearchParams(location.search).get('variant') === 'B' ? 'B' : 'A', false));
+    showVariant(current, false);
+  </script>
+</body>
+</html>

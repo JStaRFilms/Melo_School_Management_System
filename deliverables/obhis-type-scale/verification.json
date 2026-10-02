@@ -1,0 +1,186 @@
+{
+  "captures": [
+    {
+      "name": "school-life",
+      "width": 1920,
+      "filename": "school-life-1920.png",
+      "measure": {
+        "height": 1153,
+        "fonts": {
+          "0-h2": "82px",
+          "1-p": "24px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "values",
+      "width": 1920,
+      "filename": "values-1920.png",
+      "measure": {
+        "height": 713,
+        "fonts": {
+          "0-h2": "116px",
+          "1-p": "26px",
+          "2-h3": "25px",
+          "3-p": "21px",
+          "4-h3": "25px",
+          "5-p": "21px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "school-life",
+      "width": 1440,
+      "filename": "school-life-1440.png",
+      "measure": {
+        "height": 980,
+        "fonts": {
+          "0-h2": "72px",
+          "1-p": "20.16px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "values",
+      "width": 1440,
+      "filename": "values-1440.png",
+      "measure": {
+        "height": 638,
+        "fonts": {
+          "0-h2": "100.8px",
+          "1-p": "20.16px",
+          "2-h3": "21px",
+          "3-p": "18px",
+          "4-h3": "21px",
+          "5-p": "18px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "school-life",
+      "width": 1047,
+      "filename": "school-life-1047.png",
+      "measure": {
+        "height": 841,
+        "fonts": {
+          "0-h2": "52.35px",
+          "1-p": "19px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "values",
+      "width": 1047,
+      "filename": "values-1047.png",
+      "measure": {
+        "height": 611,
+        "fonts": {
+          "0-h2": "73.29px",
+          "1-p": "20px",
+          "2-h3": "21px",
+          "3-p": "18px",
+          "4-h3": "21px",
+          "5-p": "18px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "school-life",
+      "width": 768,
+      "filename": "school-life-768.png",
+      "measure": {
+        "height": 886,
+        "fonts": {
+          "0-h2": "48px",
+          "1-p": "19px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "values",
+      "width": 768,
+      "filename": "values-768.png",
+      "measure": {
+        "height": 652,
+        "fonts": {
+          "0-h2": "66px",
+          "1-p": "20px",
+          "2-h3": "21px",
+          "3-p": "18px",
+          "4-h3": "21px",
+          "5-p": "18px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "school-life",
+      "width": 390,
+      "filename": "school-life-390.png",
+      "measure": {
+        "height": 1132,
+        "fonts": {
+          "0-h2": "38px",
+          "1-p": "18px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "values",
+      "width": 390,
+      "filename": "values-390.png",
+      "measure": {
+        "height": 959,
+        "fonts": {
+          "0-h2": "56px",
+          "1-p": "18px",
+          "2-h3": "21px",
+          "3-p": "18px",
+          "4-h3": "21px",
+          "5-p": "18px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "school-life",
+      "width": 320,
+      "filename": "school-life-320.png",
+      "measure": {
+        "height": 1156,
+        "fonts": {
+          "0-h2": "38px",
+          "1-p": "18px"
+        },
+        "overflow": false
+      }
+    },
+    {
+      "name": "values",
+      "width": 320,
+      "filename": "values-320.png",
+      "measure": {
+        "height": 1003,
+        "fonts": {
+          "0-h2": "56px",
+          "1-p": "18px",
+          "2-h3": "21px",
+          "3-p": "18px",
+          "4-h3": "21px",
+          "5-p": "18px"
+        },
+        "overflow": false
+      }
+    }
+  ],
+  "errors": [],
+  "note": "Private headless type-scale study. Sticky header disabled only in these section crops to avoid a capture overlap. No original school media changed."
+}

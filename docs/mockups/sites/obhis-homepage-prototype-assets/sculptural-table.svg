@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="940" viewBox="0 0 1100 940">
+  <title>A colourful table with a place left open</title>
+  <desc>Original illustrative concept, not a model of school facilities. A cyan shared table, patterned fabric, coloured shapes, and an empty white chair.</desc>
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#65d5e0"/><stop offset="1" stop-color="#29aec6"/></linearGradient>
+    <linearGradient id="white" x1="0" y1="0" x2="0.6" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#d8e6e7"/></linearGradient>
+    <filter id="shadow" x="-40%" y="-50%" width="180%" height="220%"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="small-shadow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5"/></filter>
+    <pattern id="fabric" width="68" height="64" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
+      <rect width="68" height="64" fill="#203644"/>
+      <ellipse cx="16" cy="15" rx="12" ry="16" fill="#47c1d6" transform="rotate(-20 16 15)"/>
+      <ellipse cx="47" cy="43" rx="12" ry="16" fill="#f08a4c" transform="rotate(24 47 43)"/>
+      <ellipse cx="51" cy="8" rx="10" ry="12" fill="#f1a1a0"/>
+      <ellipse cx="13" cy="49" rx="8" ry="10" fill="#d7b94b"/>
+    </pattern>
+    <clipPath id="table-clip"><ellipse cx="575" cy="390" rx="375" ry="222" transform="rotate(-14 575 390)"/></clipPath>
+  </defs>
+  <!-- Colour and shape studies drawn for private review. No pupil work is represented. -->
+  <ellipse cx="555" cy="728" rx="365" ry="90" fill="#142c38" opacity=".12" filter="url(#shadow)"/>
+  <g transform="translate(204 204) rotate(-24)">
+    <path d="M20 27 22 164M112 27 113 164" stroke="#163844" stroke-width="14" stroke-linecap="round"/>
+    <rect x="-15" y="-80" width="161" height="145" rx="51" fill="#d35137"/>
+    <rect x="-15" y="-90" width="161" height="139" rx="51" fill="#ef704d"/>
+    <path d="M-10 65Q60 99 140 65L139 106Q62 147-10 108Z" fill="#b64029"/>
+    <path d="M-10 49Q59 81 140 49L139 89Q62 130-10 92Z" fill="#f08665"/>
+  </g>
+  <g transform="translate(828 160) rotate(25)">
+    <path d="M17 28 17 142M102 28 104 141" stroke="#163844" stroke-width="13" stroke-linecap="round"/>
+    <rect x="-19" y="-77" width="162" height="138" rx="47" fill="#b79c39"/>
+    <rect x="-19" y="-90" width="162" height="137" rx="47" fill="#d6bc56"/>
+    <path d="M-12 49Q57 76 137 49L137 90Q65 119-12 93Z" fill="#c2a947"/>
+  </g>
+  <path d="M315 463 288 746M778 419 815 702M568 489 568 791" stroke="#174d58" stroke-width="25" stroke-linecap="round"/>
+  <path d="M321 463 305 740M782 419 829 699M579 489 579 786" stroke="#287889" stroke-width="12" stroke-linecap="round"/>
+  <ellipse cx="575" cy="417" rx="375" ry="222" transform="rotate(-14 575 417)" fill="#16859c"/>
+  <ellipse cx="575" cy="390" rx="375" ry="222" transform="rotate(-14 575 390)" fill="url(#top)"/>
+  <g clip-path="url(#table-clip)">
+    <path d="M-80 302 312 80 558 755 141 955Z" fill="url(#fabric)"/>
+    <path d="M311 80 558 755" fill="none" stroke="#ffffff" stroke-opacity=".65" stroke-width="3"/>
+  </g>
+  <g transform="translate(615 362) rotate(-14) skewX(18) scale(1 .63)">
+    <ellipse cx="22" cy="28" rx="156" ry="130" fill="#173644" opacity=".15" filter="url(#small-shadow)"/>
+    <path d="M-131-111H-7V-21H-66V48H-131Z" transform="translate(0 12)" fill="#cd512e"/>
+    <path d="M-131-111H-7V-21H-66V48H-131Z" fill="#f0814c"/>
+    <path d="M11-111H124V-8H73V-42H11Z" transform="translate(0 12)" fill="#a7a045"/>
+    <path d="M11-111H124V-8H73V-42H11Z" fill="#d9c565"/>
+    <path d="M11-23H54V27H124V126H11Z" transform="translate(0 12)" fill="#a47580"/>
+    <path d="M11-23H54V27H124V126H11Z" fill="#edacb6"/>
+    <path d="M-131 66H-66V39H-7V126H-131Z" transform="translate(-32 32)" fill="#f7f9f5"/>
+    <path d="M-131 66H-66V39H-7V126H-131Z" transform="translate(-32 20)" fill="#ffffff"/>
+  </g>
+  <g transform="translate(680 519) rotate(-14) skewX(18) scale(1 .63)">
+    <rect x="-60" y="-26" width="119" height="63" rx="4" fill="#1a879e" opacity=".3"/>
+    <rect x="-60" y="-34" width="119" height="63" rx="4" fill="#ffffff"/>
+    <path d="M-41-14Q-17-32 2-7T38-11M-39 9H4" fill="none" stroke="#ef704d" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(924 517) rotate(18)">
+    <path d="M-3 122-24 249M117 115 135 246" stroke="#183945" stroke-width="15" stroke-linecap="round"/>
+    <rect x="-32" y="-19" width="178" height="161" rx="45" fill="#d05235"/>
+    <rect x="-32" y="-35" width="178" height="161" rx="45" fill="#ef704d"/>
+    <path d="M-32 118Q54 164 146 118V165Q63 214-32 171Z" fill="url(#fabric)"/>
+  </g>
+  <g transform="translate(445 677) rotate(-9)">
+    <ellipse cx="51" cy="167" rx="124" ry="34" fill="#142c38" opacity=".11" filter="url(#small-shadow)"/>
+    <path d="M-21 91-44 202M125 91 149 202" stroke="#66828a" stroke-width="14" stroke-linecap="round"/>
+    <path d="M-49 32Q41-7 146 29L151 102Q45 154-50 104Z" fill="#bacfd3"/>
+    <path d="M-49 21Q41-18 146 18L151 91Q45 143-50 93Z" fill="url(#white)"/>
+    <path d="M-50 92-62-73Q44-119 141-83L151 91Q44 130-50 92Z" fill="#d3e1e3"/>
+    <path d="M-50 78-54-84Q47-125 141-90L144 72Q43 111-50 78Z" fill="url(#white)"/>
+    <path d="M-31-67Q40-91 118-66" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

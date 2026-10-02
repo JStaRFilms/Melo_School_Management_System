@@ -2,9 +2,11 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "../../_generated/api";
 import schema from "../../schema";
+import type { Id } from "../../_generated/dataModel";
 import { encode } from "fast-png";
-import { storageDigest } from "./shared";
+import { storageDigest, validatePublication } from "./shared";
 import { encodeSiteUploadMetadata } from "@school/shared/site-upload-metadata";
+import { siteManifest, type SiteContentV1 } from "@school/shared/site-manifests";
 const pixel = new Uint8Array(encode({width:1,height:1,channels:4,depth:8,data:new Uint8Array([24,55,88,255])}));
 const modules = {
   ...Object.fromEntries(Object.entries(import.meta.glob("../../**/*.ts")).map(([path, load]) => [path.replace(/^\.\.\/\.\.\//, "./"), load])),
@@ -33,6 +35,103 @@ async function fixture() {
   return {t,...ids,editor:t.withIdentity(ident("editor")),reviewer:t.withIdentity(ident("reviewer")),other:t.withIdentity(ident("other")),operator:t.withIdentity(ident("operator"))};
 }
 describe("managed site boundary", () => {
+  test("immutable Olive publication needs identity, sensitive facts and independent evidence for every image", async () => {
+    const f = await fixture();
+    const manifest = siteManifest("obhis-v1", "1")!;
+    await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"obhis-v1",rendererSchemaVersion:"1"});
+    const assets = new Map<string, {id:Id<"schoolSiteAssets">; checksum:string}>();
+    for (const def of manifest.fields.filter(d => d.kind === "asset_ref")) {
+      const response = await f.editor.fetch("/sites/asset-upload",{method:"POST",headers:{"content-length":String(pixel.length),"content-type":"image/png","x-site-school":f.schoolA,"x-site-kind":def.assetKind!,"x-site-filename":`${def.fieldId}.png`,"x-site-alt":`Fictional ${def.fieldId} image`},body:pixel});
+      expect(response.status).toBe(201);
+      const {assetId} = await response.json() as {assetId:string};
+      const asset = await f.t.run(ctx => ctx.db.get(assetId as import("../../_generated/dataModel").Id<"schoolSiteAssets">));
+      assets.set(def.fieldId,{id:assetId as Id<"schoolSiteAssets">,checksum:asset!.checksum});
+    }
+    const content = {fields: manifest.fields.map(def => ({fieldId:def.fieldId,value:def.kind === "asset_ref" ? {kind:"asset_ref" as const,assetId:assets.get(def.fieldId)!.id} : {kind:"text" as const,value:def.fieldId === "school_name" ? "Synthetic School" : def.fieldId === "primary_color" ? "#176c49" : def.fieldId === "accent_color" ? "#39bcd3" : def.fieldId === "phone" ? "+2348057755997" : def.fieldId === "email" ? "test@example.test" : def.fieldId.endsWith("_alt") ? `Fictional ${def.fieldId.slice(0,-4)} image` : `Fictional ${def.fieldId}`}})),routeSeo:[{routeId:"home",title:"Synthetic School",description:"Fictional intro"}]} satisfies SiteContentV1;
+    await expect(f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content:{...content,routeSeo:[{routeId:"home",title:"Unreviewed award claim"}]},expectedDraftVersion:0})).rejects.toThrow("Unapproved Olive SEO copy");
+    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content,expectedDraftVersion:0});
+    const publish = () => f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
+    await expect(publish()).rejects.toThrow();
+    const approveField = async (fieldId: string) => {
+      const candidate = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId});
+      return f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"field",fieldId,expectedDigest:candidate.digest},evidenceReference:`Synthetic ${fieldId} source`,expiresAt:Date.now()+120_000,confirmed:true});
+    };
+    for (const fieldId of manifest.fields.filter(def => def.kind === "text" && def.fieldId !== "school_logo_alt").map(def => def.fieldId)) {
+      const candidate = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId});
+      await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"field",fieldId,expectedDigest:candidate.digest},evidenceReference:`Synthetic ${fieldId} source`,expiresAt:Date.now()+120_000,confirmed:true});
+    }
+    await expect(publish()).rejects.toThrow();
+    for (const [key,asset] of assets) {
+      const base = {schoolId:f.schoolA,evidenceReference:`Synthetic ${key} record`,expiresAt:Date.now()+120_000,confirmed:true};
+      await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...base,candidate:{kind:"asset_rights",assetId:asset.id,expectedChecksum:asset.checksum}});
+      await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...base,candidate:{kind:"asset_child_applicability",assetId:asset.id,expectedChecksum:asset.checksum,classification:"contains_children"}});
+      await expect(publish()).rejects.toThrow();
+      await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...base,candidate:{kind:"asset_child_consent",assetId:asset.id,expectedChecksum:asset.checksum}});
+    }
+    // Rights and consent do not approve the uploaded description. Publication
+    // still denies until the separate exact alt-text candidate is reviewed.
+    await expect(publish()).rejects.toThrow();
+    const altEvidence = await approveField("school_logo_alt");
+    const published = await publish();
+    const revision = await f.t.run(ctx => ctx.db.get(published.publishedId));
+    expect(revision?.state).toBe("published");
+    expect(revision?.content.fields).toHaveLength(manifest.fields.length);
+    const validateCurrent = () => f.t.run(async ctx => {
+      const profile = await ctx.db.query("schoolSiteProfiles").withIndex("by_school", q => q.eq("schoolId",f.schoolA)).unique();
+      return validatePublication(ctx, profile!, revision!.content, revision!.publishedByUserId!, Date.now());
+    });
+    // Check the current immutable publication, not a consumed draft version.
+    await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+    for (const asset of assets.values()) {
+      const current = await f.t.run(ctx => ctx.db.get(asset.id));
+      const id = current!.childConsentEvidenceId!;
+      await f.t.run(ctx => ctx.db.patch(id,{expiresAt:Date.now()-1}));
+      await expect(validateCurrent()).rejects.toThrow();
+      await f.t.run(ctx => ctx.db.patch(id,{expiresAt:Date.now()+120_000}));
+      await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+      await f.t.run(ctx => ctx.db.patch(asset.id,{childConsentEvidenceId:undefined}));
+      await expect(validateCurrent()).rejects.toThrow();
+      await f.t.run(ctx => ctx.db.patch(asset.id,{childConsentEvidenceId:id}));
+      await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+      const classification = await f.t.run(ctx => ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_subject_type_and_subject_key", q => q.eq("schoolId",f.schoolA).eq("subjectType","site_asset_child_applicability").eq("subjectKey",`v1:${asset.id}:${asset.checksum}`)).order("desc").first());
+      for (const recordId of [current!.approvalEvidenceId!,classification!._id]) {
+        await f.t.run(ctx => ctx.db.patch(recordId,{expiresAt:Date.now()-1}));
+        await expect(validateCurrent()).rejects.toThrow();
+        await f.t.run(ctx => ctx.db.patch(recordId,{expiresAt:Date.now()+120_000}));
+        await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+      }
+      for (const recordId of [current!.approvalEvidenceId!,classification!._id,id]) {
+        await f.t.run(ctx => ctx.db.patch(recordId,{revokedAt:Date.now()}));
+        await expect(validateCurrent()).rejects.toThrow();
+        await f.t.run(ctx => ctx.db.patch(recordId,{revokedAt:undefined}));
+        await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+      }
+    }
+    for (const def of manifest.fields.filter(field => field.altFieldId)) {
+      const candidate = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId:def.altFieldId!});
+      const subject = `v1:${manifest.rendererKey}:${manifest.schemaVersion}:${def.altFieldId}:${candidate.digest}`;
+      const record = await f.t.run(ctx => ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_subject_type_and_subject_key", q => q.eq("schoolId",f.schoolA).eq("subjectType","site_content").eq("subjectKey",subject)).first());
+      await f.t.run(ctx => ctx.db.patch(record!._id,{revokedAt:Date.now()}));
+      await expect(validateCurrent()).rejects.toThrow();
+      await f.t.run(ctx => ctx.db.patch(record!._id,{revokedAt:undefined}));
+      await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+    }
+    const logo = assets.get("school_logo")!;
+    await f.t.run(ctx => ctx.db.patch(logo.id,{altText:"Unreviewed child name"}));
+    await expect(validateCurrent()).rejects.toThrow();
+    await f.t.run(ctx => ctx.db.patch(logo.id,{altText:"Fictional school_logo image"}));
+    await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+    await f.reviewer.mutation(api.functions.sites.evidence.revokeEvidence,{schoolId:f.schoolA,evidenceId:altEvidence.evidenceId});
+    await expect(validateCurrent()).rejects.toThrow();
+    await approveField("school_logo_alt");
+    await expect(validateCurrent()).resolves.toHaveProperty("digest",revision!.contentDigest);
+    const schoolName = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId:"school_name"});
+    expect(schoolName.evidenceClass).toBe("identity");
+    const first = assets.values().next().value!;
+    const record = await f.t.run(ctx => ctx.db.get(first.id as import("../../_generated/dataModel").Id<"schoolSiteAssets">));
+    await f.reviewer.mutation(api.functions.sites.evidence.revokeEvidence,{schoolId:f.schoolA,evidenceId:record!.approvalEvidenceId!});
+    await expect(validateCurrent()).rejects.toThrow();
+  });
   test("domain-only and revert-only grants receive bounded distinct management views", async () => {
     const f = await fixture(); const now = Date.now();
     await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
@@ -66,7 +165,7 @@ describe("managed site boundary", () => {
   test("only an operator provisions exact managed renderer; no public host before domain readiness", async () => {
     const f = await fixture();
     await expect(f.editor.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"})).rejects.toThrow();
-    await expect(f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"obhis-v1",rendererSchemaVersion:"1"})).rejects.toThrow();
+    await expect(f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"obhis-v1",rendererSchemaVersion:"2"})).rejects.toThrow();
     await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
     await expect(f.other.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content,expectedDraftVersion:0})).rejects.toThrow();
     expect(await f.t.action(api.functions.sites.public.resolvePublicSite,{hostname:"synthetic-a.example.test",routeId:"home",gatewaySecret:"bad"})).toEqual({status:"unavailable"});

@@ -1,0 +1,102 @@
+{
+  "source_root": "C:\\CreativeOS\\01_Projects\\Clients\\OBHIS",
+  "scope": "School-visit and cultural-day albums only. No student records or administrative documents.",
+  "location_labels": "Abuja and Rugam are supplied album labels, not confirmation of current campus names or addresses.",
+  "assets": [
+    {
+      "asset": "school-friends.webp",
+      "source": "2026-07-12_school_visit/RAW/DSC04736.JPG",
+      "source_sha256": "3862d0c0447f1a1caecd19c48e8c85a5dceac142287b3d66ec2640eed9456bac",
+      "oriented_source_size": [
+        4240,
+        2832
+      ],
+      "crop": null,
+      "output_size": [
+        1600,
+        1069
+      ],
+      "output_bytes": 79954,
+      "output_sha256": "90099cccddaf12336a307573ecb29c71ed9cf8ae16b5577eddd1b9374491d540",
+      "publication": "private-review-only; photographer rights and child permissions unconfirmed",
+      "processing": "EXIF orientation, optional recorded crop, resize, WebP compression; no recolouring or invented content"
+    },
+    {
+      "asset": "classroom-table.webp",
+      "source": "2026-07-12_school_visit/RAW/DSC04757.JPG",
+      "source_sha256": "49553186c44ce34811a0ae87ccfb4229853a3d63ce44ed7d4993b941d6fdc63e",
+      "oriented_source_size": [
+        4240,
+        2832
+      ],
+      "crop": null,
+      "output_size": [
+        1600,
+        1069
+      ],
+      "output_bytes": 127640,
+      "output_sha256": "92cec8421f6a4e1f9a669ff54e2a4f604515cc008a2d48a41768dbf1789b3d1b",
+      "publication": "private-review-only; photographer rights and child permissions unconfirmed",
+      "processing": "EXIF orientation, optional recorded crop, resize, WebP compression; no recolouring or invented content"
+    },
+    {
+      "asset": "cultural-day-abuja.webp",
+      "source": "2025-12-02_cultural_day/images/abuja/DSC02665.JPG",
+      "source_sha256": "ff9e7e060ab154ea56d8bc17a1ae9e770f9fa0b7092a8694f4d9e096cb3be29d",
+      "oriented_source_size": [
+        6000,
+        4000
+      ],
+      "crop": null,
+      "output_size": [
+        1600,
+        1067
+      ],
+      "output_bytes": 193722,
+      "output_sha256": "6a6712eb7d95763c884448e50028e2824c4a05aadbb36b31e1b548cf0e5b0393",
+      "publication": "private-review-only; photographer rights and child permissions unconfirmed",
+      "processing": "EXIF orientation, optional recorded crop, resize, WebP compression; no recolouring or invented content"
+    },
+    {
+      "asset": "cultural-day-rugam.webp",
+      "source": "2025-12-02_cultural_day/images/Rugam/DSC03099.JPG",
+      "source_sha256": "0713bcfd21dfc5ba42f8abd18ff8c7cfcf444043455955e6c5af8b6564131025",
+      "oriented_source_size": [
+        6000,
+        4000
+      ],
+      "crop": null,
+      "output_size": [
+        1600,
+        1067
+      ],
+      "output_bytes": 231828,
+      "output_sha256": "b5d41dd648edf02647a0035cddf06c376cf3afa8fbc3da9458fbdf0d345cbd5c",
+      "publication": "private-review-only; photographer rights and child permissions unconfirmed",
+      "processing": "EXIF orientation, optional recorded crop, resize, WebP compression; no recolouring or invented content"
+    },
+    {
+      "asset": "uniform-detail.webp",
+      "source": "2026-07-12_school_visit/RAW/DSC04741.JPG",
+      "source_sha256": "2f497e330720242e4156b932b3b1b1b4fbabf1fb5f264ccbaaee806152d6acb8",
+      "oriented_source_size": [
+        2832,
+        4240
+      ],
+      "crop": [
+        1800,
+        3150,
+        2800,
+        4200
+      ],
+      "output_size": [
+        1000,
+        1050
+      ],
+      "output_bytes": 44392,
+      "output_sha256": "68b9494a7c2a37decf230a73d95cf5e284a704fb2561708c7d5786779e3abc23",
+      "publication": "private-review-only; photographer rights and child permissions unconfirmed",
+      "processing": "EXIF orientation, optional recorded crop, resize, WebP compression; no recolouring or invented content"
+    }
+  ]
+}
