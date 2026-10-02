@@ -1,0 +1,46 @@
+{
+  "captures": [
+    {
+      "width": 493,
+      "filename": "values-1920.png",
+      "height": 513,
+      "right": 1770,
+      "copyRight": 1094,
+      "copyBottom": 788,
+      "figureTop": 216,
+      "overflow": false
+    },
+    {
+      "width": 444,
+      "filename": "values-1440.png",
+      "height": 462,
+      "right": 1362,
+      "copyRight": 818,
+      "copyBottom": 750,
+      "figureTop": 255,
+      "overflow": false
+    },
+    {
+      "width": 276,
+      "filename": "values-390.png",
+      "height": 287,
+      "right": 352,
+      "copyRight": 353,
+      "copyBottom": 635,
+      "figureTop": 674,
+      "overflow": false
+    },
+    {
+      "width": 224,
+      "filename": "values-320.png",
+      "height": 233,
+      "right": 286,
+      "copyRight": 287,
+      "copyBottom": 702,
+      "figureTop": 743,
+      "overflow": false
+    }
+  ],
+  "errors": [],
+  "note": "Private headless captures of values section. Sticky header disabled only for crops. Original photo untouched."
+}

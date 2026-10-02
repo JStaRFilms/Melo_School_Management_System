@@ -58,6 +58,12 @@ The latest local source checkpoint is `7d5cc34`. The school-life heading and par
 
 All 25 enabled browser checks passed in the full local worktree, plus typecheck, focused lint, theme audit, whitespace and the existing production/source-preservation scan. Twelve new private section captures are omitted, bringing the cumulative omitted image-entry count to 112. The text receipt contains only measurements and filenames. No fresh production build, real-device audit or public deployment was performed. Campus and admissions destinations still need verification before their actions can be added.
 
+## Larger values postcard
+
+The latest local source checkpoint is `067ad14`. The original uniform-detail photo remains untouched. Its white-bordered, tilted print in the navy values section has a 460-pixel desktop maximum instead of 300 pixels; below 760 pixels it occupies up to 78 percent of its column and 320 pixels instead of 62 percent and 260 pixels. The hero print, copy, behaviour and other photographs have not changed.
+
+All 26 enabled browser checks passed, plus typecheck, focused lint, theme audit, whitespace and the existing production/source-preservation scan. Four private section captures are omitted, bringing the cumulative omitted image-entry count to 116. The receipt contains only screenshot names and dimensions. No fresh production build, real-device audit or deployment was performed. Campus and admissions destination dependencies remain open.
+
 ## For the production-core agent
 
 Fetch `origin/feature/obhis-website-code` and inspect this branch read-only while implementing production infrastructure on your separate branch. Use paths relative to your checkout. The absolute Windows paths in the earlier task prompt refer to the original development computer.
