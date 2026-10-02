@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>V3 — Builder + parent preview · Extra questions</title>
+<style>*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;background:#efeaf9;color:#191627}
+.bar{background:#191627;color:#fff;padding:12px 20px;display:flex;gap:12px;align-items:center;font-size:13px}.bar a{color:#c9b8ff;font-weight:700;text-decoration:none}.btn{border-radius:10px;padding:9px 15px;font-weight:700;font-size:13px;border:0;cursor:pointer}.btn-p{background:#7a2bff;color:#fff}
+.split{max-width:1180px;margin:20px auto;display:grid;gap:16px;padding:0 20px 60px}@media(min-width:960px){.split{grid-template-columns:1fr 380px}}
+.panel{background:#fff;border-radius:18px;border:1px solid #e0d9f5;overflow:hidden}
+.p-head{padding:16px 18px;border-bottom:1px solid #f0edf9;display:flex;gap:10px;align-items:center}
+.field{padding:14px 18px;border-bottom:1px solid #f3f1fa}.field.active{background:#fbfaff;box-shadow:inset 3px 0 0 #7a2bff}
+.flabel{font-size:13px;font-weight:700}.fin{width:100%;margin-top:8px;border:1px solid #ddd6f2;border-radius:10px;padding:10px 12px;font-size:14px}
+.frow{display:flex;gap:8px;margin-top:8px}.chip{font-size:12px;border:1px solid #ddd6f2;border-radius:99px;padding:7px 12px;background:#fff;font-weight:600;cursor:pointer}.chip.on{background:#191627;color:#fff;border-color:#191627}
+.mini-actions{display:flex;gap:6px;margin-top:10px;font-size:12px;color:#6f6a8a}
+.phone{background:#191627;border-radius:26px;padding:12px}.screen{background:#fff;border-radius:18px;overflow:hidden;min-height:560px}
+.s-head{background:#5600d1;color:#fff;padding:16px;font-size:13px}.s-head b{font-size:16px;display:block}
+.s-body{padding:16px;display:grid;gap:14px}.pq label{font-size:12px;font-weight:700;color:#3c3658}.pq input,.pq textarea{width:100%;margin-top:6px;border:1.5px solid #ddd6f2;border-radius:12px;padding:11px 12px;font-size:14px}.opts{display:grid;gap:8px;margin-top:8px}.opt{border:1.5px solid #ddd6f2;border-radius:12px;padding:11px 12px;font-size:14px;display:flex;gap:10px;align-items:center}.opt.sel{border-color:#5600d1;background:#f7f2ff}
+.s-cta{background:#5600d1;color:#fff;text-align:center;border-radius:12px;padding:13px;font-weight:800;font-size:14px;margin-top:4px}
+.caption{font-size:12px;color:#6f6a8a;text-align:center;margin-top:10px}
+</style></head>
+<body>
+<div class="bar"><a href="index.html">← All concepts</a><span>ADMIN › Admissions › <b>3. Extra questions</b></span><span style="flex:1"></span><span>● Autosaved 12:04</span><button class="btn btn-p">+ Add question</button></div>
+<div class="split">
+<div class="panel"><div class="p-head"><b>Build</b><span style="font-size:12px;color:#6f6a8a">3 extra · child + contact already covered ✓</span></div>
+<div class="field"><div class="flabel">1 · Previous school attended (if any)</div><input class="fin" value="Previous school attended (if any)"><div class="frow"><button class="chip on">Short text</button><button class="chip">Long text</button><button class="chip">Choose one</button><button class="chip">Date</button></div><div class="mini-actions"><span>○ Optional — <u>make required</u></span><span style="flex:1"></span><span>⧉ Duplicate · ↑ · ↓ · Delete</span></div></div>
+<div class="field active"><div class="flabel">2 · Allergies or medical needs?</div><input class="fin" value="Does the child have any allergies or medical needs?"><div class="frow"><button class="chip">Short text</button><button class="chip on">Choose one ●</button><button class="chip">Choose several ▢</button><button class="chip">Yes/No</button></div><div class="frow"><input class="fin" value="No known allergies"><input class="fin" value="Yes — details below"></div><div class="mini-actions"><span>● Required — <u>make optional</u></span><span style="flex:1"></span><span>+ Add option · + “Other”</span></div></div>
+<div class="field"><div class="flabel">3 · Transport to school</div><input class="fin" value="How will the child get to school?"><div class="frow"><button class="chip">Choose one</button><button class="chip on">Choose several ▢</button><button class="chip">Short text</button></div><div class="mini-actions"><span>● Required</span><span style="flex:1"></span><span>⧉ Duplicate · ↑ · ↓ · Delete</span></div></div>
+</div>
+<div><div class="phone"><div class="screen"><div class="s-head"><span>Meridian Crest Academy</span><b>Application 2026 · Step 3 of 5</b></div><div class="s-body">
+<div class="pq"><label>Previous school attended (if any) <span style="color:#a39dc2">optional</span></label><input placeholder="e.g. Greenfield Primary"></div>
+<div class="pq"><label>Does the child have any allergies or medical needs? *</label><div class="opts"><div class="opt">○ No known allergies</div><div class="opt sel">● Yes — details below</div></div></div>
+<div class="pq"><label>Tell us briefly *</label><textarea rows="2" placeholder="Medicine, triggers, action plan…"></textarea></div>
+<div class="pq"><label>How will the child get to school? *</label><div class="opts"><div class="opt sel">☑ School bus</div><div class="opt">☐ Parent drop-off</div><div class="opt">☐ Walks with guardian</div></div></div>
+<div class="s-cta">Continue →</div>
+</div></div></div><div class="caption">Live parent preview — updates as you type. <b>Why better:</b> admins see conditional logic (“details below” only if Yes) before parents do.</div></div>
+</div></body></html>

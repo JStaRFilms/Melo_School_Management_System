@@ -1,6 +1,6 @@
 # Shared-Core, Bespoke School Website Architecture
 
-**Status:** Genesis architecture for G2 — proposal, not implemented. `apps/sites` still resolves templates via `lib/site.ts`; the renderer core (B4) and `obhis-v1` (B5) are pending.
+**Status:** Synthetic managed core and management workflow implemented locally. This document's audit below records the old template implementation; `apps/sites/lib/site.ts` and `site-ui.tsx` were removed. OBHIS and live rollout remain pending.
 **Decision record:** `docs/decisions/ADR-009-shared-core-bespoke-school-sites.md`
 **Related brief:** `docs/features/OBHISPublicWebsiteBrief.md`
 
@@ -25,7 +25,7 @@ This deliberately replaces the finite visual-template assumption in `apps/sites/
 - No per-school repository/backend/deployment clone.
 - No coupling between the admissions application app and a managed-site renderer.
 - No requirement for an externally hosted school to delegate DNS to the platform.
-- No production implementation, schema change, or UI change in G2.
+- No OBHIS launch or automatic migration of old demo configuration.
 
 ## 2. Current-State Audit
 
@@ -237,7 +237,7 @@ Public branding is publication-controlled and separate from the existing operati
 - approved display name and short name
 - approved logo asset and favicon asset
 - fallback text mark
-- color roles (not arbitrary CSS variable names): primary, secondary, accent, background, surface, text, muted text, focus
+- only `primaryColor` and `accentColor` are tenant inputs. `@school/shared/theme` derives other tokens. The current `PublicSiteV1` does not project either input, so the synthetic renderer uses default theme inputs.
 - typography pack key selected from a code allowlist, or renderer-owned typography
 - optional tone/tagline field
 

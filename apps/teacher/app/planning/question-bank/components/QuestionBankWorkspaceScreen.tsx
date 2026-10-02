@@ -274,7 +274,8 @@ export function QuestionBankWorkspaceScreen({
   onOpenLibrary,
   onSaveDraft,
   onGenerateDraft,
-}: QuestionBankWorkspaceScreenProps) {
+  onGenerationSettingsChange,
+}: QuestionBankWorkspaceScreenProps & { onGenerationSettingsChange?: (settings: AssessmentGenerationSettings) => void }) {
   const [title, setTitle] = useState(workspace.draft.title);
   const [description, setDescription] = useState(workspace.draft.description ?? "");
   const [items, setItems] = useState<AssessmentDraftItem[]>(workspace.items.map(mapWorkspaceItem));
@@ -293,13 +294,22 @@ export function QuestionBankWorkspaceScreen({
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isGenerating, setIsGenerating] = useState(false);
   const saveTimerRef = useRef<number | null>(null);
-  const saveInFlightRef = useRef(false);
-  const retrySaveRef = useRef(false);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const lastSavedSignatureRef = useRef(lastSavedSignature);
+  const mountedRef = useRef(true);
+  const lastKnownSavedAtRef = useRef(workspace.draft.lastSavedAt ?? 0);
+  const draftRef = useRef({ title, description, items, effectiveGenerationSettings, draftMode: workspace.draftMode });
+  draftRef.current = { title, description, items, effectiveGenerationSettings, draftMode: workspace.draftMode };
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const signature = useMemo(
     () => serializeDraftForSignature({ title, description, draftMode: workspace.draftMode, items, effectiveGenerationSettings }),
     [description, effectiveGenerationSettings, items, title, workspace.draftMode]
   );
+  useEffect(() => { onGenerationSettingsChange?.(effectiveGenerationSettings); }, [effectiveGenerationSettings, onGenerationSettingsChange]);
   const dirty = signature !== lastSavedSignature;
   const canGenerate = workspace.canGenerate && workspace.paidGenerationAvailable && !isGenerating;
   const canAutosave = workspace.canAutosave;
@@ -327,36 +337,20 @@ export function QuestionBankWorkspaceScreen({
   );
 
   useEffect(() => {
-    if (dirty) {
-      setEffectiveGenerationSettings((current) => {
-        if (!current.profileId) {
-          return current;
-        }
+    // A reactive bank/profile refresh must not replace unsaved local settings
+    // while an older write is in flight. The server revalidates profiles at quote.
+    if (dirty) return;
+    if (workspaceSignature !== lastSavedSignature && (workspace.draft.lastSavedAt ?? 0) <= lastKnownSavedAtRef.current) return;
 
-        const refreshedProfile = workspace.profiles.find((profile) => profile._id === current.profileId);
-        if (!refreshedProfile) {
-          return { ...current, profileId: undefined, profileName: "Custom", allowTeacherOverrides: true };
-        }
-
-        return {
-          profileId: refreshedProfile._id,
-          profileName: refreshedProfile.name,
-          questionStyle: refreshedProfile.questionStyle,
-          totalQuestions: refreshedProfile.totalQuestions,
-          questionMix: refreshedProfile.questionMix,
-          allowTeacherOverrides: refreshedProfile.allowTeacherOverrides,
-        };
-      });
-      return;
-    }
-
+    lastKnownSavedAtRef.current = workspace.draft.lastSavedAt ?? lastKnownSavedAtRef.current;
     setTitle(workspace.draft.title);
     setDescription(workspace.draft.description ?? "");
     setItems(workspace.items.map(mapWorkspaceItem));
     setEffectiveGenerationSettings(getSettingsFromWorkspace(workspace));
+    lastSavedSignatureRef.current = workspaceSignature;
     setLastSavedSignature(workspaceSignature);
     setSaveState("idle");
-  }, [dirty, workspace, workspaceSignature]);
+  }, [dirty, lastSavedSignature, workspace, workspaceSignature]);
 
   const pushNotice = useCallback((tone: "success" | "error", message: string) => {
     if (tone === "success") {
@@ -408,59 +402,72 @@ export function QuestionBankWorkspaceScreen({
     setItems((current) => [...current, createBlankItem(current.length, workspace.draft.outputType, workspace.draftMode)]);
   };
 
-  const persistDraft = useCallback(
-    async (mode: "manual" | "autosave") => {
-      if (!canAutosave) {
-        return;
-      }
+  const draftSignature = useCallback(() => serializeDraftForSignature(draftRef.current), []);
+  const persistOnce = useCallback(async (mode: "manual" | "autosave" | "generation") => {
+    if (!mountedRef.current) throw new Error("The assessment workspace closed before saving. Open it again to review the draft.");
+    if (!canAutosave || (!workspace.planningContext?.subjectId && (!workspace.sourceContext.subjectId || !workspace.sourceContext.level))) {
+      if (mode === "generation") throw new Error("Save this assessment draft before generating. The current planning context cannot be saved.");
+      return null;
+    }
 
-      if (!workspace.planningContext?.subjectId && (!workspace.sourceContext.subjectId || !workspace.sourceContext.level)) {
-        return;
-      }
-
-      setSaveState("saving");
-      try {
-        const result = await onSaveDraft({
-          effectiveGenerationSettings,
-          title,
-          description: description.trim() ? description.trim() : null,
-          items: items.map((item) => ({
-            questionType: item.questionType,
-            difficulty: item.difficulty,
-            promptText: item.promptText,
-            answerText: item.answerText,
-            explanationText: item.explanationText,
-            marks: item.marks,
-            tags: item.tags,
-          })),
-        });
-
+    // Read at execution time, after any older save. The captured click-time
+    // values may already be stale when the queued operation starts.
+    const snapshot = draftRef.current;
+    const snapshotSignature = serializeDraftForSignature(snapshot);
+    setSaveState("saving");
+    try {
+      const result = await onSaveDraft({
+        effectiveGenerationSettings: snapshot.effectiveGenerationSettings,
+        title: snapshot.title,
+        description: snapshot.description.trim() || null,
+        items: snapshot.items.map(item => ({
+          questionType: item.questionType, difficulty: item.difficulty,
+          promptText: item.promptText, answerText: item.answerText,
+          explanationText: item.explanationText, marks: item.marks, tags: item.tags,
+        })),
+      });
+      if (!mountedRef.current) throw new Error("The assessment workspace closed before saving. Open it again to review the draft.");
+      const savedSignature = serializeDraftForSignature({
+        title: result.title, description: result.description ?? "", draftMode: result.draftMode,
+        items: snapshot.items, effectiveGenerationSettings: result.effectiveGenerationSettings,
+      });
+      lastKnownSavedAtRef.current = Math.max(lastKnownSavedAtRef.current, result.savedAt);
+      lastSavedSignatureRef.current = savedSignature;
+      setLastSavedSignature(savedSignature);
+      if (draftSignature() === snapshotSignature) {
         setTitle(result.title);
         setDescription(result.description ?? "");
         setEffectiveGenerationSettings(result.effectiveGenerationSettings);
-        setLastSavedSignature(
-          serializeDraftForSignature({
-            title: result.title,
-            description: result.description ?? "",
-            draftMode: result.draftMode,
-            items,
-            effectiveGenerationSettings: result.effectiveGenerationSettings,
-          })
-        );
+        draftRef.current = { ...snapshot, title: result.title, description: result.description ?? "",
+          effectiveGenerationSettings: result.effectiveGenerationSettings };
         setSaveState("saved");
-        if (mode === "manual") {
-          pushNotice(
-            "success",
-            `Saved ${result.outputType === "cbt_draft" ? "CBT draft" : "question bank draft"} with ${result.itemCount} item${result.itemCount === 1 ? "" : "s"}.`
-          );
-        }
-      } catch (error) {
+      } else {
+        setSaveState("idle"); // Newer local changes are still dirty.
+      }
+      if (mode === "manual") pushNotice("success", `Saved ${result.outputType === "cbt_draft" ? "CBT draft" : "question bank draft"} with ${result.itemCount} item${result.itemCount === 1 ? "" : "s"}.`);
+      return savedSignature;
+    } catch (error) {
+      if (mountedRef.current) {
         setSaveState("error");
         pushNotice("error", getUserFacingErrorMessage(error, "Failed to save draft."));
       }
-    },
-    [canAutosave, description, effectiveGenerationSettings, items, onSaveDraft, pushNotice, title, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
-  );
+      throw error;
+    }
+  }, [canAutosave, draftSignature, onSaveDraft, pushNotice, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]);
+
+  const persistDraft = useCallback((mode: "manual" | "autosave" | "generation") => {
+    // Every write, including manual saves, shares this queue. A failed autosave
+    // cannot poison the queue or let a later snapshot overtake an earlier one.
+    const operation = saveQueueRef.current.catch(() => {}).then(async () => {
+      for (let attempt = 0; attempt < (mode === "generation" ? 3 : 1); attempt += 1) {
+        const savedSignature = await persistOnce(mode);
+        if (mode !== "generation" || savedSignature === draftSignature()) return;
+      }
+      throw new Error("Assessment edits changed during saving. Stop editing and save again before generating.");
+    });
+    saveQueueRef.current = operation.then(() => {}, () => {});
+    return operation;
+  }, [draftSignature, persistOnce]);
 
   useEffect(() => {
     if (!dirty || !canAutosave || isGenerating) {
@@ -472,23 +479,9 @@ export function QuestionBankWorkspaceScreen({
     }
 
     saveTimerRef.current = window.setTimeout(() => {
-      if (saveInFlightRef.current) {
-        retrySaveRef.current = true;
-        return;
-      }
-
-      saveInFlightRef.current = true;
-      persistDraft("autosave")
-        .catch(() => {
-          // handled in persistDraft
-        })
-        .finally(() => {
-          saveInFlightRef.current = false;
-          if (retrySaveRef.current) {
-            retrySaveRef.current = false;
-            void persistDraft("autosave");
-          }
-        });
+      void persistDraft("autosave").catch(() => {
+        // persistOnce shows the save error; the draft remains dirty.
+      });
     }, 1200);
 
     return () => {
@@ -496,7 +489,7 @@ export function QuestionBankWorkspaceScreen({
         window.clearTimeout(saveTimerRef.current);
       }
     };
-  }, [canAutosave, dirty, isGenerating, persistDraft]);
+  }, [canAutosave, dirty, isGenerating, persistDraft, signature]);
 
   const handleManualSave = useCallback(async () => {
     if (!dirty) {
@@ -504,7 +497,7 @@ export function QuestionBankWorkspaceScreen({
       return;
     }
 
-    await persistDraft("manual");
+    try { await persistDraft("manual"); } catch { /* persistOnce shows the save error. */ }
   }, [dirty, persistDraft, pushNotice]);
 
   const handleGenerate = useCallback(async () => {
@@ -514,29 +507,37 @@ export function QuestionBankWorkspaceScreen({
 
     setIsGenerating(true);
     try {
-      const result = await onGenerateDraft(effectiveGenerationSettings);
+      await saveQueueRef.current; // Even a clean editor may have an older save pending.
+      if (!mountedRef.current) return;
+      if (draftSignature() !== lastSavedSignatureRef.current) await persistDraft("generation");
+      if (!mountedRef.current) return;
+      const generationSignature = draftSignature();
+      const result = await onGenerateDraft(draftRef.current.effectiveGenerationSettings);
+      if (!mountedRef.current) return;
+      if (draftSignature() !== generationSignature) {
+        pushNotice("error", "The generated draft was saved, but newer local edits remain. Review and save those edits before generating again.");
+        return;
+      }
       setTitle(result.title);
       setDescription(result.description ?? "");
       setItems(result.items);
       setEffectiveGenerationSettings(result.effectiveGenerationSettings);
-      setLastSavedSignature(
-        serializeDraftForSignature({
-          title: result.title,
-          description: result.description ?? "",
-          draftMode: result.draftMode,
-          items: result.items,
-          effectiveGenerationSettings: result.effectiveGenerationSettings,
-        })
-      );
+      lastKnownSavedAtRef.current = Math.max(lastKnownSavedAtRef.current, result.savedAt);
+      const generatedSignature = serializeDraftForSignature({ title: result.title, description: result.description ?? "",
+        draftMode: result.draftMode, items: result.items, effectiveGenerationSettings: result.effectiveGenerationSettings });
+      lastSavedSignatureRef.current = generatedSignature;
+      setLastSavedSignature(generatedSignature);
       setSaveState("saved");
       pushNotice("success", `Generated ${workspace.outputTypeLabel.toLowerCase()} with ${result.itemCount} item${result.itemCount === 1 ? "" : "s"}.`);
     } catch (error) {
-      setSaveState("error");
-      pushNotice("error", getUserFacingErrorMessage(error, "Generation failed."));
+      if (mountedRef.current) {
+        setSaveState("error");
+        pushNotice("error", getUserFacingErrorMessage(error, "Generation failed."));
+      }
     } finally {
-      setIsGenerating(false);
+      if (mountedRef.current) setIsGenerating(false);
     }
-  }, [canGenerate, effectiveGenerationSettings, onGenerateDraft, pushNotice, workspace.outputTypeLabel]);
+  }, [canGenerate, draftSignature, onGenerateDraft, persistDraft, pushNotice, workspace.outputTypeLabel]);
 
   const handleModeChange = useCallback(
     (next: AssessmentDraftMode) => {
@@ -619,7 +620,7 @@ export function QuestionBankWorkspaceScreen({
 
           {!workspace.paidGenerationAvailable && (
             <p role="status" className="text-[11px] font-semibold leading-relaxed text-amber-700">
-              Assessment generation is unavailable until paid usage entitlements and provider reconciliation are enabled. You can continue editing and saving drafts.
+              This workspace cannot prepare a generation quote. You can still edit and save drafts.
             </p>
           )}
           <div className="grid grid-cols-2 gap-2 pt-2">
@@ -639,7 +640,7 @@ export function QuestionBankWorkspaceScreen({
               className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 text-[11px] font-bold text-white transition hover:bg-slate-800 disabled:opacity-50"
             >
               {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              Generate
+              Review and generate
             </button>
           </div>
         </div>

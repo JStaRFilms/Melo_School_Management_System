@@ -2,9 +2,11 @@ import { formatMoneyMinor } from "@school/shared/format";
 
 export function formatMoney(amountMinor: number, currency: string) { return formatMoneyMinor(amountMinor, currency); }
 
+export function formatCloseDate(value: number) { return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); }
+
 export function availabilityMessage(state: "open" | "upcoming" | "paused" | "closed" | "unavailable", opensAt?: number) {
   if (state === "open") return "Applications are open.";
-  if (state === "upcoming") return opensAt ? `Applications open ${new Date(opensAt).toLocaleString()}.` : "Applications are not open yet.";
+  if (state === "upcoming") return opensAt ? `Applications open ${formatCloseDate(opensAt)}.` : "Applications are not open yet.";
   if (state === "paused") return "Applications are temporarily paused.";
   if (state === "closed") return "Applications are closed.";
   return "This application offering is unavailable.";

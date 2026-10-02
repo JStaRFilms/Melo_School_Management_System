@@ -1,0 +1,32 @@
+import { afterEach, expect, it, vi } from "vitest";
+vi.mock("server-only",() => ({}));
+const action = vi.fn();
+vi.mock("convex/browser",() => ({ConvexHttpClient:class {action = action;}}));
+import { resolve, assetBytes } from "./gateway";
+const previous = {url:process.env.CONVEX_URL,site:process.env.CONVEX_SITE_URL,secret:process.env.SITES_GATEWAY_SECRET,hosts:process.env.SITES_PRODUCTION_CUSTOM_HOSTS};
+afterEach(() => {vi.restoreAllMocks(); action.mockReset(); for (const [name,val] of Object.entries({CONVEX_URL:previous.url,CONVEX_SITE_URL:previous.site,SITES_GATEWAY_SECRET:previous.secret,SITES_PRODUCTION_CUSTOM_HOSTS:previous.hosts})) {if (val === undefined) delete process.env[name]; else process.env[name] = val;}});
+it("denies missing configuration and never calls backend for forwarded-only Host",async () => {
+  delete process.env.SITES_GATEWAY_SECRET;
+  expect((await resolve(new Headers({host:"school.example.edu"}),"home")).status).toBe("unavailable");
+  process.env.SITES_GATEWAY_SECRET = "x".repeat(32);
+  process.env.CONVEX_URL = "https://convex.example.edu";
+  process.env.CONVEX_SITE_URL = "https://convex-site.example.edu";
+  expect((await resolve(new Headers({"x-forwarded-host":"school.example.edu"}),"home")).status).toBe("unavailable");
+  expect(action).not.toHaveBeenCalled();
+});
+it("proxies only bytes without exposing upstream errors or secret",async () => {
+  process.env.SITES_PRODUCTION_CUSTOM_HOSTS = "school.example.edu";
+  process.env.SITES_GATEWAY_SECRET = "x".repeat(32);
+  process.env.CONVEX_URL = "https://convex.example.edu";
+  process.env.CONVEX_SITE_URL = "https://convex-site.example.edu";
+  const fetcher = vi.spyOn(globalThis,"fetch").mockResolvedValue(new Response(new Uint8Array([137,80,78,71]),{headers:{"Content-Type":"image/png"}}));
+  const response = await assetBytes(new Headers({host:"school.example.edu","x-forwarded-host":"evil.example.edu"}),"asset12345");
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toContain("no-store");
+  expect(fetcher.mock.calls[0][1]?.headers).toMatchObject({"X-Sites-Hostname":"school.example.edu"});
+  expect(await response.arrayBuffer()).toEqual(new Uint8Array([137,80,78,71]).buffer);
+  fetcher.mockResolvedValueOnce(new Response("https://storage.example/private",{status:302}));
+  expect((await assetBytes(new Headers({host:"school.example.edu"}),"asset12345")).status).toBe(404);
+  fetcher.mockResolvedValueOnce(new Response(new Uint8Array(5_000_001),{headers:{"Content-Type":"image/png"}}));
+  expect((await assetBytes(new Headers({host:"school.example.edu"}),"asset12345")).status).toBe(404);
+});

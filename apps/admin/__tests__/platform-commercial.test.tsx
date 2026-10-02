@@ -24,7 +24,9 @@ vi.mock("convex/react", () => ({
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) =>
     args === "skip"
       ? undefined
-      : getFunctionName(reference).endsWith("getPlatformUsageCosts")
+      : getFunctionName(reference).endsWith("aiSpend:recent") || getFunctionName(reference).endsWith("aiSpend:unresolved")
+        ? []
+        : getFunctionName(reference).endsWith("getPlatformUsageCosts")
         ? { rows: [], truncated: false, providerExecutionAvailable: false }
         : getFunctionName(reference).endsWith("getLatestCommercialRateVersion")
           ? null

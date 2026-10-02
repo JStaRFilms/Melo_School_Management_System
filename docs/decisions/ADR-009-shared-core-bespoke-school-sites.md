@@ -1,13 +1,13 @@
 # ADR-009: Shared Core with Code-Controlled Bespoke School Sites
 
-- **Status:** Accepted. B0 schema foundation is implemented (site tables in `packages/convex/schema.ts`); the renderer core (B4) and `obhis-v1` (B5) are pending.
+- **Status:** Accepted. Synthetic managed renderer, production core and scoped management UI implemented locally. OBHIS adapter and live readiness remain blocked.
 - **Date:** 2026-07-22
 - **Decision owners:** Integration owner / public-site architecture
 - **Related:** `docs/features/SharedCoreBespokeSchoolWebsiteArchitecture.md`, `docs/features/OBHISPublicWebsiteBrief.md`
 
 ## Context
 
-The repository has one tenant public-site app, `apps/sites`, but its current model is a finite template catalogue. `apps/sites/lib/site.ts` combines school records, domain records, brand tokens, every page’s content, template layouts, hostname resolution, and SEO helpers. `apps/sites/lib/site-ui.tsx` renders every school with the same shell and section components, reordered by template slots.
+The original static catalogue has been removed from production resolution. `apps/sites/core` now gates actual Host requests through published Convex projections and an exact compile-time renderer registry. Legacy Greenfield and Aster demos are development-only, behind an explicit flag.
 
 That foundation proves useful capabilities—single deployment, host resolution, canonical aliases, safe unknown/inactive hosts, metadata, robots, sitemap, JSON-LD—but does not meet the requirement for genuinely bespoke school experiences. It also has no persisted draft/publish boundary. Its OBHIS object contains demonstrably conflicting demo values and cannot be treated as client content.
 
@@ -33,7 +33,7 @@ The old template catalogue is not the target architecture. It may remain tempora
 
 The canonical admissions experience lives on a configured product-owned surface, symbolically `https://apply.<product-domain>/<schoolSlug>`. The exact production origin is deployment configuration owned by B0, not renderer/content data. Managed `/apply` routes redirect to it; external sites link directly; no-site schools share it directly. The site renderer does not proxy or iframe admissions.
 
-Custom domains use provider-neutral, staged ownership verification and routing. TXT ownership proof is separate from CNAME/host routing and certificate readiness. The platform does not require registrar ownership or DNS delegation from external-site schools.
+Custom domains use Vercel-specific, staged ownership verification and routing. TXT ownership proof is separate from CNAME/host routing and certificate readiness. The platform does not require registrar ownership or DNS delegation from external-site schools.
 
 ## Responsibility Boundary
 
