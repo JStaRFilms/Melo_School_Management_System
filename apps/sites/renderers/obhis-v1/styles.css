@@ -149,7 +149,7 @@ html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
 .obhis-review .values-grid { display:grid; grid-template-columns:1fr 1fr; gap:32px; max-width:850px; }
 .obhis-review .values-grid h3 { margin:0 0 9px; font-size:clamp(21px,1.35vw,25px); font-weight:700; }
 .obhis-review .values-grid p { margin:0; font-size:clamp(18px,1.2vw,21px); line-height:1.55; }
-.obhis-review .uniform-print { width:100%; max-width:300px; justify-self:center; margin:20px 0 0; padding:10px; background:var(--white); transform:rotate(4deg); }
+.obhis-review .uniform-print { width:100%; max-width:460px; justify-self:center; margin:20px 0 0; padding:10px; background:var(--white); transform:rotate(4deg); }
 .obhis-review .uniform-print img { width:100%; }
 .obhis-review .campus-section { padding:72px var(--gutter); background:var(--cyan); scroll-margin-top:92px; }
 .obhis-review .campus-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:30px; }
@@ -232,7 +232,7 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
   .obhis-review .crest-story { grid-template-columns:1fr; gap:28px; padding:45px var(--gutter) 55px; }
   .obhis-review .crest-story h2 { font-size:clamp(56px,12vw,84px); }
   .obhis-review .crest-intro { font-size:18px; }
-  .obhis-review .uniform-print { width:62%; max-width:260px; justify-self:end; margin-right:3%; }
+  .obhis-review .uniform-print { width:78%; max-width:320px; justify-self:end; margin-right:3%; }
   .obhis-review .campus-section { padding:48px var(--gutter); scroll-margin-top:84px; }
   .obhis-review .campus-grid { grid-template-columns:1fr; gap:24px; margin-top:25px; }
   .obhis-review .campus-label h3 { font-size:31px; }

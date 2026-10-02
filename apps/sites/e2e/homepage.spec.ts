@@ -128,6 +128,20 @@ test("school-life and values type stay prominent without crowding", async ({ pag
   })).toBe(true);
 });
 
+test("uniform postcard has presence without clipping at desktop or phone widths", async ({ page }) => {
+  await openReview(page);
+  for (const [width, minimum] of [[1920, 430], [1440, 380], [1047, 300], [390, 260], [320, 215]]) {
+    await page.setViewportSize({ width, height:1000 });
+    expect(await page.locator('.uniform-print').evaluate((figure, target) => {
+      const rect = figure.getBoundingClientRect();
+      const copy = figure.parentElement?.querySelector('.crest-copy')?.getBoundingClientRect();
+      return rect.width >= target && rect.left >= 0 && rect.right <= document.body.clientWidth &&
+        !!copy && (innerWidth > 760 ? rect.left >= copy.right : rect.top >= copy.bottom) &&
+        document.documentElement.scrollWidth <= innerWidth;
+    }, minimum)).toBe(true);
+  }
+});
+
 test("keyboard, history, reload and rapid reversal preserve control focus", async ({ page }) => {
   await openReview(page);
   const olive = page.locator('[data-scene-choice="olive"]');
