@@ -1,0 +1,181 @@
+{
+  "captures": [
+    {
+      "width": 1920,
+      "height": 1000,
+      "filename": "olive-1920.png",
+      "meet": {
+        "left": 310,
+        "right": 758,
+        "top": 164,
+        "bottom": 386,
+        "width": 447
+      },
+      "art": {
+        "left": 189,
+        "right": 1485,
+        "top": 367,
+        "bottom": 999,
+        "width": 1296
+      },
+      "photo": {
+        "left": 1314,
+        "right": 1844,
+        "top": 327,
+        "bottom": 749,
+        "width": 530
+      },
+      "scene": {
+        "left": 0,
+        "right": 1905,
+        "top": 76,
+        "bottom": 1000,
+        "width": 1905
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "filename": "olive-1440.png",
+      "meet": {
+        "left": 139,
+        "right": 539,
+        "top": 154,
+        "bottom": 352,
+        "width": 399
+      },
+      "art": {
+        "left": 31,
+        "right": 1188,
+        "top": 335,
+        "bottom": 899,
+        "width": 1157
+      },
+      "photo": {
+        "left": 987,
+        "right": 1408,
+        "top": 302,
+        "bottom": 639,
+        "width": 421
+      },
+      "scene": {
+        "left": 0,
+        "right": 1425,
+        "top": 76,
+        "bottom": 900,
+        "width": 1425
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 1047,
+      "height": 749,
+      "filename": "olive-1047.png",
+      "meet": {
+        "left": 56,
+        "right": 376,
+        "top": 144,
+        "bottom": 304,
+        "width": 321
+      },
+      "art": {
+        "left": -31,
+        "right": 898,
+        "top": 290,
+        "bottom": 743,
+        "width": 929
+      },
+      "photo": {
+        "left": 714,
+        "right": 1031,
+        "top": 264,
+        "bottom": 520,
+        "width": 318
+      },
+      "scene": {
+        "left": 0,
+        "right": 1032,
+        "top": 76,
+        "bottom": 749,
+        "width": 1032
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "filename": "olive-390.png",
+      "meet": {
+        "left": 23,
+        "right": 217,
+        "top": 96,
+        "bottom": 193,
+        "width": 194
+      },
+      "art": {
+        "left": -26,
+        "right": 401,
+        "top": 218,
+        "bottom": 426,
+        "width": 428
+      },
+      "photo": {
+        "left": 85,
+        "right": 358,
+        "top": 410,
+        "bottom": 631,
+        "width": 273
+      },
+      "scene": {
+        "left": 0,
+        "right": 375,
+        "top": 68,
+        "bottom": 844,
+        "width": 375
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "filename": "olive-320.png",
+      "meet": {
+        "left": 18,
+        "right": 196,
+        "top": 96,
+        "bottom": 185,
+        "width": 178
+      },
+      "art": {
+        "left": -21,
+        "right": 326,
+        "top": 218,
+        "bottom": 388,
+        "width": 348
+      },
+      "photo": {
+        "left": 69,
+        "right": 291,
+        "top": 365,
+        "bottom": 547,
+        "width": 222
+      },
+      "scene": {
+        "left": 0,
+        "right": 305,
+        "top": 68,
+        "bottom": 740,
+        "width": 305
+      },
+      "overflow": false,
+      "internalScroll": 0
+    }
+  ],
+  "errors": [],
+  "note": "Private paused headless captures. No artwork or school photograph changed."
+}
