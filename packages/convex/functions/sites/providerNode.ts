@@ -1,3 +1,5 @@
+"use node";
+
 import { Resolver, resolve4, resolve6, resolveNs } from "node:dns/promises";
 import { isIP } from "node:net";
 import { connect, type TLSSocket } from "node:tls";
