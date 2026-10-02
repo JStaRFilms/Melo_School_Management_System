@@ -23,7 +23,7 @@ An existing private profile can be referenced instead of copied:
 pnpm qa:doctor --env-file /absolute/path/to/.env.e2e.local --apps admin
 ```
 
-Doctor checks Node, pnpm, the installed Playwright browser, root and selected app target agreement, ports, and an inspection-only backend endpoint. Before launch it requires free ports; for an already ready owned instance it verifies matching ownership/profile/apps and HTTP readiness instead of treating its own ports as a collision. It stores the profile path, not credentials, in the ignored `.qa/config.json`. Future commands reuse that path. Moving or deleting it makes the next check fail.
+Doctor checks Node, pnpm, the installed Playwright browser, root and selected app target agreement, ports, and a dedicated inspection-only QA endpoint. It verifies original actor/cohort ownership plus retained marked fixtures; this is separate from destructive reset readiness, which remains unchanged. Before launch it requires free ports; for an already ready owned instance it verifies matching ownership/profile/apps and HTTP readiness instead of treating its own ports as a collision. It stores the profile path, not credentials, in the ignored `.qa/config.json`. Future commands reuse that path. Moving or deleting it makes the next check fail.
 
 ## Start, inspect, and stop
 
@@ -34,6 +34,7 @@ pnpm qa:layout
 pnpm qa:feature
 pnpm qa:roles
 pnpm qa:explore --role parent --script scripts/qa/explore-example.mjs
+pnpm qa:workflow --script scripts/qa/school-workflow.mjs --allow-synthetic-writes
 pnpm qa:report
 pnpm qa:stop
 ```
@@ -43,6 +44,7 @@ pnpm qa:stop
 - `qa:feature` additionally creates a uniquely named inactive subject-scoped template, reloads it, checks guidance and format persistence, exercises cancel/discard, saves an edit, and reloads on mobile. It does not activate templates, change the existing school default, or call AI. Teacher template resolution and generation need separate acceptance coverage before claiming the whole template feature is verified.
 - `qa:roles` checks Admin grading draft/discard, Teacher dependent roster selection/reload/mobile and rejection from Admin editing, and Parent topic search/detail/mobile. Use `--roles teacher,parent` for a subset; Teacher's denial criterion also needs an owned Admin server.
 - `qa:explore` runs a trusted worktree-contained module with a single declared role. The module exports scope, effects, and named executable acceptance steps. Paths/digests are checked, synthetic-write declarations also require `--allow-synthetic-writes`, and browser traffic is restricted to owned app origins, the isolated backend, and read-only public Google font CSS/files. This is not a Node/filesystem sandbox or an enforced guarantee about script side effects. See [the recipe](../../.agents/skills/verify-melo/references/exploration.md).
+- `qa:workflow` supports ordered, uniquely named cross-role phases with dependencies and `alwaysRun` cleanup. The included school case uses a fresh fixture per run and verifies the full graded lifecycle. Role sessions are cached only in memory and independently validated before each phase. Post-run inspection checks original cohort preservation and the period observed before writes; a module cannot override that assertion with a declared target.
 - `qa:stop` checks the exact supervisor owner before signalling it. It does not kill whatever happens to occupy a port.
 
 A QA-owned supervisor starts each selected Next.js app in this worktree with explicit isolated cloud/site URLs. Operator secrets are not forwarded to frontend processes. App logs remain private in `.qa/`.
@@ -70,6 +72,14 @@ This explicitly reviewed publication copies only HTML and listed PNG screenshots
 Video sharing and PR attachment automation are later steps. A video being captured is not permission to publish it.
 
 ## Interrupted runs
+
+Ordinary failed phases run declared cleanup. A hard interruption/timeout may stop before UI cleanup; it records a recovery marker and all pending criteria as blocked. Normal browser runs then refuse to continue until doctor independently verifies the recorded original period and cohort digest, or an explicit recovery workflow succeeds:
+
+```sh
+pnpm qa:workflow --script scripts/qa/recover-calendar.mjs --allow-synthetic-writes --recovery
+```
+
+The recovery target comes from the interrupted run's recorded preflight, not a script-supplied override. Restore only through UI; retain partial fixtures and evidence. A network failure during post-run inspection cannot become a preservation claim.
 
 Leases are never stolen automatically. If an owner crashed, examine `.qa/state.json`, the owner command/PID, listening ports, and lease metadata under the OS temporary directory before manual recovery. Do not use a blanket port-kill command. A live browser backend lease blocks `qa:stop`; let that run finish first. Restarting a worktree does not imply the remote fixture was cleaned up.
 
