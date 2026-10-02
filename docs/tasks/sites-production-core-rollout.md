@@ -48,7 +48,15 @@ Three unauthenticated negative probes passed on the deployed backend:
 
 The upload probe sent no usable image and produced no accepted upload. No content/domain mutations or fixture creation were performed during verification.
 
-The updated focused Convex suite passes 44 tests across 15 files, including the new runtime-boundary regression and fresh headless synthetic management integration. Existing targeted Sites/shared/Admin/Apply results bring the total to 93. Convex typecheck, touched-code lint and whitespace checks pass.
+The final parent-selected suites pass 325 tests: 46 Convex/Sites/foundation/schema tests across 15 files, 13 Sites tests, 9 Admin tests, the 234-test full shared suite and 23 Apply compatibility tests. The runtime-boundary regression, fresh headless synthetic management integration and local TLS tests are included. All six relevant package typechecks, touched-code lint and whitespace checks pass.
+
+## Merge-ready corrections and local configuration
+
+Automatic Codex/Kilo merge-ready reviews produced five threads covering three root defects: public IPv6 classification, unsafe alias-query routing and Unicode upload metadata. Commit `b1684800` corrects these with numeric CIDR/pin checks, terminating proxy denial and a bounded URI-v1 header codec. Legacy raw upload clients remain accepted, including literal percent text. The five matching threads were replied to and resolved after regression verification.
+
+The corrected backwards-compatible backend was redeployed successfully to the same confirmed production target from `b1684800`, before merging frontend changes. No index additions or deletions were reported on that correction deployment. The 43 function registrations and the three production negative probes were reverified. This is the current backend code checkpoint; `989651ab` above records the initial rollout.
+
+At the owner's explicit request, root and existing touched-app `.env.local` files were copied from the original checkout into this owned worktree without overwriting files. Git ignore was checked first, destinations use mode 0600, no values were printed and no environment file was staged. These files point to development, not the production target. Every production command continues to use the explicit production-selector file and ignores alternate deploy-key/self-hosted selectors. CI does not inherit these local files or need interactive sign-in; it uses its own hosting settings and private deployment authentication.
 
 ## Merge and frontend sequence
 
