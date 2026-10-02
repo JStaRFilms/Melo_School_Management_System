@@ -44,6 +44,14 @@ The latest source snapshot is local checkpoint `e55596a`. The enlarged print now
 
 All 23 browser checks passed, plus typecheck, focused zero-warning lint, theme audit, whitespace and the existing production/source-preservation scan. Five new private captures are omitted, bringing the total to 92 omitted image entries. The text receipt records geometry and contains no image bytes. No production build, release or photo approval accompanies this update.
 
+## Homepage story refinement
+
+The latest local source checkpoint is `f2fa08c`. The existing renderer now uses the supplied compact introduction and school-life copy, caption-level photo links, values explanations, simpler campus cards, admissions disclosures and a compact footer. The Olive photo is again a smaller tilted postcard; the second slide retains a separate text-and-art composition. The bundled artwork cannot be rearranged object by object and was not regenerated. Six-second cycling, private gates and original assets are unchanged.
+
+The requested campus exploration links cannot be added yet. Abuja and Rugam are photo-album labels with no verified current campus records or campus-information destinations. The requested Contact admissions CTA also has no approved route: historical contacts are blocked, the demo `/contact` is another school and Facebook is not a verified admissions channel. This export omits those misleading actions. The disclosure answers say only that current visit and application information is unavailable here. Approved campus details, links and a working admissions contact route must be provided before those CTAs can be enabled. User-supplied story copy still needs school approval before public release.
+
+All 24 enabled browser checks passed in the full local worktree, including desktop and mobile layouts, both scenes, gallery tabs/viewer, hero controls, navigation, native disclosures and available CTA targets. Typecheck, focused lint, theme audit, whitespace and the existing production-artifact scan passed. Eight new private screenshots are omitted, bringing the cumulative count to 100 omitted image entries. The text receipt contains filenames and geometry only. There was no fresh production build or deployment.
+
 ## For the production-core agent
 
 Fetch `origin/feature/obhis-website-code` and inspect this branch read-only while implementing production infrastructure on your separate branch. Use paths relative to your checkout. The absolute Windows paths in the earlier task prompt refer to the original development computer.
