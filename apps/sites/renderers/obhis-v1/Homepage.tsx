@@ -105,8 +105,8 @@ export function Homepage({ model }: { model: OliveModel }) {
     <section className="admissions-section page-section" id="admissions" aria-labelledby="admissions-heading">
       <div className="admissions-copy"><h2 className="section-title" id="admissions-heading">{text.admissions_heading}</h2><p>{text.admissions_intro}</p></div>
       <div className="admissions-guides">
-        <details id="visit-guide"><summary><span>Visiting {text.short_name}</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>Find us at {text.visit_address}. Have a question before you come? <a href="#contact">Contact the school</a>.</p></div></details>
-        <details id="application-guide"><summary><span>How to apply</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>{model.applyHref ? <a href={model.applyHref}>Apply online</a> : <>{text.application_notice} Until then, use the <a href="#contact">contact information below</a> to ask about applying.</>}</p></div></details>
+        <details id="visit-guide"><summary><span>Visiting {text.short_name}</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>{model.privateReview ? <>Find us at {text.visit_address}. Have a question before you come? <a href="#contact">Contact the school</a>.</> : text.visit_address}</p></div></details>
+        <details id="application-guide"><summary><span>How to apply</span><span className="disclosure-mark" aria-hidden="true"></span></summary><div className="guide-body"><p>{model.applyHref ? <a href={model.applyHref}>Apply online</a> : <>{text.application_notice}{model.privateReview && <> Until then, use the <a href="#contact">contact information below</a> to ask about applying.</>}</>}</p></div></details>
       </div>
     </section>
 

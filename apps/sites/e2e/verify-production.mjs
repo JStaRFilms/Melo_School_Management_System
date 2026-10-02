@@ -5,6 +5,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+// Owner-approved full Olive source and reviewed managed-core merge checkpoints.
+// HEAD is deliberately not an authority for preserving approved originals.
+const oliveBaseline = "b435670d95ffe8527058254ffc739ffe9a720a4d";
+const coreBaseline = "72a985e430451cbd83627a11a158ec7115d3f097";
 const build = join(root, "apps/sites/.next");
 const assetPaths = [
   "obhis-homepage-prototype-assets/school-logo.png",
@@ -53,9 +57,14 @@ const protectedPaths = [
   "apps/sites/app/layout.tsx", "apps/sites/app/globals.css", "apps/sites/app/robots.ts", "apps/sites/app/sitemap.ts", "apps/sites/app/manifest.ts",
   "package.json", "pnpm-lock.yaml", "apps/sites/package.json",
 ];
-const tracked = execFileSync("git", ["ls-files", "-z", "--", ...protectedPaths], { cwd: root }).toString("utf8").split("\0").filter(Boolean);
+const pathsAt = (baseline, paths) => execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", baseline, "--", ...paths], { cwd: root }).toString("utf8").split("\0").filter(Boolean);
+const tracked = [
+  ...pathsAt(oliveBaseline, protectedPaths.filter(path => path.startsWith("docs/mockups/sites/"))),
+  ...pathsAt(coreBaseline, protectedPaths.filter(path => !path.startsWith("docs/mockups/sites/"))),
+];
 for (const path of tracked) {
-  const committed = execFileSync("git", ["show", `HEAD:${path}`], { cwd: root, maxBuffer: 50 * 1024 * 1024 });
+  const baseline = path.startsWith("docs/mockups/sites/") ? oliveBaseline : coreBaseline;
+  const committed = execFileSync("git", ["show", `${baseline}:${path}`], { cwd: root, maxBuffer: 50 * 1024 * 1024 });
   const current = await readFile(join(root, path));
   // This Windows checkout uses core.autocrlf for some existing text files.
   // Approved homepage/motion sources and review media require exact blob bytes.
@@ -65,8 +74,7 @@ for (const path of tracked) {
 }
 // The integration adds only the scoped stylesheet import to the public route.
 const routePath = "apps/sites/app/[[...slug]]/page.tsx";
-const coreBaseline = "72a985e430451cbd83627a11a158ec7115d3f097";
 const priorRoute = execFileSync("git", ["show", `${coreBaseline}:${routePath}`], { cwd: root }).toString("utf8");
 const currentRoute = await readFile(join(root, routePath), "utf8");
 assert.equal(currentRoute, priorRoute.replace('import { hasRenderer, renderSite } from "../../core/registry";', 'import { hasRenderer, renderSite } from "../../core/registry";\nimport "../../renderers/obhis-v1/styles.css";'), "Public route changed outside the stylesheet integration");
-console.log(`PASS: ${outputCount} production files, ${traceCount} traces, ${images.length} private images excluded; ${tracked.length} protected files unchanged, with exact approved prototype/media bytes and checkout CRLF accounted for in other text files.`);
+console.log(`PASS: ${outputCount} production files, ${traceCount} traces, ${images.length} private images excluded; ${tracked.length} protected files match fixed reviewed baselines, with exact approved prototype/media bytes and checkout CRLF accounted for in other text files.`);

@@ -39,6 +39,19 @@ describe("Olive public renderer", () => {
     expect(output(open)).toContain('href="https://apply.example.edu/s/fictional-school"');
     expect(output({...open,applicationLink:{...open.applicationLink,availability:"paused"}})).not.toContain("Apply online");
   });
+  it("does not append operational advice to approved visit or closed-application copy", () => {
+    const closed = {...base,fields:base.fields.map(f => f.fieldId === "application_notice" ? {fieldId:f.fieldId,value:{kind:"text" as const,value:"Applications are closed; do not contact us"}} : f)};
+    const html = output(closed)!;
+    const application = html.split('id="application-guide"')[1].split("</details>")[0];
+    expect(application).toContain("Applications are closed; do not contact us");
+    expect(application).not.toContain("contact information below");
+    expect(application).not.toContain('href="#contact"');
+    const visit = html.split('id="visit-guide"')[1].split("</details>")[0];
+    expect(visit).toContain("Published visit_address");
+    expect(visit).not.toContain("Find us at");
+    expect(visit).not.toContain("Have a question");
+    expect(visit).not.toContain('href="#contact"');
+  });
   it("keeps the values accent readable on the fixed ink chapter", () => {
     expect(output(base)).toContain("--values-accent:#39bcd3");
     const dark = {...base,fields:base.fields.map(f => f.fieldId === "accent_color" ? {fieldId:f.fieldId,value:{kind:"text" as const,value:"#142c38"}} : f)};
