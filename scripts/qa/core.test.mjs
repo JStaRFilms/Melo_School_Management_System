@@ -6,7 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import {
   TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable,
-  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, validateQaInspection,
+  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, preservationExpectation, validateQaInspection, validateRecoveryState,
 } from './core.mjs';
 import { options, validateOptions } from './cli.mjs';
 import { reportHtml } from './report.mjs';
@@ -100,6 +100,24 @@ test('operator profile secrets are not inherited by frontend apps', () => {
   assert.equal(env.DEMO_SEED_DEPLOYMENT_IDENTITY, undefined);
   assert.equal(env.CONVEX_DEPLOY_KEY, undefined);
   assert.equal(env.CONVEX_SELF_HOSTED_ADMIN_KEY, undefined);
+});
+test('preservation target comes only from fresh inspection or a matching recovery record', () => {
+  const inspection = { baseline: { digest: 'a'.repeat(64) }, activePeriod: { session: 'Original session', term: 'Original term' } };
+  assert.deepEqual(preservationExpectation(inspection, null).activePeriod, inspection.activePeriod);
+  const recovery = { root: ROOT, deployment: TARGET.deployment, baselineDigest: inspection.baseline.digest, activePeriod: { session: 'Recorded before interruption', term: 'Recorded active term' } };
+  assert.deepEqual(preservationExpectation(inspection, recovery).activePeriod, recovery.activePeriod);
+  assert.throws(() => preservationExpectation(inspection, { ...recovery, baselineDigest: 'b'.repeat(64) }), /does not match/);
+  assert.throws(() => preservationExpectation(inspection, { ...recovery, deployment: 'dev:scrupulous-chinchilla-25' }), /does not match/);
+  assert.throws(() => preservationExpectation({ ...inspection, activePeriod: { session: null, term: null } }, null), /pre-write/);
+});
+test('recovery marker blocks a changed calendar and is bound to worktree, deployment, and cohort', () => {
+  const backend = { baseline: { digest: 'a'.repeat(64) }, activePeriod: { session: 'QA fixture', term: 'Fixture term' } };
+  const marker = { root: ROOT, deployment: TARGET.deployment, baselineDigest: backend.baseline.digest, activePeriod: { session: 'Original', term: 'Third Term' } };
+  assert.throws(() => validateRecoveryState(marker, backend), /Interrupted QA changed/);
+  assert.equal(validateRecoveryState(marker, backend, { allowRecovery: true }).target.session, 'Original');
+  assert.throws(() => validateRecoveryState({ ...marker, root: '/wrong' }, backend, { allowRecovery: true }), /does not match/);
+  assert.throws(() => validateRecoveryState({ ...marker, baselineDigest: 'b'.repeat(64) }, backend, { allowRecovery: true }), /does not match/);
+  assert.throws(() => validateRecoveryState({ ...marker, deployment: 'dev:scrupulous-chinchilla-25' }, backend, { allowRecovery: true }), /does not match/);
 });
 test('skipped, blocked, and empty checks cannot become a passing report', () => {
   assert.equal(evidenceStatus([]), 'blocked');

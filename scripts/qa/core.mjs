@@ -181,7 +181,7 @@ export function validateQaInspection(result) {
     activePeriod: { session: result.activeSession, term: result.activeTerm }, retainedQaClaims: result.retainedQaClaims };
 }
 
-export async function doctor(profile, apps, { requireFreePorts = true } = {}) {
+export async function doctor(profile, apps, { requireFreePorts = true, allowRecovery = false } = {}) {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('QA requires Node 22 or newer.');
   assertAppTargets(apps);
   try { execFileSync('pnpm', ['--version'], { stdio: 'ignore' }); }
@@ -194,7 +194,28 @@ export async function doctor(profile, apps, { requireFreePorts = true } = {}) {
     if (requireFreePorts && !await portAvailable(APPS[app].port)) throw new Error(`${app}: trusted port ${APPS[app].port} is occupied. No existing server will be borrowed or killed.`);
   }
   const backend = await inspectBackend(profile.values);
+  const recoveryFile = path.join(QA_DIR, 'recovery-needed.json');
+  if (fs.existsSync(recoveryFile)) {
+    validateRecoveryState(readJson(recoveryFile), backend, { allowRecovery });
+  }
   return { checkedAt: new Date().toISOString(), backend, apps: apps.map(name => ({ name, origin: `http://localhost:${APPS[name].port}` })) };
+}
+
+export function preservationExpectation(inspection, recovery) {
+  if (!inspection?.baseline?.digest || !inspection?.activePeriod?.session || !inspection?.activePeriod?.term) throw new Error('Independent pre-write baseline and active period are required.');
+  if (!recovery) return { activePeriod: inspection.activePeriod, baselineDigest: inspection.baseline.digest };
+  if (recovery.deployment !== TARGET.deployment || recovery.root !== ROOT ||
+      !recovery.activePeriod?.session || !recovery.activePeriod?.term || recovery.baselineDigest !== inspection.baseline.digest) {
+    throw new Error('Recovery marker does not match the independently inspected original school baseline.');
+  }
+  return { activePeriod: recovery.activePeriod, baselineDigest: recovery.baselineDigest };
+}
+
+export function validateRecoveryState(marker, backend, { allowRecovery = false, root = ROOT } = {}) {
+  if (marker.root !== root || marker.deployment !== TARGET.deployment || !backend?.baseline?.digest || marker.baselineDigest !== backend.baseline.digest) throw new Error('Recovery marker does not match this worktree and original cohort. Pause and inspect locally.');
+  const restored = Boolean(marker.activePeriod?.session && marker.activePeriod?.term && JSON.stringify(marker.activePeriod) === JSON.stringify(backend.activePeriod));
+  if (!restored && !allowRecovery) throw new Error('Interrupted QA changed the active school calendar. Use the explicitly recorded recovery workflow before starting more tests.');
+  return { restored, target: marker.activePeriod };
 }
 
 export function evidenceStatus(checks) {

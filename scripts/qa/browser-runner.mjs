@@ -11,14 +11,17 @@ const harness = new BrowserHarness(directory, request, state, request.mode === '
   ? 'Admin policy draft/discard, Teacher assigned roster selection/reload/mobile and UI denial from Admin, Parent linked-pupil learning search/detail/mobile. No scores, results, billing, providers, or cross-tenant behavior verified.'
   : 'Exploratory scope has not loaded.');
 let interrupted = false;
-process.once('SIGTERM', async () => {
+const handleInterruption = async () => {
+  if (interrupted) return;
   interrupted = true;
   if (request.mode === 'workflow') writeJson(path.join(QA_DIR, 'recovery-needed.json'), request.recovery ?? { root: ROOT, deployment: request.deployment, activePeriod: request.inspection.activePeriod, baselineDigest: request.inspection.baseline.digest, runId: request.id });
   harness.record('Runner time limit or operator interruption', 'blocked', 'Remaining criteria were not exercised. Inspect ambiguous writes before retrying.');
   harness.blockPending('Not exercised before runner interruption.');
   await harness.finish();
   process.exit(1);
-});
+};
+process.once('SIGTERM', handleInterruption);
+process.once('SIGINT', handleInterruption);
 try {
   if (request.mode === 'roles') {
     for (const role of request.roles) harness.declareSteps(role, roleJourneys[role]);

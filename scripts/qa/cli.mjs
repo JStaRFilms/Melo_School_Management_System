@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
   ROOT, QA_DIR, TARGET, APPS, LOCK_DIR, readJson, writeJson, parseApps, loadProfile,
-  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus,
+  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus, preservationExpectation,
 } from './core.mjs';
 import { workflowRequirements } from './exploration.mjs';
 import { generateReport, publishReviewed } from './report.mjs';
@@ -115,7 +115,7 @@ async function browserRun(mode, opts) {
   const state = ownedState();
   if (state.status !== 'ready') throw new Error('QA servers are not ready.');
   const profile = loadProfile(state.profile);
-  const inspection = await doctor(profile, state.apps, { requireFreePorts: false });
+  const inspection = await doctor(profile, state.apps, { requireFreePorts: false, allowRecovery: mode === 'workflow' && opts.recovery === true });
   for (const app of requirements.apps) if (!state.apps.includes(app)) throw new Error(`${mode} requires an owned ${app} server. Use qa:start --apps with the required apps.`);
   const recoveryFile = path.join(QA_DIR, 'recovery-needed.json');
   let recovery;
@@ -159,14 +159,14 @@ async function browserRun(mode, opts) {
     if (mode === 'workflow') {
       const result = readJson(path.join(directory, 'result.json'));
       try {
-        const after = await doctor(profile, state.apps, { requireFreePorts: false });
+        const after = await doctor(profile, state.apps, { requireFreePorts: false, allowRecovery: true });
         const preserved = after.backend.baseline.digest === inspection.backend.baseline.digest;
-        const expectedPeriod = recovery?.activePeriod ?? inspection.backend.activePeriod;
-        const restored = JSON.stringify(after.backend.activePeriod) === JSON.stringify(expectedPeriod);
+        const expected = preservationExpectation(inspection.backend, recovery);
+        const restored = JSON.stringify(after.backend.activePeriod) === JSON.stringify(expected.activePeriod) && after.backend.baseline.digest === expected.baselineDigest;
         result.checks.push({ name: 'original cohort scores, reports, pupils and classes preserved', status: preserved ? 'passed' : 'failed' });
         result.checks.push({ name: 'original active session and term restored', status: restored ? 'passed' : 'failed' });
         result.inspectionAfter = after.backend;
-        if (!preserved || !restored) writeJson(recoveryFile, recovery ?? { root: ROOT, deployment: TARGET.deployment, activePeriod: inspection.backend.activePeriod, baselineDigest: inspection.backend.baseline.digest, runId: id });
+        if (!preserved || !restored) writeJson(recoveryFile, recovery ?? { root: ROOT, deployment: TARGET.deployment, activePeriod: expected.activePeriod, baselineDigest: expected.baselineDigest, runId: id });
         else if (fs.existsSync(recoveryFile)) fs.unlinkSync(recoveryFile);
       } catch {
         writeJson(recoveryFile, recovery ?? { root: ROOT, deployment: TARGET.deployment, activePeriod: inspection.backend.activePeriod, baselineDigest: inspection.backend.baseline.digest, runId: id });
