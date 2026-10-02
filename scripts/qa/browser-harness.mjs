@@ -23,6 +23,17 @@ export function validateExploration(module) {
     throw new Error('Exploration exports scope, effects (read-only or synthetic-writes), and 1-30 uniquely named steps with run functions.');
   }
 }
+export function validateWorkflow(module) {
+  if (!Array.isArray(module.phases) || module.phases.length < 1 || module.phases.length > 20) throw new Error('Workflow requires 1-20 ordered phases.');
+  const seen = new Set();
+  for (const phase of module.phases) {
+    if (!/^[a-z0-9-]+$/.test(phase.id ?? '') || seen.has(phase.id) || !Object.hasOwn(ROLES, phase.role) ||
+        phase.dependsOn?.some(id => !seen.has(id)) || phase.alwaysRun !== undefined && typeof phase.alwaysRun !== 'boolean') throw new Error('Workflow phase identity, role, or dependency is invalid.');
+    validateExploration({ scope: module.scope, effects: module.effects, steps: phase.steps });
+    seen.add(phase.id);
+  }
+}
+
 export function ownedRequest(runDirectory, modes) {
   const directory = fs.realpathSync(runDirectory);
   if (!directory.startsWith(`${path.join(QA_DIR, 'runs')}${path.sep}`)) throw new Error('Use this worktree QA run folder.');
@@ -59,9 +70,11 @@ export class BrowserHarness {
     this.result = { ...request, scope, status: 'blocked', checks: [], screenshots: [] };
     this.diagnostics = [];
     this.planned = [];
+    this.roleSessions = new Map();
   }
-  declareSteps(role, steps) {
-    const names = [`${role}: real fixture sign-in`, ...steps.map(step => `${role}: ${step.name}`), `${role}: no browser errors or out-of-scope requests`];
+  declareSteps(role, steps, phase = '') {
+    const label = phase ? `${role}/${phase}` : role;
+    const names = [`${label}: ${phase ? 'authenticated fixture session' : 'real fixture sign-in'}`, ...steps.map(step => `${label}: ${step.name}`), `${label}: no browser errors or out-of-scope requests`];
     for (const name of names) if (!this.planned.includes(name)) this.planned.push(name);
     return names;
   }
@@ -73,11 +86,12 @@ export class BrowserHarness {
     for (const name of this.planned) if (!this.result.checks.some(check => check.name === name)) this.record(name, 'blocked', note);
   }
   async begin() { this.browser = await chromium.launch({ headless: true }); }
-  async actor(role) {
+  async actor(role, phase = '') {
+    const key = phase ? `${role}-${phase}` : role;
     const account = ROLES[role];
     if (!account || !this.state.apps.includes(account.app)) throw new Error('Requested role app is not owned by this run.');
     const origin = `http://localhost:${APPS[account.app].port}`;
-    const diagnostics = { role, errors: [], consoleErrors: [], blockedRequests: 0, blockedOrigins: [] };
+    const diagnostics = { role, phase, errors: [], consoleErrors: [], blockedRequests: 0, blockedOrigins: [] };
     this.diagnostics.push(diagnostics);
     const configure = async context => {
       await context.route('**/*', route => {
@@ -107,37 +121,50 @@ export class BrowserHarness {
     let page = await context.newPage();
     observe(page);
     try {
-      await page.goto('/sign-in');
-      await expect(page.locator('#email')).toBeVisible();
-      await page.locator('#email').fill(account.email);
-      await page.locator('#password').fill(process.env[`QA_${role.toUpperCase()}_PASSWORD`] ?? account.password);
-      await page.getByRole('button', { name: 'Sign In', exact: true }).click();
-      await page.waitForURL(url => url.origin === origin && url.pathname !== '/sign-in', { timeout: 60_000 });
+      let session = phase ? this.roleSessions.get(role) : null;
+      if (!session) {
+        await page.goto('/sign-in');
+        await expect(page.locator('#email')).toBeVisible();
+        await page.locator('#email').fill(account.email);
+        await page.locator('#password').fill(process.env[`QA_${role.toUpperCase()}_PASSWORD`] ?? account.password);
+        await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+        await page.waitForURL(url => url.origin === origin && url.pathname !== '/sign-in', { timeout: 60_000 });
+        session = await context.storageState();
+        if (phase) this.roleSessions.set(role, session);
+      }
       // Credentials and sign-in requests are excluded from video/trace artifacts.
-      const session = await context.storageState();
+      // Cached role sessions exist only in this process memory.
       await context.close();
-      context = await this.browser.newContext({ baseURL: origin, storageState: session, viewport: { width: 1440, height: 1000 }, recordVideo: { dir: path.join(this.directory, `private-video-${role}`) } });
+      context = await this.browser.newContext({ baseURL: origin, storageState: session, viewport: { width: 1440, height: 1000 }, recordVideo: { dir: path.join(this.directory, `private-video-${key}`) } });
       await configure(context);
       page = await context.newPage();
       observe(page);
+      if (phase) {
+        const response = await context.request.get(`${origin}/api/auth/get-session`);
+        const current = response.ok() ? await response.json() : null;
+        if (current?.user?.email !== account.email) throw new Error('Cached fixture session could not be verified; no phase actions executed.');
+      }
       await context.tracing.start({ screenshots: true, snapshots: true });
-      return { role, origin, page, context, diagnostics, expect,
-        capture: async name => {
+      return { role, phase, key, origin, page, context, diagnostics, expect,
+        capture: async (name, element) => {
           if (!/^[a-z0-9-]+$/.test(name)) throw new Error('Use a URL-safe screenshot name.');
-          const filename = `${role}-${name}.png`;
+          const filename = `${key}-${name}.png`;
           if (this.result.screenshots.includes(filename)) throw new Error('Screenshot names must be unique within the run.');
-          await page.screenshot({ path: path.join(this.directory, filename), fullPage: true, mask: [page.locator('input[type="password"]')] });
+          if (element) await element.screenshot({ path: path.join(this.directory, filename), mask: [page.locator('input[type="password"]')] });
+          else await page.screenshot({ path: path.join(this.directory, filename), fullPage: true, mask: [page.locator('input[type="password"]')] });
           this.result.screenshots.push(filename);
         },
       };
     } catch (error) { await context.close(); throw error; }
   }
-  async runSteps(role, steps) {
-    const plan = this.declareSteps(role, steps);
+  async runSteps(role, steps, { phase = '', shared } = {}) {
+    const key = phase ? `${role}-${phase}` : role;
+    const plan = this.declareSteps(role, steps, phase);
     let actor;
     let position = 0;
     try {
-      actor = await this.actor(role);
+      actor = await this.actor(role, phase);
+      actor.shared = shared;
       this.record(plan[position++], 'passed');
       for (const step of steps) {
         await step.run(actor);
@@ -148,20 +175,22 @@ export class BrowserHarness {
       await expect(actor.diagnostics.blockedRequests).toBe(0);
       this.record(plan[position], 'passed');
     } catch (error) {
-      const diagnostics = this.diagnostics.find(row => row.role === role);
+      const diagnostics = actor?.diagnostics ?? this.diagnostics.find(row => row.role === role && (row.phase ?? '') === phase);
       const blocker = !actor || diagnostics?.blockedRequests > 0 || isBackendContractBlocker([...(diagnostics?.consoleErrors ?? []), ...(diagnostics?.errors ?? [])]);
       this.record(plan[position], blocker ? 'blocked' : 'failed', blocker
         ? 'Fixture, backend contract, or approved-origin prerequisite was unavailable. No automatic deployment or reset.'
         : 'Browser assertion failed; raw diagnostics remain private.');
-      fs.writeFileSync(path.join(this.directory, `private-${role}-failure.txt`), String(error.stack ?? error), { mode: 0o600 });
+      fs.writeFileSync(path.join(this.directory, `private-${key}-failure.txt`), String(error.stack ?? error), { mode: 0o600 });
       if (actor) { try { await actor.capture('failure'); } catch { /* Context may have exited. */ } }
       for (const name of plan.slice(position + 1)) this.record(name, 'blocked', 'Not exercised after a failed prerequisite or assertion.');
     } finally {
       if (actor) {
-        try { await actor.context.tracing.stop({ path: path.join(this.directory, `private-${role}-trace.zip`) }); } catch { /* Preserve other evidence if tracing failed. */ }
+        try { await actor.context.tracing.stop({ path: path.join(this.directory, `private-${key}-trace.zip`) }); } catch { /* Preserve other evidence if tracing failed. */ }
+        if (phase) this.roleSessions.set(role, await actor.context.storageState());
         await actor.context.close();
       }
     }
+    return plan.every(name => this.result.checks.find(check => check.name === name)?.status === 'passed');
   }
   async finish() {
     await this.browser?.close();

@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import {
   CalendarDays,
-  CheckCircle2,
-  ChevronRight,
   Pencil,
   Save,
   X,
@@ -200,6 +198,8 @@ export function TermCard({ term, sessionName }: TermCardProps) {
   return (
     <>
       <div
+        role="region"
+        aria-label={`Academic term ${term.name}`}
         className={`relative flex flex-col justify-between p-4 sm:p-5 transition-all duration-300 ${
           justActivated
             ? "bg-emerald-100/50 border-l-4 lg:border-l-0 lg:border-t-4 border-emerald-500"

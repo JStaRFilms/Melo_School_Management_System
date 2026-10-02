@@ -18,6 +18,7 @@ export function workflowRequirements(mode, opts) {
     const roles = parseRoles(opts['--roles']);
     return { roles, apps: [...new Set(roles.flatMap(role => role === 'teacher' ? ['teacher', 'admin'] : [ROLES[role].app]))] };
   }
+  if (mode === 'workflow') return { apps: ['admin', 'teacher', 'portal'], script: explorationScript(opts['--script']), allowSyntheticWrites: opts.allowWrites === true };
   if (mode === 'explore') {
     const roles = parseRoles(opts['--role'] ?? 'admin');
     if (roles.length !== 1) throw new Error('qa:explore uses exactly one --role.');

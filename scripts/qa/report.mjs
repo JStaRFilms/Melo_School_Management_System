@@ -11,7 +11,7 @@ export function reportHtml(run) {
     if (!statuses.includes(check.status)) throw new Error('Invalid check status.');
     return `<li><strong>${escapeHtml(check.status)}</strong> ${escapeHtml(check.name)}${check.note ? `<p>${escapeHtml(check.note)}</p>` : ''}</li>`;
   }).join('');
-  const effects = run.mode === 'explore' ? `<p>Exploratory declared effects: <code>${escapeHtml(run.effects ?? 'not loaded')}</code>. This is trusted Node code, not a security sandbox or an independently enforced effect guarantee.</p>` : '';
+  const effects = ['explore', 'workflow'].includes(run.mode) ? `<p>Exploratory declared effects: <code>${escapeHtml(run.effects ?? 'not loaded')}</code>. This is trusted Node code, not a security sandbox or an independently enforced effect guarantee.</p>` : '';
   const revision = run.workspace ? `<h2>Revision and coverage</h2><p>Checkout <code>${escapeHtml(run.workspace.checkoutRevision)}</code>. Uncommitted source changes: ${run.workspace.sourceDirty ? 'yes' : 'no'}. Upstream observed <code>${escapeHtml(run.workspace.upstreamRevision ?? 'unavailable')}</code>.</p><p>${escapeHtml(run.workspace.backendCodeNote)}</p>` : '';
   const images = run.screenshots.map(name => {
     if (!/^[a-z0-9-]+\.png$/.test(name)) throw new Error('Unsafe screenshot path.');

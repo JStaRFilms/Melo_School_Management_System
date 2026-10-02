@@ -50,6 +50,7 @@
     "qa:layout": "node scripts/qa/cli.mjs layout",
     "qa:roles": "node scripts/qa/cli.mjs roles",
     "qa:explore": "node scripts/qa/cli.mjs explore",
+    "qa:workflow": "node scripts/qa/cli.mjs workflow",
     "qa:report": "node scripts/qa/cli.mjs report",
     "qa:test": "node --test scripts/qa/*.test.mjs"
   },

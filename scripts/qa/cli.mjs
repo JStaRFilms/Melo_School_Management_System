@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
   ROOT, QA_DIR, TARGET, APPS, LOCK_DIR, readJson, writeJson, parseApps, loadProfile,
-  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease,
+  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus,
 } from './core.mjs';
 import { workflowRequirements } from './exploration.mjs';
 import { generateReport, publishReviewed } from './report.mjs';
@@ -18,6 +18,7 @@ export function options(args) {
     const key = args[index];
     if (key === '--publish-reviewed') { values.publish = true; continue; }
     if (key === '--allow-synthetic-writes') { values.allowWrites = true; continue; }
+    if (key === '--recovery') { values.recovery = true; continue; }
     if (!['--env-file', '--apps', '--run', '--roles', '--role', '--script'].includes(key) || !args[index + 1] || args[index + 1].startsWith('--') || values[key]) {
       throw new Error('Use the documented env/apps/run/roles/role/script flags; unsupported or missing values are refused.');
     }
@@ -28,7 +29,7 @@ export function options(args) {
 
 export function validateOptions(command, opts) {
   const allowed = command === 'doctor' || command === 'start' ? ['--env-file', '--apps'] : command === 'report' ? ['--run', 'publish'] :
-    command === 'roles' ? ['--roles'] : command === 'explore' ? ['--role', '--script', 'allowWrites'] : [];
+    command === 'roles' ? ['--roles'] : command === 'explore' ? ['--role', '--script', 'allowWrites'] : command === 'workflow' ? ['--script', 'allowWrites', 'recovery'] : [];
   if (Object.keys(opts).some(key => !allowed.includes(key))) throw new Error(`Unsupported option for qa:${command}. No option is silently ignored.`);
 }
 
@@ -114,16 +115,28 @@ async function browserRun(mode, opts) {
   const state = ownedState();
   if (state.status !== 'ready') throw new Error('QA servers are not ready.');
   const profile = loadProfile(state.profile);
-  await doctor(profile, state.apps, { requireFreePorts: false });
+  const inspection = await doctor(profile, state.apps, { requireFreePorts: false });
   for (const app of requirements.apps) if (!state.apps.includes(app)) throw new Error(`${mode} requires an owned ${app} server. Use qa:start --apps with the required apps.`);
+  const recoveryFile = path.join(QA_DIR, 'recovery-needed.json');
+  let recovery;
   const id = `qa-${Date.now()}-${randomUUID().slice(0, 8)}`;
   await withLease('backend-content-poodle-172', { id, root: ROOT, pid: process.pid }, async () => {
+    // Marker handling is inside the exclusive lease: a concurrent reader must
+    // not clear an in-flight workflow's journal before its first activation.
+    if (fs.existsSync(recoveryFile)) {
+      recovery = readJson(recoveryFile);
+      if (recovery.deployment !== TARGET.deployment || recovery.root !== ROOT) throw new Error('Recovery marker belongs to another environment.');
+      const verified = JSON.stringify(inspection.backend.activePeriod) === JSON.stringify(recovery.activePeriod) && inspection.backend.baseline.digest === recovery.baselineDigest;
+      if (verified) { fs.unlinkSync(recoveryFile); recovery = null; }
+      else if (!opts.recovery || mode !== 'workflow') throw new Error('A prior interrupted workflow needs calendar recovery. Restore it through UI, then doctor verifies it, or use an explicit recovery workflow.');
+    }
+    if (mode === 'workflow') writeJson(recoveryFile, recovery ?? { root: ROOT, deployment: TARGET.deployment, activePeriod: inspection.backend.activePeriod, baselineDigest: inspection.backend.baseline.digest, runId: id });
     const directory = path.join(QA_DIR, 'runs', id);
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-    writeJson(path.join(directory, 'request.json'), { id, mode, apps: state.apps, deployment: TARGET.deployment, ...requirements, workspace: workspaceRevision() });
+    writeJson(path.join(directory, 'request.json'), { id, mode, apps: state.apps, deployment: TARGET.deployment, ...requirements, workspace: workspaceRevision(), inspection: inspection.backend, recovery });
     writeJson(path.join(QA_DIR, 'latest-run.json'), { id });
     const code = await new Promise((resolve, reject) => {
-      const runner = mode === 'roles' || mode === 'explore' ? 'browser-runner.mjs' : 'journey.mjs';
+      const runner = ['roles', 'explore', 'workflow'].includes(mode) ? 'browser-runner.mjs' : 'journey.mjs';
       const child = spawn(process.execPath, [path.join(ROOT, 'scripts/qa', runner), directory], {
         cwd: ROOT, stdio: 'inherit', env: { ...appEnvironment(profile),
           QA_ADMIN_PASSWORD: profile.values.E2E_ADMIN_PASSWORD ?? 'Admin123!Pass',
@@ -134,7 +147,7 @@ async function browserRun(mode, opts) {
       const limit = setTimeout(() => {
         child.kill('SIGTERM');
         force = setTimeout(() => child.kill('SIGKILL'), 10_000);
-      }, 15 * 60_000);
+      }, (mode === 'workflow' ? 30 : 15) * 60_000);
       let force;
       child.once('error', error => { clearTimeout(limit); clearTimeout(force); reject(error); });
       child.once('exit', value => { clearTimeout(limit); clearTimeout(force); resolve(value ?? 1); });
@@ -143,10 +156,30 @@ async function browserRun(mode, opts) {
       ...readJson(path.join(directory, 'request.json')), status: 'blocked', scope: 'Runner did not finish; feature criteria were not verified.',
       checks: [{ name: 'Browser runner completion', status: 'blocked', note: 'Process exit or time limit prevented completion. Inspect any ambiguous writes before retrying.' }], screenshots: [],
     });
+    if (mode === 'workflow') {
+      const result = readJson(path.join(directory, 'result.json'));
+      try {
+        const after = await doctor(profile, state.apps, { requireFreePorts: false });
+        const preserved = after.backend.baseline.digest === inspection.backend.baseline.digest;
+        const expectedPeriod = recovery?.activePeriod ?? inspection.backend.activePeriod;
+        const restored = JSON.stringify(after.backend.activePeriod) === JSON.stringify(expectedPeriod);
+        result.checks.push({ name: 'original cohort scores, reports, pupils and classes preserved', status: preserved ? 'passed' : 'failed' });
+        result.checks.push({ name: 'original active session and term restored', status: restored ? 'passed' : 'failed' });
+        result.inspectionAfter = after.backend;
+        if (!preserved || !restored) writeJson(recoveryFile, recovery ?? { root: ROOT, deployment: TARGET.deployment, activePeriod: inspection.backend.activePeriod, baselineDigest: inspection.backend.baseline.digest, runId: id });
+        else if (fs.existsSync(recoveryFile)) fs.unlinkSync(recoveryFile);
+      } catch {
+        writeJson(recoveryFile, recovery ?? { root: ROOT, deployment: TARGET.deployment, activePeriod: inspection.backend.activePeriod, baselineDigest: inspection.backend.baseline.digest, runId: id });
+        result.checks.push({ name: 'post-workflow preservation inspection', status: 'blocked', note: 'Readonly inspection did not complete; no preservation or restoration claim.' });
+      }
+      result.status = evidenceStatus(result.checks);
+      if (result.status !== 'passed') process.exitCode = 1;
+      writeJson(path.join(directory, 'result.json'), result);
+    }
     generateReport(directory);
     console.log(`Private report: ${path.join(directory, 'index.html')}`);
     console.log(`Run: ${id}. Review screenshots before qa:report --run ${id} --publish-reviewed.`);
-    process.exitCode = code;
+    process.exitCode = process.exitCode || code;
   });
 }
 
@@ -170,7 +203,7 @@ export async function main(command, opts) {
     console.log(JSON.stringify(result, null, 2));
   } else if (command === 'start') await start(opts);
   else if (command === 'stop') await stop();
-  else if (['smoke', 'feature', 'layout', 'roles', 'explore'].includes(command)) await browserRun(command, opts);
+  else if (['smoke', 'feature', 'layout', 'roles', 'explore', 'workflow'].includes(command)) await browserRun(command, opts);
   else if (command === 'report') {
     const id = opts['--run'] ?? readJson(path.join(QA_DIR, 'latest-run.json')).id;
     if (!/^qa-[a-z0-9-]+$/.test(id)) throw new Error('Invalid run ID.');
@@ -178,7 +211,7 @@ export async function main(command, opts) {
     const result = generateReport(directory);
     console.log(`Status: ${result.status}; local report: ${path.join(directory, 'index.html')}`);
     if (opts.publish) console.log(publishReviewed(directory));
-  } else throw new Error('Use doctor, start, stop, smoke, layout, feature, roles, explore, or report.');
+  } else throw new Error('Use doctor, start, stop, smoke, layout, feature, roles, explore, workflow, or report.');
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

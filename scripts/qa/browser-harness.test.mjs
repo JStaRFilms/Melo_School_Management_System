@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { BrowserHarness, parseRoles, validateExploration, allowedBrowserUrl } from './browser-harness.mjs';
+import { BrowserHarness, parseRoles, validateExploration, allowedBrowserUrl, validateWorkflow } from './browser-harness.mjs';
 import { workflowRequirements, explorationScript } from './exploration.mjs';
 import { TARGET, evidenceStatus, workspaceRevision } from './core.mjs';
 import { validateOptions } from './cli.mjs';
@@ -103,6 +103,18 @@ test('topic detail proof waits for navigation and requires a detail H1 before ca
   });
   await roleJourneys.parent.find(step => step.name.startsWith('topic detail')).run({ page, origin, expect: assertion, capture: async () => { events.push('capture'); assert.equal(current.pathname, '/learning/topics/test-topic'); } });
   assert.deepEqual(events, ['click', 'wait-navigation', 'capture', 'reload']);
+});
+test('workflow phases have ordered dependencies and unique role-phase criteria', async t => {
+  const step = { name: 'observed state', run: async () => {} };
+  const module = { scope: 'Real cross-role case', effects: 'synthetic-writes', phases: [{ id: 'setup', role: 'admin', steps: [step] }, { id: 'publish', role: 'admin', dependsOn: ['setup'], steps: [step] }, { id: 'cleanup', role: 'admin', alwaysRun: true, steps: [step] }] };
+  assert.doesNotThrow(() => validateWorkflow(module));
+  assert.throws(() => validateWorkflow({ ...module, phases: [{ ...module.phases[0], dependsOn: ['future'] }] }));
+  const harness = new BrowserHarness(temporary(t), { id: 'qa-phases', mode: 'workflow' }, {}, 'Scope');
+  harness.actor = async (role, phase) => ({ diagnostics: { role, phase, errors: [], consoleErrors: [], blockedRequests: 0 }, capture: async () => {}, context: { storageState: async () => ({}), tracing: { stop: async () => {} }, close: async () => {} } });
+  assert.equal(await harness.runSteps('admin', [step], { phase: 'setup' }), true);
+  assert.equal(await harness.runSteps('admin', [{ name: 'observed state', run: async () => { throw new Error('Deliberate later phase failure'); } }], { phase: 'publish' }), false);
+  assert.equal(harness.result.checks.find(check => check.name === 'admin/setup: observed state').status, 'passed');
+  assert.equal(harness.result.checks.find(check => check.name === 'admin/publish: observed state').status, 'failed');
 });
 test('reports identify the checkout and never infer a deployed backend revision', () => {
   const workspace = workspaceRevision();
