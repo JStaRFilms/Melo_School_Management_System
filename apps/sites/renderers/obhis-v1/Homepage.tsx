@@ -17,7 +17,7 @@ const heroPhotos = [
 
 function HeroPhoto({ assets }: { assets: OliveModel["assets"] }) {
   return <figure className="photo-print" aria-label="School photographs">
-    <div className="hero-photo-stack">{heroPhotos.map((photo, index) => <img key={photo.key} draggable={false} data-hero-photo={index} hidden={index !== 0} src={assets[photo.key].src} width={photo.width} height={photo.height} alt={assets[photo.key].alt} />)}</div>
+    <div className="hero-photo-stack">{heroPhotos.map((photo, index) => <img key={photo.key} draggable={false} data-hero-photo={index} hidden={index !== 0} loading={index === 0 ? "eager" : "lazy"} src={assets[photo.key].src} width={photo.width} height={photo.height} alt={assets[photo.key].alt} />)}</div>
   </figure>;
 }
 
@@ -116,7 +116,7 @@ export function Homepage({ model }: { model: OliveModel }) {
     </section>
 
     <section className="donations-section page-section" id="donations" aria-labelledby="donations-heading">
-      <div><p className="section-kicker">Donations</p><h2 className="section-title" id="donations-heading">Support {text.short_name}.</h2><p>{text.donations_intro}</p></div>
+      <div><p className="section-kicker">Donations</p><h2 className="section-title" id="donations-heading">{model.privateReview ? <>Support {text.short_name}.</> : "Donations"}</h2><p>{text.donations_intro}</p></div>
       {model.privateReview && <div className="donation-qr-space" aria-label="Space reserved for donation QR codes"><div>QR code coming soon</div><div>QR code coming soon</div></div>}
     </section>
   </main>

@@ -39,6 +39,26 @@ describe("Olive public renderer", () => {
     expect(output(open)).toContain('href="https://apply.example.edu/s/fictional-school"');
     expect(output({...open,applicationLink:{...open.applicationLink,availability:"paused"}})).not.toContain("Apply online");
   });
+  it("defers inactive hero images while keeping the initial photograph eager", () => {
+    const images = output(base)!.match(/<img\b[^>]*data-hero-photo="\d"[^>]*>/g)!;
+    expect(images).toHaveLength(5);
+    expect(images[0]).toContain('loading="eager"');
+    expect(images[0]).not.toContain('hidden=""');
+    for (const image of images.slice(1)) {
+      expect(image).toContain('loading="lazy"');
+      expect(image).toContain('hidden=""');
+    }
+  });
+  it("keeps public donations neutral when the approved notice closes donations", () => {
+    const closed = {...base,fields:base.fields.map(f => f.fieldId === "donations_intro" ? {fieldId:f.fieldId,value:{kind:"text" as const,value:"Donations are closed and are not accepted"}} : f)};
+    const section = output(closed)!.split('id="donations"')[1].split("</section>")[0];
+    expect(section).toContain('id="donations-heading">Donations</h2>');
+    expect(section).toContain("Donations are closed and are not accepted");
+    expect(section).not.toContain("Support ");
+    expect(section).not.toContain("<a ");
+    expect(section).not.toContain("<img ");
+    expect(section).not.toContain("donation-qr-space");
+  });
   it("does not append operational advice to approved visit or closed-application copy", () => {
     const closed = {...base,fields:base.fields.map(f => f.fieldId === "application_notice" ? {fieldId:f.fieldId,value:{kind:"text" as const,value:"Applications are closed; do not contact us"}} : f)};
     const html = output(closed)!;

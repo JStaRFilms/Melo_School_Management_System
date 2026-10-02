@@ -5,11 +5,13 @@ async function openReview(page: Page, query = "", autoplay = false) {
   // fonts, so keep this headless run offline without changing that layout.
   await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ contentType: "text/css", body: "" }));
   await page.goto(`/review/obhis${query}`);
-  await expect(page.locator(".scene-controls")).toBeVisible();
+  await expect(page.locator(".scene-controls")).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('.hero-stage')).toHaveCSS('overflow-x', 'clip');
   const play = page.locator('[data-welcome-play]');
   if (!autoplay && !(await play.isDisabled())) await play.click();
-  await page.locator(".hero-stage img").evaluateAll(images => Promise.all(images.map(image => image instanceof HTMLImageElement ? image.decode() : Promise.resolve())));
+  // Decode only the visible scene. Hidden lazy images must wait for selection,
+  // rather than having the test helper preload every rotating photograph.
+  await page.locator(".hero-stage img").evaluateAll(images => Promise.all(images.filter(image => image.getClientRects().length > 0).map(image => image instanceof HTMLImageElement ? image.decode() : Promise.resolve())));
 }
 
 async function sectionPositions(page: Page) {
@@ -53,6 +55,52 @@ for (const width of [1920, 1440, 1024, 768, 760, 390, 320]) {
     expect(await page.locator(".obhis-review img").evaluateAll(images => images.every(image => image instanceof HTMLImageElement && !image.src.includes("/_next/image")))).toBe(true);
   });
 }
+
+test("inactive hero photographs defer their own requests and load when selected", async ({ page, browser }) => {
+  await openReview(page);
+  const photographs = page.locator('[data-hero-photo]');
+  await expect(photographs).toHaveCount(5);
+  await expect(photographs.first()).toHaveAttribute('loading', 'eager');
+  for (let index = 1; index < 5; index++) {
+    await expect(photographs.nth(index)).toHaveAttribute('loading', 'lazy');
+    await expect(photographs.nth(index)).not.toBeVisible();
+  }
+  // Gallery cards legitimately share these URLs and may warm the page cache.
+  // Isolate the real hero markup with distinct query URLs to measure its own
+  // native lazy-loading policy without changing the homepage or its photos.
+  const fixture = await page.locator('.hero-photo-stack').evaluate(stack => {
+    const copy = stack.cloneNode(true) as HTMLElement;
+    const sources = [...stack.querySelectorAll('img')];
+    const urls = [...copy.querySelectorAll('img')].map((image, index) => {
+      image.src = `${sources[index].src}?hero-loading-test=1`;
+      return image.src;
+    });
+    return { html: copy.outerHTML, urls };
+  });
+  const context = await browser.newContext();
+  try {
+    const isolated = await context.newPage();
+    const requests: string[] = [];
+    isolated.on('request', request => {
+      if (fixture.urls.includes(request.url())) requests.push(request.url());
+    });
+    await isolated.setContent(fixture.html);
+    await expect.poll(() => isolated.locator('[data-hero-photo="0"]').evaluate(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
+    expect(requests).toEqual([fixture.urls[0]]);
+    for (let index = 1; index < 5; index++) {
+      await isolated.locator('[data-hero-photo]').evaluateAll((images, selected) => images.forEach((image, position) => { (image as HTMLImageElement).hidden = position !== selected; }), index);
+      await expect.poll(() => isolated.locator(`[data-hero-photo="${index}"]`).evaluate(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
+      expect(requests).toEqual(fixture.urls.slice(0, index + 1));
+    }
+  } finally { await context.close(); }
+  for (let index = 1; index < 5; index++) {
+    await page.locator('[data-scene-choice="you"]').click();
+    await page.locator('[data-scene-choice="olive"]').click();
+    const photograph = photographs.nth(index);
+    await expect(photograph).toBeVisible();
+    await expect.poll(() => photograph.evaluate(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true);
+  }
+});
 
 test("supplied desktop composition overlaps the artwork and puts controls at the foot", async ({ page }) => {
   await page.setViewportSize({ width:1047, height:749 });

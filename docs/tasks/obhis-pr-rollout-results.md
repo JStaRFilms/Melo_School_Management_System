@@ -56,3 +56,9 @@ The existing Vercel CLI token is invalid and no approved vault handle was availa
 4. Review the remaining runtime, real-device and accessibility checks. Keep missing campus/application/donation destinations as placeholders. Authorize merge, real content publication and domain/DNS activation separately when ready.
 
 Code readiness, resolved initial review feedback and successful initial previews are established at this checkpoint. Final review/preview status is recorded on the PR after the final marker commit. Runtime and public-school release readiness remain unverified.
+
+## Authorized follow-up for the final two Codex findings
+
+The user subsequently requested fixes for the two final P2 findings. The initial hero photograph stays eager and the inactive rotation photographs are lazy. A controlled Chromium test reuses actual rendered hero markup in a fresh context with distinct query URLs, excluding gallery-cache warming, and verifies one initial request plus one per selected image. Actual homepage rotation is also verified. The public donation heading is now the neutral "Donations" label; the closed-notice regression verifies there is no support solicitation, payment link or QR image. The private draft retains its approved heading and placeholders.
+
+Both fixes are frontend-only, with no backend/manifest change or redeployment. The complete follow-up checks pass: Sites typecheck, 20 core tests, 28 enabled/3 development-denied/3 production-denied browser tests, focused lint, theme audit, fresh build, protected-source/private-asset scan and whitespace. Fixed artwork/prototype/photo bytes remain unchanged. The follow-up push uses `[skip vercel]` to avoid retrying the known provider quota. Thread replies record the exact fix commit; both final findings can now be resolved. Final-head previews, authenticated deployed runtime and production frontend access remain unverified.
