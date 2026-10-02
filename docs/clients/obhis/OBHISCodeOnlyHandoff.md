@@ -52,6 +52,12 @@ The requested campus exploration links cannot be added yet. Abuja and Rugam are 
 
 All 24 enabled browser checks passed in the full local worktree, including desktop and mobile layouts, both scenes, gallery tabs/viewer, hero controls, navigation, native disclosures and available CTA targets. Typecheck, focused lint, theme audit, whitespace and the existing production-artifact scan passed. Eight new private screenshots are omitted, bringing the cumulative count to 100 omitted image entries. The text receipt contains filenames and geometry only. There was no fresh production build or deployment.
 
+## Larger section typography
+
+The latest local source checkpoint is `7d5cc34`. The school-life heading and paragraph, values heading/introduction/explanations, section labels and photo captions are larger in proportion to their images. The school-life heading remains two lines at 1047 pixels; values explanations form one column at narrow phone widths. This is a CSS hierarchy change with one focused regression test. No copy, photos, bundled artwork, routes or six-second hero behaviour changed.
+
+All 25 enabled browser checks passed in the full local worktree, plus typecheck, focused lint, theme audit, whitespace and the existing production/source-preservation scan. Twelve new private section captures are omitted, bringing the cumulative omitted image-entry count to 112. The text receipt contains only measurements and filenames. No fresh production build, real-device audit or public deployment was performed. Campus and admissions destinations still need verification before their actions can be added.
+
 ## For the production-core agent
 
 Fetch `origin/feature/obhis-website-code` and inspect this branch read-only while implementing production infrastructure on your separate branch. Use paths relative to your checkout. The absolute Windows paths in the earlier task prompt refer to the original development computer.

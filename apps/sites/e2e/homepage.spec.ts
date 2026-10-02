@@ -98,6 +98,36 @@ test("wide Olive photo moves right without covering the final letter", async ({ 
   })).toBe(true);
 });
 
+test("school-life and values type stay prominent without crowding", async ({ page }) => {
+  await page.setViewportSize({ width:1920, height:1080 });
+  await openReview(page);
+  expect(await page.evaluate(() => {
+    const size = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing heading or copy: ${selector}`);
+      return Number.parseFloat(getComputedStyle(element).fontSize);
+    };
+    return size('#school-life h2') >= 80 && size('.album-intro > p') >= 23 &&
+      size('.crest-story h2') >= 110 && size('.crest-intro') >= 25 &&
+      size('.values-grid p') >= 20;
+  })).toBe(true);
+  await page.setViewportSize({ width:1047, height:1000 });
+  expect(await page.locator('#school-life h2').evaluate(heading => {
+    const style = getComputedStyle(heading);
+    return heading.getBoundingClientRect().height / Number.parseFloat(style.lineHeight) <= 2.1;
+  })).toBe(true);
+  await page.setViewportSize({ width:390, height:844 });
+  expect(await page.evaluate(() => {
+    const value = document.querySelector('.values-grid p');
+    const introduction = document.querySelector('.album-intro > p');
+    const grid = document.querySelector('.values-grid');
+    return !!value && !!introduction && !!grid && Number.parseFloat(getComputedStyle(value).fontSize) >= 18 &&
+      Number.parseFloat(getComputedStyle(introduction).fontSize) >= 18 &&
+      getComputedStyle(grid).gridTemplateColumns.split(' ').length === 1 &&
+      document.documentElement.scrollWidth <= innerWidth;
+  })).toBe(true);
+});
+
 test("keyboard, history, reload and rapid reversal preserve control focus", async ({ page }) => {
   await openReview(page);
   const olive = page.locator('[data-scene-choice="olive"]');
