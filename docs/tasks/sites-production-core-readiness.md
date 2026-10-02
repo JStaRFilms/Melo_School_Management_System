@@ -15,12 +15,12 @@ Local verification completed in `/Users/toji/Documents/johnsax/sites-production-
 
 | Check | Result |
 | --- | --- |
-| Convex Sites, schema coverage and foundation focused tests | 15 files, 46 passed |
+| Convex Sites, schema coverage and foundation focused tests | 16 files, 49 passed |
 | Sites core tests | 5 files, 13 passed |
 | Shared package regression suite | 36 files, 234 passed |
 | Admin site management/upload tests | 2 files, 9 passed |
 | Apply compatibility tests for inherited base changes | 2 files, 23 passed |
-| Total tests in the final selected suites | 325 passed |
+| Total tests in the final selected suites | 328 passed |
 | Typechecks | Shared, Convex, Sites, Admin, Platform and Apply passed |
 | Lint | Sites, Admin, Platform, Apply and touched Convex code passed with no errors. Full Convex lint separately reports two existing academic `.mts` parser failures outside this change |
 | Production builds | Sites, Platform, Apply passed without backend configuration. Admin passed with synthetic `NEXT_PUBLIC_CONVEX_URL=https://sites-test.convex.cloud` for compile/prerender only |
