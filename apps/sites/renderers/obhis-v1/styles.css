@@ -72,7 +72,7 @@ html:has(.obhis-review) { scroll-behavior:auto; }
 .obhis-review .motion-ready[data-scene="you"] .headline-line:nth-child(2) .line-text { transition-delay:225ms; }
 .obhis-review .motion-ready[data-scene="you"] .you-art { transition-delay:220ms; }
 .obhis-review .fabric-rule { height:14px; background-color:var(--ink); background-image:radial-gradient(ellipse at 16px 6px,var(--school-accent) 0 7px,transparent 8px),radial-gradient(ellipse at 40px 13px,#ef704d 0 8px,transparent 9px),radial-gradient(ellipse at 60px 3px,#e7a5b0 0 7px,transparent 8px); background-size:74px 26px; }
-.obhis-review .section-kicker { font-size:12px; font-weight:650; margin:0 0 17px; }
+.obhis-review .section-kicker { font-size:clamp(13px,.85vw,16px); font-weight:650; margin:0 0 17px; }
 .obhis-review .no-script { margin:0; padding:12px; text-align:center; }
 @media(max-width:1050px)  {
   .obhis-review .nav { gap:19px; }
@@ -115,15 +115,15 @@ html:has(.obhis-review) { scroll-behavior:auto; }
 
 html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
 .obhis-review .page-section { padding:76px var(--gutter); scroll-margin-top:92px; }
-.obhis-review .section-title { margin:0; font:750 clamp(42px,4.3vw,66px)/1.06 Bahnschrift,Arial,sans-serif; letter-spacing:-.055em; }
+.obhis-review .section-title { margin:0; font:750 clamp(48px,5vw,82px)/1.05 Bahnschrift,Arial,sans-serif; letter-spacing:-.055em; }
 .obhis-review .school-intro { padding-top:54px; padding-bottom:44px; }
 .obhis-review .school-intro p { max-width:860px; margin:0 auto; font-size:clamp(18px,2vw,24px); line-height:1.48; letter-spacing:-.02em; }
 .obhis-review .section-top { display:flex; align-items:flex-end; justify-content:space-between; gap:40px; }
 .obhis-review .school-album { padding-top:24px; padding-bottom:85px; }
 .obhis-review .album-intro { align-items:center; }
-.obhis-review .album-intro > p { max-width:470px; margin:0; font-size:17px; line-height:1.6; }
+.obhis-review .album-intro > p { flex:0 1 46%; max-width:610px; margin:0; font-size:clamp(19px,1.4vw,24px); line-height:1.5; }
 .obhis-review .album-choices { display:flex; width:max-content; gap:4px; padding:4px; margin:26px 0 0 auto; border:1px solid var(--line); border-radius:6px; }
-.obhis-review .album-choices button { min-height:44px; padding:0 18px; border:0; border-radius:3px; color:var(--ink); background:var(--white); font-size:13px; font-weight:600; }
+.obhis-review .album-choices button { min-height:44px; padding:0 18px; border:0; border-radius:3px; color:var(--ink); background:var(--white); font-size:15px; font-weight:600; }
 .obhis-review .album-choices button[aria-pressed="true"] { color:var(--white); background:var(--ink); }
 .obhis-review .album-choices button:hover { text-decoration:underline; text-underline-offset:4px; }
 .obhis-review .album-grid { display:grid; grid-template-columns:1.18fr 1fr; align-items:start; gap:6%; padding:20px 6px 20px; }
@@ -135,7 +135,7 @@ html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
 .obhis-review .album-photo { flex-shrink:0; padding:12px 2px; font-size:12px; font-weight:650; text-decoration:underline; text-underline-offset:4px; }
 .obhis-review .album-photo:hover { text-decoration-thickness:2px; }
 .obhis-review .print-number { font-size:11px; font-weight:600; color:#45606a; }
-.obhis-review .album-sheet figcaption strong { display:block; font:600 17px/1.35 'Trebuchet MS',Arial,sans-serif; letter-spacing:-.02em; }
+.obhis-review .album-sheet figcaption strong { display:block; font:600 clamp(17px,1.1vw,20px)/1.35 'Trebuchet MS',Arial,sans-serif; letter-spacing:-.02em; }
 .obhis-review .album-sheet figcaption div > span { display:block; margin-top:5px; font-size:11px; line-height:1.5; color:#45606a; }
 .obhis-review .album-grid[data-enhanced] .album-sheet:not([hidden]) > img { animation:obhis-photo-arrive 360ms var(--settle-ease); }
 @keyframes obhis-photo-arrive  { from  { opacity:.3; transform:translateY(8px); } to  { opacity:1; transform:translateY(0); } }
@@ -143,12 +143,12 @@ html:has(.obhis-review) { scroll-behavior:smooth; scrollbar-gutter:stable; }
 .obhis-review .album-foot p { max-width:470px; margin:0; font-size:11px; line-height:1.6; color:#45606a; }
 .obhis-review .album-foot a { flex-shrink:0; }
 .obhis-review .crest-story { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,.7fr); gap:9%; align-items:start; padding:68px var(--gutter); color:var(--white); background:var(--ink); }
-.obhis-review .crest-story h2 { margin:18px 0 24px; font:750 clamp(58px,6.4vw,96px)/1.02 Bahnschrift,Arial,sans-serif; letter-spacing:-.055em; }
+.obhis-review .crest-story h2 { margin:18px 0 28px; font:750 clamp(66px,7vw,116px)/1.02 Bahnschrift,Arial,sans-serif; letter-spacing:-.055em; }
 .obhis-review .crest-story h2 span { color:var(--cyan); }
-.obhis-review .crest-intro { max-width:540px; margin:0 0 28px; font-size:18px; line-height:1.55; }
-.obhis-review .values-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; max-width:680px; }
-.obhis-review .values-grid h3 { margin:0 0 8px; font-size:18px; font-weight:700; }
-.obhis-review .values-grid p { margin:0; font-size:14px; line-height:1.65; }
+.obhis-review .crest-intro { max-width:650px; margin:0 0 30px; font-size:clamp(20px,1.4vw,26px); line-height:1.5; }
+.obhis-review .values-grid { display:grid; grid-template-columns:1fr 1fr; gap:32px; max-width:850px; }
+.obhis-review .values-grid h3 { margin:0 0 9px; font-size:clamp(21px,1.35vw,25px); font-weight:700; }
+.obhis-review .values-grid p { margin:0; font-size:clamp(18px,1.2vw,21px); line-height:1.55; }
 .obhis-review .uniform-print { width:100%; max-width:300px; justify-self:center; margin:20px 0 0; padding:10px; background:var(--white); transform:rotate(4deg); }
 .obhis-review .uniform-print img { width:100%; }
 .obhis-review .campus-section { padding:72px var(--gutter); background:var(--cyan); scroll-margin-top:92px; }
@@ -207,6 +207,10 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
   .obhis-review .crest-story { padding:55px var(--gutter); gap:6%; }
   .obhis-review .campus-grid { gap:22px; }
 }
+@media(max-width:900px) {
+  .obhis-review .album-intro { flex-direction:column; align-items:flex-start; gap:18px; }
+  .obhis-review .album-intro > p { flex:auto; }
+}
 @media(max-width:760px)  {
   .obhis-review .page-section { padding:48px var(--gutter); scroll-margin-top:84px; }
   .obhis-review .section-title { font-size:clamp(38px,8.5vw,52px); }
@@ -214,7 +218,7 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
   .obhis-review .school-intro p { font-size:19px; }
   .obhis-review .school-album { padding-top:20px; padding-bottom:45px; }
   .obhis-review .section-top { flex-direction:column; align-items:flex-start; gap:18px; }
-  .obhis-review .album-intro > p { font-size:15px; }
+  .obhis-review .album-intro > p { flex:auto; font-size:18px; }
   .obhis-review .album-choices { width:100%; max-width:340px; margin:22px 0 0; }
   .obhis-review .album-choices button { flex:1; padding:0 12px; }
   .obhis-review .album-grid { grid-template-columns:1fr; gap:24px; padding:22px 4px 14px; }
@@ -227,7 +231,7 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
   .obhis-review .album-foot p { font-size:10px; }
   .obhis-review .crest-story { grid-template-columns:1fr; gap:28px; padding:45px var(--gutter) 55px; }
   .obhis-review .crest-story h2 { font-size:clamp(56px,12vw,84px); }
-  .obhis-review .crest-intro { font-size:16px; }
+  .obhis-review .crest-intro { font-size:18px; }
   .obhis-review .uniform-print { width:62%; max-width:260px; justify-self:end; margin-right:3%; }
   .obhis-review .campus-section { padding:48px var(--gutter); scroll-margin-top:84px; }
   .obhis-review .campus-grid { grid-template-columns:1fr; gap:24px; margin-top:25px; }
@@ -247,6 +251,9 @@ html:has(.obhis-review .photo-viewer[open]) { overflow:hidden; }
   .obhis-review .viewer-bottom { flex-direction:column; align-items:stretch; gap:14px; }
   .obhis-review .viewer-controls { justify-content:space-between; }
   .obhis-review #viewer-caption { font-size:13px; }
+}
+@media(max-width:600px) {
+  .obhis-review .values-grid { grid-template-columns:1fr; gap:22px; }
 }
 @media(max-width:360px) { .obhis-review .album-sheet figcaption { min-height:90px; } }
 @media(prefers-reduced-motion:reduce)  { html:has(.obhis-review) { scroll-behavior:auto; } }
