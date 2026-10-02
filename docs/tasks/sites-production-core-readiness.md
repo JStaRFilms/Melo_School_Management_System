@@ -1,6 +1,6 @@
 # Production school-site core readiness
 
-Local verification completed on 2026-09-30 in `/Users/toji/Documents/johnsax/sites-production-core`, branch `feature/sites-production-core`. No other worktree was edited. No real pupil data, private OBHIS image, live provider operation, DNS change, remote seed/migration or production deployment was used.
+Local verification completed in `/Users/toji/Documents/johnsax/sites-production-core`, branch `feature/sites-production-core`. No other worktree was edited. No real pupil data, private OBHIS image, live provider operation, DNS change or remote seed/data migration was used. The owner subsequently authorized the backend-first rollout and confirmed `outgoing-warbler-782` as the production backend. Its schema/functions are now deployed and registered; see `sites-production-core-rollout.md` for the target, source revision, index additions and production negative probes. School publication and domain cutover remain outside this rollout.
 
 ## Implementation
 
@@ -15,12 +15,12 @@ Local verification completed on 2026-09-30 in `/Users/toji/Documents/johnsax/sit
 
 | Check | Result |
 | --- | --- |
-| Convex Sites, schema coverage and foundation focused tests | 14 files, 43 passed |
+| Convex Sites, schema coverage and foundation focused tests | 15 files, 44 passed |
 | Sites core tests | 4 files, 11 passed |
 | Shared manifest and canonical admissions link tests | 2 files, 8 passed |
 | Admin site management/upload tests | 2 files, 7 passed |
 | Apply compatibility tests for inherited base changes | 2 files, 23 passed |
-| Total targeted tests | 92 passed |
+| Total targeted tests | 93 passed |
 | Typechecks | Shared, Convex, Sites, Admin, Platform and Apply passed |
 | Lint | Sites, Admin, Platform, Apply and touched Convex code passed with no errors. Full Convex lint separately reports two existing academic `.mts` parser failures outside this change |
 | Production builds | Sites, Platform, Apply passed without backend configuration. Admin passed with synthetic `NEXT_PUBLIC_CONVEX_URL=https://sites-test.convex.cloud` for compile/prerender only |
@@ -41,15 +41,15 @@ Two independent focused review lanes covered backend security and frontend/manag
 - Review-ready: local confirmed blockers and the requested Codex finding are corrected. Codex inspected `393eb83e`, not a later correction or preview-only commit; thread disposition records the fix and its regression tests, not a fresh Codex approval.
 - Preview-ready: not established locally. Requires final application build checks on the settled PR head, not the Vercel comment integration alone.
 - Runtime-ready: not established for deployed applications. In-process synthetic integration passes; real configured Convex/Vercel ingress, egress, TLS and coordinated app behavior still need authorized testing.
-- Release-ready: not established. Backend-first rollout, deployment/cutover authorization and real school approvals are outstanding.
+- Infrastructure rollout: backend deployment was authorized, completed and verified before the authorized merge. Final frontend checks and merge/production status require their head-specific results. School launch readiness is not established; live site configuration, approved content and domain cutover remain outstanding.
 
 ## External prerequisites and limits
 
 1. Provide the real Vercel production project/team, private credential owner, exact custom-host list, configured Convex URLs and gateway secret through approved secret stores. No secrets belong in chat or this document.
-2. Authorize any real Vercel attachment/verification, DNS work, backend deployment/migration and frontend deployment separately. No such authorization was inferred from the PR request.
+2. The owner subsequently authorized the backend deployment and merge after confirming the exact production target. Real Vercel domain attachment/verification, DNS work, school publication and explicit data migrations remain separately authorized operations; none was inferred from that rollout approval.
 3. Confirm operator and school DNS owner, 30-day TXT renewal procedure, the five-minute maintenance capacity of 20 due hosts and provider-list bound of 100 domains. Excess/expired states fail closed. Recovery of an uncertain provider write with no positive read-only proof needs explicit operator investigation, not blind retry.
-4. Transfer `feature/obhis-website` code and the requested review documents safely. Do not transfer secrets/private image bytes merely to enable review. OBHIS's actual schema version, route/field IDs and prop adapter cannot be certified before that inspection.
-5. Real school facts, policy/contact approval, photo rights and child consent, the inherited OBHIS hero-contrast issue and actual domain cutover remain separate approvals. This core does not publish OBHIS.
+4. The owner supplied `feature/obhis-website-code`; its `9101e108` source snapshot was inspected read-only. A disposable combined build and production private-route denials pass. The source is still a private-context renderer, not a registered public adapter; fixed field/asset mapping and editor changes need coordinated implementation. Do not push the original photo-bearing history or transfer private image bytes merely to enable review.
+5. Real school facts, policy/contact approval, photo rights and child consent, full accessibility review and actual domain cutover remain separate approvals. The refined OBHIS ink/coral headline has its specific 4.90:1 contrast correction, not a full accessibility clearance. This core does not publish OBHIS.
 
 ## Merge plan
 
@@ -57,4 +57,4 @@ The owned branch started at the user-requested local master `d21e7664`; the user
 
 After review and explicit merge authorization, use Create a merge commit, not rebase or squash. Integrate this core into the OBHIS branch with an authorized merge commit, preserving its design. Register its exact shared manifest in `packages/shared/src/site-manifests.ts`, its matching compiled component in `apps/sites/core/registry.tsx`, and typed props from `ProductionSiteContext` in `apps/sites/core/public.ts`. Core alone loads persistence/tenants and resolves admissions. Replace private fixture identity/copy/assets with approved published fields and first-party asset URLs; never cast to `PrivateReviewContext`. Keep the development review route private and production-disabled. Rerun combined field/route/SEO/link/asset/output and visual accessibility checks before school launch.
 
-Backend schema/functions must deploy and register before frontends use the new functions. Default-branch frontend auto-deployment must be sequenced or paused by authorized operators. Merge authorization does not itself authorize deployment, migrations or DNS cutover.
+Backend schema/functions registration has now completed before the authorized merge and frontend auto-deployment. The owner approved that backend-first sequence explicitly. Real school publication, data migration and DNS cutover remain separate operations. Final merge and application results are recorded in GitHub's head-specific checkpoint.
