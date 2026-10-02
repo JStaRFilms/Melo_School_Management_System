@@ -32,10 +32,9 @@ export function mountInteractions(root: HTMLElement) {
   const closeButton = required<HTMLButtonElement>(root, "#viewer-close");
   const previousButton = required<HTMLButtonElement>(root, "#viewer-previous");
   const nextButton = required<HTMLButtonElement>(root, "#viewer-next");
-  const visitGuide = required<HTMLDetailsElement>(root, "#visit-guide");
   const photos = sheets.map(sheet => ({
     source: required<HTMLAnchorElement>(sheet, ".album-photo").href,
-    description: required<HTMLImageElement>(sheet, ".album-photo img").alt,
+    description: required<HTMLImageElement>(sheet, "img").alt,
     caption: required<HTMLElement>(sheet, "figcaption strong").textContent,
     album: required<HTMLElement>(sheet, "figcaption div > span").textContent,
   }));
@@ -98,7 +97,7 @@ export function mountInteractions(root: HTMLElement) {
     currentCollection = collection;
     for (const sheet of sheets) sheet.hidden = sheet.dataset.collection !== collection;
     for (const button of collectionButtons) button.setAttribute("aria-pressed", String(button.dataset.collectionChoice === collection));
-    if (previous !== null) albumStatus.textContent = collection === "day" ? "Two photographs from the school-visit album." : "Two photographs from the cultural-day albums.";
+    if (previous !== null) albumStatus.textContent = collection === "day" ? "Two school-day photographs." : "Two cultural-day photographs.";
   }
 
   function showPhoto(index: number) {
@@ -126,7 +125,6 @@ export function mountInteractions(root: HTMLElement) {
     if (collection === "day" || collection === "culture") chooseCollection(collection);
     const link = event.target.closest<HTMLAnchorElement>("a");
     if (!link || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    if (link.getAttribute("href") === "#visit-guide") visitGuide.open = true;
     const photo = link.dataset.photo;
     if (photo !== undefined && typeof viewer.showModal === "function") {
       event.preventDefault();

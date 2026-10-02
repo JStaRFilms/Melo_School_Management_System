@@ -1,0 +1,62 @@
+{
+  "captures": [
+    {
+      "width": 1440,
+      "scene": "olive",
+      "filename": "olive-1440.png",
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 1440,
+      "scene": "you",
+      "filename": "you-1440.png",
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 1047,
+      "scene": "olive",
+      "filename": "olive-1047.png",
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 1047,
+      "scene": "you",
+      "filename": "you-1047.png",
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 390,
+      "scene": "olive",
+      "filename": "olive-390.png",
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 390,
+      "scene": "you",
+      "filename": "you-390.png",
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "scene": "olive",
+      "filename": "olive-320.png",
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "scene": "you",
+      "filename": "you-320.png",
+      "overflow": false,
+      "internalScroll": 0
+    }
+  ],
+  "errors": [],
+  "note": "Local private headless Chromium captures. School photos and artwork remain private; not for public export."
+}

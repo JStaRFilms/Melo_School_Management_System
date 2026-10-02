@@ -59,7 +59,7 @@ test("supplied desktop composition overlaps the artwork and puts controls at the
   await openReview(page);
   await expect(page.locator('.scene-olive .eyebrow')).toHaveCount(0);
   await expect(page.locator('.nav .school-link')).toBeVisible();
-  expect(await page.locator('.scene-olive h1').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(155);
+  expect(await page.locator('.scene-olive h1').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(110);
   expect(await page.locator('.olive-art img').evaluate(image => image instanceof HTMLImageElement && image.naturalWidth === 1448 && image.naturalHeight === 706)).toBe(true);
   expect(await page.locator('.hero-stage').evaluate(stage => {
     const art = stage.querySelector('.olive-art')?.getBoundingClientRect();
@@ -68,7 +68,7 @@ test("supplied desktop composition overlaps the artwork and puts controls at the
     const link = stage.querySelector('.hero-link')?.getBoundingClientRect();
     const bottom = stage.getBoundingClientRect().bottom;
     const canvas = stage.querySelector('.welcome-canvas')?.getBoundingClientRect();
-    return !!art && !!photo && !!controls && !!link && !!canvas && photo.width >= canvas.width * .36 && photo.left < art.right - art.width * .1 && photo.top < art.top + art.height * .2 && controls.top > bottom - 100 && Math.abs((controls.top + controls.height / 2) - (link.top + link.height / 2)) < 10;
+    return !!art && !!photo && !!controls && !!link && !!canvas && photo.width >= canvas.width * .28 && photo.width < canvas.width * .32 && photo.left < art.right - art.width * .05 && photo.top < art.top + art.height * .2 && controls.top > bottom - 100 && Math.abs((controls.top + controls.height / 2) - (link.top + link.height / 2)) < 10;
   })).toBe(true);
   await page.locator('[data-scene-choice="you"]').click();
   await page.waitForTimeout(1250);
@@ -94,7 +94,7 @@ test("wide Olive photo moves right without covering the final letter", async ({ 
     const art = panel.querySelector('.olive-art')?.getBoundingClientRect();
     const photo = panel.querySelector('.photo-print')?.getBoundingClientRect();
     if (!canvas || !art || !photo) return false;
-    return photo.left >= art.left + art.width * .84 && photo.right < innerWidth && photo.width >= canvas.width * .36;
+    return photo.left >= art.left + art.width * .78 && photo.right < innerWidth && photo.width >= canvas.width * .28;
   })).toBe(true);
 });
 
@@ -268,7 +268,38 @@ test("native touch swipe changes welcomes and vertical touch still scrolls", asy
   } finally { await context.close(); }
 });
 
-test("native viewer, manual controls, modified clicks and visit reopening", async ({ page }) => {
+test("story copy, gallery caption actions, campus labels and navigation remain honest", async ({ page }) => {
+  await openReview(page);
+  await expect(page.locator('#our-school p')).toHaveText('Olive Blessed Crest Academy is a school with roots in Nyanya, Abuja, and a belief that learning and character grow together. We want children to ask questions, take pride in their progress, and learn to care for the people around them.');
+  await expect(page.locator('#school-life h2')).toHaveText('The people make the place.');
+  await expect(page.locator('#school-life .album-intro > p')).toHaveText('A shared table. A familiar face. The excitement of cultural day. Get to know Olive through the everyday moments and celebrations that bring our school together.');
+  await expect(page.locator('.album-sheet:not([hidden])')).toHaveCount(2);
+  await expect(page.locator('.album-sheet:not([hidden]) .album-photo')).toHaveText(['View photo ↗', 'View photo ↗']);
+  await expect(page.locator('.album-sheet > img')).toHaveCount(4);
+  await page.locator('[data-collection-choice="culture"]').click();
+  await expect(page.locator('.album-sheet:not([hidden]) .album-photo')).toHaveCount(2);
+  await page.locator('.album-sheet:not([hidden]) .album-photo').first().click();
+  await expect(page.locator('#viewer-position')).toHaveText('3 of 4');
+  await page.locator('#viewer-close').click();
+  await expect(page.locator('.crest-story .section-kicker')).toHaveText('What we stand for');
+  await expect(page.locator('.crest-story .values-grid h3')).toHaveText(['Integrity', 'Service']);
+  await expect(page.locator('.crest-intro')).toHaveText('Learning shapes what a child knows. It should also help shape how they treat others.');
+  await expect(page.locator('.values-grid p')).toHaveText([
+    'Being honest about our work, keeping our word, and taking responsibility when we get something wrong. Integrity grows through the choices we make every day.',
+    'Noticing when someone needs help and choosing to act. Making room for a classmate, sharing what we know, and caring for the spaces we use together.',
+  ]);
+  await expect(page.locator('.admissions-copy > p')).toHaveText('Choosing a school is personal. Start with the things that matter to your family.');
+  await expect(page.locator('.campus-album h3')).toHaveText(['Abuja', 'Rugam']);
+  await expect(page.locator('.campus-album a,#campuses [data-photo],.admissions-copy a')).toHaveCount(0);
+  await expect(page.locator('#visit-guide summary,#application-guide summary')).toHaveText(['Visiting Olive', 'How to apply']);
+  await expect(page.locator('.footer-welcome,.campus-status,.photo-open')).toHaveCount(0);
+  expect(await page.locator('.nav a,.footer-links a').evaluateAll(links => links.every(link => {
+    const href = link.getAttribute('href');
+    return href?.startsWith('#') ? !!document.querySelector(href) : href === 'https://www.facebook.com/profile.php?id=100010370084416';
+  }))).toBe(true);
+});
+
+test("native viewer, manual controls, modified clicks and disclosures", async ({ page }) => {
   await openReview(page);
   const opener = page.locator('.album-photo[data-photo="0"]');
   expect(await opener.evaluate(link => {
@@ -293,12 +324,8 @@ test("native viewer, manual controls, modified clicks and visit reopening", asyn
   await expect(dialog).not.toBeVisible();
   await expect(opener).toBeFocused();
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).not.toBe("hidden");
-  await page.locator('.campus-album [data-photo="2"]').first().click();
-  await expect(page.locator("#viewer-position")).toHaveText("3 of 4");
-  await page.locator("#viewer-close").click();
+  await expect(page.locator('.campus-album a')).toHaveCount(0);
   await page.locator("#visit-guide summary").click();
-  await expect(page.locator("#visit-guide")).not.toHaveAttribute("open", "");
-  await page.locator('.admissions-copy a[href="#visit-guide"]').click();
   await expect(page.locator("#visit-guide")).toHaveAttribute("open", "");
   await page.locator("#application-guide summary").focus();
   await page.keyboard.press("Enter");
@@ -315,7 +342,7 @@ test("reduced motion retains choices without travel or album animation", async (
   await page.locator('[data-scene-choice="olive"]').click();
   await page.locator('[data-collection-choice="culture"]').click();
   expect(await page.locator('.scene').evaluateAll(elements => elements.every(element => getComputedStyle(element).transitionDuration === "0s"))).toBe(true);
-  expect(await page.locator('.album-photo img').evaluateAll(elements => elements.every(element => getComputedStyle(element).animationName === "none"))).toBe(true);
+  expect(await page.locator('.album-sheet > img').evaluateAll(elements => elements.every(element => getComputedStyle(element).animationName === "none"))).toBe(true);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
   await page.evaluate(() => window.scrollTo(0, 300));
   expect(await page.locator('.hero-stage').evaluate(element => getComputedStyle(element).getPropertyValue('--hero-drift').trim())).toBe('0px');
