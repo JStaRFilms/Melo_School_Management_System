@@ -160,10 +160,31 @@ export async function providerWrite(host: string, operation: "attach" | "verify"
   if (result.name !== host || result.projectId !== projectId) throw Error("Provider response mismatch");
   return {name: host, verified: result.verified === true, verification: challenges(result)};
 }
+type TlsEvidence = {leafFingerprintSha256: string; leafNotAfter: number; deploymentProbeMatched: true};
+// Unregistered aggregation seam for tests. The production caller supplies only
+// DNS-validated addresses and the code-owned TLS connector, never caller input.
+export async function probeResolvedTlsEndpoints(
+  ips: readonly string[], probe: (ip: string) => Promise<TlsEvidence>,
+): Promise<TlsEvidence> {
+  if (!ips.length || ips.length > 32) throw Error("Unsafe DNS destination");
+  let representative: TlsEvidence | undefined;
+  let earliestExpiry = Infinity;
+  // A failed batch settles all its in-flight connections before returning an
+  // error. No later batch starts after failure, and at most four probes run.
+  for (let offset = 0; offset < ips.length; offset += 4) {
+    const results = await Promise.allSettled(ips.slice(offset, offset + 4).map(probe));
+    for (const result of results) {
+      if (result.status === "rejected") throw result.reason;
+      representative ??= result.value;
+      earliestExpiry = Math.min(earliestExpiry, result.value.leafNotAfter);
+    }
+  }
+  return {...representative!, leafNotAfter: earliestExpiry};
+}
 export async function probeTls(host: string) {
   const ips = await addresses(host);
-  // Only publicly routable DNS candidates reach the production connector.
-  return probeTlsEndpoint(host, ips[0], 443);
+  // Every advertised public address must serve a trusted SNI leaf and marker.
+  return probeResolvedTlsEndpoints(ips, ip => probeTlsEndpoint(host, ip, 443));
 }
 // Transport seam for controlled local TLS tests. No Convex action exposes this
 // helper or accepts a pin, port or CA from a caller.
@@ -207,5 +228,5 @@ export async function probeTlsEndpoint(host: string, ip: string, port: number, c
     req.on("timeout", () => finish(Error("Probe timeout"))); req.on("error", error => finish(error)); req.end();
   });
   if (body !== PROBE_BODY) throw Error("Wrong deployment marker");
-  return {leafFingerprintSha256: tls.fingerprint, leafNotAfter: tls.expires, deploymentProbeMatched: true};
+  return {leafFingerprintSha256: tls.fingerprint, leafNotAfter: tls.expires, deploymentProbeMatched: true as const};
 }

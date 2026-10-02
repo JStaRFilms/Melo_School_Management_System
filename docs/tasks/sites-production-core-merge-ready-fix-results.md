@@ -1,6 +1,24 @@
 # PR101 merge-ready correction results
 
-Local code and tests only. No deploy, seed, remote query, provider mutation, commit or push. The task packet remains the scope boundary; the three defects behind five review threads are addressed. Parent must redeploy the corrected, backwards-compatible Convex backend before merging the browser and Admin proxy changes. The production backend currently registered from `989651ab` does not understand the new versioned headers.
+## Late DNS endpoint readiness correction (PR head `5c09ceeb`)
+
+Late review thread `PRRT_kwDORvwFBc6oO2AJ` (finding `4162983649`) correctly found that `probeTls` checked only the first of up to 32 validated A/AAAA answers. The local correction makes every resolved public address pass the existing pinned HTTPS/TLS probe at port 443 with the exact hostname/SNI, trusted leaf, and fixed deployment marker. `probeResolvedTlsEndpoints(ips, probe)` is an ordinary unregistered helper used by production only after DNS public-address validation. It permits mocked endpoint transports in tests, but no Convex action accepts a caller-provided IP, port, CA, or probe function. It starts at most four endpoints per batch, waits for all in-flight endpoints before reporting a batch failure, and does not start later batches after failure. On success it keeps the first validated leaf fingerprint as representative and stores the earliest leaf expiry across all endpoints. Distinct individually valid renewed certificates need not share a fingerprint; the existing endpoint probe still compares each HTTPS connection against its own TLS handshake. The DNS 32-answer cap, reserved-address rejection, pinning, deadlines, redirect denial, and response byte limit remain unchanged.
+
+Mocked mixed A/AAAA endpoints, a rejected second address, earliest expiry and bounded concurrency are covered in `probe-aggregate.test.ts`. Controlled local TLS endpoints also deny near-expiry and wrong-marker second peers; existing fixture tests cover trust/SNI, certificate changes between handshake and HTTP, and time/byte/redirect limits. No DNS/provider/backend request was made by these tests.
+
+| Verification command | Result |
+| --- | --- |
+| `pnpm --filter @school/convex exec vitest run functions/sites/probe-aggregate.test.ts functions/sites/probe-local.test.ts functions/sites/probe.test.ts functions/sites/domainRules.test.ts` | 4 files, 16 tests passed. |
+| `pnpm --filter @school/convex exec vitest run functions/sites` | 12 files, 35 tests passed, including the in-process authenticated headless bridge; the passing bridge printed a non-fatal WebSocket port-in-use warning. |
+| `pnpm --filter @school/convex typecheck` | Passed. |
+| `pnpm --filter @school/convex exec eslint functions/sites/providerNode.ts functions/sites/probe-aggregate.test.ts functions/sites/probe-local.test.ts` | Passed. |
+| `node /tmp/sites-convex-offline-esbuild-check.cjs`; `git diff --check` | Passed. Offline esbuild: 167 isolate entries/286 outputs and 13 Node entries/33 outputs; not remote Convex analysis. |
+
+The verified code is local only. Production still runs the previously deployed `b1684800` backend and remains vulnerable to a bad second DNS endpoint until the owner redeploys this correction. No deploy, seed, commit, push, live DNS/provider query, or real photo operation was performed in this pass.
+
+## Earlier merge-ready corrections (historical local results)
+
+The following records the earlier local correction pass, before the `b1684800` deployment documented in `sites-production-core-rollout.md`. Its three defects behind five review threads were addressed without a deploy in that pass. The older `989651ab` backend did not understand the new versioned headers; production later received the corrected `b1684800` backend.
 
 ## Changes and decisions
 

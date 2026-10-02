@@ -6,7 +6,7 @@ import {join} from "node:path";
 import {execFileSync} from "node:child_process";
 import {createServer, type Server} from "node:https";
 import {createSecureContext} from "node:tls";
-import {probeTlsEndpoint} from "./providerNode";
+import {probeResolvedTlsEndpoints,probeTlsEndpoint} from "./providerNode";
 import {PROBE_BODY} from "./domainRules";
 let folder: string;
 let key: string;
@@ -43,7 +43,13 @@ test("rejects a near-expiry leaf even when chain and hostname validate",async ()
   const short = readFileSync(join(folder,"short-cert.pem"),"utf8");
   const server = createServer({key:readFileSync(join(folder,"short-key.pem"),"utf8"),cert:short},(_req,res) => {res.writeHead(200,{"Content-Type":"text/plain; charset=utf-8"});res.end(PROBE_BODY);});
   await new Promise<void>(resolve => server.listen(0,"127.0.0.1",resolve));
-  try {await expect(probeTlsEndpoint("localhost","127.0.0.1",(server.address() as {port:number}).port,short)).rejects.toThrow("Invalid TLS certificate");} finally {await close(server);}
+  try {
+    const port = (server.address() as {port:number}).port;
+    await expect(probeTlsEndpoint("localhost","127.0.0.1",port,short)).rejects.toThrow("Invalid TLS certificate");
+    await expect(probeResolvedTlsEndpoints(["8.8.8.8","1.1.1.1"], ip => ip === "8.8.8.8"
+      ? Promise.resolve({leafFingerprintSha256:"a".repeat(64),leafNotAfter:Date.now()+172_800_000,deploymentProbeMatched:true as const})
+      : probeTlsEndpoint("localhost","127.0.0.1",port,short))).rejects.toThrow("Invalid TLS certificate");
+  } finally {await close(server);}
 });
 test("rejects a changed certificate between trusted handshake and HTTP probe",async () => {
   execFileSync("openssl",["req","-x509","-newkey","rsa:2048","-nodes","-days","3","-subj","/CN=localhost","-addext","subjectAltName=DNS:localhost","-keyout",join(folder,"other-key.pem"),"-out",join(folder,"other-cert.pem")],{stdio:"ignore"});
@@ -60,7 +66,14 @@ test("rejects a changed certificate between trusted handshake and HTTP probe",as
 test("rejects redirects, body overflow and marker mismatch",async () => {
   for (const [status,body,headers] of [[302,"",{location:"/other"}],[200,"x".repeat(129),{}],[200,"wrong",{}]] as const) {
     const {server,port} = await serve((_req,res) => {res.writeHead(status,{"Content-Type":"text/plain; charset=utf-8",...headers});res.end(body);});
-    try {await expect(probeTlsEndpoint("localhost","127.0.0.1",port,cert)).rejects.toThrow();} finally {await close(server);}
+    try {
+      await expect(probeTlsEndpoint("localhost","127.0.0.1",port,cert)).rejects.toThrow();
+      if (body === "wrong") {
+        await expect(probeResolvedTlsEndpoints(["8.8.8.8","1.1.1.1"], ip => ip === "8.8.8.8"
+          ? Promise.resolve({leafFingerprintSha256:"a".repeat(64),leafNotAfter:Date.now()+172_800_000,deploymentProbeMatched:true as const})
+          : probeTlsEndpoint("localhost","127.0.0.1",port,cert))).rejects.toThrow("Wrong deployment marker");
+      }
+    } finally {await close(server);}
   }
 });
 test("total deadline stops a slow trickle even with active sockets",async () => {
