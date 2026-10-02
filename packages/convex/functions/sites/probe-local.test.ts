@@ -31,6 +31,13 @@ test("local trusted chain and matching SNI, rejects untrusted and wrong hostname
     await expect(probeTlsEndpoint("other.localhost","127.0.0.1",port,cert)).rejects.toThrow();
   } finally {await close(server);}
 });
+test("IPv6 pin accepts the same local socket under expanded spelling",async () => {
+  const server = createServer({key,cert},(_req,res) => {res.writeHead(200,{"Content-Type":"text/plain; charset=utf-8"});res.end(PROBE_BODY);});
+  await new Promise<void>(resolve => server.listen(0,"::1",resolve));
+  try {
+    await expect(probeTlsEndpoint("localhost","0:0:0:0:0:0:0:1",(server.address() as {port:number}).port,cert)).resolves.toMatchObject({deploymentProbeMatched:true});
+  } finally {await close(server);}
+});
 test("rejects a near-expiry leaf even when chain and hostname validate",async () => {
   execFileSync("openssl",["req","-x509","-newkey","rsa:2048","-nodes","-days","1","-subj","/CN=localhost","-addext","subjectAltName=DNS:localhost","-keyout",join(folder,"short-key.pem"),"-out",join(folder,"short-cert.pem")],{stdio:"ignore"});
   const short = readFileSync(join(folder,"short-cert.pem"),"utf8");

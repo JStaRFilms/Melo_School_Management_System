@@ -24,6 +24,22 @@ it("renders revert-only history without draft fields, private assets or unrelate
   expect(screen.queryByText("Fictional School")).not.toBeInTheDocument();
   confirm.mockRestore();
 });
+it("sends Unicode upload metadata as versioned ASCII headers",async () => {
+  mocks.read.mockResolvedValue(view);
+  const fetcher = vi.spyOn(globalThis,"fetch").mockResolvedValue(Response.json({assetId:"assetSynthetic01"},{status:201}));
+  try {
+    render(<SiteSettingsPage />);
+    const file = new File([new Uint8Array(16)],"学校-Àwọn-صورة.png",{type:"image/png"});
+    fireEvent.change(await screen.findByLabelText("Image file"),{target:{files:[file]}});
+    fireEvent.change(screen.getByLabelText("Alternative text"),{target:{value:"学校 Àwọn صورة"}});
+    fireEvent.click(screen.getByRole("button",{name:"Upload privately"}));
+    await waitFor(() => expect(fetcher).toHaveBeenCalled());
+    const headers = fetcher.mock.calls[0][1]?.headers as Record<string,string>;
+    expect(headers["x-site-filename-uri-v1"]).toBe(encodeURIComponent(file.name));
+    expect(headers["x-site-alt-uri-v1"]).toBe(encodeURIComponent("学校 Àwọn صورة"));
+    expect(headers["X-Site-Filename"]).toBeUndefined();
+  } finally {fetcher.mockRestore();}
+});
 it("does not preselect a child's image classification or submit without one",async () => {
   mocks.read.mockResolvedValue({...view,assets:[{id:"assetSynthetic01",kind:"hero",fileName:"fictional.png",checksum:"a".repeat(64),status:"draft",rightsStatus:"pending",childApplicability:"unknown",decorative:false}],domains:[]});
   render(<SiteSettingsPage />);

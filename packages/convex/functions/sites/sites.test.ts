@@ -4,6 +4,7 @@ import { api, internal } from "../../_generated/api";
 import schema from "../../schema";
 import { encode } from "fast-png";
 import { storageDigest } from "./shared";
+import { encodeSiteUploadMetadata } from "@school/shared/site-upload-metadata";
 const pixel = new Uint8Array(encode({width:1,height:1,channels:4,depth:8,data:new Uint8Array([24,55,88,255])}));
 const modules = {
   ...Object.fromEntries(Object.entries(import.meta.glob("../../**/*.ts")).map(([path, load]) => [path.replace(/^\.\.\/\.\.\//, "./"), load])),
@@ -91,6 +92,29 @@ describe("managed site boundary", () => {
     expect(asset?._id).toBe(result.assetId);
     expect(asset?.uploadProvenance).toBe("website_direct_upload_v1");
     expect((await f.t.fetch("/sites/asset-bytes", {method:"POST"})).status).toBe(404);
+  });
+  test("versioned Unicode upload metadata and raw legacy headers survive the HTTP storage path", async () => {
+    const f = await fixture();
+    await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
+    const base = {"content-length":String(pixel.length),"content-type":"image/png","x-site-school":f.schoolA,"x-site-kind":"hero"};
+    const upload = (headers: Record<string,string>) => f.editor.fetch("/sites/asset-upload",{method:"POST",headers:{...base,...headers},body:pixel});
+    const pairs = [["صورة.png","صورة مدرسة"],["学校.png","学校大门"],["Àwọn ọmọ.png","Àwọn ọmọ ní ilé"]];
+    for (const [fileName,altText] of pairs) {
+      expect((await upload(encodeSiteUploadMetadata(fileName,altText))).status).toBe(201);
+    }
+    expect((await upload({"x-site-filename":"100%.png","x-site-alt":"Literal 100%"})).status).toBe(201);
+    const assets = await f.t.run(ctx => ctx.db.query("schoolSiteAssets").withIndex("by_school",q => q.eq("schoolId",f.schoolA)).take(10));
+    expect(assets.map(a => [a.fileName,a.altText])).toEqual([...pairs,["100%.png","Literal 100%"]]);
+    const bad: Record<string,string>[] = [
+      {"x-site-filename-uri-v1":"%ZZ","x-site-alt-uri-v1":"test"},
+      {"x-site-filename-uri-v1":"%252e.png","x-site-alt-uri-v1":"test","x-site-filename":"other.png"},
+      {"x-site-filename-uri-v1":"a".repeat(1081),"x-site-alt-uri-v1":"test"},
+      {"x-site-filename-uri-v1":"bad%0A.png","x-site-alt-uri-v1":"test"},
+      {"x-site-filename":"bad.png","x-site-alt":"\u007f"},
+    ];
+    for (const headers of bad) expect((await upload(headers)).status).toBe(400);
+    expect((await f.t.fetch("/sites/asset-upload",{method:"POST",headers:{...base,...encodeSiteUploadMetadata("school.png","Private")},body:pixel})).status).toBe(403);
+    expect((await f.t.run(ctx => ctx.db.system.query("_storage").take(10)))).toHaveLength(4);
   });
   test("asset approval requires provenance, school, checksum, rights and child review", async () => {
     const f = await fixture();

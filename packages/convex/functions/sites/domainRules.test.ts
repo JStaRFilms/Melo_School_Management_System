@@ -28,7 +28,8 @@ describe("site hostname gates", () => {
   test("rejects local, metadata, documentation and special-purpose DNS addresses", () => {
     for (const ip of ["127.0.0.1","10.1.1.1","169.254.169.254","192.168.0.1","100.100.100.100","192.0.0.9","192.0.2.5","198.51.100.4","203.0.113.5","::1","fc00::1","2001:db8::1","::ffff:127.0.0.1"]) expect(publicAddress(ip)).toBe(false);
     expect(publicAddress("8.8.8.8")).toBe(true);
-    expect(publicAddress("2606:4700::1111")).toBe(true);
+    for (const ip of ["2001:4860:4860::8888","2001:4860:4860:0:0:0:0:8888","2001:4860:4860::8888".toUpperCase(),"2606:4700::1111","3000::1","3ffe:ffff::1"]) expect(publicAddress(ip)).toBe(true);
+    for (const ip of ["::","fe80::1","ff02::1","2001::1","2001:0:1234::1","2001:2::1","2001:20::1","2001:db8:ffff::1","2002:0808:0808::1","3fff::1","3fff:f::1","::ffff:8.8.8.8","64:ff9b::808:808","2001:db8::ffff:127.0.0.1"]) expect(publicAddress(ip)).toBe(false);
   });
 });
 describe("Vercel read-only response", () => {

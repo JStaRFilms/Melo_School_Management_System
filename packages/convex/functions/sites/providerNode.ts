@@ -12,6 +12,25 @@ export function providerConfig() {
   if (!config) throw Error("Sites provider is not configured");
   return config;
 }
+// WHATWG URL canonicalizes expanded and mixed-case IPv6 before CIDR comparison.
+// Callers check isIP first; no hostnames or zone identifiers enter this parser.
+function ipNumber(ip: string): bigint {
+  const canonical = new URL(`http://[${ip}]/`).hostname.slice(1,-1);
+  const halves = canonical.split("::");
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves[1] ? halves[1].split(":") : [];
+  const groups = halves.length === 2 ? [...left,...Array(8-left.length-right.length).fill("0"),...right] : left;
+  if (groups.length !== 8) throw Error("Invalid IPv6 address");
+  return groups.reduce<bigint>((n,group) => (n << BigInt(16)) | BigInt(parseInt(group,16)),BigInt(0));
+}
+function inV6Range(n: bigint, prefix: string, bits: number): boolean {
+  const shift = BigInt(128 - bits);
+  return (n >> shift) === (ipNumber(prefix) >> shift);
+}
+function sameAddress(a: string | undefined, b: string): boolean {
+  if (!a || isIP(a) !== isIP(b)) return false;
+  return isIP(b) === 6 ? ipNumber(a) === ipNumber(b) : a === b;
+}
 export function publicAddress(ip: string): boolean {
   if (isIP(ip) === 4) {
     const p = ip.split(".").map(Number);
@@ -20,9 +39,14 @@ export function publicAddress(ip: string): boolean {
     return !(a === 0 || a === 10 || a === 127 || a >= 224 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && (b === 168 || b === 0 || b === 88 && c === 99 || b === 175 && c === 48) || a === 100 && b >= 64 && b <= 127 || a === 198 && (b === 18 || b === 19 || b === 51 && c === 100) || a === 203 && b === 0 && c === 113 || a === 192 && b === 0 && c === 2 || a === 192 && b === 88 && c === 99 || a === 198 && b === 51 && c === 100);
   }
   if (isIP(ip) === 6) {
-    const s = ip.toLowerCase();
-    // Strictly permit global unicast 2000::/3, excluding special-purpose ranges.
-    return /^2[6-9a-f][0-9a-f]{0,2}:/.test(s) && !s.includes(".");
+    const n = ipNumber(ip);
+    // 2000::/3 global unicast, minus IANA special-purpose allocations:
+    // 2001::/23 (protocol assignments, Teredo, ORCHID, benchmarks),
+    // 2001:db8::/32 and 3fff::/20 (documentation), 2002::/16 (6to4).
+    // Mapped IPv4 and other transition forms outside /3 cannot pass.
+    return inV6Range(n,"2000::",3) && !([
+      ["2001::",23], ["2001:db8::",32], ["2002::",16], ["3fff::",20],
+    ] as const).some(([base,bits]) => inV6Range(n,base,bits));
   }
   return false;
 }
@@ -151,7 +175,7 @@ export async function probeTlsEndpoint(host: string, ip: string, port: number, c
     const socket = connect({host: ip, port, servername: host, rejectUnauthorized: true, timeout: 5000, ...(ca ? {ca} : {})}, () => {
       const cert = socket.getPeerCertificate();
       const expires = Date.parse(cert.valid_to);
-      if (!socket.authorized || !cert.fingerprint256 || !Number.isFinite(expires) || expires <= Date.now() + 24 * 60 * 60_000 || socket.remoteAddress !== ip) reject(Error("Invalid TLS certificate"));
+      if (!socket.authorized || !cert.fingerprint256 || !Number.isFinite(expires) || expires <= Date.now() + 24 * 60 * 60_000 || !sameAddress(socket.remoteAddress,ip)) reject(Error("Invalid TLS certificate"));
       else resolve({fingerprint: cert.fingerprint256.replace(/:/g, "").toLowerCase(), expires});
       socket.destroy();
     });
@@ -173,7 +197,7 @@ export async function probeTlsEndpoint(host: string, ip: string, port: number, c
     const req = request({hostname: host, port, method: "GET", path: PROBE_PATH, agent, servername: host, timeout: 5000, ...(ca ? {ca} : {}), headers: {Host: host, Accept: "text/plain"}}, received => {
       response = received;
       const servedCert = (response.socket as TLSSocket).getPeerCertificate();
-      if (response.socket.remoteAddress !== ip || !servedCert?.fingerprint256 || servedCert.fingerprint256.replace(/:/g, "").toLowerCase() !== tls.fingerprint) return finish(Error("Probe connection mismatch"));
+      if (!sameAddress(response.socket.remoteAddress,ip) || !servedCert?.fingerprint256 || servedCert.fingerprint256.replace(/:/g, "").toLowerCase() !== tls.fingerprint) return finish(Error("Probe connection mismatch"));
       if (response.statusCode !== 200 || response.headers.location || response.headers["content-type"] !== "text/plain; charset=utf-8") return finish(Error("Probe mismatch"));
       const chunks: Buffer[] = []; let size = 0;
       response.on("data", (chunk: Buffer) => { size += chunk.length; if (size > 128) return finish(Error("Probe too large")); chunks.push(chunk); });

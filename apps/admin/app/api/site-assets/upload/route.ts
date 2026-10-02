@@ -1,4 +1,5 @@
 import { getToken } from "@/auth-server";
+import { encodeSiteUploadMetadata, readSiteUploadMetadata } from "@school/shared/site-upload-metadata";
 
 export const runtime = "nodejs";
 const kinds = new Set(["logo", "favicon", "hero", "gallery", "staff", "facility", "social_share"]);
@@ -14,17 +15,17 @@ export async function POST(request: Request) {
   if (!site || !/^https:\/\/[^/?#]+$/.test(site)) return denied(503);
   const schoolId = request.headers.get("x-site-school") ?? "";
   const kind = request.headers.get("x-site-kind") ?? "";
-  const fileName = request.headers.get("x-site-filename") ?? "";
-  const alt = request.headers.get("x-site-alt") ?? "";
+  const metadata = readSiteUploadMetadata(request.headers);
   const type = request.headers.get("content-type") ?? "";
   const length = Number(request.headers.get("content-length"));
-  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(schoolId) || !kinds.has(kind) || !types.has(type) || !fileName || fileName.length > 180 || alt.length > 300 || !Number.isSafeInteger(length) || length < 12 || length > 5_000_000) return denied(400);
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(schoolId) || !kinds.has(kind) || !types.has(type) || !metadata || !Number.isSafeInteger(length) || length < 12 || length > 5_000_000) return denied(400);
   const bytes = await request.arrayBuffer();
   if (bytes.byteLength !== length) return denied(400);
   try {
+    const encoded = encodeSiteUploadMetadata(metadata.fileName,metadata.altText);
     const upstream = await fetch(`${site}/sites/asset-upload`, {
       method: "POST", cache: "no-store", signal: AbortSignal.timeout(20_000),
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": type, "Content-Length": String(length), "X-Site-School": schoolId, "X-Site-Kind": kind, "X-Site-Filename": fileName, "X-Site-Alt": alt, "X-Site-Decorative": request.headers.get("x-site-decorative") === "true" ? "true" : "false" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": type, "Content-Length": String(length), "X-Site-School": schoolId, "X-Site-Kind": kind, ...encoded, "X-Site-Decorative": request.headers.get("x-site-decorative") === "true" ? "true" : "false" },
       body: bytes,
     });
     if (!upstream.ok) return denied(upstream.status >= 500 ? 502 : upstream.status);

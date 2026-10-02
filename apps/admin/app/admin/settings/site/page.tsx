@@ -1,5 +1,7 @@
 "use client";
 
+import { encodeSiteUploadMetadata } from "@school/shared/site-upload-metadata";
+
 import { useEffect, useState } from "react";
 import { useAction, useMutation } from "convex/react";
 import { api } from "@school/convex/_generated/api";
@@ -94,7 +96,7 @@ function SiteEditor({ schoolId }: { schoolId: Id<"schools"> }) {
         <label className="block">Image type<select className={input} value={uploadKind} onChange={e => setUploadKind(e.target.value as typeof uploadKind)}>{["hero","logo","favicon","gallery","staff","facility","social_share"].map(k => <option key={k}>{k}</option>)}</select></label>
         <label className="block">Image file<input type="file" accept="image/png,image/jpeg" onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>
         <label className="block">Alternative text<input className={input} value={alt} onChange={e => setAlt(e.target.value)} /></label><label><input type="checkbox" checked={decorative} onChange={e => setDecorative(e.target.checked)} /> Decorative image</label>
-        <button className={button} disabled={!file || busy} onClick={() => run(async () => { if (!file) return; const response = await fetch("/api/site-assets/upload", {method:"POST",body:file,headers:{"Content-Type":file.type,"X-Site-School":schoolId,"X-Site-Kind":uploadKind,"X-Site-Filename":file.name,"X-Site-Alt":alt,"X-Site-Decorative":String(decorative)}}); if (!response.ok) throw Error("Image upload denied"); setNotice("Image received privately. Request rights and child review before publication."); })}>Upload privately</button>
+        <button className={button} disabled={!file || busy} onClick={() => run(async () => { if (!file) return; const response = await fetch("/api/site-assets/upload", {method:"POST",body:file,headers:{"Content-Type":file.type,"X-Site-School":schoolId,"X-Site-Kind":uploadKind,...encodeSiteUploadMetadata(file.name,alt),"X-Site-Decorative":String(decorative)}}); if (!response.ok) throw Error("Image upload denied"); setNotice("Image received privately. Request rights and child review before publication."); })}>Upload privately</button>
         {view.assets.map(a => <div key={a.id} className="border p-2"><p>{a.fileName}, {a.kind}, {a.status}, rights {a.rightsStatus}, children {a.childApplicability}{a.rightsExpiresAt ? `, rights expire ${new Date(a.rightsExpiresAt).toLocaleDateString()}` : ""}</p><p>Checksum for reviewer: {a.checksum}</p>{(["asset_rights","asset_child_applicability","asset_child_consent"] as const).map(kind => <button className={button} key={kind} onClick={() => { setReview(null); setAssetCandidate({kind,assetId:a.id,expectedChecksum:a.checksum,classification:undefined}); setConfirmed(false); }}>{kind.replaceAll("_"," ")}</button>)}</div>)}
       </section>
       <section className="space-y-2"><h2 className="text-xl font-semibold">Independent fact review</h2><p>The reviewer must hold a separate school-wide privacy.approve grant. Do not self-approve a fact you will publish.</p>{manifest.fields.filter(f => f.evidence).map(f => <button className={button} key={f.fieldId} disabled={busy} onClick={() => run(async () => { const result = await candidate({schoolId,fieldId:f.fieldId}); setReview(result); setAssetCandidate(null); setConfirmed(false); }, false)}>Review {f.fieldId}</button>)}

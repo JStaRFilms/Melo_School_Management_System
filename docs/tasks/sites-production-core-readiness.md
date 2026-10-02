@@ -15,12 +15,12 @@ Local verification completed in `/Users/toji/Documents/johnsax/sites-production-
 
 | Check | Result |
 | --- | --- |
-| Convex Sites, schema coverage and foundation focused tests | 15 files, 44 passed |
-| Sites core tests | 4 files, 11 passed |
-| Shared manifest and canonical admissions link tests | 2 files, 8 passed |
-| Admin site management/upload tests | 2 files, 7 passed |
+| Convex Sites, schema coverage and foundation focused tests | 15 files, 46 passed |
+| Sites core tests | 5 files, 13 passed |
+| Shared package regression suite | 36 files, 234 passed |
+| Admin site management/upload tests | 2 files, 9 passed |
 | Apply compatibility tests for inherited base changes | 2 files, 23 passed |
-| Total targeted tests | 93 passed |
+| Total tests in the final selected suites | 325 passed |
 | Typechecks | Shared, Convex, Sites, Admin, Platform and Apply passed |
 | Lint | Sites, Admin, Platform, Apply and touched Convex code passed with no errors. Full Convex lint separately reports two existing academic `.mts` parser failures outside this change |
 | Production builds | Sites, Platform, Apply passed without backend configuration. Admin passed with synthetic `NEXT_PUBLIC_CONVEX_URL=https://sites-test.convex.cloud` for compile/prerender only |
@@ -33,7 +33,7 @@ Lint warnings remain informational: one intentional uncached first-party image w
 
 ## Reviews
 
-Two independent focused review lanes covered backend security and frontend/management boundaries. Confirmed findings were corrected with regressions. Parent staged-diff inspection also corrected the hardcoded synthetic route seam; renderer page paths now resolve through the exact published manifest without editing core per school, and development demo Host aliases work with ports. Final review found three further security defects, now fixed and parent-retested: cleared child-consent pointer reuse, stale readiness after provider writes, and private data in a revert-only projection. No optional follow-up issues or unrelated cleanup were created. Codex reviewed implementation commit `393eb83e` in PR #101 and identified repeat publication from the same draft version. The correction atomically consumes that version, returns the next editor version and has retry/concurrent-client/UI regressions. Parent reran the affected tests. Thread reply/resolution and final GitHub application checks have separate head-specific dispositions in the PR report.
+Two independent focused review lanes covered backend security and frontend/management boundaries. Confirmed findings were corrected with regressions. Parent staged-diff inspection also corrected the hardcoded synthetic route seam; renderer page paths now resolve through the exact published manifest without editing core per school, and development demo Host aliases work with ports. Final review found three further security defects, now fixed and parent-retested: cleared child-consent pointer reuse, stale readiness after provider writes, and private data in a revert-only projection. No optional follow-up issues or unrelated cleanup were created. Codex reviewed implementation commit `393eb83e` in PR #101 and identified repeat publication from the same draft version. The correction atomically consumes that version, returns the next editor version and has retry/concurrent-client/UI regressions. Parent reran the affected tests. Automatic merge-ready review also identified public IPv6 handling, unsafe alias-query fallthrough and Unicode upload-header defects. They are corrected with CIDR and pin-normalization checks, terminating proxy denial and a versioned ASCII-safe metadata codec that preserves legacy raw clients. The corrected backend must redeploy before frontend merge. Thread reply/resolution and final GitHub application checks have separate head-specific dispositions in the PR report.
 
 ## Readiness distinctions
 

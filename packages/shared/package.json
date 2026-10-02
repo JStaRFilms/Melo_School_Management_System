@@ -26,6 +26,7 @@
     "./migration": "./src/migration/index.ts",
     "./theme": "./src/theme/index.ts",
     "./site-manifests": "./src/site-manifests.ts",
+    "./site-upload-metadata": "./src/site-upload-metadata.ts",
     "./drafts": "./src/drafts/index.ts",
     "./drafts/scoreRowBaseline": "./src/drafts/scoreRowBaseline.ts"
   },

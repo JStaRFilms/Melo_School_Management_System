@@ -5,6 +5,7 @@ import type { Id } from "../../_generated/dataModel";
 import { deny, schoolActor, sha256, storageDigest } from "./shared";
 import { cleanImage } from "./image";
 import { gatewayAuthorized, normalizeHostname } from "./domainRules";
+import { readSiteUploadMetadata, validSiteUploadMetadata } from "@school/shared/site-upload-metadata";
 
 const MAX_BYTES = 5_000_000;
 const kinds = v.union(v.literal("logo"),v.literal("favicon"),v.literal("hero"),v.literal("gallery"),v.literal("staff"),v.literal("facility"),v.literal("social_share"));
@@ -14,7 +15,7 @@ export const registerReceivedBytes = internalMutation({
     const now = Date.now();
     const actor = await schoolActor(ctx, args.schoolId, "settings.manage", now);
     const profile = await ctx.db.query("schoolSiteProfiles").withIndex("by_school", q => q.eq("schoolId", args.schoolId)).unique();
-    if (!profile || profile.mode !== "managed" || args.fileName.length < 1 || args.fileName.length > 120 || /[<>/\\\u0000-\u001f]/.test(args.fileName) || args.altText.length > 200 || (!args.decorative && !args.altText.trim())) return deny();
+    if (!profile || profile.mode !== "managed" || !validSiteUploadMetadata(args.fileName,args.altText) || (!args.decorative && !args.altText.trim())) return deny();
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (!metadata || storageDigest(metadata.sha256) !== args.checksum || !/^[a-f0-9]{64}$/.test(args.checksum) || metadata.size !== args.byteSize || (metadata.contentType !== undefined && metadata.contentType !== args.mediaType) || args.byteSize > MAX_BYTES || args.byteSize < 12) return deny();
     const existing = await ctx.db.query("schoolSiteAssets").withIndex("by_storage", q => q.eq("storageId", args.storageId)).unique();
@@ -35,11 +36,10 @@ export const uploadWebsiteAsset = httpAction(async (ctx, request) => {
     if (!Number.isSafeInteger(length) || length < 12 || length > MAX_BYTES) return new Response(null, {status: 413});
     const schoolId = request.headers.get("x-site-school") as Id<"schools">;
     const kind = request.headers.get("x-site-kind") as "logo" | "favicon" | "hero" | "gallery" | "staff" | "facility" | "social_share";
-    const fileName = request.headers.get("x-site-filename") ?? "";
-    const altText = request.headers.get("x-site-alt") ?? "";
+    const metadata = readSiteUploadMetadata(request.headers);
     const decorative = request.headers.get("x-site-decorative") === "true";
     const mediaType = request.headers.get("content-type") ?? "";
-    if (!schoolId || !["logo","favicon","hero","gallery","staff","facility","social_share"].includes(kind) || !["image/png","image/jpeg"].includes(mediaType)) return new Response(null, {status: 400});
+    if (!metadata || (!decorative && !metadata.altText.trim()) || !schoolId || !["logo","favicon","hero","gallery","staff","facility","social_share"].includes(kind) || !["image/png","image/jpeg"].includes(mediaType)) return new Response(null, {status: 400});
     const chunks: Uint8Array[] = []; let total = 0;
     if (!request.body) return new Response(null, {status: 400});
     const reader = request.body.getReader();
@@ -56,7 +56,7 @@ export const uploadWebsiteAsset = httpAction(async (ctx, request) => {
     try { cleaned = cleanImage(bytes,mediaType); } catch { return new Response(null, {status: 415}); }
     const checksum = await sha256(cleaned.bytes);
     storageId = await ctx.storage.store(new Blob([new Uint8Array(cleaned.bytes)], {type: cleaned.mediaType}));
-    const assetId = await ctx.runMutation(internal.functions.sites.assets.registerReceivedBytes, {schoolId, storageId, kind, fileName, mediaType: cleaned.mediaType, byteSize: cleaned.bytes.length, checksum, altText, decorative});
+    const assetId = await ctx.runMutation(internal.functions.sites.assets.registerReceivedBytes, {schoolId, storageId, kind, fileName: metadata.fileName, mediaType: cleaned.mediaType, byteSize: cleaned.bytes.length, checksum, altText: metadata.altText, decorative});
     return new Response(JSON.stringify({assetId}), {status: 201, headers: {"Content-Type":"application/json", "Cache-Control":"no-store"}});
   } catch {
     if (storageId) { try { await ctx.storage.delete(storageId); } catch { /* Alert on orphan storage in operations. */ } }
