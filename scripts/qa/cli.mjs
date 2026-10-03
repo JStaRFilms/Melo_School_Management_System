@@ -41,6 +41,30 @@ function config(opts) {
   return { profile, apps };
 }
 
+export function waitForChild(child, signals = process) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      signals.off('SIGINT', onInterrupt);
+      signals.off('SIGTERM', onTerminate);
+      child.off('error', onError);
+      child.off('exit', onExit);
+    };
+    const forward = signal => {
+      if (settled || child.exitCode !== null || child.signalCode !== null) return;
+      try { child.kill(signal); } catch { /* Exit/teardown callback settles the run. */ }
+    };
+    const onInterrupt = () => forward('SIGINT');
+    const onTerminate = () => forward('SIGTERM');
+    const onError = error => { if (!settled) { settled = true; cleanup(); reject(error); } };
+    const onExit = code => { if (!settled) { settled = true; cleanup(); resolve(code ?? 1); } };
+    signals.on('SIGINT', onInterrupt);
+    signals.on('SIGTERM', onTerminate);
+    child.once('error', onError);
+    child.once('exit', onExit);
+  });
+}
+
 function ownedState() {
   if (!fs.existsSync(stateFile)) throw new Error('Run qa:start first.');
   const state = readJson(stateFile);
@@ -140,23 +164,22 @@ async function browserRun(mode, opts) {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     writeJson(path.join(directory, 'request.json'), { id, mode, apps: state.apps, deployment: TARGET.deployment, ...requirements, workspace: workspaceRevision(), inspection: inspection.backend, recovery });
     writeJson(path.join(QA_DIR, 'latest-run.json'), { id });
-    const code = await new Promise((resolve, reject) => {
-      const runner = ['roles', 'explore', 'workflow'].includes(mode) ? 'browser-runner.mjs' : 'journey.mjs';
-      const child = spawn(process.execPath, [path.join(ROOT, 'scripts/qa', runner), directory], {
-        cwd: ROOT, stdio: 'inherit', env: { ...appEnvironment(profile),
-          QA_ADMIN_PASSWORD: profile.values.E2E_ADMIN_PASSWORD ?? 'Admin123!Pass',
-          QA_TEACHER_PASSWORD: profile.values.E2E_TEACHER_PASSWORD ?? 'Teacher123!Pass',
-          QA_PARENT_PASSWORD: profile.values.E2E_PORTAL_PASSWORD ?? 'Portal123!Pass',
-        },
-      });
-      const limit = setTimeout(() => {
-        child.kill('SIGTERM');
-        force = setTimeout(() => child.kill('SIGKILL'), 10_000);
-      }, (mode === 'workflow' ? 30 : 15) * 60_000);
-      let force;
-      child.once('error', error => { clearTimeout(limit); clearTimeout(force); reject(error); });
-      child.once('exit', value => { clearTimeout(limit); clearTimeout(force); resolve(value ?? 1); });
+    const runner = ['roles', 'explore', 'workflow'].includes(mode) ? 'browser-runner.mjs' : 'journey.mjs';
+    const child = spawn(process.execPath, [path.join(ROOT, 'scripts/qa', runner), directory], {
+      cwd: ROOT, stdio: 'inherit', env: { ...appEnvironment(profile),
+        QA_ADMIN_PASSWORD: profile.values.E2E_ADMIN_PASSWORD ?? 'Admin123!Pass',
+        QA_TEACHER_PASSWORD: profile.values.E2E_TEACHER_PASSWORD ?? 'Teacher123!Pass',
+        QA_PARENT_PASSWORD: profile.values.E2E_PORTAL_PASSWORD ?? 'Portal123!Pass',
+      },
     });
+    const limit = setTimeout(() => {
+      try { child.kill('SIGTERM'); } catch { /* Exit callback releases the lease. */ }
+      force = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* Already exited. */ } }, 10_000);
+    }, (mode === 'workflow' ? 30 : 15) * 60_000);
+    let force;
+    let code;
+    try { code = await waitForChild(child); }
+    finally { clearTimeout(limit); clearTimeout(force); }
     if (!fs.existsSync(path.join(directory, 'result.json'))) writeJson(path.join(directory, 'result.json'), {
       ...readJson(path.join(directory, 'request.json')), status: 'blocked', scope: 'Runner did not finish; feature criteria were not verified.',
       checks: [{ name: 'Browser runner completion', status: 'blocked', note: 'Process exit or time limit prevented completion. Inspect any ambiguous writes before retrying.' }], screenshots: [],

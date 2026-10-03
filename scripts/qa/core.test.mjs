@@ -4,11 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import { EventEmitter } from 'node:events';
 import {
   TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable,
   acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, preservationExpectation, validateQaInspection, validateRecoveryState, isCleanStoppedState,
 } from './core.mjs';
-import { options, validateOptions } from './cli.mjs';
+import { options, validateOptions, waitForChild } from './cli.mjs';
 import { reportHtml } from './report.mjs';
 
 function temporary(t) {
@@ -66,6 +67,20 @@ test('occupied ports are detected without killing a process', async t => {
   await new Promise(resolve => server.listen(0, '::', resolve));
   t.after(() => server.close());
   assert.equal(await portAvailable(server.address().port), false);
+});
+test('interrupting the QA parent forwards a signal and waits for the child exit', async () => {
+  const signals = new EventEmitter();
+  const child = new EventEmitter();
+  child.exitCode = null; child.signalCode = null;
+  const seen = [];
+  child.kill = signal => { seen.push(signal); child.signalCode = signal; queueMicrotask(() => child.emit('exit', null, signal)); return true; };
+  const pending = waitForChild(child, signals);
+  assert.equal(signals.listenerCount('SIGINT'), 1);
+  signals.emit('SIGINT');
+  assert.equal(await pending, 1);
+  assert.deepEqual(seen, ['SIGINT']);
+  assert.equal(signals.listenerCount('SIGINT'), 0);
+  assert.equal(signals.listenerCount('SIGTERM'), 0);
 });
 test('leases are exclusive and can only be released by their owner', t => {
   const directory = temporary(t);
