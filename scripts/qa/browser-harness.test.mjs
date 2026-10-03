@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { BrowserHarness, parseRoles, validateExploration, allowedBrowserUrl, validateWorkflow, registerOriginGuards } from './browser-harness.mjs';
-import { workflowRequirements, explorationScript } from './exploration.mjs';
+import { workflowRequirements, explorationScript, readDeclaredEffects, validateDeclaredModulePermission } from './exploration.mjs';
 import { TARGET, evidenceStatus, workspaceRevision } from './core.mjs';
 import { validateOptions } from './cli.mjs';
 import { reportHtml } from './report.mjs';
@@ -21,6 +21,22 @@ test('roles map to owned apps and teacher denial also requires Admin', () => {
   assert.deepEqual(workflowRequirements('roles', { '--roles': 'teacher' }).apps, ['teacher', 'admin']);
   assert.throws(() => validateOptions('roles', { '--script': 'script.mjs' }));
   assert.doesNotThrow(() => validateOptions('explore', { '--role': 'parent', '--script': 'script.mjs' }));
+});
+test('module effect and trust permissions are checked from source before dynamic import', t => {
+  const directory = temporary(t);
+  const reads = path.join(directory, 'read-only.mjs');
+  const writes = path.join(directory, 'write.mjs');
+  fs.writeFileSync(reads, `globalThis.qaImportRan=true; export const effects='read-only';`);
+  fs.writeFileSync(writes, `globalThis.qaWriteImportRan=true; export const effects='synthetic-writes';`);
+  assert.equal(readDeclaredEffects(reads), 'read-only');
+  assert.equal(readDeclaredEffects(writes), 'synthetic-writes');
+  assert.throws(() => validateDeclaredModulePermission(reads, {}), /Inspect the module/);
+  assert.throws(() => validateDeclaredModulePermission('synthetic-writes', { allowTrustedModule: true }), /refused before import/);
+  assert.equal(validateDeclaredModulePermission('read-only', { allowTrustedModule: true }), true);
+  assert.equal(validateDeclaredModulePermission('synthetic-writes', { allowTrustedModule: true, allowSyntheticWrites: true }), true);
+  assert.throws(() => validateDeclaredModulePermission(readDeclaredEffects(writes), { allowTrustedModule: true }), /refused before import/);
+  assert.equal(globalThis.qaImportRan, undefined);
+  assert.equal(globalThis.qaWriteImportRan, undefined);
 });
 test('exploratory module has a concrete scope and nonempty, unique acceptance steps', () => {
   const module = { scope: 'Test an observed user workflow', effects: 'read-only', steps: [{ name: 'Persist after reload', run: async () => {} }] };

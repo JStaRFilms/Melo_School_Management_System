@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ReportCardSheet, type ReportCardSheetData } from "./ReportCardSheet";
 
 interface ReportCardPreviewProps {
@@ -16,6 +16,7 @@ const PX_PER_MM = 96 / 25.4;
 const A4_WIDTH_PX = A4_WIDTH_MM * PX_PER_MM;
 const A4_HEIGHT_PX = A4_HEIGHT_MM * PX_PER_MM;
 const DEFAULT_PREVIEW_SCALE = 0.65;
+const useMeasureLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export function ReportCardPreview({
   reportCard,
@@ -25,7 +26,7 @@ export function ReportCardPreview({
 }: ReportCardPreviewProps) {
   const container = useRef<HTMLDivElement>(null);
   const [availableWidth, setAvailableWidth] = useState<number | null>(null);
-  useEffect(() => {
+  useMeasureLayoutEffect(() => {
     if (previewScale !== undefined || !container.current) return;
     const element = container.current;
     const measure = () => {

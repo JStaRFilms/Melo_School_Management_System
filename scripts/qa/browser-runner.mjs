@@ -3,7 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BrowserHarness, ownedRequest, validateExploration, validateWorkflow } from './browser-harness.mjs';
 import { roleJourneys } from './role-journeys.mjs';
-import { explorationScript } from './exploration.mjs';
+import { explorationScript, readDeclaredEffects, validateDeclaredModulePermission } from './exploration.mjs';
 import { writeJson, QA_DIR, ROOT } from './core.mjs';
 
 const { directory, request, state } = ownedRequest(process.argv[2], ['roles', 'explore', 'workflow']);
@@ -30,11 +30,14 @@ try {
   } else {
     const script = explorationScript(request.script.filename);
     if (script.sha256 !== request.script.sha256) throw new Error('Exploratory module changed after its run was prepared.');
+    const declaredEffects = readDeclaredEffects(script.filename);
+    validateDeclaredModulePermission(declaredEffects, { allowTrustedModule: request.allowTrustedModule, allowSyntheticWrites: request.allowSyntheticWrites });
     // This is trusted agent-authored code, not a Node.js or filesystem sandbox.
     const module = await import(pathToFileURL(script.filename));
     if (request.mode === 'workflow') validateWorkflow(module); else validateExploration(module);
+    if (module.effects !== declaredEffects) throw new Error('Imported effect declaration differs from the pre-import source check.');
     harness.result.scope = module.scope;
-    harness.result.effects = module.effects;
+    harness.result.effects = declaredEffects;
     if (module.restorationTarget) {
       if (typeof module.restorationTarget.session !== 'string' || typeof module.restorationTarget.term !== 'string') throw new Error('Restoration target requires explicit session/term names.');
       harness.result.restorationTarget = module.restorationTarget;
@@ -42,7 +45,6 @@ try {
     if (request.mode === 'workflow') {
       for (const phase of module.phases) harness.declareSteps(phase.role, phase.steps, phase.id);
     } else harness.declareSteps(request.role, module.steps);
-    if (module.effects === 'synthetic-writes' && !request.allowSyntheticWrites) throw new Error('Synthetic writes require --allow-synthetic-writes and the approved test-data scope.');
     await harness.begin();
     if (request.mode === 'workflow') {
       const complete = new Map();

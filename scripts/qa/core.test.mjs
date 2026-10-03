@@ -6,7 +6,7 @@ import path from 'node:path';
 import net from 'node:net';
 import {
   TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable,
-  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, preservationExpectation, validateQaInspection, validateRecoveryState,
+  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, preservationExpectation, validateQaInspection, validateRecoveryState, isCleanStoppedState,
 } from './core.mjs';
 import { options, validateOptions } from './cli.mjs';
 import { reportHtml } from './report.mjs';
@@ -83,6 +83,16 @@ test('setup or metadata failures release the backend lease', async t => {
   assert.deepEqual(fs.readdirSync(directory), []);
   assert.equal(await withLease('backend-test', { id: 'qa-success' }, async () => 42, directory), 42);
   assert.deepEqual(fs.readdirSync(directory), []);
+});
+test('only a stopped same-worktree owner with no recorded leases is idempotently stopped', t => {
+  const directory = temporary(t);
+  const lease = path.join(directory, 'port.json');
+  const stopped = { root: ROOT, status: 'stopped', leases: [lease] };
+  assert.equal(isCleanStoppedState(stopped), true);
+  fs.writeFileSync(lease, '{}');
+  assert.equal(isCleanStoppedState(stopped), false);
+  assert.equal(isCleanStoppedState({ ...stopped, status: 'failed' }), false);
+  assert.equal(isCleanStoppedState({ ...stopped, root: '/different-worktree' }), false);
 });
 test('supervisor ownership requires exact script and run token', () => {
   const state = { id: 'qa-first', pid: 1234 };

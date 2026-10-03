@@ -20,7 +20,7 @@ Admin Sessions & Terms → Classes → Student Onboarding/Family → Grading Ban
 
 Preconditions: the three owned QA apps, exact isolated backend, original cohort and an unambiguous active period, and no unresolved recovery marker.
 
-Run `pnpm qa:workflow --script scripts/qa/school-workflow.mjs --allow-synthetic-writes`. This creates a new fixture per run; do not reuse a released fixture and relabel it as pre-release proof. It drives all writes through UI, caches role sessions only in memory, and validates each session before phase actions. Dependent phases block on failure; ordinary failure cleanup attempts original-calendar restoration.
+Run `pnpm qa:workflow --script scripts/qa/school-workflow.mjs --run-trusted-module --allow-synthetic-writes`. This creates a new fixture per run; do not reuse a released fixture and relabel it as pre-release proof. It drives all writes through UI, caches role sessions only in memory, and validates each session before phase actions. Dependent phases block on failure; ordinary failure cleanup attempts original-calendar restoration.
 
 Review all browser checks and the two independent preservation checks, the 83/63/frozen83 screenshots, actual release counts/stamp, clicked history item, and A4 output. See [verification](../../../../docs/testing/SchoolWorkflowVerification.md).
 

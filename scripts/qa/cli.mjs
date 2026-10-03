@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
   ROOT, QA_DIR, TARGET, APPS, LOCK_DIR, readJson, writeJson, parseApps, loadProfile,
-  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus, preservationExpectation,
+  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus, preservationExpectation, isCleanStoppedState,
 } from './core.mjs';
 import { workflowRequirements } from './exploration.mjs';
 import { generateReport, publishReviewed } from './report.mjs';
@@ -18,6 +18,7 @@ export function options(args) {
     const key = args[index];
     if (key === '--publish-reviewed') { values.publish = true; continue; }
     if (key === '--allow-synthetic-writes') { values.allowWrites = true; continue; }
+    if (key === '--run-trusted-module') { values.allowTrustedModule = true; continue; }
     if (key === '--recovery') { values.recovery = true; continue; }
     if (!['--env-file', '--apps', '--run', '--roles', '--role', '--script'].includes(key) || !args[index + 1] || args[index + 1].startsWith('--') || values[key]) {
       throw new Error('Use the documented env/apps/run/roles/role/script flags; unsupported or missing values are refused.');
@@ -29,7 +30,7 @@ export function options(args) {
 
 export function validateOptions(command, opts) {
   const allowed = command === 'doctor' || command === 'start' ? ['--env-file', '--apps'] : command === 'report' ? ['--run', 'publish'] :
-    command === 'roles' ? ['--roles'] : command === 'explore' ? ['--role', '--script', 'allowWrites'] : command === 'workflow' ? ['--script', 'allowWrites', 'recovery'] : [];
+    command === 'roles' ? ['--roles'] : command === 'explore' ? ['--role', '--script', 'allowWrites', 'allowTrustedModule'] : command === 'workflow' ? ['--script', 'allowWrites', 'allowTrustedModule', 'recovery'] : [];
   if (Object.keys(opts).some(key => !allowed.includes(key))) throw new Error(`Unsupported option for qa:${command}. No option is silently ignored.`);
 }
 
@@ -99,6 +100,10 @@ async function start(opts) {
 }
 
 async function stop() {
+  if (fs.existsSync(stateFile)) {
+    const recorded = readJson(stateFile);
+    if (isCleanStoppedState(recorded)) { console.log('QA servers are already stopped; no ports or leases remain.'); return; }
+  }
   const state = ownedState();
   if (fs.existsSync(path.join(LOCK_DIR, 'backend-content-poodle-172.json'))) throw new Error('A browser run holds the backend lease. Let it finish before stopping servers.');
   process.kill(state.pid, 'SIGTERM');

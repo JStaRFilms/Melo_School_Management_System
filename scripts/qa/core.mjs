@@ -6,11 +6,6 @@ import dns from 'node:dns';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-// Match the app's stable Node networking mode on this host. This is local
-// process configuration, not a backend or global machine setting.
-net.setDefaultAutoSelectFamily(false);
-dns.setDefaultResultOrder('ipv4first');
-
 export const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const QA_DIR = path.join(ROOT, '.qa');
 export const TARGET = Object.freeze({
@@ -73,6 +68,9 @@ export function parseApps(value = 'admin') {
 }
 
 export function readJson(filename) { return JSON.parse(fs.readFileSync(filename, 'utf8')); }
+export function isCleanStoppedState(state, root = ROOT) {
+  return state?.root === root && state.status === 'stopped' && Array.isArray(state.leases) && state.leases.every(filename => !fs.existsSync(filename));
+}
 export function writeJson(filename, value) {
   fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
   const temporary = `${filename}.${process.pid}.tmp`;
@@ -183,6 +181,9 @@ export function validateQaInspection(result) {
 
 export async function doctor(profile, apps, { requireFreePorts = true, allowRecovery = false } = {}) {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('QA requires Node 22 or newer.');
+  // Match Melo app DNS behavior only after reporting unsupported Node versions.
+  if (typeof net.setDefaultAutoSelectFamily === 'function') net.setDefaultAutoSelectFamily(false);
+  if (typeof dns.setDefaultResultOrder === 'function') dns.setDefaultResultOrder('ipv4first');
   assertAppTargets(apps);
   try { execFileSync('pnpm', ['--version'], { stdio: 'ignore' }); }
   catch { throw new Error('Install pnpm before running QA.'); }

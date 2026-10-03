@@ -8,10 +8,10 @@ From the project root:
 
 ```sh
 cp scripts/qa/explore-example.mjs .qa/feature-check.mjs
-pnpm qa:explore --role parent --script .qa/feature-check.mjs
+pnpm qa:explore --role parent --script .qa/feature-check.mjs --run-trusted-module
 ```
 
-The [working module](../../../../scripts/qa/explore-example.mjs) proves Parent learning search matching and clear behavior. Adapt its scope and assertions to the actual task before calling another feature verified. The module path must resolve to a regular `.mjs` file inside this worktree; sibling paths and outside symlinks are refused. Its digest is checked before execution.
+The [working module](../../../../scripts/qa/explore-example.mjs) proves Parent learning search matching and clear behavior. Running agent-authored modules requires `--run-trusted-module`; review the source first because it has normal Node and filesystem access. A static literal effect declaration is checked before import, and declared writes additionally require `--allow-synthetic-writes`. Adapt its scope and assertions to the actual task before calling another feature verified. The module path must resolve to a regular `.mjs` file inside this worktree; sibling paths and outside symlinks are refused. Its digest is checked before execution.
 
 ## Contract
 
@@ -28,7 +28,7 @@ Every step should assert a concrete acceptance result. For a write, capture the 
 Declared synthetic writes also require the CLI flag:
 
 ```sh
-pnpm qa:explore --role admin --script .qa/feature-check.mjs --allow-synthetic-writes
+pnpm qa:explore --role admin --script .qa/feature-check.mjs --run-trusted-module --allow-synthetic-writes
 ```
 
 This declaration is a cooperative scope guard, not proof that arbitrary script code is harmless. Review the module before running it. The browser request guard permits owned app origins, the isolated Convex hosts, and read-only Google font CSS/files; it does not grant permission to invoke every backend action. Confirm provider sandbox mode, recipients, and budget before external-provider behavior. The initial module contract does not support a separate external-provider effect class.

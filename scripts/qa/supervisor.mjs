@@ -17,22 +17,32 @@ writeJson(stateFile, state);
 async function shutdown() {
   if (stopping) return;
   stopping = true;
-  state = { ...state, status: 'stopping' };
-  if (readJson(stateFile).id === id) writeJson(stateFile, state);
-  for (const child of children) {
-    if (child.exitCode === null && child.signalCode === null) {
-      try { process.kill(-child.pid, 'SIGTERM'); } catch { /* Already stopped. */ }
+  try {
+    state = { ...state, status: 'stopping' };
+    if (readJson(stateFile).id === id) writeJson(stateFile, state);
+  } catch { failure = true; }
+  try {
+    for (const child of children) {
+      if (child.exitCode === null && child.signalCode === null) {
+        try { process.kill(-child.pid, 'SIGTERM'); } catch { /* Already stopped. */ }
+      }
     }
-  }
-  await new Promise(resolve => setTimeout(resolve, 2_000));
-  for (const child of children) {
-    if (child.exitCode === null && child.signalCode === null) {
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already stopped. */ }
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    for (const child of children) {
+      if (child.exitCode === null && child.signalCode === null) {
+        try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already stopped. */ }
+      }
     }
+  } catch { failure = true; }
+  finally {
+    for (const lease of state.leases) {
+      try { releaseLease(lease, id); } catch { failure = true; }
+    }
+    try {
+      if (readJson(stateFile).id === id) writeJson(stateFile, { ...state, status: failure ? 'failed' : 'stopped', stoppedAt: new Date().toISOString() });
+    } catch { failure = true; }
+    process.exit(failure ? 1 : 0);
   }
-  for (const lease of state.leases) releaseLease(lease, id);
-  if (readJson(stateFile).id === id) writeJson(stateFile, { ...state, status: failure ? 'failed' : 'stopped', stoppedAt: new Date().toISOString() });
-  process.exit(failure ? 1 : 0);
 }
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

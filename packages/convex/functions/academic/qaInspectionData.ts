@@ -83,6 +83,7 @@ export const inspectQaFixtureInternal = internalQuery({
         ctx.db.query('teacherAssignments').withIndex('by_class', q => q.eq('classId', klass._id)).take(101),
       ]);
       if (offerings.length > 100 || assignments.length > 100) throw new ConvexError('Original QA class assignment inspection is truncated');
+      if ([...offerings, ...assignments].some(row => row.schoolId !== schoolId || row.classId !== klass._id)) throw new ConvexError('Original QA class has a cross-school or mismatched assignment');
       originalClassSubjects.push(...offerings);
       originalTeacherAssignments.push(...assignments);
     }

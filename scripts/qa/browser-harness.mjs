@@ -187,8 +187,11 @@ export class BrowserHarness {
     } finally {
       if (actor) {
         try { await actor.context.tracing.stop({ path: path.join(this.directory, `private-${key}-trace.zip`) }); } catch { /* Preserve other evidence if tracing failed. */ }
-        if (phase) this.roleSessions.set(role, await actor.context.storageState());
-        await actor.context.close();
+        if (phase) {
+          try { this.roleSessions.set(role, await actor.context.storageState()); }
+          catch { this.roleSessions.delete(role); } // A later phase can sign in again.
+        }
+        try { await actor.context.close(); } catch { /* Context may already have exited. */ }
       }
     }
     return plan.every(name => this.result.checks.find(check => check.name === name)?.status === 'passed');

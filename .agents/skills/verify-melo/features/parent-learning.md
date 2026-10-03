@@ -24,7 +24,7 @@ Preconditions: the Portal app is owned and the synthetic Parent account links to
 
 Run `pnpm qa:roles --roles parent`. Expect the linked pupil, matching and empty search states, clear behavior, successful topic-card navigation/reload, and mobile list evidence.
 
-For the exploratory mechanism, run `pnpm qa:explore --role parent --script scripts/qa/explore-example.mjs`. It uses real UI controls to assert matching and clearing; all four reported checks must pass. Extend the module for the feature being implemented rather than relabeling this example as full coverage.
+For the exploratory mechanism, run `pnpm qa:explore --role parent --script scripts/qa/explore-example.mjs --run-trusted-module`. It uses real UI controls to assert matching and clearing; all four reported checks must pass. Extend the module for the feature being implemented rather than relabeling this example as full coverage.
 
 ## Gotchas
 

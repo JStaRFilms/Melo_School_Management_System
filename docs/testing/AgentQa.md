@@ -33,8 +33,8 @@ pnpm qa:smoke
 pnpm qa:layout
 pnpm qa:feature
 pnpm qa:roles
-pnpm qa:explore --role parent --script scripts/qa/explore-example.mjs
-pnpm qa:workflow --script scripts/qa/school-workflow.mjs --allow-synthetic-writes
+pnpm qa:explore --role parent --script scripts/qa/explore-example.mjs --run-trusted-module
+pnpm qa:workflow --script scripts/qa/school-workflow.mjs --run-trusted-module --allow-synthetic-writes
 pnpm qa:report
 pnpm qa:stop
 ```
@@ -43,7 +43,7 @@ pnpm qa:stop
 - `qa:layout` checks starter preview, title validation, desktop control containment, and mobile draft layout without saving templates.
 - `qa:feature` additionally creates a uniquely named inactive subject-scoped template, reloads it, checks guidance and format persistence, exercises cancel/discard, saves an edit, and reloads on mobile. It does not activate templates, change the existing school default, or call AI. Teacher template resolution and generation need separate acceptance coverage before claiming the whole template feature is verified.
 - `qa:roles` checks Admin grading draft/discard, Teacher dependent roster selection/reload/mobile and rejection from Admin editing, and Parent topic search/detail/mobile. Use `--roles teacher,parent` for a subset; Teacher's denial criterion also needs an owned Admin server.
-- `qa:explore` runs a trusted worktree-contained module with a single declared role. The module exports scope, effects, and named executable acceptance steps. Paths/digests are checked, synthetic-write declarations also require `--allow-synthetic-writes`, and browser traffic is restricted to owned app origins, the isolated backend, and read-only public Google font CSS/files. This is not a Node/filesystem sandbox or an enforced guarantee about script side effects. See [the recipe](../../.agents/skills/verify-melo/references/exploration.md).
+- `qa:explore` runs a trusted worktree-contained module with a single declared role. The module exports scope, effects, and named executable acceptance steps. Review code before granting `--run-trusted-module`; a static literal effect check happens before import. Synthetic-write declarations additionally require `--allow-synthetic-writes`. Paths/digests are checked, and browser traffic is restricted to owned app origins, the isolated backend, and read-only public Google font CSS/files. This is not a Node/filesystem sandbox or an enforced guarantee about script side effects. See [the recipe](../../.agents/skills/verify-melo/references/exploration.md).
 - `qa:workflow` supports ordered, uniquely named cross-role phases with dependencies and `alwaysRun` cleanup. The included school case uses a fresh fixture per run and verifies the full graded lifecycle. Role sessions are cached only in memory and independently validated before each phase. Post-run inspection checks original cohort preservation and the period observed before writes; a module cannot override that assertion with a declared target.
 - `qa:stop` checks the exact supervisor owner before signalling it. It does not kill whatever happens to occupy a port.
 
@@ -76,7 +76,7 @@ Video sharing and PR attachment automation are later steps. A video being captur
 Ordinary failed phases run declared cleanup. A hard interruption/timeout may stop before UI cleanup; it records a recovery marker and all pending criteria as blocked. Normal browser runs then refuse to continue until doctor independently verifies the recorded original period and cohort digest, or an explicit recovery workflow succeeds:
 
 ```sh
-pnpm qa:workflow --script scripts/qa/recover-calendar.mjs --allow-synthetic-writes --recovery
+pnpm qa:workflow --script scripts/qa/recover-calendar.mjs --run-trusted-module --allow-synthetic-writes --recovery
 ```
 
 The recovery target comes from the interrupted run's recorded preflight, not a script-supplied override. Restore only through UI; retain partial fixtures and evidence. A network failure during post-run inspection cannot become a preservation claim.
