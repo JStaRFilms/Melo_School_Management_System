@@ -1,9 +1,11 @@
 # School Content and Admissions Settings UX
 
-**Status:** Design handoff — D3; implementation underway (admin admissions workspace and settings pages exist in `apps/admin/app/admin/admissions/` and `apps/admin/app/admin/settings/`)  
-**Source mockup:** [`docs/mockups/admin/school-content-and-admissions-settings.html`](../mockups/admin/school-content-and-admissions-settings.html)  
-**Consumers:** B0 (contracts/permission primitives), B3 (admissions admin), B4 (site core/content loading)  
+**Status:** Design handoff. The bounded synthetic site workflow now lives at `apps/admin/app/admin/settings/site/page.tsx`; this document's larger workspace and admissions ideas are not all implemented.
+**Source mockup:** [`docs/mockups/admin/school-content-and-admissions-settings.html`](../mockups/admin/school-content-and-admissions-settings.html)
+**Consumers:** B0 (contracts/permission primitives), B3 (admissions admin), B4 (site core/content loading)
 **Authority:** This document and its D3 mockup define the admin information architecture, field boundaries, interaction states, and governance controls. They do not approve any school fact, fee, policy, or sensitive collection.
+
+The shipped site page uses `settings.manage` or a separate review/preview/publish capability for the private bounded management read. Each mutation enforces its own grant. The UI previews through the authorized action, shows only safe placeholders, and does not open a public preview URL. Site-domain requests are separate from platform activation at `/schools/[schoolId]/site`. This implementation does not provide a generic page editor or the full comparison workspace proposed below.
 
 ## 1. Design decision and users
 

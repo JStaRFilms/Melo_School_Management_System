@@ -1,4 +1,5 @@
 import { query } from "../../_generated/server";
+import type { QueryCtx } from "../../_generated/server";
 import { v } from "convex/values";
 import { buildApplicationLinkV1 } from "@school/shared";
 import { applicationLinkV1Validator } from "./contracts";
@@ -69,10 +70,7 @@ function resolveAvailability(args: {
  * record, never request host headers or editable URLs, and returns a harmless
  * unavailable projection for missing/disabled offerings.
  */
-export const getApplicationLink = query({
-  args: { schoolSlug: v.string(), intakeSlug: v.optional(v.string()) },
-  returns: applicationLinkV1Validator,
-  handler: async (ctx, args) => {
+export async function applicationLinkAtTime(ctx: QueryCtx, args: {schoolSlug: string; intakeSlug?: string}, now: number) {
     const school = await ctx.db
       .query("schools")
       .withIndex("by_slug", (q) => q.eq("slug", args.schoolSlug.trim()))
@@ -112,7 +110,6 @@ export const getApplicationLink = query({
         if (products.length > 0) candidatesWithProducts.push(candidate);
       }
 
-      const now = Date.now();
       const compareByOpenThenId = (left: typeof candidates[number], right: typeof candidates[number]) =>
         right.opensAt - left.opensAt || String(right._id).localeCompare(String(left._id));
       const current = candidatesWithProducts
@@ -137,7 +134,7 @@ export const getApplicationLink = query({
       schoolActive: school?.status === "active" && school.features?.admissions === true,
       intake,
       hasActiveProduct: activeProducts.length > 0,
-      now: Date.now(),
+      now,
     });
 
     return buildApplicationLinkV1({
@@ -148,5 +145,9 @@ export const getApplicationLink = query({
       opensAt: intake?.opensAt ?? null,
       closesAt: intake?.closesAt ?? null,
     });
-  },
+}
+export const getApplicationLink = query({
+  args: { schoolSlug: v.string(), intakeSlug: v.optional(v.string()) },
+  returns: applicationLinkV1Validator,
+  handler: (ctx, args) => applicationLinkAtTime(ctx, args, Date.now()),
 });

@@ -180,6 +180,7 @@ function SchoolsTable({
                       <SlidersHorizontal className="h-3.5 w-3.5" />
                       Features
                     </button>
+                    <Link href={`/schools/${school._id}/site`} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100" aria-label={`Site operations for ${school.name}`}>Site & domains</Link>
                     {isPending ? (
                       <Link
                         href={`/schools/${school._id}/assign-admin`}
@@ -378,6 +379,7 @@ function SchoolsCards({
               </div>
             </div>
 
+            <Link href={`/schools/${school._id}/site`} className="block py-2 text-sm font-semibold text-slate-700">Site & domains</Link>
             {/* Action Buttons Grid with Proper Spacing */}
             <div className="pt-2 border-t border-slate-100/90">
               {isPending ? (

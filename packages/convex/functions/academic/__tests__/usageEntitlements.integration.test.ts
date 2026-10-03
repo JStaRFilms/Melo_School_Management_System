@@ -56,8 +56,15 @@ it("restricts immutable entitlement versions/cycles to Platform and exposes sour
   await expect(f.owner.mutation(fn.publish, f.publishArgs)).rejects.toThrow("Platform");
   await expect(f.platform.mutation(fn.publish, f.publishArgs)).rejects.toThrow("conflict");
   await expect(f.platform.mutation(fn.cycle, { schoolId: f.schoolId, contractId: f.contractId, entitlementVersionId: f.versionId, startAt: today, endAt: today + day, confirmation: "CONFIRM" })).rejects.toThrow("overlap");
-  const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as { meters: Array<{ meterType: string; baseUnits: number; graceUnits: number; topUpUnits: number }> };
+  const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: Date.now() }) as { meters: Array<{ meterType: string; baseUnits: number; graceUnits: number; topUpUnits: number }> };
   expect(view.meters.find(row => row.meterType === "ai_tokens")).toMatchObject({ baseUnits: 100, graceUnits: 20, topUpUnits: 0 });
+});
+it("re-evaluates AI readiness at a supplied clock boundary without changing the cycle", async () => {
+  const f = await setup();
+  const before = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: today + day }) as { aiGenerationAvailable: boolean };
+  const after = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: today + 30 * day }) as { aiGenerationAvailable: boolean };
+  expect(before.aiGenerationAvailable).toBe(true);
+  expect(after.aiGenerationAvailable).toBe(false);
 });
 it("quotes authoritatively and confirmed unavailable dispatch releases without double charging", async () => {
   const f = await setup(); const quoteArgs = { schoolId: f.schoolId, task: "teacher_lesson_plan", itemCount: 3, idempotencyKey: "lesson-operation-1" };
@@ -83,14 +90,14 @@ it("records top-ups separately and exception requests grant nothing until one ap
   const requestId = await f.owner.mutation(fn.request, requestArgs) as Id<"usageExceptionRequests">;
   expect(await f.owner.mutation(fn.request, requestArgs)).toBe(requestId);
   await expect(f.owner.mutation(fn.request, { ...requestArgs, units: 8 })).rejects.toThrow("Conflicting");
-  let view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as { meters: Array<{ meterType: string; topUpUnits: number; exceptionUnits: number }> }; expect(view.meters.find(row => row.meterType === "ocr_pages")).toMatchObject({ topUpUnits: 5, exceptionUnits: 0 });
+  let view = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: Date.now() }) as { meters: Array<{ meterType: string; topUpUnits: number; exceptionUnits: number }> }; expect(view.meters.find(row => row.meterType === "ocr_pages")).toMatchObject({ topUpUnits: 5, exceptionUnits: 0 });
   const decisionArgs = { schoolId: f.schoolId, requestId, outcome: "approved" as const, reason: "Approved bounded temporary exception", expiresAt: today + 10 * day, confirmation: "CONFIRM" };
   const decision = await f.platform.mutation(fn.decide, decisionArgs); expect(decision).toBeTruthy();
   await expect(f.platform.mutation(fn.decide, { ...decisionArgs, expiresAt: today + 11 * day })).rejects.toThrow("Conflicting");
   await expect(f.platform.mutation(fn.decide, { ...decisionArgs, outcome: "declined", reason: "different replay" })).rejects.toThrow("Conflicting");
   const platformView = await f.platform.query(fn.platformWorkspace, { schoolId: f.schoolId }) as { requests: Array<{ _id: string }> };
   expect(platformView.requests).toEqual([]);
-  view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as typeof view; expect(view.meters.find(row => row.meterType === "ocr_pages")?.exceptionUnits).toBe(7);
+  view = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: Date.now() }) as typeof view; expect(view.meters.find(row => row.meterType === "ocr_pages")?.exceptionUnits).toBe(7);
 });
 it("creates a bounded group pool and idempotently allocates matching-cycle branch units for the proprietor", async () => {
   const f = await setup();
@@ -122,17 +129,17 @@ it("creates a bounded group pool and idempotently allocates matching-cycle branc
   }));
   expect(state.allocations).toHaveLength(1);
   expect(state.audits).toHaveLength(1);
-  const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as { meters: Array<{ meterType: string; poolUnits: number }> };
+  const view = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: Date.now() }) as { meters: Array<{ meterType: string; poolUnits: number }> };
   expect(view.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(40);
   expect(view.meters.find(row => row.meterType === "ocr_pages")?.poolUnits).toBe(0);
   await f.t.run(ctx => ctx.db.patch(f.groupId, { status: "archived" }));
-  const archivedGroup = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as typeof view;
+  const archivedGroup = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: Date.now() }) as typeof view;
   expect(archivedGroup.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(0);
   await f.t.run(ctx => ctx.db.patch(f.groupId, { status: "active" }));
 
   const clock = vi.spyOn(Date, "now").mockReturnValue(today + 21 * day);
   try {
-    const expired = await f.owner.query(fn.workspace, { schoolId: f.schoolId }) as typeof view;
+    const expired = await f.owner.query(fn.workspace, { schoolId: f.schoolId, now: Date.now() }) as typeof view;
     expect(expired.meters.find(row => row.meterType === "ai_tokens")?.poolUnits).toBe(0);
   } finally {
     clock.mockRestore();

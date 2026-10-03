@@ -1,0 +1,61 @@
+{
+  "responsive": [
+    {
+      "width": 1440,
+      "overflow": false,
+      "hero_content_shift": 0,
+      "album_content_shift": 0.0,
+      "viewer_keyboard_touch_visit": "passed"
+    },
+    {
+      "width": 1024,
+      "overflow": false,
+      "hero_content_shift": 0,
+      "album_content_shift": 0.0,
+      "viewer_keyboard_touch_visit": "passed"
+    },
+    {
+      "width": 768,
+      "overflow": false,
+      "hero_content_shift": 0,
+      "album_content_shift": 0.0,
+      "viewer_keyboard_touch_visit": "passed"
+    },
+    {
+      "width": 760,
+      "overflow": false,
+      "hero_content_shift": 0,
+      "album_content_shift": 0.0,
+      "viewer_keyboard_touch_visit": "passed"
+    },
+    {
+      "width": 390,
+      "overflow": false,
+      "hero_content_shift": 0,
+      "album_content_shift": 0.0,
+      "viewer_keyboard_touch_visit": "passed"
+    },
+    {
+      "width": 320,
+      "overflow": false,
+      "hero_content_shift": 0,
+      "album_content_shift": 0.0,
+      "viewer_keyboard_touch_visit": "passed"
+    }
+  ],
+  "history_reduced_motion_nojs": "passed",
+  "errors": [],
+  "http_failures": [],
+  "external_requests": [],
+  "finite_runtime_audit": {
+    "isScrollUnlocked": true,
+    "maxScroll": 3627,
+    "fpsAverage": 60,
+    "frameDrops": 0,
+    "webglDrawCalls": 0,
+    "shaderErrors": [],
+    "samples": 65,
+    "maxFrameMs": 16.8
+  },
+  "hero_and_source_preservation": "passed"
+}

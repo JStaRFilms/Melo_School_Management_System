@@ -1,0 +1,22 @@
+{
+  "original": "E:/Downloads/ChatGPT Image Sep 30, 2026, 11_43_55 AM.png",
+  "source_sha256": "b2bb97dcb5049f4d6033739983a386ec7bf04a55435446f4b1b10363a1e93576",
+  "source_dimensions": [
+    1402,
+    1122
+  ],
+  "crop": [
+    0,
+    280,
+    1402,
+    980
+  ],
+  "dimensions": [
+    1402,
+    700
+  ],
+  "output": "you-hero.webp",
+  "bytes": 109388,
+  "processing": "Empty space cropped above/below; full width, colours and contact shadows retained. RGB WebP, no transparency requested or invented.",
+  "publication_status": "Private prototype. Imagined artwork, not actual school facilities or pupil work."
+}

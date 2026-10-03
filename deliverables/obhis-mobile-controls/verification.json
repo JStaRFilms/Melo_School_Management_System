@@ -1,0 +1,386 @@
+{
+  "captures": [
+    {
+      "width": 390,
+      "height": 844,
+      "scene": "olive",
+      "filename": "olive-390x844.png",
+      "stage": {
+        "left": 0,
+        "right": 375,
+        "top": 68,
+        "bottom": 844
+      },
+      "controls": {
+        "left": 146,
+        "right": 353,
+        "top": 778,
+        "bottom": 822
+      },
+      "link": {
+        "left": 23,
+        "right": 161,
+        "top": 720,
+        "bottom": 768
+      },
+      "photo": {
+        "left": 85,
+        "right": 358,
+        "top": 410,
+        "bottom": 631
+      },
+      "heading": {
+        "left": 23,
+        "right": 217,
+        "top": 96,
+        "bottom": 193
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "scene": "you",
+      "filename": "you-390x844.png",
+      "stage": {
+        "left": 0,
+        "right": 375,
+        "top": 68,
+        "bottom": 844
+      },
+      "controls": {
+        "left": 146,
+        "right": 353,
+        "top": 778,
+        "bottom": 822
+      },
+      "link": {
+        "left": 23,
+        "right": 161,
+        "top": 720,
+        "bottom": 768
+      },
+      "photo": {
+        "left": 66,
+        "right": 339,
+        "top": 410,
+        "bottom": 631
+      },
+      "heading": {
+        "left": 23,
+        "right": 353,
+        "top": 227,
+        "bottom": 334
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "scene": "olive",
+      "filename": "olive-320x740.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 68,
+        "bottom": 740
+      },
+      "controls": {
+        "left": 80,
+        "right": 287,
+        "top": 674,
+        "bottom": 718
+      },
+      "link": {
+        "left": 18,
+        "right": 156,
+        "top": 616,
+        "bottom": 664
+      },
+      "photo": {
+        "left": 69,
+        "right": 291,
+        "top": 365,
+        "bottom": 547
+      },
+      "heading": {
+        "left": 18,
+        "right": 196,
+        "top": 96,
+        "bottom": 185
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "scene": "you",
+      "filename": "you-320x740.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 68,
+        "bottom": 740
+      },
+      "controls": {
+        "left": 80,
+        "right": 287,
+        "top": 674,
+        "bottom": 718
+      },
+      "link": {
+        "left": 18,
+        "right": 156,
+        "top": 616,
+        "bottom": 664
+      },
+      "photo": {
+        "left": 54,
+        "right": 276,
+        "top": 365,
+        "bottom": 547
+      },
+      "heading": {
+        "left": 18,
+        "right": 287,
+        "top": 192,
+        "bottom": 299
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 390,
+      "height": 568,
+      "scene": "olive",
+      "filename": "olive-390x568.png",
+      "stage": {
+        "left": 0,
+        "right": 375,
+        "top": 68,
+        "bottom": 568
+      },
+      "controls": {
+        "left": 146,
+        "right": 353,
+        "top": 502,
+        "bottom": 546
+      },
+      "link": {
+        "left": 23,
+        "right": 161,
+        "top": 444,
+        "bottom": 492
+      },
+      "photo": {
+        "left": 244,
+        "right": 370,
+        "top": 376,
+        "bottom": 484
+      },
+      "heading": {
+        "left": 23,
+        "right": 217,
+        "top": 96,
+        "bottom": 193
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 390,
+      "height": 568,
+      "scene": "you",
+      "filename": "you-390x568.png",
+      "stage": {
+        "left": 0,
+        "right": 375,
+        "top": 68,
+        "bottom": 568
+      },
+      "controls": {
+        "left": 146,
+        "right": 353,
+        "top": 502,
+        "bottom": 546
+      },
+      "link": {
+        "left": 23,
+        "right": 161,
+        "top": 444,
+        "bottom": 492
+      },
+      "photo": {
+        "left": 225,
+        "right": 351,
+        "top": 376,
+        "bottom": 484
+      },
+      "heading": {
+        "left": 23,
+        "right": 353,
+        "top": 131,
+        "bottom": 238
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "height": 568,
+      "scene": "olive",
+      "filename": "olive-320x568.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 68,
+        "bottom": 568
+      },
+      "controls": {
+        "left": 80,
+        "right": 287,
+        "top": 502,
+        "bottom": 546
+      },
+      "link": {
+        "left": 18,
+        "right": 156,
+        "top": 444,
+        "bottom": 492
+      },
+      "photo": {
+        "left": 175,
+        "right": 301,
+        "top": 376,
+        "bottom": 484
+      },
+      "heading": {
+        "left": 18,
+        "right": 196,
+        "top": 96,
+        "bottom": 185
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "height": 568,
+      "scene": "you",
+      "filename": "you-320x568.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 68,
+        "bottom": 568
+      },
+      "controls": {
+        "left": 80,
+        "right": 287,
+        "top": 502,
+        "bottom": 546
+      },
+      "link": {
+        "left": 18,
+        "right": 156,
+        "top": 444,
+        "bottom": 492
+      },
+      "photo": {
+        "left": 160,
+        "right": 286,
+        "top": 376,
+        "bottom": 484
+      },
+      "heading": {
+        "left": 18,
+        "right": 287,
+        "top": 148,
+        "bottom": 255
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "height": 480,
+      "scene": "olive",
+      "filename": "olive-320x480.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 68,
+        "bottom": 480
+      },
+      "controls": {
+        "left": 80,
+        "right": 287,
+        "top": 414,
+        "bottom": 458
+      },
+      "link": {
+        "left": 18,
+        "right": 156,
+        "top": 356,
+        "bottom": 404
+      },
+      "photo": {
+        "left": 187,
+        "right": 301,
+        "top": 310,
+        "bottom": 409
+      },
+      "heading": {
+        "left": 18,
+        "right": 196,
+        "top": 96,
+        "bottom": 185
+      },
+      "overflow": false,
+      "internalScroll": 0
+    },
+    {
+      "width": 320,
+      "height": 480,
+      "scene": "you",
+      "filename": "you-320x480.png",
+      "stage": {
+        "left": 0,
+        "right": 305,
+        "top": 68,
+        "bottom": 480
+      },
+      "controls": {
+        "left": 80,
+        "right": 287,
+        "top": 414,
+        "bottom": 458
+      },
+      "link": {
+        "left": 18,
+        "right": 156,
+        "top": 356,
+        "bottom": 404
+      },
+      "photo": {
+        "left": 171,
+        "right": 286,
+        "top": 310,
+        "bottom": 409
+      },
+      "heading": {
+        "left": 18,
+        "right": 287,
+        "top": 104,
+        "bottom": 211
+      },
+      "overflow": false,
+      "internalScroll": 0
+    }
+  ],
+  "errors": [],
+  "note": "Private headless phone captures. Sticky header and production styles unchanged; no private asset edited."
+}

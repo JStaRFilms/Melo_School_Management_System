@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, Mail, Network, Hash } from "lucide-react";
+import { Building2, Mail, Network, Hash, Globe } from "lucide-react";
 
 interface SettingsNavTab {
   label: string;
@@ -11,6 +11,7 @@ interface SettingsNavTab {
 }
 
 const SETTINGS_TABS: SettingsNavTab[] = [
+  { label: "School site", href: "/admin/settings/site", icon: Globe },
   {
     label: "School Profile & Branding",
     href: "/admin/settings",

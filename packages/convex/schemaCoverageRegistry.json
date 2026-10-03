@@ -1174,6 +1174,17 @@
     "storage": {},
     "shape": "1527:388ca1a3:7817bf37"
   },
+  "aiGenerationResults": {
+    "ownership": "indirect",
+    "reason": "Private staged content belongs to an attempt; tenant purge removes it by indexed attempt before deleting the attempt",
+    "references": [
+      { "path": "aiRunLogId", "target": "aiRunLogs", "optional": true },
+      { "path": "attemptId", "target": "usageOperationAttempts", "optional": false }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "509:8bd0fa0f:1d7bdab"
+  },
   "aiRunLogs": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
@@ -1182,6 +1193,11 @@
         "path": "actorUserId",
         "target": "users",
         "optional": false
+      },
+      {
+        "path": "attemptId",
+        "target": "usageOperationAttempts",
+        "optional": true
       },
       {
         "path": "curriculumImportId",
@@ -1211,7 +1227,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "3255:f4ff99a8:26961d84"
+    "shape": "3348:1ed72f84:2ed3c6b2"
   },
   "assessmentBankItems": {
     "ownership": "direct-indexed",
@@ -1284,7 +1300,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "3675:c72f717f:108a46b3"
+    "shape": "3739:cd91f830:7a45dc5c"
   },
   "assessmentEditingPolicies": {
     "ownership": "direct-indexed",
@@ -4077,7 +4093,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1560:a98eb2bc:1915ed0e"
+    "shape": "3851:2c2918af:95989293"
   },
   "schoolEmailDomains": {
     "ownership": "direct-indexed",
@@ -4263,6 +4279,11 @@
         "optional": true
       },
       {
+        "path": "childConsentEvidenceId",
+        "target": "schoolApprovalEvidence",
+        "optional": true
+      },
+      {
         "path": "schoolId",
         "target": "schools",
         "optional": false
@@ -4277,12 +4298,17 @@
     "storage": {
       "storageId": "legacy-extractor"
     },
-    "shape": "1598:928501d4:d0407a36"
+    "shape": "2010:88c5e03e:e92ede0a"
   },
   "schoolSiteAuditEvents": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
     "references": [
+      {
+        "path": "actorPlatformAdminId",
+        "target": "platformAdmins",
+        "optional": true
+      },
       {
         "path": "actorUserId",
         "target": "users",
@@ -4301,7 +4327,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "930:bececf88:84194702"
+    "shape": "1117:20464f16:ca1ee2c2"
   },
   "schoolSiteProfiles": {
     "ownership": "direct-indexed",
@@ -5201,7 +5227,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "2453:4a091d2c:7b41d9b2"
+    "shape": "2501:9fe196cd:a5742849"
   },
   "usageEntitlementVersions": {
     "ownership": "shared-or-global",
@@ -5209,7 +5235,7 @@
     "references": [],
     "bySchool": false,
     "storage": {},
-    "shape": "1914:cf500fe4:3890767a"
+    "shape": "1962:2c6b4a6b:28053fa1"
   },
   "usageEvents": {
     "ownership": "direct-indexed",
@@ -5319,7 +5345,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1619:25852644:cc443be2"
+    "shape": "1770:3b42a91c:be57b0e0"
   },
   "usageOperationAttempts": {
     "ownership": "direct-indexed",
@@ -5338,7 +5364,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1321:47756bf7:2cb3c4f5"
+    "shape": "2274:f48069a8:9a0927e0"
   },
   "usageOperationTransitions": {
     "ownership": "indirect",
@@ -5352,7 +5378,7 @@
     ],
     "bySchool": false,
     "storage": {},
-    "shape": "495:acc5f19:20a22b75"
+    "shape": "582:91234e6b:c76e90af"
   },
   "usageProviderCosts": {
     "ownership": "direct-indexed",

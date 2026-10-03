@@ -196,6 +196,7 @@ export function LessonPlanWorkspaceScreen({
   const [lastSavedSignature, setLastSavedSignature] = useState(
     JSON.stringify({ title: workspace.draft.title, documentState: workspace.draft.documentState })
   );
+  const lastSavedSignatureRef = useRef(lastSavedSignature);
   const convex = useConvex();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDrawerClosing, setIsDrawerClosing] = useState(false);
@@ -222,9 +223,9 @@ export function LessonPlanWorkspaceScreen({
   const saveInFlightRef = useRef<Promise<void> | null>(null);
   const retrySaveRef = useRef(false);
   const editorRef = useRef({ title, documentState, plainText });
-  useEffect(() => {
-    editorRef.current = { title, documentState, plainText };
-  }, [documentState, plainText, title]);
+  editorRef.current = { title, documentState, plainText };
+  const editorSignature = useCallback(() => JSON.stringify({ title: editorRef.current.title,
+    documentState: editorRef.current.documentState }), []);
 
   const handleRestoreRevision = async (revisionId: string) => {
     try {
@@ -353,8 +354,10 @@ export function LessonPlanWorkspaceScreen({
         setRevisionNumber(result.revisionNumber);
         setLastSavedAt(result.savedAt);
         const savedSignature = JSON.stringify({ title: result.title, documentState: result.documentState });
+        lastSavedSignatureRef.current = savedSignature;
         setLastSavedSignature(savedSignature);
-        if (JSON.stringify({ title: editorRef.current.title, documentState: editorRef.current.documentState }) === snapshotSignature) {
+        if (editorSignature() === snapshotSignature) {
+          editorRef.current = { title: result.title, documentState: result.documentState, plainText: result.plainText };
           setTitle(result.title);
           setDocumentState(result.documentState);
           setPlainText(result.plainText);
@@ -365,7 +368,7 @@ export function LessonPlanWorkspaceScreen({
         setSaveState(draftErrorCode(error) === "CONFLICT" ? "conflict" : "error");
         throw error;
       }
-    }, [canAutosave, connection.accountId, connection.authenticated, connection.connected, onSaveDraft, pushNotice, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
+    }, [canAutosave, connection.accountId, connection.authenticated, connection.connected, editorSignature, onSaveDraft, pushNotice, workspace.planningContext?.subjectId, workspace.sourceContext.level, workspace.sourceContext.subjectId]
   );
 
   const persistDraft = useCallback(async (mode: "manual" | "autosave") => {
@@ -421,6 +424,7 @@ export function LessonPlanWorkspaceScreen({
     setDocumentState(workspace.draft.documentState);
     setPlainText(workspace.draft.plainText);
     const latestSignature = JSON.stringify({ title: workspace.draft.title, documentState: workspace.draft.documentState });
+    lastSavedSignatureRef.current = latestSignature;
     setLastSavedSignature(latestSignature);
     setSaveState("idle");
   }, [workspace.draft]);
@@ -464,15 +468,26 @@ export function LessonPlanWorkspaceScreen({
     setGenerationStartedAt(Date.now());
     try {
       if (dirty) await persistDraft("manual");
+      const generationSignature = editorSignature();
+      if (generationSignature !== lastSavedSignatureRef.current) {
+        throw new Error("The draft changed while saving. Save the current edits before generating.");
+      }
       const result = await onGenerateDraft();
       revisionRef.current = result.revisionNumber;
       setRevisionNumber(result.revisionNumber);
       setLastSavedAt(result.savedAt);
+      const generatedSignature = JSON.stringify({ title: result.title, documentState: result.documentState });
+      lastSavedSignatureRef.current = generatedSignature;
+      setLastSavedSignature(generatedSignature);
+      if (editorSignature() !== generationSignature) {
+        setSaveState("idle");
+        pushNotice("error", "The generated draft was saved, but newer local edits remain. Review and save those edits before generating again.");
+        return;
+      }
+      editorRef.current = { title: result.title, documentState: result.documentState, plainText: result.plainText };
       setTitle(result.title);
       setDocumentState(result.documentState);
       setPlainText(result.plainText);
-      const generatedSignature = JSON.stringify({ title: result.title, documentState: result.documentState });
-      setLastSavedSignature(generatedSignature);
       setSaveState("saved");
       const repairSuffix = result.generationMeta?.repaired ? " Automatically repaired to match the school template." : "";
       pushNotice("success", `Generated ${workspace.outputTypeLabel.toLowerCase()} revision ${result.revisionNumber}.${repairSuffix}`);
@@ -482,7 +497,7 @@ export function LessonPlanWorkspaceScreen({
     } finally {
       setIsGenerating(false);
     }
-  }, [canGenerate, dirty, onGenerateDraft, persistDraft, pushNotice, workspace.outputTypeLabel]);
+  }, [canGenerate, dirty, editorSignature, onGenerateDraft, persistDraft, pushNotice, workspace.outputTypeLabel]);
 
   const handleOutputTypeChange = useCallback(
     async (next: LessonPlanWorkspaceOutputType) => {
@@ -729,7 +744,7 @@ export function LessonPlanWorkspaceScreen({
                 </div>
               )}
 
-              <p role="status" className="text-sm">Paid generation unavailable: plan estimate, allowance reservation and provider reconciliation are not enabled. No charge is incurred. Existing drafts can still be edited and saved.</p>
+              <p role="status" className="text-sm">Review the AI token hold before generating. Your school needs an active allowance for the selected model. Failed output may still use provider tokens.</p>
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-1.5">
                   {saveState === "conflict" && (
@@ -745,7 +760,7 @@ export function LessonPlanWorkspaceScreen({
                   <button
                     type="button"
                     onClick={() => void handleManualSave().catch(() => {})}
-                    disabled={!dirty || saveState === "saving" || saveState === "conflict" || !canAutosave}
+                    disabled={isGenerating || !dirty || saveState === "saving" || saveState === "conflict" || !canAutosave}
                     className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-[10px] font-bold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-30 cursor-pointer shadow-2xs"
                   >
                     {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
@@ -754,12 +769,12 @@ export function LessonPlanWorkspaceScreen({
                   <button
                     type="button"
                     onClick={handleGenerate}
-                    disabled
-                    title="Paid generation unavailable pending entitlement and reservation integration"
+                    disabled={!canGenerate}
+                    title={generationBlockedReason ?? "Review a quote before one provider call"}
                     className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-4 text-[10px] font-bold text-white transition-all hover:bg-slate-800 shadow-sm disabled:opacity-40 disabled:hover:bg-slate-950 cursor-pointer"
                   >
                     {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
-                    Generation unavailable
+                    {isGenerating ? "Reviewing or generating…" : "Review and generate"}
                   </button>
                 </div>
               </div>
