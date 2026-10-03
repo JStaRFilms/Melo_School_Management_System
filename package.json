@@ -41,7 +41,18 @@
     "judge:seed": "pnpm exec convex run functions/academic/seedRunner:seedJudgeSchool",
     "setup:convex": "powershell -ExecutionPolicy Bypass -File scripts/setup-convex.ps1",
     "setup:convex:unix": "bash scripts/setup-convex.sh",
-    "check:toasts": "node scripts/check-toast-usage.mjs"
+    "check:toasts": "node scripts/check-toast-usage.mjs",
+    "qa:doctor": "node scripts/qa/cli.mjs doctor",
+    "qa:start": "node scripts/qa/cli.mjs start",
+    "qa:stop": "node scripts/qa/cli.mjs stop",
+    "qa:smoke": "node scripts/qa/cli.mjs smoke",
+    "qa:feature": "node scripts/qa/cli.mjs feature",
+    "qa:layout": "node scripts/qa/cli.mjs layout",
+    "qa:roles": "node scripts/qa/cli.mjs roles",
+    "qa:explore": "node scripts/qa/cli.mjs explore",
+    "qa:workflow": "node scripts/qa/cli.mjs workflow",
+    "qa:report": "node scripts/qa/cli.mjs report",
+    "qa:test": "node --test scripts/qa/*.test.mjs"
   },
   "dependencies": {
     "@playwright/test": "^1.59.1"

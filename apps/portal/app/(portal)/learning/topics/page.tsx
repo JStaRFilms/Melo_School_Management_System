@@ -89,12 +89,13 @@ export default function PortalLearningTopicsPage() {
             </p>
           </div>
           <div className="w-full max-w-xl space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+            <label htmlFor="portal-topic-search" className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
               Search topics
             </label>
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
+                id="portal-topic-search"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search subjects, titles, summaries, or levels"

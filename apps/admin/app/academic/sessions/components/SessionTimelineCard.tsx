@@ -243,6 +243,8 @@ export function SessionTimelineCard({
   return (
     <>
       <div
+        role="region"
+        aria-label={`Academic session ${session.name}`}
         className={`rounded-2xl border transition-all duration-500 ease-out overflow-hidden ${
           justActivated
             ? "border-emerald-500 bg-white shadow-xl shadow-emerald-500/10 ring-4 ring-emerald-400/50 scale-[1.005]"
