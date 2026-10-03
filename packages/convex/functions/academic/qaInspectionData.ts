@@ -75,6 +75,17 @@ export const inspectQaFixtureInternal = internalQuery({
       if (!student.admissionNumber.startsWith('QA-RC-') || !klass || !tagged(klass.name) || klass.schoolId !== schoolId || !user || user.schoolId !== schoolId || user.role !== 'student' || user.personId || user.authId !== `student:${schoolId}:${student.admissionNumber.trim().toLowerCase()}`) throw new ConvexError('Additional pupil is not a school-owned placeholder QA fixture');
     }
     for (const claim of claims) if (claim.schoolId !== schoolId || !claim.number.startsWith('QA-RC-') || !students.some(student => student.admissionNumber === claim.number)) throw new ConvexError('Admission claim is not retained run-tagged QA data');
+    const originalClassSubjects = [];
+    const originalTeacherAssignments = [];
+    for (const klass of baseClasses) {
+      const [offerings, assignments] = await Promise.all([
+        ctx.db.query('classSubjects').withIndex('by_class', q => q.eq('classId', klass._id)).take(101),
+        ctx.db.query('teacherAssignments').withIndex('by_class', q => q.eq('classId', klass._id)).take(101),
+      ]);
+      if (offerings.length > 100 || assignments.length > 100) throw new ConvexError('Original QA class assignment inspection is truncated');
+      originalClassSubjects.push(...offerings);
+      originalTeacherAssignments.push(...assignments);
+    }
     const originalScores = assessments.filter(row => originalIds.has(row.studentId));
     const originalIssued = issued.filter(row => originalIds.has(row.studentId));
     const originalInvoices = invoices.filter(row => originalIds.has(row.studentId));
@@ -89,7 +100,12 @@ export const inspectQaFixtureInternal = internalQuery({
         students: stable(baseStudents), users: stable(schoolUsers.filter(user => baseStudents.some(student => student.userId === user._id))),
         // Legacy and UI-normalized names/levels represent the same verified grade/section.
         // Canonicalize only these known forms after checking the actual semantic identity.
-        classes: stable(baseClasses.map((klass, index) => ({ _id: klass._id, name: DEMO_CLASSES[index].name, level: DEMO_CLASSES[index].level, gradeName: klass.gradeName, classLabel: klass.classLabel, formTeacherId: klass.formTeacherId }))),
+        classes: stable(baseClasses.map((klass, index) => {
+          const identity = { ...klass, name: DEMO_CLASSES[index].name, level: DEMO_CLASSES[index].level };
+          delete (identity as { updatedAt?: number }).updatedAt;
+          return identity;
+        })),
+        classSubjects: stable(originalClassSubjects), teacherAssignments: stable(originalTeacherAssignments),
         assessments: stable(originalScores), issued: stable(originalIssued), invoices: stable(originalInvoices),
       }),
     };

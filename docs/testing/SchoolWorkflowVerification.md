@@ -20,7 +20,7 @@ The original 36-pupil/3-class cohort digest remained `a16c74d544d0fffe471402ddee
 ## What changed to make this possible
 
 - Ordinary QA now uses a separate exact-target, operator-gated read-only inspector. It verifies original actor/pupil/class ownership and run-tagged additions. The destructive reset preflight remains unchanged and still refuses the additional admission claim.
-- Class inspection validates known legacy and UI-normalized grade/section names, not arbitrary display strings. Multiple active periods and unrelated class renames are rejected. Canonical class identity, original student users, scores, issued copies, and invoices are fingerprinted.
+- Class inspection validates known legacy and UI-normalized grade/section names, not arbitrary display strings. Multiple active periods and unrelated class renames are rejected. Canonical class identities, original class-subject offerings and Teacher assignments, original student users, scores, issued copies, and invoices are fingerprinted.
 - Visiting Classes triggered its preexisting naming backfill. This normalized original display labels. The logical cohort and all original score/report data remained preserved; it was not a zero-write browse. Failed duplicate empty setup sessions were specifically archived through UI and their journals retained.
 - Cross-role phases have unique IDs, ordered dependencies, distinct context/evidence names, and in-memory role-session reuse. Each cached session is independently validated before phase actions. Nothing writes session cookies to an evidence file.
 - Cleanup runs after ordinary phase failures. Hard interruption/timeout creates a recovery marker and blocks normal reruns until the recorded calendar and baseline are independently verified, or an explicit recovery UI workflow completes. A module's declared target does not override the original preservation check.
@@ -28,8 +28,8 @@ The original 36-pupil/3-class cohort digest remained `a16c74d544d0fffe471402ddee
 
 ## Checks and limits
 
-- QA script tests: 32 passed, including cross-role dependencies, interruption accounting, recovery gating, and skill links.
-- Convex inspector integration: 7 passed, including preserved reset blocking, wrong-deployment refusal, normalized labels, unrelated rename rejection, and ambiguous active-period rejection.
+- QA script tests: 34 passed, including cross-role dependencies, interruption accounting, recovery gating, and skill links.
+- Convex inspector integration: 8 passed, including preserved reset blocking, wrong-deployment refusal, normalized labels, class-offering/teacher-assignment preservation, unrelated rename rejection, and ambiguous active-period rejection.
 - Responsive preview unit tests: 2 passed.
 - Typechecks/lint are recorded in the task completion notes; this does not claim every upstream feature or all seven apps are browser-tested.
 - Independent review identified inspector name masking, active-period target override, timeout cleanup, and weak assertions. Those were fixed with stronger checks and recovery gating before the latest complete run.

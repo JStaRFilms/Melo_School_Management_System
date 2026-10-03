@@ -89,6 +89,17 @@ test('unrelated display-name edits cannot hide behind semantic digest canonicali
   });
   await expect(t.action(inspect, args)).rejects.toThrow(/Original QA class/);
 });
+test('original class offerings and teacher assignments are part of the preserved baseline', async () => {
+  const { t, schoolId } = await fixture();
+  const before = await t.action(inspect, args);
+  await t.run(async ctx => {
+    const klass = await ctx.db.query('classes').withIndex('by_school', q => q.eq('schoolId', schoolId)).first();
+    const assignment = await ctx.db.query('teacherAssignments').withIndex('by_class', q => q.eq('classId', klass!._id)).first();
+    await ctx.db.delete(assignment!._id);
+  });
+  const after = await t.action(inspect, args);
+  expect(after.baselineDigest).not.toBe(before.baselineDigest);
+});
 test('multiple active periods are rejected instead of picking the first', async () => {
   const { t, schoolId } = await fixture();
   await t.run(ctx => ctx.db.insert('academicSessions', { schoolId, name: 'QA-RC-ACTIVE', startDate: 1, endDate: 2, isActive: true, createdAt: 1, updatedAt: 1 }));
