@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { BrowserHarness, parseRoles, validateExploration, allowedBrowserUrl, validateWorkflow } from './browser-harness.mjs';
+import { BrowserHarness, parseRoles, validateExploration, allowedBrowserUrl, validateWorkflow, registerOriginGuards } from './browser-harness.mjs';
 import { workflowRequirements, explorationScript } from './exploration.mjs';
 import { TARGET, evidenceStatus, workspaceRevision } from './core.mjs';
 import { validateOptions } from './cli.mjs';
@@ -42,6 +42,22 @@ test('exploration paths cannot escape through a sibling or symlink', t => {
 test('browser requests are confined to owned app origins and the isolated Convex host', () => {
   for (const url of [TARGET.cloudUrl, TARGET.siteUrl, 'http://localhost:3102/sign-in', 'ws://localhost:3102/_next/webpack-hmr', TARGET.cloudUrl.replace('https:', 'wss:') + '/api/sync', 'about:blank']) assert.equal(allowedBrowserUrl(url, ['admin']), true);
   for (const url of ['https://scrupulous-chinchilla-25.eu-west-1.convex.cloud', 'http://localhost:3101', 'http://localhost:3002', 'https://third-party.example.test', 'http://secret@localhost:3102']) assert.equal(allowedBrowserUrl(url, ['admin']), false);
+});
+test('request guards allow owned app/backend origins and block unknown HTTP/WebSocket hosts', async () => {
+  const handlers = {};
+  const context = { route: (pattern, fn) => { handlers.http = fn; }, routeWebSocket: (pattern, fn) => { handlers.ws = fn; } };
+  const diagnostics = { blockedRequests: 0, blockedOrigins: [] };
+  registerOriginGuards(context, ['admin'], diagnostics);
+  let continued = 0, aborted = 0, connected = 0, closed = 0;
+  const route = url => ({ request: () => ({ url: () => url, method: () => 'GET', resourceType: () => 'document' }), continue: () => { continued++; }, abort: () => { aborted++; } });
+  await handlers.http(route('http://localhost:3102/sign-in'));
+  await handlers.http(route(`${TARGET.cloudUrl}/api/query`));
+  await handlers.http(route('https://unapproved.example.test/'));
+  handlers.ws({ url: () => 'ws://localhost:3102/_next/webpack-hmr', connectToServer: () => { connected++; }, close: () => { closed++; } });
+  handlers.ws({ url: () => 'wss://unapproved.example.test/socket', connectToServer: () => { connected++; }, close: () => { closed++; } });
+  assert.equal(continued, 2); assert.equal(aborted, 1); assert.equal(connected, 1); assert.equal(closed, 1);
+  assert.equal(diagnostics.blockedRequests, 2);
+  assert.deepEqual(diagnostics.blockedOrigins, ['https://unapproved.example.test', 'wss://unapproved.example.test']);
 });
 test('public font allowance cannot be used for scripts, XHR, or provider writes', () => {
   assert.equal(allowedBrowserUrl('https://fonts.googleapis.com/css2?family=Inter', ['admin'], { resourceType: 'stylesheet' }), true);

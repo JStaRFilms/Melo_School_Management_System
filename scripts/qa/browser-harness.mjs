@@ -34,6 +34,24 @@ export function validateWorkflow(module) {
   }
 }
 
+export function registerOriginGuards(context, apps, diagnostics) {
+  context.route('**/*', route => {
+    const request = route.request();
+    if (allowedBrowserUrl(request.url(), apps, { method: request.method(), resourceType: request.resourceType() })) return route.continue();
+    diagnostics.blockedRequests++;
+    const origin = new URL(request.url()).origin;
+    if (!diagnostics.blockedOrigins.includes(origin)) diagnostics.blockedOrigins.push(origin);
+    return route.abort('blockedbyclient');
+  });
+  context.routeWebSocket('**/*', socket => {
+    if (allowedBrowserUrl(socket.url(), apps, { resourceType: 'websocket' })) return socket.connectToServer();
+    diagnostics.blockedRequests++;
+    const origin = new URL(socket.url()).origin;
+    if (!diagnostics.blockedOrigins.includes(origin)) diagnostics.blockedOrigins.push(origin);
+    return socket.close({ code: 1008, reason: 'QA origin is not approved' });
+  });
+}
+
 export function ownedRequest(runDirectory, modes) {
   const directory = fs.realpathSync(runDirectory);
   if (!directory.startsWith(`${path.join(QA_DIR, 'runs')}${path.sep}`)) throw new Error('Use this worktree QA run folder.');
@@ -93,24 +111,7 @@ export class BrowserHarness {
     const origin = `http://localhost:${APPS[account.app].port}`;
     const diagnostics = { role, phase, errors: [], consoleErrors: [], blockedRequests: 0, blockedOrigins: [] };
     this.diagnostics.push(diagnostics);
-    const configure = async context => {
-      await context.route('**/*', route => {
-        if (allowedBrowserUrl(route.request().url(), this.state.apps, { method: route.request().method(), resourceType: route.request().resourceType() })) return route.continue();
-        diagnostics.blockedRequests++;
-        const origin = new URL(route.request().url()).origin;
-        if (!diagnostics.blockedOrigins.includes(origin)) diagnostics.blockedOrigins.push(origin);
-        return route.abort('blockedbyclient');
-      });
-      await context.routeWebSocket('**/*', socket => {
-        if (allowedBrowserUrl(socket.url(), this.state.apps)) socket.connectToServer();
-        else {
-          diagnostics.blockedRequests++;
-          const origin = new URL(socket.url()).origin;
-          if (!diagnostics.blockedOrigins.includes(origin)) diagnostics.blockedOrigins.push(origin);
-          socket.close({ code: 1008, reason: 'QA origin is not approved' });
-        }
-      });
-    };
+    const configure = context => registerOriginGuards(context, this.state.apps, diagnostics);
     const observe = page => {
       page.setDefaultTimeout(30_000);
       page.on('pageerror', error => diagnostics.errors.push(error.message));

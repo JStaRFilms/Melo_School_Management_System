@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, expect } from '@playwright/test';
 import { APPS, ROOT, QA_DIR, TARGET, LOCK_DIR, readJson, writeJson, evidenceStatus, isBackendContractBlocker, ownsSupervisor, processCommand, assertAppTargets } from './core.mjs';
+import { registerOriginGuards } from './browser-harness.mjs';
 
 const directory = fs.realpathSync(process.argv[2]);
 if (!directory.startsWith(`${path.join(QA_DIR, 'runs')}${path.sep}`)) throw new Error('Browser runs must use this worktree QA folder.');
@@ -56,6 +57,7 @@ let page;
 let index = 0;
 const errors = [];
 const consoleErrors = [];
+const diagnostics = { blockedRequests: 0, blockedOrigins: [] };
 let failed = false;
 const origin = `http://localhost:${APPS.admin.port}`;
 const title = `QA ${request.id}`;
@@ -89,6 +91,7 @@ async function selectSaved() {
 try {
   browser = await chromium.launch({ headless: true });
   context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  registerOriginGuards(context, server.apps, diagnostics);
   page = await context.newPage();
   page.setDefaultTimeout(30_000);
   page.on('pageerror', error => errors.push(error.message));
@@ -111,6 +114,7 @@ try {
   const session = await context.storageState();
   await context.close();
   context = await browser.newContext({ storageState: session, viewport: { width: 1440, height: 1000 }, recordVideo: { dir: path.join(directory, 'private-video') } });
+  registerOriginGuards(context, server.apps, diagnostics);
   page = await context.newPage();
   page.setDefaultTimeout(30_000);
   page.on('pageerror', error => errors.push(error.message));
@@ -208,6 +212,7 @@ try {
   await check(async () => {
     expect(errors.length).toBe(0);
     expect(consoleErrors.length).toBe(0);
+    expect(diagnostics.blockedRequests).toBe(0);
   });
 } catch {
   failed = true;
@@ -216,7 +221,7 @@ try {
   }
 } finally {
   for (; index < planned.length; index++) result.checks.push({ name: planned[index], status: 'blocked', note: 'Not exercised because an earlier prerequisite or assertion failed.' });
-  fs.writeFileSync(path.join(directory, 'private-browser-errors.json'), JSON.stringify({ errors, consoleErrors }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(path.join(directory, 'private-browser-errors.json'), JSON.stringify({ errors, consoleErrors, ...diagnostics }, null, 2), { mode: 0o600 });
   if (context) {
     try { await context.tracing.stop({ path: path.join(directory, 'private-trace.zip') }); } catch { /* Authentication may have failed before tracing. */ }
     await context.close();
