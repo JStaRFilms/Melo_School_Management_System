@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
   ROOT, QA_DIR, TARGET, APPS, LOCK_DIR, readJson, writeJson, parseApps, loadProfile,
-  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus, preservationExpectation, isCleanStoppedState,
+  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus, preservationExpectation, isCleanStoppedState, backendRecoveryFile,
 } from './core.mjs';
 import { workflowRequirements } from './exploration.mjs';
 import { generateReport, publishReviewed } from './report.mjs';

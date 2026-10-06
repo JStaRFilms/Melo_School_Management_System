@@ -11,7 +11,7 @@ import {
 } from './core.mjs';
 import { options, validateOptions, waitForChild } from './cli.mjs';
 import { reportHtml } from './report.mjs';
-import { createInterruptionHandler } from './browser-runner.mjs';
+import { createRunnerLifecycle } from './browser-runner.mjs';
 
 function temporary(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'melo-qa-test-'));
@@ -189,68 +189,87 @@ test('cross-worktree recovery: second worktree recognizes interrupted calendar o
   const verifiedResult = validateRecoveryState(markerReadByB, restoredBackendAtB, { allowRecovery: true });
   assert.equal(verifiedResult.restored, true);
 });
-test('duplicate SIGINT during asynchronous cleanup is absorbed and allows runner cleanup to finish', async () => {
-  let finishStarted = false;
-  let finishCompleted = false;
+test('duplicate signals and runner finalization share cleanup without removing listeners early', async () => {
+  const signals = new EventEmitter();
+  let finishCalls = 0;
   let exitCalledWith = null;
-  let recoveryWritten = null;
-
-  const harness = {
-    record: () => {},
-    blockPending: () => {},
-    finish: async () => {
-      finishStarted = true;
-      await new Promise(resolve => setTimeout(resolve, 50));
-      finishCompleted = true;
-    },
-  };
-
-  const handler = createInterruptionHandler({
+  let recoveryWritten;
+  let releaseFinish;
+  const cleanup = new Promise(resolve => { releaseFinish = resolve; });
+  const lifecycle = createRunnerLifecycle({
     request: {
-      mode: 'workflow',
-      deployment: TARGET.deployment,
-      id: 'qa-signal-test',
+      mode: 'workflow', deployment: TARGET.deployment, id: 'qa-signal-test',
       inspection: { activePeriod: { session: 'S', term: 'T' }, baseline: { digest: 'd'.repeat(64) } },
     },
-    harness,
-    writeRecovery: (file, data) => { recoveryWritten = data; },
+    harness: { record() {}, blockPending() {}, finish() { finishCalls++; return cleanup; } },
+    signals,
+    writeRecovery: (file, data) => { recoveryWritten = { file, data }; },
     exit: code => { exitCalledWith = code; },
   });
 
-  const p1 = handler();
-  assert.equal(finishStarted, true);
-  assert.equal(finishCompleted, false);
+  signals.emit('SIGINT');
+  assert.equal(lifecycle.interrupted, true);
+  assert.equal(recoveryWritten.file, backendRecoveryFile(TARGET.deployment));
+  assert.equal(recoveryWritten.data.activePeriod.session, 'S');
+  // The runner's finally reaches finish while interruption cleanup is pending.
+  const completion = lifecycle.finish();
+  assert.equal(lifecycle.finish(), completion);
+  await Promise.resolve();
+  assert.equal(finishCalls, 1);
+  assert.equal(signals.listenerCount('SIGINT'), 1);
+  assert.equal(signals.emit('SIGINT'), true);
   assert.equal(exitCalledWith, null);
-  assert.notEqual(recoveryWritten, null);
-
-  const p2 = handler();
-  assert.equal(exitCalledWith, null);
-
-  await Promise.all([p1, p2]);
-  assert.equal(finishCompleted, true);
+  releaseFinish();
+  await completion;
+  assert.equal(finishCalls, 1);
   assert.equal(exitCalledWith, 1);
+  assert.equal(signals.listenerCount('SIGINT'), 0);
+  assert.equal(signals.listenerCount('SIGTERM'), 0);
+});
+test('signals during normal asynchronous teardown use the same cleanup and stay handled', async () => {
+  const signals = new EventEmitter();
+  let finishCalls = 0;
+  let exitCalledWith = null;
+  let releaseFinish;
+  const cleanup = new Promise(resolve => { releaseFinish = resolve; });
+  const lifecycle = createRunnerLifecycle({
+    request: { mode: 'roles' }, signals,
+    harness: { record() {}, blockPending() {}, finish() { finishCalls++; return cleanup; } },
+    exit: code => { exitCalledWith = code; },
+  });
+  const completion = lifecycle.finish();
+  await Promise.resolve();
+  assert.equal(signals.emit('SIGTERM'), true);
+  assert.equal(signals.emit('SIGINT'), true);
+  assert.equal(lifecycle.interrupted, true);
+  assert.equal(lifecycle.finish(), completion);
+  assert.equal(finishCalls, 1);
+  assert.equal(exitCalledWith, null);
+  releaseFinish();
+  await completion;
+  // The interruption waiter joined after this test's waiter.
+  await Promise.resolve();
+  assert.equal(exitCalledWith, 1);
+  assert.equal(signals.listenerCount('SIGINT'), 0);
+  assert.equal(signals.listenerCount('SIGTERM'), 0);
 });
 test('excessive signals trigger immediate exit emergency hatch', async () => {
-  let exitCalls = [];
-  const harness = {
-    record: () => {},
-    blockPending: () => {},
-    finish: () => new Promise(resolve => setTimeout(resolve, 1000)),
-  };
-
-  const handler = createInterruptionHandler({
+  const signals = new EventEmitter();
+  const exitCalls = [];
+  let releaseFinish;
+  const cleanup = new Promise(resolve => { releaseFinish = resolve; });
+  const lifecycle = createRunnerLifecycle({
     request: { mode: 'workflow', deployment: TARGET.deployment, id: 'qa-signal-test' },
-    harness,
-    writeRecovery: () => {},
-    exit: code => { exitCalls.push(code); },
+    harness: { record() {}, blockPending() {}, finish: () => cleanup },
+    signals, writeRecovery() {}, exit: code => { exitCalls.push(code); },
   });
-
-  handler();
-  handler();
-  assert.equal(exitCalls.length, 0);
-
-  handler();
+  signals.emit('SIGINT');
+  signals.emit('SIGINT');
+  assert.deepEqual(exitCalls, []);
+  signals.emit('SIGINT');
   assert.deepEqual(exitCalls, [1]);
+  releaseFinish();
+  await lifecycle.finish();
 });
 test('skipped, blocked, and empty checks cannot become a passing report', () => {
   assert.equal(evidenceStatus([]), 'blocked');

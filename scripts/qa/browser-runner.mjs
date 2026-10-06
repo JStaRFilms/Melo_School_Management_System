@@ -6,10 +6,16 @@ import { roleJourneys } from './role-journeys.mjs';
 import { explorationScript, readDeclaredEffects, validateDeclaredModulePermission } from './exploration.mjs';
 import { writeJson, ROOT, backendRecoveryFile } from './core.mjs';
 
-export function createInterruptionHandler({ request, harness, writeRecovery = writeJson, exit = process.exit }) {
+export function createRunnerLifecycle({ request, harness, signals = process, writeRecovery = writeJson, exit = process.exit }) {
   let interrupted = false;
   let interruptCount = 0;
-  return async function handleInterruption() {
+  let finishing;
+  // Normal completion and interruption share cleanup; listeners outlive it.
+  const finish = () => finishing ??= Promise.resolve().then(() => harness.finish()).finally(() => {
+    signals.off('SIGTERM', handleInterruption);
+    signals.off('SIGINT', handleInterruption);
+  });
+  async function handleInterruption() {
     interruptCount++;
     if (interrupted) {
       if (interruptCount >= 3) exit(1);
@@ -29,10 +35,13 @@ export function createInterruptionHandler({ request, harness, writeRecovery = wr
     harness.record('Runner time limit or operator interruption', 'blocked', 'Remaining criteria were not exercised. Inspect ambiguous writes before retrying.');
     harness.blockPending('Not exercised before runner interruption.');
     try {
-      await harness.finish();
+      await finish();
     } catch { /* Teardown errors are ignored so exit is reached. */ }
     exit(1);
-  };
+  }
+  signals.on('SIGTERM', handleInterruption);
+  signals.on('SIGINT', handleInterruption);
+  return { get interrupted() { return interrupted; }, finish };
 }
 
 export async function runBrowser(runDirectory = process.argv[2]) {
@@ -40,19 +49,15 @@ export async function runBrowser(runDirectory = process.argv[2]) {
   const harness = new BrowserHarness(directory, request, state, request.mode === 'roles'
     ? 'Admin policy draft/discard, Teacher assigned roster selection/reload/mobile and UI denial from Admin, Parent linked-pupil learning search/detail/mobile. No scores, results, billing, providers, or cross-tenant behavior verified.'
     : 'Exploratory scope has not loaded.');
-  let interrupted = false;
-  const handleInterruption = createInterruptionHandler({
-    request,
-    harness,
-    exit: code => { interrupted = true; process.exit(code); },
-  });
-  process.on('SIGTERM', handleInterruption);
-  process.on('SIGINT', handleInterruption);
+  const lifecycle = createRunnerLifecycle({ request, harness });
   try {
     if (request.mode === 'roles') {
       for (const role of request.roles) harness.declareSteps(role, roleJourneys[role]);
       await harness.begin();
-      for (const role of request.roles) await harness.runSteps(role, roleJourneys[role]);
+      for (const role of request.roles) {
+        if (lifecycle.interrupted) break;
+        await harness.runSteps(role, roleJourneys[role]);
+      }
     } else {
       const script = explorationScript(request.script.filename);
       if (script.sha256 !== request.script.sha256) throw new Error('Exploratory module changed after its run was prepared.');
@@ -76,6 +81,7 @@ export async function runBrowser(runDirectory = process.argv[2]) {
         const complete = new Map();
         const shared = { runId: request.id, directory, inspectionBefore: request.inspection, recovery: request.recovery };
         for (const phase of module.phases) {
+          if (lifecycle.interrupted) break;
           if (!phase.alwaysRun && (phase.dependsOn ?? []).some(id => !complete.get(id))) {
             for (const name of harness.declareSteps(phase.role, phase.steps, phase.id)) harness.record(name, 'blocked', 'A required prior phase did not complete.');
             complete.set(phase.id, false);
@@ -83,15 +89,13 @@ export async function runBrowser(runDirectory = process.argv[2]) {
           }
           complete.set(phase.id, await harness.runSteps(phase.role, phase.steps, { phase: phase.id, shared }));
         }
-      } else await harness.runSteps(request.role, module.steps);
+      } else if (!lifecycle.interrupted) await harness.runSteps(request.role, module.steps);
     }
   } catch (error) {
     harness.record('Workflow prerequisites', 'blocked', 'Module, browser, or declared-effect prerequisite was unavailable. Raw details remain private.');
     fs.writeFileSync(path.join(directory, 'private-workflow-failure.txt'), String(error.stack ?? error), { mode: 0o600 });
   } finally {
-    process.off('SIGTERM', handleInterruption);
-    process.off('SIGINT', handleInterruption);
-    if (!interrupted) await harness.finish();
+    await lifecycle.finish();
   }
 }
 

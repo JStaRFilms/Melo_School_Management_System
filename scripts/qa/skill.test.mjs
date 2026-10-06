@@ -6,7 +6,7 @@ import { ROOT } from './core.mjs';
 
 const folder = path.join(ROOT, '.agents/skills/verify-melo');
 test('project verification skill has actionable versioned frontmatter and an AGENTS pointer', () => {
-  const text = fs.readFileSync(path.join(folder, 'SKILL.md'), 'utf8');
+  const text = fs.readFileSync(path.join(folder, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
   const front = text.match(/^---\n([\s\S]*?)\n---\n/);
   assert.ok(front);
   for (const key of ['name', 'description', 'author', 'coauthored', 'version']) assert.match(front[1], new RegExp(`^${key}: .+`, 'm'));
