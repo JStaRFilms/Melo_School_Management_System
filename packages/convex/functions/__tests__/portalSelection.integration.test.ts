@@ -36,7 +36,7 @@ async function fixture() {
     const archivedUser = await ctx.db.insert("users", { schoolId: schoolA, authId: `${TOKEN}-arch`, authTokenIdentifier: `${TOKEN}-arch`, personId: archPerson, name: "Arch", email: "arch@p9.test", role: "student", isArchived: true, createdAt: now, updatedAt: now });
     await ctx.db.insert("branchMemberships", { personId: archPerson, schoolId: schoolA, legacyUserId: archivedUser, isDefaultBranch: true, status: "active", joinedAt: now, updatedAt: now });
     const archivedStudent = await ctx.db.insert("students", { schoolId: schoolA, classId: classA, userId: archivedUser, admissionNumber: "A4", enrollmentStatus: "transferred_out", createdAt: now, updatedAt: now });
-    return { schoolA, schoolB, active1, active2, inactive, foreign, archivedStudent };
+    return { schoolA, schoolB, parentUser, active1, active2, inactive, foreign, archivedStudent };
   });
   const parent = t.withIdentity({ tokenIdentifier: TOKEN, subject: TOKEN, issuer: "test", authenticatedAt: Date.now() });
   const archivedIdentity = t.withIdentity({ tokenIdentifier: `${TOKEN}-arch`, subject: `${TOKEN}-arch`, issuer: "test", authenticatedAt: Date.now() });
@@ -44,6 +44,71 @@ async function fixture() {
 }
 
 describe("portal selection ownership (consolidation P9)", () => {
+  it.each(["shared logo", "asset-bound logo", "conflicting student photo"])(
+    "keeps parent access and hides the %s without exposing the storage object",
+    async (conflict) => {
+      const f = await fixture();
+      await f.t.run(async (ctx) => {
+        const logo = await ctx.storage.store(new Blob(["logo"], { type: "image/png" }));
+        const photo = await ctx.storage.store(new Blob(["photo"], { type: "image/png" }));
+        await ctx.db.patch(f.schoolA, { logoStorageId: logo });
+        await ctx.db.patch(f.active1, { photoStorageId: photo });
+        if (conflict === "shared logo") {
+          await ctx.db.patch(f.schoolB, { logoStorageId: logo });
+        } else if (conflict === "asset-bound logo") {
+          const now = Date.now();
+          await ctx.db.insert("assetUploadIntents", {
+            schoolId: f.schoolA,
+            requestedByTokenIdentifier: TOKEN,
+            requestedByUserId: f.parentUser,
+            storageId: logo,
+            status: "pending",
+            createdAt: now,
+            updatedAt: now,
+          });
+        } else {
+          await ctx.db.patch(f.schoolB, { logoStorageId: photo });
+        }
+      });
+
+      expect(await f.parent.query(api.functions.portal.canAccessPortal, {})).toBe(true);
+      const workspace = await f.parent.query(api.functions.portal.getWorkspaceData, { studentId: f.active1 });
+      const logoUrl = conflict === "conflicting student photo" ? expect.stringMatching(/^https?:/) : null;
+      expect(workspace.school.logoUrl).toEqual(logoUrl);
+      expect(workspace.selectedStudent).toMatchObject({
+        studentId: f.active1,
+        schoolLogoUrl: logoUrl,
+        photoUrl: conflict === "conflicting student photo" ? null : expect.stringMatching(/^https?:/),
+      });
+      expect(await f.parent.query(api.functions.portal.getBillingData, { studentId: f.active1 }))
+        .toMatchObject({ selectedStudentId: f.active1, householdSummary: { studentCount: 3 } });
+    },
+  );
+
+  it("still denies unauthenticated and unlinked accounts and archived students", async () => {
+    const f = await fixture();
+    expect(await f.t.query(api.functions.portal.canAccessPortal, {})).toBe(false);
+    const unlinked = f.t.withIdentity({ tokenIdentifier: "test|unlinked-parent", subject: "unlinked-parent" });
+    await f.t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("users", {
+        schoolId: f.schoolA,
+        authId: "unlinked-parent",
+        authTokenIdentifier: "test|unlinked-parent",
+        name: "Unlinked Parent",
+        email: "unlinked@p9.test",
+        role: "parent",
+        createdAt: now,
+        updatedAt: now,
+      });
+      for (const studentId of [f.active1, f.active2, f.inactive]) {
+        await ctx.db.patch(studentId, { isArchived: true });
+      }
+    });
+    expect(await unlinked.query(api.functions.portal.canAccessPortal, {})).toBe(false);
+    expect(await f.parent.query(api.functions.portal.canAccessPortal, {})).toBe(false);
+  });
+
   it("defaults to an active child and selects explicit ids", async () => {
     const f = await fixture();
     const def = await f.parent.query(api.functions.portal.getPortalShellContext, {});

@@ -267,12 +267,23 @@ export const canAccessPortal = query({
   handler: async (ctx) => {
     try {
       const portalAuth = await resolvePortalMemberships(ctx);
-      return (await getAccessibleStudentsAcrossPortalMemberships(ctx, portalAuth)).length > 0;
+      return (await getPortalStudentAccess(ctx, portalAuth)).length > 0;
     } catch {
       return false;
     }
   },
 });
+
+// Ownership-denied optional images stay hidden without blocking family access.
+async function getPortalImageUrl(ctx: QueryCtx, storageId: Id<"_storage"> | undefined) {
+  if (!storageId) return null;
+  try {
+    return await getUnboundStorageUrl(ctx, storageId);
+  } catch (error) {
+    if (isStorageOwnershipDenied(error)) return null;
+    throw error;
+  }
+}
 
 async function getAccessibleStudentsAcrossPortalMemberships(ctx: QueryCtx, portalAuth: PortalAuth) {
   const access = await getPortalStudentAccess(ctx, portalAuth);
@@ -291,7 +302,7 @@ async function getAccessibleStudentsAcrossPortalMemberships(ctx: QueryCtx, porta
     entries.push({
       ...entry,
       school,
-      schoolLogoUrl: school.logoStorageId ? await getUnboundStorageUrl(ctx, school.logoStorageId) : null,
+      schoolLogoUrl: await getPortalImageUrl(ctx, school.logoStorageId),
       className,
     });
   }
@@ -321,19 +332,14 @@ async function releasedPortalReport(
     .withIndex("by_student_session_term", q => q.eq("studentId", studentId).eq("sessionId", sessionId).eq("termId", termId))
     .take(2);
   if (issued.length !== 1 || issued[0]._id !== frozen._id) return null;
-  const safeImage = async (id: Id<"_storage"> | undefined) => {
-    if (!id) return null;
-    try { return await getUnboundStorageUrl(ctx, id); }
-    catch (error) { if (isStorageOwnershipDenied(error)) return null; throw error; }
-  };
   const policy = await ctx.db.query("sessionScoringPolicies")
     .withIndex("by_school_and_sessionId", q => q.eq("schoolId", schoolId).eq("sessionId", sessionId)).unique();
   return { ...frozen.report,
     ...(policy && policy.version > (frozen.scoringPolicyVersion ?? 0) ? {
       scoringPolicyWarning: "Session scores changed after certification. This issued report is unchanged. Replacement certification for an already issued report is not available; review current scores separately.",
     } : {}),
-    schoolLogoUrl: await safeImage(frozen.schoolLogoStorageId),
-    student: { ...frozen.report.student, photoUrl: await safeImage(frozen.studentPhotoStorageId) } };
+    schoolLogoUrl: await getPortalImageUrl(ctx, frozen.schoolLogoStorageId),
+    student: { ...frozen.report.student, photoUrl: await getPortalImageUrl(ctx, frozen.studentPhotoStorageId) } };
 }
 
 // A published class does not by itself prove a student's historical class.
@@ -480,7 +486,7 @@ export const getWorkspaceData = query({
       studentRows.map(async ({ student, relationship, school: studentSchool, schoolLogoUrl, className }) => {
         const [studentUser, photoUrl] = await Promise.all([
           ctx.db.get(student.userId),
-          student.photoStorageId ? getUnboundStorageUrl(ctx, student.photoStorageId) : null,
+          getPortalImageUrl(ctx, student.photoStorageId),
         ]);
 
         const studentUserRecord = studentUser as
@@ -690,7 +696,7 @@ export const getWorkspaceData = query({
       school: {
         id: school._id,
         name: normalizeHumanName(school.name),
-        logoUrl: school.logoStorageId ? await getUnboundStorageUrl(ctx, school.logoStorageId) : null,
+        logoUrl: await getPortalImageUrl(ctx, school.logoStorageId),
         theme: {
           primaryColor: "#020617",
           accentColor: "#2563eb",
