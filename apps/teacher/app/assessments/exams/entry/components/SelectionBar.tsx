@@ -65,10 +65,11 @@ export function SelectionBar({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Session Selector */}
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold editorial-spacing text-obsidian-400">
+          <label htmlFor="exam-entry-session" className="text-[10px] font-bold editorial-spacing text-obsidian-400">
             Session
           </label>
           <select
+            id="exam-entry-session"
             value={selection.sessionId ?? ""}
             onChange={(e) =>
               updateSelection("sessionId", e.target.value || null)
@@ -89,10 +90,11 @@ export function SelectionBar({
 
         {/* Term Selector */}
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold editorial-spacing text-obsidian-400">
+          <label htmlFor="exam-entry-term" className="text-[10px] font-bold editorial-spacing text-obsidian-400">
             Term
           </label>
           <select
+            id="exam-entry-term"
             value={selection.termId ?? ""}
             onChange={(e) => updateSelection("termId", e.target.value || null)}
             disabled={!selection.sessionId || isLoadingTerms}
@@ -115,10 +117,11 @@ export function SelectionBar({
 
         {/* Class Selector */}
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold editorial-spacing text-obsidian-400">
+          <label htmlFor="exam-entry-class" className="text-[10px] font-bold editorial-spacing text-obsidian-400">
             Class
           </label>
           <select
+            id="exam-entry-class"
             value={selection.classId ?? ""}
             onChange={(e) => updateSelection("classId", e.target.value || null)}
             disabled={!selection.termId || isLoadingClasses}
@@ -141,10 +144,11 @@ export function SelectionBar({
 
         {/* Subject Selector */}
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold editorial-spacing text-obsidian-400">
+          <label htmlFor="exam-entry-subject" className="text-[10px] font-bold editorial-spacing text-obsidian-400">
             Subject
           </label>
           <select
+            id="exam-entry-subject"
             value={selection.subjectId ?? ""}
             onChange={(e) =>
               updateSelection("subjectId", e.target.value || null)

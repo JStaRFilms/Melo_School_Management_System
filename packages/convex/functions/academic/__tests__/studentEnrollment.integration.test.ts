@@ -533,4 +533,32 @@ describe("student enrollment registered functions", () => {
 
     await expect(t.withIdentity(adminIdentity).query(api.functions.academic.studentEnrollment.getParentEmailReview, { email: "not-an-email" })).resolves.toEqual({ email: "not-an-email", matches: [] });
   });
+
+  it("preserves existing member relationship when linking student without a specified relationship", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const now = 1;
+      const schoolId = await ctx.db.insert("schools", { name: "Echo School", slug: "echo-family-link", status: "active", createdAt: now, updatedAt: now });
+      const adminId = await ctx.db.insert("users", { schoolId, authId: adminIdentity.subject, authTokenIdentifier: adminIdentity.tokenIdentifier, name: "Admin User", email: "admin@echo.test", role: "admin", createdAt: now, updatedAt: now });
+      const parentId = await ctx.db.insert("users", { schoolId, authId: "parent-echo-auth", authTokenIdentifier: "https://auth.school.test|parent-echo-auth", name: "Grace Adeyemi", email: "parent@echo.test", role: "parent", createdAt: now, updatedAt: now });
+      const familyId = await ctx.db.insert("families", { schoolId, name: "Adeyemi Family", createdAt: now, updatedAt: now, createdBy: adminId, updatedBy: adminId });
+      const existingMemberId = await ctx.db.insert("familyMembers", { schoolId, familyId, parentUserId: parentId, relationship: "Mother", isPrimaryContact: true, createdAt: now, updatedAt: now, createdBy: adminId, updatedBy: adminId });
+      const classId = await ctx.db.insert("classes", { schoolId, name: "Primary 1", gradeName: "Primary 1", level: "Primary", createdAt: now, updatedAt: now });
+      const studentUserId = await ctx.db.insert("users", { schoolId, authId: "student-echo-auth", authTokenIdentifier: "https://auth.school.test|student-echo-auth", name: "Synthetic Pupil", email: "pupil@echo.test", role: "student", createdAt: now, updatedAt: now });
+      const studentId = await ctx.db.insert("students", { schoolId, classId, userId: studentUserId, admissionNumber: "QA-ECHO-001", familyId, createdAt: now, updatedAt: now });
+      return { parentId, familyId, existingMemberId, studentId };
+    });
+
+    const result = await t.withIdentity(adminIdentity).mutation(api.functions.academic.studentEnrollment.upsertStudentFamilyLink, {
+      studentId: ids.studentId,
+      email: "parent@echo.test",
+      firstName: "Grace",
+      lastName: "Adeyemi",
+      confirmDuplicateLink: true,
+    });
+
+    expect(result.familyMemberId).toBe(ids.existingMemberId);
+    const member = await t.run(async (ctx) => ctx.db.get(ids.existingMemberId));
+    expect(member?.relationship).toBe("Mother");
+  });
 });

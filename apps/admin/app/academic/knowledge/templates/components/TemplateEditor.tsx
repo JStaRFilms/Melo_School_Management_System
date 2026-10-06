@@ -40,7 +40,7 @@ export function TemplateEditor({
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Identity & Configuration Section */}
-      <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
+      <div className="grid min-w-0 gap-8 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
 
           <AdminSurface intensity="low" className="p-4 lg:p-6 space-y-4 lg:space-y-6">
