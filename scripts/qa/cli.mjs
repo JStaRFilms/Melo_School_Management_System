@@ -146,7 +146,7 @@ async function browserRun(mode, opts) {
   const profile = loadProfile(state.profile);
   const inspection = await doctor(profile, state.apps, { requireFreePorts: false, allowRecovery: mode === 'workflow' && opts.recovery === true });
   for (const app of requirements.apps) if (!state.apps.includes(app)) throw new Error(`${mode} requires an owned ${app} server. Use qa:start --apps with the required apps.`);
-  const recoveryFile = path.join(QA_DIR, 'recovery-needed.json');
+  const recoveryFile = backendRecoveryFile(TARGET.deployment);
   let recovery;
   const id = `qa-${Date.now()}-${randomUUID().slice(0, 8)}`;
   await withLease('backend-content-poodle-172', { id, root: ROOT, pid: process.pid }, async () => {
@@ -154,7 +154,7 @@ async function browserRun(mode, opts) {
     // not clear an in-flight workflow's journal before its first activation.
     if (fs.existsSync(recoveryFile)) {
       recovery = readJson(recoveryFile);
-      if (recovery.deployment !== TARGET.deployment || recovery.root !== ROOT) throw new Error('Recovery marker belongs to another environment.');
+      if (recovery.deployment !== TARGET.deployment) throw new Error('Recovery marker belongs to another environment.');
       const verified = JSON.stringify(inspection.backend.activePeriod) === JSON.stringify(recovery.activePeriod) && inspection.backend.baseline.digest === recovery.baselineDigest;
       if (verified) { fs.unlinkSync(recoveryFile); recovery = null; }
       else if (!opts.recovery || mode !== 'workflow') throw new Error('A prior interrupted workflow needs calendar recovery. Restore it through UI, then doctor verifies it, or use an explicit recovery workflow.');

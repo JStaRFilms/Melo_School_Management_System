@@ -65,7 +65,17 @@ export const inspectQaFixtureInternal = internalQuery({
       if (matches.length !== 1 || matches[0].classId !== baseClasses[expected.classIndex]._id) throw new ConvexError('Original QA pupil/class relationship changed');
       return matches[0];
     });
-    if (sessions.filter(row => row.isActive).length > 1 || terms.filter(row => row.isActive).length > 1) throw new ConvexError('QA active period is ambiguous');
+    const activeSessions = sessions.filter(row => row.isActive);
+    const activeTerms = terms.filter(row => row.isActive);
+    if (activeSessions.length > 1 || activeTerms.length > 1) throw new ConvexError('QA active period is ambiguous');
+    const activeSession = activeSessions[0] ?? null;
+    const activeTerm = activeTerms[0] ?? null;
+    if (activeTerm && (!activeSession || activeTerm.sessionId !== activeSession._id)) {
+      throw new ConvexError('QA active term does not belong to the active session');
+    }
+    if (activeSession && !activeTerm) {
+      throw new ConvexError('QA active session has no active term');
+    }
     const originalIds = new Set(baseStudents.map(row => row._id));
     const originalClassIds = new Set(baseClasses.map(row => row._id));
     for (const klass of classes) if (!originalClassIds.has(klass._id) && !tagged(klass.name)) throw new ConvexError('Additional class is not a run-tagged QA fixture');
@@ -94,8 +104,8 @@ export const inspectQaFixtureInternal = internalQuery({
       schoolName: school.name, actors,
       counts: { students: students.length, classes: classes.length, studentInvoices: invoices.length, assessmentRecords: assessments.length },
       baselineStudents: baseStudents.length, baselineClasses: baseClasses.length,
-      activeSession: sessions.find(row => row.isActive)?.name ?? null,
-      activeTerm: terms.find(row => row.isActive)?.name ?? null,
+      activeSession: activeSession?.name ?? null,
+      activeTerm: activeTerm?.name ?? null,
       retainedQaClaims: claims.length,
       baselineJson: JSON.stringify({
         students: stable(baseStudents), users: stable(schoolUsers.filter(user => baseStudents.some(student => student.userId === user._id))),

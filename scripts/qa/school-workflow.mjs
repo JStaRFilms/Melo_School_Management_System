@@ -157,6 +157,9 @@ export const phases = [{ id: 'setup', role: 'admin', steps: [
                         await page.getByPlaceholder('e.g. John').fill('Grace');
                         await page.getByPlaceholder('e.g. Doe').fill('Adeyemi');
                         await page.getByPlaceholder('parent@example.com').fill('parent@demo-academy.school');
+                        const relationshipInput = page.getByPlaceholder('Relationship to student...');
+                        if (await relationshipInput.count())
+                            await relationshipInput.fill('Mother');
                         await page.getByRole('button', { name: 'Link to Household', exact: true }).click();
                         const linked = page.getByText('parent@demo-academy.school', { exact: true }).first();
                         await expect(confirm.or(linked).first()).toBeVisible();
@@ -166,6 +169,7 @@ export const phases = [{ id: 'setup', role: 'admin', steps: [
                     await expect(confirm).toHaveCount(0);
                     await expect(page.getByText('Linked Contacts', { exact: true })).toBeVisible();
                     await expect(page.getByText('parent@demo-academy.school', { exact: true }).filter({ visible: true }).first()).toBeVisible();
+                    await expect(page.getByText('Mother', { exact: true }).filter({ visible: true }).first()).toBeVisible();
                     f.parentLinked = true;
                     save(shared);
                     await capture('parent-linked');

@@ -3289,8 +3289,10 @@ export const upsertStudentFamilyLink = mutation({
     }
 
     if (existingLink) {
+      const nextRelationship =
+        relationship !== undefined ? relationship : existingLink.relationship;
       await ctx.db.patch(existingLink._id, {
-        relationship,
+        relationship: nextRelationship,
         isPrimaryContact: nextIsPrimaryContact,
         updatedAt: now,
         updatedBy: userId,

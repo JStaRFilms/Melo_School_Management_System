@@ -7,10 +7,11 @@ import net from 'node:net';
 import { EventEmitter } from 'node:events';
 import {
   TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable,
-  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, preservationExpectation, validateQaInspection, validateRecoveryState, isCleanStoppedState,
+  acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, preservationExpectation, validateQaInspection, validateRecoveryState, isCleanStoppedState, backendRecoveryFile,
 } from './core.mjs';
 import { options, validateOptions, waitForChild } from './cli.mjs';
 import { reportHtml } from './report.mjs';
+import { createInterruptionHandler } from './browser-runner.mjs';
 
 function temporary(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'melo-qa-test-'));
@@ -111,7 +112,7 @@ test('only a stopped same-worktree owner with no recorded leases is idempotently
 });
 test('supervisor ownership requires exact script and run token', () => {
   const state = { id: 'qa-first', pid: 1234 };
-  const command = `node ${ROOT}scripts/qa/supervisor.mjs --id qa-first`;
+  const command = `node ${path.join(ROOT, 'scripts/qa/supervisor.mjs')} --id qa-first`;
   assert.equal(ownsSupervisor(state, command), true);
   assert.equal(ownsSupervisor(state, `${command}-other`), false);
   assert.equal(ownsSupervisor(state, 'node unrelated-app.mjs'), false);
@@ -135,14 +136,121 @@ test('preservation target comes only from fresh inspection or a matching recover
   assert.throws(() => preservationExpectation(inspection, { ...recovery, deployment: 'dev:scrupulous-chinchilla-25' }), /does not match/);
   assert.throws(() => preservationExpectation({ ...inspection, activePeriod: { session: null, term: null } }, null), /pre-write/);
 });
-test('recovery marker blocks a changed calendar and is bound to worktree, deployment, and cohort', () => {
+test('recovery marker blocks a changed calendar and is bound to deployment and cohort across worktrees', () => {
   const backend = { baseline: { digest: 'a'.repeat(64) }, activePeriod: { session: 'QA fixture', term: 'Fixture term' } };
   const marker = { root: ROOT, deployment: TARGET.deployment, baselineDigest: backend.baseline.digest, activePeriod: { session: 'Original', term: 'Third Term' } };
   assert.throws(() => validateRecoveryState(marker, backend), /Interrupted QA changed/);
   assert.equal(validateRecoveryState(marker, backend, { allowRecovery: true }).target.session, 'Original');
-  assert.throws(() => validateRecoveryState({ ...marker, root: '/wrong' }, backend, { allowRecovery: true }), /does not match/);
+  assert.equal(validateRecoveryState({ ...marker, root: '/wrong' }, backend, { allowRecovery: true }).target.session, 'Original');
   assert.throws(() => validateRecoveryState({ ...marker, baselineDigest: 'b'.repeat(64) }, backend, { allowRecovery: true }), /does not match/);
   assert.throws(() => validateRecoveryState({ ...marker, deployment: 'dev:scrupulous-chinchilla-25' }, backend, { allowRecovery: true }), /does not match/);
+});
+test('cross-worktree recovery: second worktree recognizes interrupted calendar on shared target lease directory', t => {
+  const sharedLockDir = temporary(t);
+  const worktreeA = path.join(temporary(t), 'worktree-a');
+  const worktreeB = path.join(temporary(t), 'worktree-b');
+  fs.mkdirSync(worktreeA, { recursive: true });
+  fs.mkdirSync(worktreeB, { recursive: true });
+
+  const targetDeployment = 'dev:content-poodle-172';
+  const sharedRecoveryFile = backendRecoveryFile(targetDeployment, sharedLockDir);
+  assert.equal(fs.existsSync(sharedRecoveryFile), false);
+
+  const baselineDigest = 'c'.repeat(64);
+  const originalActive = { session: 'Session 2025/2026', term: 'First Term' };
+  const changedActive = { session: 'QA Shifted Session', term: 'QA Shifted Term' };
+
+  const recoveryMarker = {
+    root: worktreeA,
+    deployment: targetDeployment,
+    activePeriod: originalActive,
+    baselineDigest,
+    runId: 'qa-run-worktree-a',
+  };
+  fs.writeFileSync(sharedRecoveryFile, JSON.stringify(recoveryMarker), 'utf8');
+  assert.equal(fs.existsSync(sharedRecoveryFile), true);
+
+  const backendStateAtB = {
+    baseline: { digest: baselineDigest },
+    activePeriod: changedActive,
+  };
+  const markerReadByB = JSON.parse(fs.readFileSync(sharedRecoveryFile, 'utf8'));
+
+  assert.throws(() => validateRecoveryState(markerReadByB, backendStateAtB), /Interrupted QA changed the active school calendar/);
+
+  const recoveryResult = validateRecoveryState(markerReadByB, backendStateAtB, { allowRecovery: true });
+  assert.equal(recoveryResult.restored, false);
+  assert.deepEqual(recoveryResult.target, originalActive);
+
+  const restoredBackendAtB = {
+    baseline: { digest: baselineDigest },
+    activePeriod: originalActive,
+  };
+  const verifiedResult = validateRecoveryState(markerReadByB, restoredBackendAtB, { allowRecovery: true });
+  assert.equal(verifiedResult.restored, true);
+});
+test('duplicate SIGINT during asynchronous cleanup is absorbed and allows runner cleanup to finish', async () => {
+  let finishStarted = false;
+  let finishCompleted = false;
+  let exitCalledWith = null;
+  let recoveryWritten = null;
+
+  const harness = {
+    record: () => {},
+    blockPending: () => {},
+    finish: async () => {
+      finishStarted = true;
+      await new Promise(resolve => setTimeout(resolve, 50));
+      finishCompleted = true;
+    },
+  };
+
+  const handler = createInterruptionHandler({
+    request: {
+      mode: 'workflow',
+      deployment: TARGET.deployment,
+      id: 'qa-signal-test',
+      inspection: { activePeriod: { session: 'S', term: 'T' }, baseline: { digest: 'd'.repeat(64) } },
+    },
+    harness,
+    writeRecovery: (file, data) => { recoveryWritten = data; },
+    exit: code => { exitCalledWith = code; },
+  });
+
+  const p1 = handler();
+  assert.equal(finishStarted, true);
+  assert.equal(finishCompleted, false);
+  assert.equal(exitCalledWith, null);
+  assert.notEqual(recoveryWritten, null);
+
+  const p2 = handler();
+  assert.equal(exitCalledWith, null);
+
+  await Promise.all([p1, p2]);
+  assert.equal(finishCompleted, true);
+  assert.equal(exitCalledWith, 1);
+});
+test('excessive signals trigger immediate exit emergency hatch', async () => {
+  let exitCalls = [];
+  const harness = {
+    record: () => {},
+    blockPending: () => {},
+    finish: () => new Promise(resolve => setTimeout(resolve, 1000)),
+  };
+
+  const handler = createInterruptionHandler({
+    request: { mode: 'workflow', deployment: TARGET.deployment, id: 'qa-signal-test' },
+    harness,
+    writeRecovery: () => {},
+    exit: code => { exitCalls.push(code); },
+  });
+
+  handler();
+  handler();
+  assert.equal(exitCalls.length, 0);
+
+  handler();
+  assert.deepEqual(exitCalls, [1]);
 });
 test('skipped, blocked, and empty checks cannot become a passing report', () => {
   assert.equal(evidenceStatus([]), 'blocked');

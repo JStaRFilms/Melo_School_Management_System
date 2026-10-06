@@ -40,8 +40,9 @@ export const inspectQaEnvironment = action({
     }
     const origins = getTrustedOrigins();
     const originsTrusted = [3101, 3102, 3103].every(port => origins.includes(`http://localhost:${port}`));
+    const activeCalendarReady = Boolean(fixture.activeSession && fixture.activeTerm);
     return {
-      cloudUrl: CLOUD, schoolName: fixture.schoolName, qaReady: originsTrusted, originsTrusted,
+      cloudUrl: CLOUD, schoolName: fixture.schoolName, qaReady: originsTrusted && activeCalendarReady, originsTrusted,
       baselineStudents: fixture.baselineStudents, baselineClasses: fixture.baselineClasses,
       baselineDigest: createHash('sha256').update(fixture.baselineJson).digest('hex'),
       activeSession: fixture.activeSession, activeTerm: fixture.activeTerm, counts: fixture.counts, retainedQaClaims: fixture.retainedQaClaims,

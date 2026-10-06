@@ -105,6 +105,27 @@ test('multiple active periods are rejected instead of picking the first', async 
   await t.run(ctx => ctx.db.insert('academicSessions', { schoolId, name: 'QA-RC-ACTIVE', startDate: 1, endDate: 2, isActive: true, createdAt: 1, updatedAt: 1 }));
   await expect(t.action(inspect, args)).rejects.toThrow(/active period is ambiguous/);
 });
+test('active term from a mismatched session is rejected instead of accepted as ready/baseline', async () => {
+  const { t, schoolId } = await fixture();
+  await t.run(async ctx => {
+    const otherSessionId = await ctx.db.insert('academicSessions', {
+      schoolId,
+      name: '2026/2027',
+      startDate: 1000,
+      endDate: 2000,
+      isActive: false,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const activeTerm = await ctx.db
+      .query('academicTerms')
+      .withIndex('by_school', q => q.eq('schoolId', schoolId))
+      .filter(q => q.eq(q.field('isActive'), true))
+      .first();
+    await ctx.db.patch(activeTerm!._id, { sessionId: otherSessionId });
+  });
+  await expect(t.action(inspect, args)).rejects.toThrow(/QA active term does not belong to the active session/);
+});
 test('normal development and production are rejected even with the operator values', async () => {
   const { t } = await fixture();
   for (const url of ['https://scrupulous-chinchilla-25.eu-west-1.convex.cloud', 'https://production.convex.cloud']) {

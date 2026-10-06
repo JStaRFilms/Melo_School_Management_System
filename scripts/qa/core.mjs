@@ -19,6 +19,10 @@ export const APPS = Object.freeze({
   portal: { port: 3103, readiness: '/sign-in' },
 });
 export const LOCK_DIR = path.join(os.tmpdir(), `melo-agent-qa-${process.getuid?.() ?? 'user'}`);
+export function backendRecoveryFile(deployment = TARGET.deployment, directory = LOCK_DIR) {
+  const safeDeployment = String(deployment).replace(/[^a-z0-9_-]/gi, '_');
+  return path.join(directory, `recovery-${safeDeployment}.json`);
+}
 const targetKeys = {
   CONVEX_DEPLOYMENT: TARGET.deployment,
   CONVEX_URL: TARGET.cloudUrl,
@@ -129,8 +133,10 @@ export function releaseLease(filename, id) {
 }
 
 export function ownsSupervisor(state, command) {
+  const normalizedCommand = command.replaceAll('\\', '/');
+  const normalizedScript = path.join(ROOT, 'scripts/qa/supervisor.mjs').replaceAll('\\', '/');
   return Number.isInteger(state.pid) && state.pid > 1 && /^[a-z0-9-]+$/.test(state.id) &&
-    command.includes(path.join(ROOT, 'scripts/qa/supervisor.mjs')) && command.endsWith(` --id ${state.id}`);
+    normalizedCommand.includes(normalizedScript) && normalizedCommand.endsWith(` --id ${state.id}`);
 }
 export function processCommand(pid) {
   try { return execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim(); }
@@ -195,7 +201,7 @@ export async function doctor(profile, apps, { requireFreePorts = true, allowReco
     if (requireFreePorts && !await portAvailable(APPS[app].port)) throw new Error(`${app}: trusted port ${APPS[app].port} is occupied. No existing server will be borrowed or killed.`);
   }
   const backend = await inspectBackend(profile.values);
-  const recoveryFile = path.join(QA_DIR, 'recovery-needed.json');
+  const recoveryFile = backendRecoveryFile(profile.values.CONVEX_DEPLOYMENT ?? TARGET.deployment);
   if (fs.existsSync(recoveryFile)) {
     validateRecoveryState(readJson(recoveryFile), backend, { allowRecovery });
   }
@@ -205,15 +211,15 @@ export async function doctor(profile, apps, { requireFreePorts = true, allowReco
 export function preservationExpectation(inspection, recovery) {
   if (!inspection?.baseline?.digest || !inspection?.activePeriod?.session || !inspection?.activePeriod?.term) throw new Error('Independent pre-write baseline and active period are required.');
   if (!recovery) return { activePeriod: inspection.activePeriod, baselineDigest: inspection.baseline.digest };
-  if (recovery.deployment !== TARGET.deployment || recovery.root !== ROOT ||
+  if (recovery.deployment !== TARGET.deployment ||
       !recovery.activePeriod?.session || !recovery.activePeriod?.term || recovery.baselineDigest !== inspection.baseline.digest) {
     throw new Error('Recovery marker does not match the independently inspected original school baseline.');
   }
   return { activePeriod: recovery.activePeriod, baselineDigest: recovery.baselineDigest };
 }
 
-export function validateRecoveryState(marker, backend, { allowRecovery = false, root = ROOT } = {}) {
-  if (marker.root !== root || marker.deployment !== TARGET.deployment || !backend?.baseline?.digest || marker.baselineDigest !== backend.baseline.digest) throw new Error('Recovery marker does not match this worktree and original cohort. Pause and inspect locally.');
+export function validateRecoveryState(marker, backend, { allowRecovery = false } = {}) {
+  if (marker.deployment !== TARGET.deployment || !backend?.baseline?.digest || marker.baselineDigest !== backend.baseline.digest) throw new Error('Recovery marker does not match the deployment and original cohort. Pause and inspect locally.');
   const restored = Boolean(marker.activePeriod?.session && marker.activePeriod?.term && JSON.stringify(marker.activePeriod) === JSON.stringify(backend.activePeriod));
   if (!restored && !allowRecovery) throw new Error('Interrupted QA changed the active school calendar. Use the explicitly recorded recovery workflow before starting more tests.');
   return { restored, target: marker.activePeriod };
