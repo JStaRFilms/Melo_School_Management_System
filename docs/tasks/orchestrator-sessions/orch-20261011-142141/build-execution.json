@@ -157,11 +157,45 @@
         ],
         "verification": "B3-parent-verification.md"
       }
+    },
+    {
+      "id": "B4",
+      "taskId": "node:delegated-task:command%3Amcp%3Aafee7acf-f998-4379-a5d7-b623c1e0e87a%3Adelegate-task%3Aorch-20261011-142141-B4-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3Aafee7acf-f998-4379-a5d7-b623c1e0e87a%3Adelegate-task%3Aorch-20261011-142141-B4-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253Aafee7acf-f998-4379-a5d7-b623c1e0e87a%253Adelegate-task%253Aorch-20261011-142141-B4-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3Aafee7acf-f998-4379-a5d7-b623c1e0e87a%3Adelegate-task%3Aorch-20261011-142141-B4-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "b6e9eb9",
+        "5ba2e8c",
+        "60e2b0a"
+      ],
+      "result": "B4-result.md",
+      "parentChecks": {
+        "convexTests": 91,
+        "adminTests": 386,
+        "portalTests": 32,
+        "typecheckTargets": 7,
+        "verification": "B4-parent-verification.md"
+      }
     }
   ],
-  "pendingBuild": [
-    "B4"
-  ],
+  "pendingBuild": [],
   "gitIndexOwner": "parent",
   "deliveryBranches": {
     "PR1": {
@@ -171,8 +205,25 @@
     },
     "PR2": {
       "branch": "fix/portal-status-history-notices",
-      "baseCommit": "637d6911e4aa92b16af366de671a1c1818a9fb5a",
+      "commit": "9132f501fb57b28ee15126ae1115fb50ae54d5ca",
+      "base": {
+        "branch": "fix/identity-onboarding-portal",
+        "commit": "637d6911e4aa92b16af366de671a1c1818a9fb5a",
+        "status": "locally checked, review/browser/publish pending"
+      },
       "status": "locally checked, review/browser/publish pending"
+    },
+    "PR3": {
+      "branch": "feat/parent-profile-edit-permissions",
+      "baseCommit": "9132f501fb57b28ee15126ae1115fb50ae54d5ca",
+      "status": "implemented; final review blocker PR1 fix pending"
     }
+  },
+  "review": {
+    "id": "R1",
+    "taskId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R1-round1",
+    "status": "completed",
+    "result": "R1-result.md",
+    "disposition": "one confirmed PR1 retry blocker"
   }
 }
