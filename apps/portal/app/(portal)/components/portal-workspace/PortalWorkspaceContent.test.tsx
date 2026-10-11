@@ -29,6 +29,12 @@ const base = {
 } as unknown as PortalWorkspaceData;
 
 describe("portal report dispatch", () => {
+  it("hides profile correction entry points from student portal users", () => {
+    state.workspace = { ...base, viewer: { ...base.viewer, role: "student" } };
+    render(<PortalWorkspaceContent mode="dashboard" />);
+    expect(screen.queryByRole("button", { name: "Correct my details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Correct this child's profile" })).toBeNull();
+  });
   it("shows neutral unissued results and report without print or numeric fallback", () => {
     state.workspace = base;
     const view = render(<PortalWorkspaceContent mode="report-cards" />);

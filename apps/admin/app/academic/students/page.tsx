@@ -1240,7 +1240,8 @@ function StudentsPageContent() {
                         },
                       ]}
                     />
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Link href="/academic/students/profile-corrections" className="text-xs font-semibold underline">Parent profile corrections</Link>
                       {transferWorkspace?.allowed && <Link href="/academic/students/transfers" className="text-xs font-semibold underline">Within-group transfers</Link>}
                       <Link 
                         href="/students/import"
