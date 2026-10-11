@@ -61,7 +61,6 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   const savedPayloadKey = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const pause = useRef(false);
-  const wasAvailable = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; clearTimeout(timer.current); }; }, []);
   useEffect(() => {
@@ -97,18 +96,22 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
   }, [options.serverDraft, options.accountId, options.contextKey, options.instanceKey]);
   const sameContext = options.accountId === initialAccount.current && options.contextKey === initialContext.current && (options.instanceKey ?? 0) === initialInstance.current && options.connection.accountId === initialAccount.current;
   const available = options.connection.connected && options.connection.authenticated && sameContext;
+  let hasUnsavedChanges = options.isDirty;
+  try { hasUnsavedChanges = options.isDirty && savedPayloadKey.current !== (JSON.stringify(options.parsePayload(options.currentData)) ?? "null"); } catch { /* Invalid edits are still unsaved. */ }
   useEffect(() => {
+    const protectedStatus = ["conflict", "expired", "save_failed"].includes(statusRef.current);
     if (available) {
-      if (!wasAvailable.current) pause.current = false;
-      wasAvailable.current = true;
+      if (["connection_lost", "reauth_required", "context_mismatch"].includes(statusRef.current)) {
+        // Reconnection is not permission to overwrite a newer server revision.
+        updateStatus(hasUnsavedChanges || memoryDraft ? "recovery_pending" : lastSavedAt ? "saved" : "idle");
+        pause.current = hasUnsavedChanges || Boolean(memoryDraft);
+      }
       return;
     }
-    if (wasAvailable.current) {
-      pause.current = true;
-      updateStatus(options.connection.authenticated ? "connection_lost" : "reauth_required");
-    }
-    // A reconnect after real availability requires an explicit retry/recovery decision.
-  }, [available, options.connection.authenticated]);
+    clearTimeout(timer.current);
+    pause.current = true;
+    if (!protectedStatus) updateStatus(!options.connection.authenticated ? "reauth_required" : !sameContext ? "context_mismatch" : "connection_lost");
+  }, [available, sameContext, options.connection.authenticated, hasUnsavedChanges, memoryDraft, lastSavedAt]);
 
   const retrySave = useCallback(async (): Promise<void> => {
     clearTimeout(timer.current);
@@ -116,7 +119,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
     const o = latest.current;
     if (closed.current || finishing.current) throw new Error("This draft instance is closed.");
     if (!o.connection.connected || !o.connection.authenticated || o.connection.accountId !== initialAccount.current || o.accountId !== initialAccount.current || o.contextKey !== initialContext.current || (o.instanceKey ?? 0) !== initialInstance.current) {
-      updateStatus(o.connection.authenticated ? "connection_lost" : "reauth_required");
+      updateStatus(o.accountId !== initialAccount.current || o.contextKey !== initialContext.current || o.connection.accountId !== initialAccount.current ? "context_mismatch" : o.connection.authenticated ? "connection_lost" : "reauth_required");
       throw new Error("Reconnect and sign in to the same account before saving. Edits remain in memory.");
     }
     if (o.serverDraft === undefined || (!accepted.current && o.serverDraft) || memoryDraft) throw new Error("Resolve draft recovery before saving.");
@@ -141,7 +144,7 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
           setLastSavedAt(result.lastSavedAt);
           const now = latest.current;
           const nowKey = JSON.stringify(now.parsePayload(now.currentData)) ?? "null";
-          updateStatus(!now.connection.authenticated ? "reauth_required" : !now.connection.connected || now.connection.accountId !== now.accountId ? "connection_lost" : nowKey === snapshotKey ? "saved" : "idle");
+          updateStatus(!now.connection.authenticated ? "reauth_required" : now.connection.accountId !== initialAccount.current || now.contextKey !== initialContext.current || now.accountId !== initialAccount.current ? "context_mismatch" : !now.connection.connected ? "connection_lost" : nowKey === snapshotKey ? "saved" : "idle");
         }
         pause.current = false;
       } catch (error) {
@@ -214,11 +217,11 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
       revision.current = memoryDraft.revision;
       accepted.current = true;
       setMemoryDraft(null);
-      updateStatus("idle");
+      updateStatus("recovery_pending");
       pause.current = true; // Compare latest server state or explicitly retry; revision check remains mandatory.
     },
     discardMemoryDraft: () => { memory?.delete(memoryKey); setMemoryDraft(null); },
-    status, lastSavedAt, isOnline: available, showRecoveryModal: sameContext && showRecoveryModal, serverDraft: sameContext ? activeServerDraft : null,
+    status, hasUnsavedChanges, lastSavedAt, isOnline: available, showRecoveryModal: sameContext && showRecoveryModal, serverDraft: sameContext ? activeServerDraft : null,
     retrySave, handleResumeDraft,
     handleDiscardDraft: discard,
     /** Freeze autosave before domain submission; use revision in its atomic finish helper. */

@@ -15,11 +15,11 @@ let selectedSchoolId: string | null = null;
 let availableBranches: BranchSummary[] | undefined;
 const selectSchool = vi.fn();
 const clearSelectedSchool = vi.fn();
-vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(...args) }));
+vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(...args), useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }), useConvexConnectionState: () => ({ isWebSocketConnected: true }) }));
 vi.mock("next/navigation", () => ({ usePathname: () => path, useRouter: () => ({ replace: mocks.replace, push: mocks.push }) }));
 vi.mock("@/convex-runtime", () => ({ isConvexConfigured: () => true }));
 vi.mock("@/auth-client", () => ({ authClient: { changePassword: vi.fn() } }));
-vi.mock("@school/shared/drafts", () => ({ useDepartureGuard: () => ({ requestDeparture: mocks.departure }) }));
+vi.mock("@school/shared/drafts", async importOriginal => ({ ...await importOriginal<typeof import("@school/shared/drafts")>(), useDepartureGuard: () => ({ requestDeparture: mocks.departure }) }));
 vi.mock("../app/admin/audit/LeadershipAlerts", () => ({ LeadershipAlerts: () => null }));
 vi.mock("@/AuthProvider", () => ({ useAuth: () => ({
   session: { user: { id: "account", name: "Test Admin", role: "admin" } },

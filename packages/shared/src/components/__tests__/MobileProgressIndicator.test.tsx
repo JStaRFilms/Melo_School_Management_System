@@ -119,8 +119,8 @@ describe("MobileProgressIndicator Component", () => {
         })
       );
 
-      expect(html).toContain("Recovery pending");
-      expect(html).toContain('title="Connection lost • Recovery pending"');
+      expect(html).toContain("Server reconnecting");
+      expect(html).toContain('title="Server reconnecting"');
     });
 
     it("renders conflict and save failed states", () => {

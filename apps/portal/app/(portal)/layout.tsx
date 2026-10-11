@@ -3,7 +3,8 @@
 import { Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useQuery, useConvexAuth, useConvexConnectionState } from "convex/react";
+import { WorkspaceConnectionStatus } from "@school/shared/drafts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
@@ -103,6 +104,7 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
   return (
     <WorkspaceNavbar
       workspace="portal"
+      connectionStatus={isConvexConfigured() ? <LiveConnectionStatus /> : undefined}
       currentPath={pathname}
       fullBleed={true}
       userName={authorizedWorkspace?.viewer.name}
@@ -134,4 +136,10 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
       )}
     </WorkspaceNavbar>
   );
+}
+
+function LiveConnectionStatus() {
+  const connection = useConvexConnectionState();
+  const auth = useConvexAuth();
+  return <WorkspaceConnectionStatus connected={connection.isWebSocketConnected} authenticated={auth.isAuthenticated && !auth.isLoading} />;
 }
