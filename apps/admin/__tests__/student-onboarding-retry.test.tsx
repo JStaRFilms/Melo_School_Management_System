@@ -90,6 +90,34 @@ for (const [entry, Page] of [["standalone student-first", StudentOnboardingPage]
     expect(mocks.link).not.toHaveBeenCalled(); expect(mocks.action).not.toHaveBeenCalled();
     expect(screen.queryByText("Account Provisioned")).not.toBeInTheDocument();
   });
+
+  it(`${entry} preserves household confirmation when retrying a lost committed response`, async () => {
+    mocks.create
+      .mockRejectedValueOnce(new Error("Review the duplicate-link details and confirm"))
+      .mockRejectedValueOnce(new Error("Lost response"))
+      .mockResolvedValueOnce("student-one");
+    render(<DepartureGuardProvider><Page /></DepartureGuardProvider>);
+    fillStudent();
+    fireEvent.change(screen.getByLabelText("Contact choice"), { target: { value: "existing" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Grace Anthony.*grace@example.test/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Admit student" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", {
+      name: entry === "standalone student-first" ? "Confirm household link" : "Confirm Link",
+    }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
+    const retry = await screen.findByRole("button", { name: "Retry reviewed admission" });
+    await waitFor(() => expect(retry).toBeEnabled());
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(3));
+    const [unconfirmed, confirmed, replayed] = mocks.create.mock.calls;
+    expect(unconfirmed[0].confirmDuplicateLink).toBeUndefined();
+    expect(confirmed[0]).toMatchObject({ confirmDuplicateLink: true });
+    expect(replayed[0]).toEqual(confirmed[0]);
+    expect(confirmed[0].requestKey).toBe(unconfirmed[0].requestKey);
+    expect(mocks.link).not.toHaveBeenCalled();
+    expect(mocks.action).not.toHaveBeenCalled();
+  });
 }
 
 it("retries a lost atomic response with identical reviewed intent, never a separate family write", async () => {
