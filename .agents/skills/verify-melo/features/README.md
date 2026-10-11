@@ -22,6 +22,7 @@ Read this index before driving the app. These recipes cover the current syntheti
 Each recipe separates the built-in verified path from other entry points needing feature-specific checks. A command passing for one path does not verify the others. For a changed feature outside this map, author its acceptance steps using [exploration](../references/exploration.md), then extend the map.
 
 - [Identity and admission](identity-admission.md): unified admission, captured-field reopening, contacts, effective class/subjects, names, persisted credential states and new-student suffix policy. Component evidence exists; all browser acceptance remains blocked by the missing private profile.
+- [Parent profile corrections](parent-profile-corrections.md): initial admin permission, parent server drafts/review, one-shot immediate apply, acknowledgement reset, restricted history and student/staff denial. Local test evidence exists; browser acceptance is blocked by the missing isolated profile.
 
 ## Not covered by this cohort
 
