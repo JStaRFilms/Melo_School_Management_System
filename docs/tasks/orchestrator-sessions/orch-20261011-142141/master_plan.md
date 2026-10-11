@@ -40,15 +40,15 @@ The user explicitly requested incremental commits. Plan three PRs:
 3. Parent-permissioned own/child profile editing: initial admin grant, recoverable drafts, bold warning, immediate atomic submit/lockout and audit.
 Use stacked branches when dependencies require it. Do not push/open PRs until their implementation/checks are ready and external action is authorized.
 Make small coherent tested local commits, with exclusive index ownership by the current writer. Never stage unrelated changes or commit a known failing partial implementation. Avoid a single huge final commit.
-B1 currently owns code and Git index; parent only authors separate planning docs until it completes.
+B1–B4 implementation is committed. Parent final local checks and independent review are complete; the confirmed admission retry blocker was fixed in PR1 and merged through PR2/PR3. No active application writer remains. Browser QA is still blocked by the private isolated profile.
 
 ## Added current-build delivery unit
 Parent-permissioned own and linked-child nonacademic profile corrections. Parent requests scope, admin grants access, parent drafts/reviews/submits once. Final successful submission applies immediately and atomically consumes editing permission. Bold immediate-effect/lockout warning and audit required. Students excluded. The user's earlier second-admin-review choice is superseded.
-D3 investigates, B4 follows current fixes. Keep this a separate delivery unit/follow-up PR if useful. Expiring email setup links remain future work at the end of the backlog.
+D3 and B4 are complete locally on the third stacked delivery branch; initial admin permission and immediate parent submission are implemented. Expiring email setup links remain future work at the end of the backlog.
 
 ## Safety
 No production deployment, production migration, credential reads, or real emails. Whisper reference repository is read-only. Tenant isolation and report-publication rules remain mandatory.
-Existing names must not be guessed or destructively split into middle names. Historical record behavior needs an explicit decision if implementation changes stored snapshots.
+Do not guess unstructured full names. The later approved exactly-two-word firstName rule applies only when middle is empty; preserve explicit middle names and compound surnames. Issued historical snapshots remain unchanged.
 
 ## Completion criteria
 Every original report is mapped to a verified fix, existing correct behavior, or an explicit unresolved decision.

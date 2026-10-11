@@ -26,7 +26,17 @@
       "tests": 342,
       "result": "passed"
     },
-    "browser": "blocked: missing isolated QA profile; Windows direct CLI guard no-op was not a pass"
+    "browser": "BLOCKED missing isolated private QA profile; not waived; provider delivery unverified",
+    "finalLocal": {
+      "convexTests": 91,
+      "adminTests": 388,
+      "portalTests": 32,
+      "typecheckTargets": 7,
+      "retryFocusedAdminTests": 16,
+      "retryFocusedConvexTests": 12,
+      "review": "R1 blocker resolved by R2",
+      "report": "final-verification.md"
+    }
   },
   "future": [
     "Expiring account setup/reset links"
@@ -200,30 +210,37 @@
   "deliveryBranches": {
     "PR1": {
       "branch": "fix/identity-onboarding-portal",
-      "commit": "637d6911e4aa92b16af366de671a1c1818a9fb5a",
-      "status": "locally checked, review/browser/publish pending"
+      "commit": "2803bef2a2e7d178d6aff2c5d2763642059a7c6c",
+      "base": "origin/master",
+      "fix": "household-confirmation replay; 16 UI +12 backend focused tests passed"
     },
     "PR2": {
       "branch": "fix/portal-status-history-notices",
-      "commit": "9132f501fb57b28ee15126ae1115fb50ae54d5ca",
-      "base": {
-        "branch": "fix/identity-onboarding-portal",
-        "commit": "637d6911e4aa92b16af366de671a1c1818a9fb5a",
-        "status": "locally checked, review/browser/publish pending"
-      },
-      "status": "locally checked, review/browser/publish pending"
+      "commit": "2bab1af95f20b0691abb5fde7fb4da398899d826",
+      "base": "fix/identity-onboarding-portal"
     },
     "PR3": {
       "branch": "feat/parent-profile-edit-permissions",
-      "baseCommit": "9132f501fb57b28ee15126ae1115fb50ae54d5ca",
-      "status": "implemented; final review blocker PR1 fix pending"
+      "commit": "a9a21d1facc4d40bd78b746c2dd59ee880d0f150",
+      "base": "fix/portal-status-history-notices"
     }
   },
   "review": {
-    "id": "R1",
-    "taskId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R1-round1",
-    "status": "completed",
-    "result": "R1-result.md",
-    "disposition": "one confirmed PR1 retry blocker"
+    "rounds": [
+      {
+        "id": "R1",
+        "taskId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R1-round1",
+        "status": "completed",
+        "result": "R1-result.md",
+        "finding": "one confirmed admission retry blocker"
+      },
+      {
+        "id": "R2",
+        "taskId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R2-round1",
+        "status": "completed",
+        "result": "R2-result.md",
+        "disposition": "confirmed blocker resolved"
+      }
+    ]
   }
 }
