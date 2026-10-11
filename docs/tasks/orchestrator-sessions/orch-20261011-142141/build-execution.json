@@ -1,29 +1,7 @@
 {
   "sessionId": "orch-20261011-142141",
   "stage": "build",
-  "activeTask": {
-    "id": "B1",
-    "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
-    "childThreadId": "thread:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
-    "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A372f1e64-0066-4c06-8cea-c2a8d883693a%253Adelegate-task%253Aorch-20261011-142141-B1-round1:ordinal:1",
-    "childNodeId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
-    "status": "running",
-    "workState": "working",
-    "hasPendingChildRuns": false,
-    "latestTerminalRunId": null,
-    "latestTerminalStatus": null,
-    "latestTerminalSummary": null,
-    "latestTerminalResultContextTransferId": null,
-    "providerInstanceId": "takomi",
-    "model": "openai-codex/gpt-6.1-sol",
-    "summary": null,
-    "resultContextTransferId": null,
-    "waitTimedOut": false,
-    "persona": "coder",
-    "requiredCapabilities": [
-      "write-code"
-    ]
-  },
+  "activeTask": null,
   "completedDesign": [
     {
       "id": "D1",
@@ -34,6 +12,11 @@
       "id": "D2",
       "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-D2-round1",
       "findings": "D2-contract.md"
+    },
+    {
+      "id": "D3",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-D3-round1",
+      "findings": "D3-contract.md"
     }
   ],
   "validation": {
@@ -47,5 +30,99 @@
   },
   "future": [
     "Expiring account setup/reset links"
-  ]
+  ],
+  "completedBuild": [
+    {
+      "id": "B1",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A372f1e64-0066-4c06-8cea-c2a8d883693a%253Adelegate-task%253Aorch-20261011-142141-B1-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "f1eb98a",
+        "a70fe2f"
+      ],
+      "result": "B1-result.md",
+      "checks": {
+        "status": "completed",
+        "commits": [
+          "f1eb98a",
+          "a70fe2f"
+        ],
+        "reportedChecks": {
+          "convexTests": 125,
+          "sharedTests": 22,
+          "typechecks": [
+            "convex",
+            "shared"
+          ]
+        },
+        "parentChecks": {
+          "convexTests": 16,
+          "typechecks": [
+            "convex",
+            "shared"
+          ],
+          "initialRunnerAttempt": "Root vitest path absent; corrected using installed Admin Vitest."
+        }
+      }
+    },
+    {
+      "id": "B2",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B2-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B2-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A372f1e64-0066-4c06-8cea-c2a8d883693a%253Adelegate-task%253Aorch-20261011-142141-B2-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B2-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "5245aaa",
+        "e07d63f",
+        "881a83d",
+        "5405562"
+      ],
+      "result": "B2-result.md",
+      "parentChecks": {
+        "adminFiles": 83,
+        "adminTests": 371,
+        "adminTypecheck": "passed",
+        "verification": "B2-parent-verification.md"
+      }
+    }
+  ],
+  "pendingBuild": [
+    "B3",
+    "B4"
+  ],
+  "gitIndexOwner": "parent"
 }
