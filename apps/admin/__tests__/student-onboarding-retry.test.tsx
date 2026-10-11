@@ -126,3 +126,17 @@ it("reviews an exact-email household without sending mistyped contact identity a
   expect(new Set(mocks.create.mock.calls.map(([args]) => args.requestKey)).size).toBe(1);
   expect(mocks.action).not.toHaveBeenCalled();
 });
+
+it("clears and reselects promoted-session subjects without opening or saving identity", async () => {
+  mocks.queryParams = "classId=class-one&sessionId=session-new";
+  mocks.matrix.students = [{ _id: "promoted-student", studentName: "Promoted Student", admissionNumber: "PROM-1", photoUrl: null, selectedSubjectIds: ["math"], promotionStatus: { isPromoted: true, targetClassId: "class-one", targetSessionId: "session-new" } }];
+  const view = render(<DepartureGuardProvider><StudentsPage /></DepartureGuardProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: "Clear" }));
+  await waitFor(() => expect(mocks.subjects).toHaveBeenCalledWith({ studentId: "promoted-student", classId: "class-one", sessionId: "session-new", subjectIds: [] }));
+  mocks.matrix = { ...mocks.matrix, students: mocks.matrix.students.map(student => ({ ...student, selectedSubjectIds: [] })) };
+  view.rerender(<DepartureGuardProvider><StudentsPage /></DepartureGuardProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "All" }));
+  await waitFor(() => expect(mocks.subjects).toHaveBeenCalledWith({ studentId: "promoted-student", classId: "class-one", sessionId: "session-new", subjectIds: ["math"] }));
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Save Identity" })).not.toBeInTheDocument();
+});

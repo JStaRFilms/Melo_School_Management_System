@@ -1,1019 +1,157 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useConvex, useMutation, useQuery } from "convex/react";
-import { AlertTriangle, BadgeCheck, Check, Link2, Mail, PencilLine, Phone, PlusCircle, ShieldAlert, Trash2, Unlink2, Users, X } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "@school/convex/_generated/api";
-import { isValidEmailAddress } from "@school/auth";
-import { cleanEmailInput, cleanPhoneInput, getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
-
+import type { Id } from "@school/convex/_generated/dataModel";
+import { getUserFacingErrorMessage } from "@school/shared";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
+import { AdmissionContactFields } from "./AdmissionContactFields";
+import { admissionParentGuardian, emptyAdmissionContact } from "./admissionContact";
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
+import { PortalStateLabel } from "./PortalStateLabel";
+import { RelationshipField } from "./RelationshipField";
 import type { EnrollmentNotice } from "./types";
 
-interface StudentFamilyProfile {
-  family: {
-    _id: string;
-    name: string;
-    studentCount: number;
-    parentCount: number;
-  } | null;
-  parents: Array<{
-    _id: string;
-    parentUserId: string;
-    name: string;
-    firstName: string | null;
-    lastName: string | null;
-    email: string;
-    phone: string | null;
-    role: "parent" | "teacher" | "admin";
-    relationship: string | null;
-    isPrimaryContact: boolean;
-  }>;
-  students: Array<{
-    _id: string;
-    studentName: string;
-    admissionNumber: string;
-    classId: string;
-    className: string;
-  }>;
-}
+type Parent = FunctionReturnType<typeof api.functions.academic.studentEnrollment.getStudentFamilyProfile>["parents"][number];
+type ContactEdit = {
+  parent: Parent; structured: boolean; fullName: string; firstName: string; middleName: string; lastName: string;
+  email: string; phone: string; relationship: string; isPrimaryContact: boolean; confirmPrimaryChange: boolean;
+  addressMode: "residential" | "different" | "legacy"; addressOverride: string;
+};
+const inputClass = "mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-900";
 
-interface ParentEmailReview {
-  email: string;
-  matches: Array<{
-    userId: string;
-    name: string;
-    email: string;
-    phone: string | null;
-    role: "student" | "parent" | "teacher" | "staff" | "admin";
-    isArchived: boolean;
-    families: Array<{
-      _id: string;
-      name: string;
-      studentCount: number;
-      parentCount: number;
-    }>;
-  }>;
-}
-
-interface ParentContactDraft {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  relationship: string;
-  isPrimaryContact: boolean;
-}
-
-type PendingReview =
-  | {
-      kind: "link";
-      draft: ParentContactDraft;
-      review: ParentEmailReview;
-    }
-  | {
-      kind: "edit";
-      familyMemberId: string;
-      parentUserId: string;
-      parentName: string;
-      draft: ParentContactDraft;
-      review: ParentEmailReview;
-    };
-
-interface StudentFamilyPanelProps {
-  studentId: string;
-  studentName: string;
-  onNotice: (notice: EnrollmentNotice) => void;
-}
-
-function normalizeParentContactDraft(draft: ParentContactDraft) {
-  return {
-    firstName: draft.firstName.trim(),
-    lastName: draft.lastName.trim(),
-    email: draft.email.trim().toLowerCase(),
-    phone: draft.phone.trim(),
-    relationship: draft.relationship.trim(),
-    isPrimaryContact: draft.isPrimaryContact,
-  };
-}
-
-function draftFromParent(parent: StudentFamilyProfile["parents"][number]): ParentContactDraft {
-  return {
-    firstName: parent.firstName ?? "",
-    lastName: parent.lastName ?? "",
-    email: parent.email ?? "",
-    phone: parent.phone ?? "",
-    relationship: parent.relationship ?? "",
-    isPrimaryContact: parent.isPrimaryContact,
-  };
-}
-
-export function StudentFamilyPanel({
-  studentId,
-  studentName,
-  onNotice,
-}: StudentFamilyPanelProps) {
-  const convex = useConvex();
-  const familyProfile = useQuery(
-    "functions/academic/studentEnrollment:getStudentFamilyProfile" as never,
-    { studentId } as never
-  ) as StudentFamilyProfile | undefined;
-  const upsertStudentFamilyLink = useMutation(
-    "functions/academic/studentEnrollment:upsertStudentFamilyLink" as never
-  );
-  const updateStudentFamilyParentContact = useMutation(
-    "functions/academic/studentEnrollment:updateStudentFamilyParentContact" as never
-  );
-  const unlinkStudentFromFamily = useMutation(
-    "functions/academic/studentEnrollment:unlinkStudentFromFamily" as never
-  );
-  const removeStudentFamilyLink = useMutation(
-    "functions/academic/studentEnrollment:removeStudentFamilyLink" as never
-  );
-
-  const [parentFirstName, setParentFirstName] = useState("");
-  const [parentLastName, setParentLastName] = useState("");
-  const [parentEmail, setParentEmail] = useState("");
-  const [parentPhone, setParentPhone] = useState("");
-  const [relationship, setRelationship] = useState("");
-  const [isPrimaryContact, setIsPrimaryContact] = useState(true);
-  const [editingParentId, setEditingParentId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<ParentContactDraft | null>(null);
-  const [pendingReview, setPendingReview] = useState<PendingReview | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUnlinkModalOpen, setIsUnlinkModalOpen] = useState(false);
-  const [parentToRemove, setParentToRemove] = useState<StudentFamilyProfile["parents"][number] | null>(null);
-
-  useEffect(() => {
-    setParentFirstName("");
-    setParentLastName("");
-    setParentEmail("");
-    setParentPhone("");
-    setRelationship("");
-    setIsPrimaryContact(true);
-    setEditingParentId(null);
-    setEditDraft(null);
-    setPendingReview(null);
-  }, [studentId]);
-
-  if (familyProfile === undefined) {
-    return (
-      <section className="space-y-4 pt-6 border-t border-slate-200/60 animate-pulse">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">
-          Family Links
-        </p>
-        <div className="h-24 rounded-xl bg-slate-50" />
-      </section>
-    );
-  }
-
-  const currentFamilyParentUserIds = new Set(
-    familyProfile.parents.map((parent) => parent.parentUserId)
-  );
-
-  const classifyParentEmailReview = (
-    review: ParentEmailReview,
-    currentParentUserId?: string
-  ) => {
-    const activeMatches = review.matches.filter((match) => !match.isArchived);
-    const archivedMatches = review.matches.filter((match) => match.isArchived);
-    const activeParentMatches = activeMatches.filter((match) => match.role === "parent");
-    const activeOtherMatches = activeMatches.filter((match) => match.role !== "parent");
-    const reviewParentMatches = activeParentMatches.filter(
-      (match) => match.userId !== currentParentUserId
-    );
-
-    return {
-      activeParentMatches,
-      activeOtherMatches,
-      archivedMatches,
-      reviewParentMatches,
-    };
-  };
-
-  const openAddReview = async (draft: ParentContactDraft) => {
-    const normalized = normalizeParentContactDraft(draft);
-    const review = (await convex.query(
-      api.functions.academic.studentEnrollment.getParentEmailReview,
-      { email: normalized.email }
-    )) as ParentEmailReview;
-
-    const activeMatches = review.matches.filter((match) => !match.isArchived);
-    const archivedMatches = review.matches.filter((match) => match.isArchived);
-    const activeStudentMatches = activeMatches.filter((match) => match.role === "student");
-    const eligibleParentMatches = activeMatches.filter((match) => match.role !== "student");
-    const reviewParentMatches = eligibleParentMatches.filter(
-      (match) => !currentFamilyParentUserIds.has(match.userId)
-    );
-
-    if (archivedMatches.length > 0) {
-      onNotice({
-        tone: "error",
-        message: "This parent email is tied to an archived school account.",
-      });
-      return false;
-    }
-
-    if (activeStudentMatches.length > 0) {
-      onNotice({
-        tone: "error",
-        message: "A student account cannot be linked as a parent.",
-      });
-      return false;
-    }
-
-    if (eligibleParentMatches.length > 1) {
-      onNotice({
-        tone: "error",
-        message: "Multiple school accounts share this email. Resolve the duplicate account first.",
-      });
-      return false;
-    }
-
-    if (reviewParentMatches.length === 0) {
-      return false;
-    }
-
-    setPendingReview({
-      kind: "link",
-      draft,
-      review,
-    });
-    return true;
-  };
-
-  const openEditReview = async (parent: StudentFamilyProfile["parents"][number], draft: ParentContactDraft) => {
-    const normalized = normalizeParentContactDraft(draft);
-    const review = (await convex.query(
-      api.functions.academic.studentEnrollment.getParentEmailReview,
-      { email: normalized.email }
-    )) as ParentEmailReview;
-
-    const { activeParentMatches, activeOtherMatches, archivedMatches, reviewParentMatches } =
-      classifyParentEmailReview(review, parent.parentUserId);
-
-    if (archivedMatches.length > 0) {
-      onNotice({
-        tone: "error",
-        message: "This parent email is tied to an archived school account.",
-      });
-      return false;
-    }
-
-    if (activeOtherMatches.length > 0) {
-      onNotice({
-        tone: "error",
-        message: "This email already belongs to a non-parent school account.",
-      });
-      return false;
-    }
-
-    if (activeParentMatches.length > 1) {
-      onNotice({
-        tone: "error",
-        message: "Multiple parent records share this email. Resolve the duplicate parent account first.",
-      });
-      return false;
-    }
-
-    if (reviewParentMatches.length === 0) {
-      return false;
-    }
-
-    setPendingReview({
-      kind: "edit",
-      familyMemberId: parent._id,
-      parentUserId: parent.parentUserId,
-      parentName: parent.name,
-      draft,
-      review,
-    });
-    return true;
-  };
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-
-    const draft = normalizeParentContactDraft({
-      firstName: parentFirstName,
-      lastName: parentLastName,
-      email: parentEmail,
-      phone: parentPhone,
-      relationship,
-      isPrimaryContact,
-    });
-
-    if (!draft.firstName || !draft.lastName || !draft.email) {
-      onNotice({
-        tone: "error",
-        message: "Parent first name, last name, and email are required.",
-      });
-      return;
-    }
-
-    if (!isValidEmailAddress(draft.email)) {
-      onNotice({
-        tone: "error",
-        message: "Enter a valid parent email address.",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
+export function StudentFamilyPanel({ studentId, studentName, onNotice }: { studentId: string; studentName: string; onNotice: (notice: EnrollmentNotice) => void }) {
+  const profile = useQuery(api.functions.academic.studentEnrollment.getStudentFamilyProfile, { studentId: studentId as Id<"students"> });
+  const link = useMutation(api.functions.academic.studentEnrollment.upsertStudentFamilyLink);
+  const editContact = useMutation(api.functions.academic.studentEnrollment.updateStudentFamilyParentContact);
+  const editHousehold = useMutation(api.functions.academic.studentEnrollment.updateHousehold);
+  const removeLink = useMutation(api.functions.academic.studentEnrollment.removeStudentFamilyLink);
+  const unlinkStudent = useMutation(api.functions.academic.studentEnrollment.unlinkStudentFromFamily);
+  const deleteParent = useMutation(api.functions.academic.studentEnrollment.deleteUnusedParent);
+  const [contact, setContact] = useState(emptyAdmissionContact);
+  const selectedReview = useQuery(api.functions.academic.studentEnrollment.getParentEmailReview, contact.contactChoice === "existing" && contact.parentEmail ? { email: contact.parentEmail } : "skip");
+  const [edit, setEdit] = useState<ContactEdit | null>(null);
+  const [household, setHousehold] = useState<{ name: string; residentialAddress: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState<"link" | "edit" | "household" | "unlinkStudent" | null>(null);
+  const [remove, setRemove] = useState<Parent | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: Id<"users">; name: string } | null>(null);
+  const [lastUnlinked, setLastUnlinked] = useState<{ id: Id<"users">; name: string } | null>(null);
+  useEffect(() => { setContact(emptyAdmissionContact); setEdit(null); setHousehold(null); setReview(null); setLastUnlinked(null); setDeleteTarget(null); }, [studentId]);
+  const errorNotice = (error: unknown) => onNotice({ tone: "error", message: getUserFacingErrorMessage(error, "The change could not be completed.") });
+  const submitLink = async (confirmed = false) => {
+    if (busy) return;
+    setBusy(true);
     try {
-      const reviewOpened = await openAddReview(draft);
-      if (reviewOpened) {
-        return;
-      }
-
-      await upsertStudentFamilyLink({
-        studentId,
-        firstName: draft.firstName,
-        lastName: draft.lastName,
-        email: draft.email,
-        phone: draft.phone || null,
-        relationship: draft.relationship || null,
-        isPrimaryContact: draft.isPrimaryContact,
-      } as never);
-
-      onNotice({
-        tone: "success",
-        message: `Family link updated for ${studentName}.`,
-      });
-      setParentFirstName("");
-      setParentLastName("");
-      setParentEmail("");
-      setParentPhone("");
-      setRelationship("");
-      setIsPrimaryContact(true);
-      setPendingReview(null);
+      const choice = admissionParentGuardian(contact);
+      if (choice.kind === "none") throw new Error("Choose or create a contact first.");
+      const { kind, ...args } = choice;
+      await link({ studentId: studentId as Id<"students">, ...args, confirmDuplicateLink: confirmed });
+      setContact(emptyAdmissionContact); setReview(null);
+      onNotice({ tone: "success", message: `Contact linked to ${studentName}. Stored identity and credentials were not reset.` });
     } catch (error) {
-      onNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(error, "Family link save failed."),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+      const message = getUserFacingErrorMessage(error, "Contact linking failed.");
+      if (message.includes("Review the duplicate-link details and confirm")) setReview("link");
+      else errorNotice(error);
+    } finally { setBusy(false); }
   };
-
-  const handleConfirmReview = async () => {
-    if (!pendingReview) {
-      return;
-    }
-
-    const draft = normalizeParentContactDraft(pendingReview.draft);
-    if (!draft.firstName || !draft.lastName || !draft.email) {
-      onNotice({
-        tone: "error",
-        message: "Parent first name, last name, and email are required.",
-      });
-      return;
-    }
-
-    if (!isValidEmailAddress(draft.email)) {
-      onNotice({
-        tone: "error",
-        message: "Enter a valid parent email address.",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
+  const saveEdit = async (confirmDuplicateEmail = false) => {
+    if (!edit || busy) return;
+    setBusy(true);
     try {
-      if (pendingReview.kind === "link") {
-        await upsertStudentFamilyLink({
-          studentId,
-          firstName: draft.firstName,
-          lastName: draft.lastName,
-          email: draft.email,
-          phone: draft.phone || null,
-          relationship: draft.relationship || null,
-          isPrimaryContact: draft.isPrimaryContact,
-          confirmDuplicateLink: true,
-        } as never);
-      } else {
-        await updateStudentFamilyParentContact({
-          familyMemberId: pendingReview.familyMemberId,
-          firstName: draft.firstName,
-          lastName: draft.lastName,
-          email: draft.email,
-          phone: draft.phone || null,
-          relationship: draft.relationship || null,
-          isPrimaryContact: draft.isPrimaryContact,
-          confirmDuplicateEmail: true,
-        } as never);
-      }
-
-      onNotice({
-        tone: "success",
-        message:
-          pendingReview.kind === "link"
-            ? `Family link updated for ${studentName}.`
-            : `Parent contact updated for ${pendingReview.parentName}.`,
+      const old = edit.parent;
+      const name = normalizeStructuredPersonName(edit);
+      if (edit.structured && (!name.firstName || !name.lastName)) throw new Error("First and last name are required when entering name parts.");
+      const nameChanged = edit.structured !== Boolean(old.firstName && old.lastName) || edit.firstName !== (old.firstName ?? "") || edit.middleName !== (old.middleName ?? "") || edit.lastName !== (old.lastName ?? "");
+      await editContact({
+        familyMemberId: old._id,
+        ...(edit.structured ? (nameChanged ? { firstName: name.firstName, middleName: name.middleName || null, lastName: name.lastName } : {}) : edit.fullName !== old.name || old.firstName ? { name: edit.fullName } : {}),
+        email: edit.email !== old.email ? edit.email : undefined,
+        phone: edit.phone !== (old.phone ?? "") ? edit.phone || null : undefined,
+        relationship: edit.relationship !== (old.relationship ?? "") ? edit.relationship || null : undefined,
+        isPrimaryContact: edit.isPrimaryContact !== old.isPrimaryContact ? edit.isPrimaryContact : undefined,
+        confirmPrimaryChange: edit.confirmPrimaryChange, confirmDuplicateEmail,
+        addressMode: edit.addressMode !== (old.addressMode ?? "legacy") && edit.addressMode !== "legacy" ? edit.addressMode : undefined,
+        addressOverride: edit.addressOverride !== (old.addressOverride ?? "") ? edit.addressOverride || null : undefined,
       });
-      setPendingReview(null);
-      setEditingParentId(null);
-      setEditDraft(null);
-      if (pendingReview.kind === "link") {
-        setParentFirstName("");
-        setParentLastName("");
-        setParentEmail("");
-        setParentPhone("");
-        setRelationship("");
-        setIsPrimaryContact(true);
-      }
+      setEdit(null); setReview(null); onNotice({ tone: "success", message: "Contact details saved. Household label and credentials are unchanged." });
     } catch (error) {
-      onNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(
-          error,
-          pendingReview.kind === "link"
-            ? "Family link save failed."
-            : "Parent contact update failed."
-        ),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+      const message = getUserFacingErrorMessage(error, "Contact edit failed.");
+      if (message.includes("confirm") && message.toLowerCase().includes("email")) setReview("edit"); else errorNotice(error);
+    } finally { setBusy(false); }
   };
-
-  const handleCancelReview = () => {
-    setPendingReview(null);
+  const saveHousehold = async () => {
+    if (!household || !profile?.family || busy) return;
+    setBusy(true);
+    try { await editHousehold({ familyId: profile.family._id, name: household.name, residentialAddress: household.residentialAddress || null, confirmed: true }); setHousehold(null); setReview(null); }
+    catch (error) { errorNotice(error); } finally { setBusy(false); }
   };
-
-  const handleUnlinkStudent = () => {
-    setIsUnlinkModalOpen(true);
-  };
-
-  const executeUnlinkStudent = async () => {
-    setIsSubmitting(true);
+  const confirmRemove = async () => {
+    if (!remove || busy) return;
+    setBusy(true);
     try {
-      await unlinkStudentFromFamily({ studentId } as never);
-      onNotice({
-        tone: "success",
-        message: `${studentName} was removed from this household.`,
-      });
-      setIsUnlinkModalOpen(false);
-    } catch (error) {
-      onNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(error, "Family unlink failed."),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+      await removeLink({ familyMemberId: remove._id });
+      if (remove.role === "parent") setLastUnlinked({ id: remove.parentUserId, name: remove.name });
+      setRemove(null); onNotice({ tone: "success", message: "Contact unlinked. The identity and credentials remain." });
+    } catch (error) { errorNotice(error); } finally { setBusy(false); }
   };
-
-  const handleRemoveParent = (parent: StudentFamilyProfile["parents"][number]) => {
-    setParentToRemove(parent);
+  const confirmDelete = async () => {
+    if (!deleteTarget || busy) return;
+    setBusy(true);
+    try { await deleteParent({ parentUserId: deleteTarget.id, confirmed: true }); setDeleteTarget(null); setLastUnlinked(null); setContact(emptyAdmissionContact); onNotice({ tone: "success", message: "Unused school-local parent deleted. Shared identity and authentication records were preserved." }); }
+    catch (error) { errorNotice(error); } finally { setBusy(false); }
   };
-
-  const executeRemoveParent = async () => {
-    if (!parentToRemove) return;
-    setIsSubmitting(true);
-    try {
-      await removeStudentFamilyLink({ familyMemberId: parentToRemove._id } as never);
-      onNotice({
-        tone: "success",
-        message: `${parentToRemove.name} was removed from the household.`,
-      });
-      setParentToRemove(null);
-    } catch (error) {
-      onNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(error, "Family removal failed."),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const currentFamily = familyProfile.family;
-
-  return (
-    <section className="space-y-6 pt-6 border-t border-slate-200/60">
-      <div className="space-y-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">
-          Family Links
-        </p>
-        <h3 className="text-sm font-black text-slate-950">Household record</h3>
-        <p className="text-xs font-medium text-slate-400">
-          Link parent contacts to create or manage a family record for {studentName}.
-        </p>
-      </div>
-
-      {currentFamily ? (
-        <div className="flex items-center justify-between gap-4 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Users className="h-3.5 w-3.5 text-emerald-600" />
-              <p className="text-sm font-black text-slate-950">{currentFamily.name}</p>
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-700">
-                Active
-              </span>
-            </div>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              {currentFamily.parentCount} parents · {currentFamily.studentCount} students
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleUnlinkStudent()}
-            disabled={isSubmitting}
-            className="shrink-0 flex h-9 items-center justify-center gap-2 rounded-lg border border-amber-200 bg-white px-3 text-xs font-bold text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 shadow-sm"
-          >
-            <Unlink2 className="h-3.5 w-3.5" />
-            <span>Unlink</span>
-          </button>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4 text-xs font-medium text-slate-500">
-          No family record exists yet. Add a parent below to create one.
-        </div>
-      )}
-
-      {pendingReview ? (
-        <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5">
-          <div className="flex items-start gap-2.5">
-            <ShieldAlert className="mt-0.5 h-4 w-4 text-amber-700 shrink-0" />
-            <div className="min-w-0 space-y-0.5">
-              <p className="text-xs font-bold text-amber-950">
-                {pendingReview.kind === "link"
-                  ? "Existing Account Found"
-                  : `Existing Account for ${pendingReview.parentName}`}
-              </p>
-              <p className="text-[11px] leading-normal text-amber-800/90">
-                {pendingReview.kind === "link"
-                  ? "This email already belongs to a registered user. Confirm to link this student to their household."
-                  : "This email belongs to another registered user. Confirm to update the contact details."}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-2 border-t border-amber-200/70 pt-2.5">
-            {pendingReview.review.matches.map((match) => (
-              <div key={match.userId} className="space-y-1.5 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-slate-900">{match.name}</span>
-                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-800">
-                      {match.role}
-                    </span>
-                    {match.isArchived && (
-                      <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
-                        archived
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] font-mono text-slate-600">{match.email}</span>
-                </div>
-
-                {match.families.length > 0 ? (
-                  <div className="space-y-1 pl-2 border-l-2 border-amber-300">
-                    {match.families.map((family) => (
-                      <div key={family._id} className="flex items-center justify-between text-[11px] text-slate-600">
-                        <span className="font-medium text-slate-800">{family.name}</span>
-                        <span className="text-slate-500">
-                          {family.parentCount} parent{family.parentCount === 1 ? "" : "s"} · {family.studentCount} student{family.studentCount === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-400 italic">No existing household links.</p>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 pt-1 border-t border-amber-200/70">
-            <button
-              type="button"
-              onClick={handleCancelReview}
-              disabled={isSubmitting}
-              className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition hover:bg-amber-100/50 disabled:opacity-50"
-            >
-              <X className="h-3.5 w-3.5 text-amber-700" />
-              <span>Cancel</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleConfirmReview()}
-              disabled={isSubmitting}
-              className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg bg-amber-600 px-3 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50 shadow-sm"
-            >
-              <Check className="h-3.5 w-3.5" />
-              <span className="whitespace-nowrap">
-                {isSubmitting ? "Saving..." : pendingReview.kind === "link" ? "Confirm Link" : "Confirm Update"}
-              </span>
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="space-y-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">
-          Linked Contacts
-        </p>
-        {familyProfile.parents.length > 0 ? (
-          <div className="space-y-3">
-            {familyProfile.parents.map((parent) => {
-              const isEditing = editingParentId === parent.parentUserId;
-              const currentDraft = editDraft ?? draftFromParent(parent);
-
-              return (
-                <div
-                  key={parent._id}
-                  className="space-y-4 rounded-xl border border-slate-200/60 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-black text-slate-950">{parent.name}</p>
-                        {parent.isPrimaryContact ? (
-                          <span className="rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-indigo-600">
-                            Primary
-                          </span>
-                        ) : null}
-                        {parent.role !== "parent" ? (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-amber-700">
-                            Staff: {parent.role}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-0.5 text-[11px] font-bold text-slate-400 uppercase tracking-wide">
-                        {parent.relationship || "Guardian"}
-                      </p>
-                      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
-                        <span className="inline-flex items-center gap-1.5 text-slate-600">
-                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                          <span className="break-all">{parent.email}</span>
-                        </span>
-                        {parent.phone && (
-                          <span className="inline-flex items-center gap-1.5 text-slate-600">
-                            <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                            <span>{parent.phone}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {parent.role === "parent" ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingParentId(parent.parentUserId);
-                          setEditDraft(draftFromParent(parent));
-                          setPendingReview(null);
-                        }}
-                        disabled={isSubmitting}
-                        className="shrink-0 h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {isEditing ? (
-                    <form
-                      className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"
-                      onSubmit={async (event) => {
-                        event.preventDefault();
-                        if (!editDraft) {
-                          return;
-                        }
-
-                        const draft = normalizeParentContactDraft(editDraft);
-                        if (!draft.firstName || !draft.lastName || !draft.email) {
-                          onNotice({
-                            tone: "error",
-                            message: "Parent first name, last name, and email are required.",
-                          });
-                          return;
-                        }
-
-                        if (!isValidEmailAddress(draft.email)) {
-                          onNotice({
-                            tone: "error",
-                            message: "Enter a valid parent email address.",
-                          });
-                          return;
-                        }
-
-                        setIsSubmitting(true);
-                        try {
-                          const reviewOpened = await openEditReview(parent, draft);
-                          if (reviewOpened) {
-                            return;
-                          }
-
-                          await updateStudentFamilyParentContact({
-                            familyMemberId: parent._id,
-                            firstName: draft.firstName,
-                            lastName: draft.lastName,
-                            email: draft.email,
-                            phone: draft.phone || null,
-                            relationship: draft.relationship || null,
-                            isPrimaryContact: draft.isPrimaryContact,
-                          } as never);
-
-                          onNotice({
-                            tone: "success",
-                            message: `Parent contact updated for ${parent.name}.`,
-                          });
-                          setEditingParentId(null);
-                          setEditDraft(null);
-                        } catch (error) {
-                          onNotice({
-                            tone: "error",
-                            message: getUserFacingErrorMessage(error, "Parent contact update failed."),
-                          });
-                        } finally {
-                          setIsSubmitting(false);
-                        }
-                      }}
-                    >
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="space-y-1.5">
-                          <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                            First Name
-                          </span>
-                          <input
-                            value={currentDraft.firstName}
-                            onChange={(event) =>
-                              setEditDraft((previous) => ({
-                                ...(previous ?? currentDraft),
-                                firstName: event.target.value,
-                              }))
-                            }
-                            className={fieldInputClassName}
-                          />
-                        </label>
-                        <label className="space-y-1.5">
-                          <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                            Last Name
-                          </span>
-                          <input
-                            value={currentDraft.lastName}
-                            onChange={(event) =>
-                              setEditDraft((previous) => ({
-                                ...(previous ?? currentDraft),
-                                lastName: event.target.value,
-                              }))
-                            }
-                            className={fieldInputClassName}
-                          />
-                        </label>
-                        <label className="space-y-1.5">
-                          <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                            Email
-                          </span>
-                          <input
-                            type="email"
-                            value={currentDraft.email}
-                            onChange={(event) =>
-                              setEditDraft((previous) => ({
-                                ...(previous ?? currentDraft),
-                                email: event.target.value,
-                              }))
-                            }
-                            className={fieldInputClassName}
-                          />
-                        </label>
-                        <label className="space-y-1.5">
-                          <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                            Phone
-                          </span>
-                          <input
-                            type="tel"
-                            inputMode="tel"
-                            value={currentDraft.phone}
-                            onChange={(event) =>
-                              setEditDraft((previous) => ({
-                                ...(previous ?? currentDraft),
-                                phone: cleanPhoneInput(event.target.value),
-                              }))
-                            }
-                            className={fieldInputClassName}
-                            placeholder="+234..."
-                          />
-                        </label>
-                        <label className="space-y-1.5 sm:col-span-2">
-                          <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
-                            Relationship
-                          </span>
-                          <input
-                            value={currentDraft.relationship}
-                            onChange={(event) =>
-                              setEditDraft((previous) => ({
-                                ...(previous ?? currentDraft),
-                                relationship: event.target.value,
-                              }))
-                            }
-                            className={fieldInputClassName}
-                          />
-                        </label>
-                      </div>
-
-                      <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={currentDraft.isPrimaryContact}
-                          onChange={(event) =>
-                            setEditDraft((previous) => ({
-                              ...(previous ?? currentDraft),
-                              isPrimaryContact: event.target.checked,
-                            }))
-                          }
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-950"
-                        />
-                        <span>Mark this parent as the primary contact for the family.</span>
-                      </label>
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingParentId(null);
-                            setEditDraft(null);
-                          }}
-                          disabled={isSubmitting}
-                          className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          <X className="h-3.5 w-3.5 text-slate-400" />
-                          <span>Cancel</span>
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={isSubmitting}
-                          className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white transition hover:bg-slate-800 disabled:opacity-50 shadow-sm"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          <span className="whitespace-nowrap">{isSubmitting ? "Saving..." : "Save Changes"}</span>
-                        </button>
-                      </div>
-                    </form>
-                  ) : null}
-
-                  {parent.role === "parent" ? (
-                    <PortalCredentialPanel
-                      title="Portal Access"
-                      userId={parent.parentUserId}
-                      userName={parent.name}
-                      email={parent.email}
-                      defaultPassword="Parent123!Pass"
-                      onNotice={onNotice}
-                    />
-                  ) : null}
-
-                  <div className="pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => void handleRemoveParent(parent)}
-                      disabled={isSubmitting}
-                      className="h-9 w-full flex items-center justify-center gap-2 rounded-lg border border-rose-100 bg-rose-50 px-4 text-[10px] font-bold uppercase tracking-[0.1em] text-rose-600 transition hover:bg-rose-100 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Remove from Household
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4 text-xs font-medium text-slate-500">
-            No parent contacts linked yet.
-          </div>
-        )}
-      </div>
-
-      {familyProfile.students.length > 0 ? (
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">
-            Household Students
-          </p>
-          <div className="grid gap-2">
-            {familyProfile.students.map((familyStudent) => {
-              const isCurrentStudent = familyStudent._id === studentId;
-              return (
-                <div
-                  key={familyStudent._id}
-                  className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
-                    isCurrentStudent 
-                      ? "border-slate-900 bg-slate-900 text-white shadow-md shadow-slate-900/10" 
-                      : "border-slate-200 bg-white text-slate-950 shadow-sm"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p className={`text-xs font-black ${isCurrentStudent ? "text-white" : "text-slate-950"}`}>
-                      {familyStudent.studentName}
-                    </p>
-                    <p className={`mt-0.5 text-[10px] font-bold uppercase tracking-tight ${isCurrentStudent ? "text-slate-300" : "text-slate-400"}`}>
-                      {familyStudent.className} · {familyStudent.admissionNumber}
-                    </p>
-                  </div>
-                  {isCurrentStudent && (
-                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em]">
-                      Active
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      <form className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4" onSubmit={handleSubmit}>
-        <div className="flex items-center gap-2">
-          <PlusCircle className="h-4 w-4 text-slate-400" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-            Link Parent contact
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">First Name</span>
-            <input value={parentFirstName} onChange={(e) => setParentFirstName(e.target.value)} className={fieldInputClassName} placeholder="e.g. John" />
-          </div>
-          <div className="space-y-1.5">
-            <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Last Name</span>
-            <input value={parentLastName} onChange={(e) => setParentLastName(e.target.value)} className={fieldInputClassName} placeholder="e.g. Doe" />
-          </div>
-          <div className="space-y-1.5">
-            <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Email</span>
-            <input
-              type="email"
-              value={parentEmail}
-              onChange={(e) => setParentEmail(cleanEmailInput(e.target.value))}
-              className={fieldInputClassName}
-              placeholder="parent@example.com"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Phone</span>
-            <input
-              type="tel"
-              inputMode="tel"
-              value={parentPhone}
-              onChange={(e) => setParentPhone(cleanPhoneInput(e.target.value))}
-              className={fieldInputClassName}
-              placeholder="+234..."
-            />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Relationship</span>
-            <input value={relationship} onChange={(e) => setRelationship(e.target.value)} className={fieldInputClassName} placeholder="Relationship to student..." />
-          </div>
-        </div>
-        <label className="flex items-center gap-3 cursor-pointer group">
-          <input
-            type="checkbox"
-            checked={isPrimaryContact}
-            onChange={(e) => setIsPrimaryContact(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-950/5"
-          />
-          <span className="text-xs font-bold text-slate-500 group-hover:text-slate-900 transition-colors">Primary Contact</span>
-        </label>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="h-9 w-full flex items-center justify-center gap-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-all disabled:opacity-50 shadow-sm"
-        >
-          <Link2 className="h-3.5 w-3.5" />
-          <span>{isSubmitting ? "Linking..." : "Link to Household"}</span>
-        </button>
-      </form>
-
-      {/* Unlink Student Modal */}
-      <ConfirmationModal
-        isOpen={isUnlinkModalOpen}
-        onClose={() => setIsUnlinkModalOpen(false)}
-        onConfirm={executeUnlinkStudent}
-        title="Unlink Student from Household"
-        description={`Unlink only ${studentName} from this household? The household record and other linked students will remain intact.`}
-        confirmLabel="Unlink Student"
-        confirmVariant="danger"
-        isLoading={isSubmitting}
-      />
-
-      {/* Remove Parent Modal */}
-      <ConfirmationModal
-        isOpen={Boolean(parentToRemove)}
-        onClose={() => setParentToRemove(null)}
-        onConfirm={executeRemoveParent}
-        title="Remove Parent from Household"
-        description={`Remove ${parentToRemove?.name} from this household? This household-wide action affects every student linked to the family.`}
-        confirmLabel="Remove Parent"
-        confirmVariant="danger"
-        isLoading={isSubmitting}
-      />
-    </section>
-  );
+  if (!profile) return <p role="status">Loading household...</p>;
+  return <section className="space-y-5">
+    <h3 className="text-sm font-bold">Parents and guardians</h3>
+    {profile.family ? <div className="space-y-2 text-xs">
+      <p>Household label: <strong>{profile.family.name}</strong></p>
+      <p>Residential address: {profile.family.residentialAddress || "Not recorded"}</p>
+      <p>{profile.family.studentCount} linked students · {profile.family.parentCount} contacts</p>
+      <button type="button" onClick={() => setHousehold({ name: profile.family?.name ?? "", residentialAddress: profile.family?.residentialAddress ?? "" })}>Edit household label and address</button>
+      <button type="button" className="ml-3" onClick={() => setReview("unlinkStudent")}>Unlink student from household</button>
+    </div> : <p className="text-xs text-slate-500">No household linked yet.</p>}
+    {household && <form className="space-y-3" onSubmit={(event: FormEvent) => { event.preventDefault(); setReview("household"); }}>
+      <label className="block text-xs">Household label<input required className={inputClass} value={household.name} onChange={event => setHousehold({ ...household, name: event.target.value })} /></label>
+      <label className="block text-xs">Household residential address<input className={inputClass} value={household.residentialAddress} onChange={event => setHousehold({ ...household, residentialAddress: event.target.value })} /></label>
+      <button type="submit">Review household change</button><button type="button" className="ml-3" onClick={() => setHousehold(null)}>Cancel household edit</button>
+    </form>}
+    {profile.parents.map(parent => <article key={parent._id} className="space-y-3 border-t border-slate-200 pt-4 text-xs">
+      <p className="font-bold">{parent.name} · {parent.relationship || "Relationship unspecified"}{parent.isPrimaryContact ? " · Primary contact" : ""}</p>
+      <p className="break-words">{parent.email}{parent.phone ? ` · ${parent.phone}` : ""}</p>
+      <p>Contact address: {parent.effectiveAddress || "Not recorded"} · {parent.addressSource}</p>
+      <PortalStateLabel state={parent.portalState} />
+      {parent.role === "parent" ? <button type="button" onClick={() => setEdit({ parent, structured: Boolean(parent.firstName && parent.lastName), fullName: parent.name, firstName: parent.firstName ?? "", middleName: parent.middleName ?? "", lastName: parent.lastName ?? "", email: parent.email, phone: parent.phone ?? "", relationship: parent.relationship ?? "", isPrimaryContact: parent.isPrimaryContact, confirmPrimaryChange: false, addressMode: parent.addressMode ?? "legacy", addressOverride: parent.addressOverride ?? "" })}>Edit contact</button> : <p>Staff identity is read-only here. Use staff management to edit it.</p>}
+      <button type="button" className="ml-3" onClick={() => setRemove(parent)}>Unlink contact</button>
+      {edit?.parent._id === parent._id && <form className="space-y-3" onSubmit={event => { event.preventDefault(); void saveEdit(); }}>
+        {edit.structured ? <><p>Recorded name: {edit.fullName}</p><div className="grid gap-3 sm:grid-cols-3">{([['firstName', 'First name'], ['middleName', 'Middle name (optional)'], ['lastName', 'Last name']] as const).map(([key, label]) => <label key={key}>{label}<input required={key !== "middleName"} className={inputClass} value={edit[key]} onChange={event => setEdit({ ...edit, [key]: event.target.value })} onBlur={() => { const name = normalizeStructuredPersonName(edit); setEdit({ ...edit, firstName: name.firstName ?? "", middleName: name.middleName ?? "", lastName: name.lastName ?? "" }); }} /></label>)}</div><button type="button" onClick={() => setEdit({ ...edit, structured: false, fullName: parent.name })}>Use full name</button></> : <label className="block">Full name<input required className={inputClass} value={edit.fullName} onChange={event => setEdit({ ...edit, fullName: event.target.value })} /><button type="button" onClick={() => setEdit({ ...edit, structured: true })}>Enter name parts</button></label>}
+        <label className="block">Email<input type="email" required className={inputClass} value={edit.email} onChange={event => setEdit({ ...edit, email: event.target.value })} /></label>
+        <label className="block">Phone<input type="tel" className={inputClass} value={edit.phone} onChange={event => setEdit({ ...edit, phone: event.target.value })} /></label>
+        <RelationshipField value={edit.relationship} onChange={relationship => setEdit({ ...edit, relationship })} />
+        <label className="block">Contact address source<select className={inputClass} value={edit.addressMode} onChange={event => setEdit({ ...edit, addressMode: event.target.value === "different" ? "different" : event.target.value === "residential" ? "residential" : "legacy" })}><option value="residential">Same residential address</option><option value="different">Different address</option><option value="legacy">Retain recorded address</option></select></label>
+        {edit.addressMode === "different" && <label className="block">Different address<input required className={inputClass} value={edit.addressOverride} onChange={event => setEdit({ ...edit, addressOverride: event.target.value })} /></label>}
+        <label className="flex gap-2"><input type="checkbox" checked={edit.isPrimaryContact} onChange={event => setEdit({ ...edit, isPrimaryContact: event.target.checked, confirmPrimaryChange: false })} />Primary household contact</label>
+        {edit.isPrimaryContact && !parent.isPrimaryContact && profile.parents.some(item => item.isPrimaryContact) && <label className="flex gap-2"><input type="checkbox" required checked={edit.confirmPrimaryChange} onChange={event => setEdit({ ...edit, confirmPrimaryChange: event.target.checked })} />I confirm changing the primary contact for all linked students.</label>}
+        <button disabled={busy} type="submit">Save contact</button><button type="button" className="ml-3" onClick={() => setEdit(null)}>Cancel contact edit</button>
+      </form>}
+      {parent.role === "parent" && <PortalCredentialPanel key={parent.parentUserId} title={`Portal access for ${parent.name}`} userId={parent.parentUserId} userName={parent.name} email={parent.email} defaultPassword="" onNotice={onNotice} />}
+    </article>)}
+    <form onSubmit={event => { event.preventDefault(); void submitLink(); }} className="space-y-3">
+      <AdmissionContactFields value={contact} onChange={setContact} />
+      <button type="submit" disabled={busy || contact.contactChoice === "none"}>Link contact</button>
+      {selectedReview?.matches.some(match => match.userId === contact.selectedContactId && match.role === "parent" && !match.isArchived) && <button type="button" className="ml-3" onClick={() => setDeleteTarget({ id: contact.selectedContactId as Id<"users">, name: selectedReview.matches.find(match => match.userId === contact.selectedContactId)?.name ?? contact.parentEmail })}>Delete selected parent if unused</button>}
+    </form>
+    {lastUnlinked && <div className="space-y-2 text-xs"><p>Unlinked contact: {lastUnlinked.name}. Unlinking did not delete this identity.</p><button type="button" onClick={() => setDeleteTarget(lastUnlinked)}>Delete if genuinely unused</button></div>}
+    <ConfirmationModal isOpen={review !== null} onClose={() => setReview(null)} onConfirm={() => {
+      if (review === "link") void submitLink(true);
+      else if (review === "edit") void saveEdit(true);
+      else if (review === "household") void saveHousehold();
+      else if (review === "unlinkStudent") { setBusy(true); void unlinkStudent({ studentId: studentId as Id<"students"> }).then(() => setReview(null)).catch(errorNotice).finally(() => setBusy(false)); }
+    }} title={review === "household" ? "Confirm household change" : review === "unlinkStudent" ? "Unlink student?" : "Confirm contact review"} description={review === "household" ? "The label and residential address change for this household. All inheriting students and contacts use the new address. Different-address overrides and identities remain unchanged." : review === "unlinkStudent" ? "Remove this student's household link. No parent identity or credentials will be deleted." : "Review the matching identity and household before continuing. Linking keeps stored identity read-only. An explicit email edit may link to another account; confirm only if it is the intended contact."} confirmLabel="Confirm" isLoading={busy} />
+    <ConfirmationModal isOpen={remove !== null} onClose={() => setRemove(null)} onConfirm={() => void confirmRemove()} title="Unlink contact?" description={`Remove ${remove?.name ?? "this contact"} from the household? This is not identity deletion and does not reset access.`} confirmLabel="Unlink contact" isLoading={busy} />
+    <ConfirmationModal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} onConfirm={() => void confirmDelete()} title="Permanently delete unused parent?" description={`Delete the school-local record for ${deleteTarget?.name ?? "this parent"} only if the backend proves it is unused. Remaining student links, archived records, retained references or review limits block deletion. Shared authentication and other-school identities remain.`} confirmLabel="Delete unused parent" confirmVariant="danger" isLoading={busy} />
+  </section>;
 }
-
-const fieldInputClassName =
-  "h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-800 outline-none transition-all focus:border-slate-950 focus:ring-2 focus:ring-slate-950/5 placeholder:text-slate-300";
-
