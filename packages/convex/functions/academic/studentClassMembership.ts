@@ -14,6 +14,13 @@ export async function isStudentEnrolledInClassForSession(
     return false;
   }
 
+  return (await getStudentClassForSession(ctx, args)) === args.classId;
+}
+
+export async function getStudentClassForSession(
+  ctx: QueryCtx | MutationCtx,
+  args: { student: Doc<"students">; schoolId: Id<"schools">; sessionId: Id<"academicSessions"> },
+): Promise<Id<"classes">> {
   const promotions = await ctx.db
     .query("studentPromotions")
     .withIndex("by_student_and_to_session", (q) =>
@@ -29,8 +36,8 @@ export async function isStudentEnrolledInClassForSession(
     )[0];
 
   if (promotion) {
-    return promotion.toClassId === args.classId;
+    return promotion.toClassId;
   }
 
-  return args.student.classId === args.classId;
+  return args.student.classId;
 }

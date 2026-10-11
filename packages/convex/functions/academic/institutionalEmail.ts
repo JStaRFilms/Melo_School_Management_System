@@ -83,6 +83,54 @@ async function resolveDomain(ctx: Context, schoolId: Id<"schools">, domainId: Id
   }
   return domain;
 }
+export async function studentLoginSuffix(ctx: Context, schoolId: Id<"schools">): Promise<string> {
+  const school = await ctx.db.get(schoolId);
+  if (!school) throw new ConvexError("School not found");
+  if (!school.studentLoginDomainId) return `${schoolId}.students.local`;
+  const domain = await resolveDomain(ctx, schoolId, school.studentLoginDomainId);
+  if (domain.status !== "verified" || domain.verifiedAt === undefined || !validDomain(domain.domain) ||
+      /\.(local|invalid|test|example)$/.test(domain.domain))
+    throw new ConvexError("Student login domain needs review. Select a verified domain or the school default.");
+  const owners = await ctx.db.query("schoolEmailDomains").withIndex("by_domain", q => q.eq("domain", domain.domain)).take(2);
+  if (owners.length !== 1 || owners[0]._id !== domain._id) throw new ConvexError("Student login domain ownership needs review");
+  return domain.domain;
+}
+
+export const getStudentLoginPolicy = query({
+  args: { schoolId: v.id("schools") },
+  handler: async (ctx, args) => {
+    const { permissions } = await emailAccess(ctx, args.schoolId);
+    if (!permissions.policy && !permissions.student) throw new ConvexError("Student login policy authority required");
+    const school = await ctx.db.get(args.schoolId);
+    if (!school) throw new ConvexError("School not found");
+    try {
+      return { domainId: school.studentLoginDomainId ?? null, suffix: await studentLoginSuffix(ctx, args.schoolId),
+        version: school.studentLoginPolicyVersion ?? 0, state: school.studentLoginDomainId ? "configured" as const : "default" as const,
+        unavailableReason: null, canEdit: permissions.policy };
+    } catch (error) {
+      if (!(error instanceof ConvexError)) throw error;
+      return { domainId: school.studentLoginDomainId ?? null, suffix: null, version: school.studentLoginPolicyVersion ?? 0,
+        state: "needs_review" as const, unavailableReason: "Configured student login domain is unavailable. Review its verification and ownership.", canEdit: permissions.policy };
+    }
+  },
+});
+
+export const saveStudentLoginPolicy = mutation({
+  args: { schoolId: v.id("schools"), domainId: v.union(v.id("schoolEmailDomains"), v.null()), expectedVersion: v.number(), confirmed: v.boolean() },
+  handler: async (ctx, args) => {
+    await requireCapability(ctx, args.schoolId, "settings.domains.manage");
+    const school = await ctx.db.get(args.schoolId);
+    if (!school) throw new ConvexError("School not found");
+    if (!args.confirmed) throw new ConvexError("Confirm that this applies only to newly admitted students");
+    if ((school.studentLoginPolicyVersion ?? 0) !== args.expectedVersion) throw new ConvexError("Student login policy changed. Reload before saving.");
+    const version = args.expectedVersion + 1;
+    await ctx.db.patch(school._id, { studentLoginDomainId: args.domainId ?? undefined, studentLoginPolicyVersion: version, updatedAt: Date.now() });
+    const suffix = await studentLoginSuffix(ctx, school._id);
+    await auditUser(ctx, school._id, "student_login_policy_changed", "schools", String(school._id), "Changed login suffix for new students only. Existing accounts and notification sender are unchanged.");
+    return { version, suffix };
+  },
+});
+
 async function policyFor(ctx: Context, schoolId: Id<"schools">) {
   return await ctx.db.query("emailAddressPolicies").withIndex("by_school", q => q.eq("schoolId", schoolId)).unique();
 }

@@ -1,5 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { isEmailAddress } from "../foundation/normalize";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import { getReadableUserName, resolveStoredUserNameFields } from "../academic/studentNameCompat";
 import { mutation, query } from "../../_generated/server";
 import type { Doc } from "../../_generated/dataModel";
 import {
@@ -20,7 +22,7 @@ import { conditionMatches, parseSerializedValue, validateAnswerForField } from "
 const profileInputValidator = v.object({
   firstName: v.string(),
   lastName: v.string(),
-  middleName: v.optional(v.string()),
+  middleName: v.optional(v.union(v.string(), v.null())),
   dateOfBirth: v.number(),
   gender: v.optional(v.string()),
   preferredName: v.optional(v.string()),
@@ -37,6 +39,10 @@ const answerInputValidator = v.object({
 
 const contactInputValidator = v.object({
   fullName: v.string(),
+  firstName: v.optional(v.string()),
+  middleName: v.optional(v.union(v.string(), v.null())),
+  lastName: v.optional(v.string()),
+  addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
   relationship: v.string(),
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
@@ -209,17 +215,18 @@ export const saveDraft = mutation({
       const lastName = normalizeRequiredText(args.profile.lastName, "Last name", 100);
       if (!Number.isSafeInteger(args.profile.dateOfBirth) || args.profile.dateOfBirth <= 0 || args.profile.dateOfBirth >= now) throw new ConvexError("A valid date of birth is required");
       const existingProfile = await ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", (q) => q.eq("applicationId", application._id)).unique();
+      const parts = normalizeStructuredPersonName({ firstName, lastName, middleName: args.profile.middleName === undefined ? existingProfile?.middleName : args.profile.middleName });
       const profile = {
-        firstName,
-        lastName,
-        middleName: args.profile.middleName?.trim().slice(0, 100) || undefined,
+        firstName: parts.firstName ?? firstName,
+        lastName: parts.lastName ?? lastName,
+        middleName: parts.middleName,
         dateOfBirth: args.profile.dateOfBirth,
         gender: args.profile.gender?.trim().slice(0, 40) || undefined,
         preferredName: args.profile.preferredName?.trim().slice(0, 100) || undefined,
         nationality: args.profile.nationality?.trim().slice(0, 100) || undefined,
         countryOfBirth: args.profile.countryOfBirth?.trim().slice(0, 100) || undefined,
         address: args.profile.address?.trim().slice(0, 500) || undefined,
-        normalizedName: normalizedName(firstName, lastName, args.profile.middleName),
+        normalizedName: normalizedName(parts.firstName ?? firstName, parts.lastName ?? lastName, parts.middleName),
         updatedAt: now,
       };
       if (existingProfile) await ctx.db.patch(existingProfile._id, profile);
@@ -231,7 +238,12 @@ export const saveDraft = mutation({
       const email = args.primaryContact.email?.trim().toLowerCase() || undefined;
       if (email && !isEmailAddress(email)) throw new ConvexError("Primary contact email is invalid");
       const existingContact = await ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_contact_key", (q) => q.eq("applicationId", application._id).eq("contactKey", "primary")).unique();
-      const contact = { fullName, relationship, email, phone: args.primaryContact.phone?.trim().slice(0, 40) || undefined, address: args.primaryContact.address?.trim().slice(0, 500) || undefined, updatedAt: now };
+      const names = resolveStoredUserNameFields({ name: fullName, firstName: args.primaryContact.firstName, middleName: args.primaryContact.middleName, lastName: args.primaryContact.lastName,
+        fallbackName: existingContact?.fullName, fallbackFirstName: existingContact?.firstName, fallbackMiddleName: existingContact?.middleName, fallbackLastName: existingContact?.lastName });
+      const contact = { fullName: names.name, firstName: names.firstName, middleName: names.middleName, lastName: names.lastName,
+        addressMode: args.primaryContact.addressMode ?? existingContact?.addressMode, relationship, email,
+        phone: args.primaryContact.phone?.trim().slice(0, 40) || undefined,
+        address: args.primaryContact.addressMode === "residential" ? undefined : args.primaryContact.address?.trim().slice(0, 500) || undefined, updatedAt: now };
       if (existingContact) await ctx.db.patch(existingContact._id, contact);
       else await ctx.db.insert("admissionsApplicationContacts", { schoolId: application.schoolId, applicationId: application._id, contactKey: "primary", kind: "guardian", ...contact, isApplicantGuardian: true, isPrimary: true, createdAt: now });
     }
@@ -303,7 +315,7 @@ export const submit = mutation({
     const missingRequirements = requirements.filter((requirement) => (requirement.requiredMode === "required" || (requirement.requiredMode === "conditional" && conditionMatches(requirement.conditionJson, parsedAnswers))) && !activeDocuments.some((document) => document.requirementId === requirement._id && (document.state === "uploaded" || document.state === "accepted"))).map((requirement) => requirement.label);
     const signerName = normalizeRequiredText(args.signerName, "Signer name", 160);
     const signerRelationship = normalizeRequiredText(args.signerRelationship, "Signer relationship", 80);
-    const contact = primaryContact ? { fullName: primaryContact.fullName, relationship: primaryContact.relationship, email: primaryContact.email ?? guardian.normalizedEmail, phone: primaryContact.phone ?? null, address: primaryContact.address ?? null } : { fullName: signerName, relationship: signerRelationship, email: guardian.normalizedEmail, phone: guardian.normalizedPhone ?? null, address: null };
+    const contact = primaryContact ? { fullName: primaryContact.fullName, firstName: primaryContact.firstName ?? null, middleName: primaryContact.middleName ?? null, lastName: primaryContact.lastName ?? null, addressMode: primaryContact.addressMode ?? null, relationship: primaryContact.relationship, email: primaryContact.email ?? guardian.normalizedEmail, phone: primaryContact.phone ?? null, address: primaryContact.address ?? null } : { fullName: signerName, relationship: signerRelationship, email: guardian.normalizedEmail, phone: guardian.normalizedPhone ?? null, address: null };
     const canonicalProfile = { firstName: profile.firstName, lastName: profile.lastName, middleName: profile.middleName ?? null, dateOfBirth: profile.dateOfBirth, gender: profile.gender ?? null, preferredName: profile.preferredName ?? null, nationality: profile.nationality ?? null, countryOfBirth: profile.countryOfBirth ?? null, address: profile.address ?? null };
     const correctionSnapshotId = application.latestSnapshotId;
     if (application.state === "changes_requested" && correctionSnapshotId) {
@@ -431,14 +443,16 @@ export const getDraft = query({
       message: latestCorrection.message ?? "Changes were requested.",
       createdAt: latestCorrection.createdAt,
     } : null;
+    const profileParts = profile ? normalizeStructuredPersonName(profile) : null;
+    const contactName = primaryContact ? getReadableUserName({ name: primaryContact.fullName, ...primaryContact }) : null;
     return {
       state: application.state,
       draftVersion: application.draftVersion,
       currentRevision: application.currentRevision,
       safeMessages: [...new Set([...(decision?.guardianMessage ? [decision.guardianMessage] : []), ...guardianEvents.flatMap((event) => event.visibility === "guardian" && event.message?.trim() ? [event.message.trim()] : [])])],
       requestedEntryLabel: application.requestedEntryLabel ?? null,
-      profile: profile ? { firstName: profile.firstName, lastName: profile.lastName, ...(profile.middleName ? { middleName: profile.middleName } : {}), dateOfBirth: profile.dateOfBirth, ...(profile.gender ? { gender: profile.gender } : {}), ...(profile.preferredName ? { preferredName: profile.preferredName } : {}), ...(profile.nationality ? { nationality: profile.nationality } : {}), ...(profile.countryOfBirth ? { countryOfBirth: profile.countryOfBirth } : {}), ...(profile.address ? { address: profile.address } : {}) } : null,
-      primaryContact: primaryContact ? { fullName: primaryContact.fullName, relationship: primaryContact.relationship, ...(primaryContact.email ? { email: primaryContact.email } : {}), ...(primaryContact.phone ? { phone: primaryContact.phone } : {}), ...(primaryContact.address ? { address: primaryContact.address } : {}) } : null,
+      profile: profile ? { firstName: profileParts?.firstName ?? profile.firstName, lastName: profileParts?.lastName ?? profile.lastName, ...(profileParts?.middleName ? { middleName: profileParts.middleName } : {}), dateOfBirth: profile.dateOfBirth, ...(profile.gender ? { gender: profile.gender } : {}), ...(profile.preferredName ? { preferredName: profile.preferredName } : {}), ...(profile.nationality ? { nationality: profile.nationality } : {}), ...(profile.countryOfBirth ? { countryOfBirth: profile.countryOfBirth } : {}), ...(profile.address ? { address: profile.address } : {}) } : null,
+      primaryContact: primaryContact ? { fullName: contactName?.displayName ?? primaryContact.fullName, ...(contactName?.firstName ? { firstName: contactName.firstName } : {}), ...(contactName?.middleName ? { middleName: contactName.middleName } : {}), ...(contactName?.lastName ? { lastName: contactName.lastName } : {}), ...(primaryContact.addressMode ? { addressMode: primaryContact.addressMode } : {}), relationship: primaryContact.relationship, ...(primaryContact.email ? { email: primaryContact.email } : {}), ...(primaryContact.phone ? { phone: primaryContact.phone } : {}), ...(primaryContact.address ? { address: primaryContact.address } : {}) } : null,
       form: {
         version: form.version,
         schemaVersion: form.schemaVersion,

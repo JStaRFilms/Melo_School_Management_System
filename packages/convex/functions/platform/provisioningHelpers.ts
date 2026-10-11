@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { ActionCtx } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
 import { createAuth } from "../../betterAuth";
 
 type ExistingAuthLookup = {
@@ -11,6 +12,7 @@ type ExistingAuthLookup = {
   };
   accounts?: Array<{
     id: string;
+    providerId?: string;
   }>;
 };
 
@@ -169,6 +171,7 @@ export async function provisionSchoolPortalAuthUser(
     email: string;
     name: string;
     temporaryPassword: string;
+    portalOperation?: { userId: Id<"users">; schoolId: Id<"schools">; operationId: string };
   }
 ) {
   const auth = createAuth(ctx);
@@ -197,7 +200,8 @@ export async function provisionSchoolPortalAuthUser(
   )) as ExistingAuthLookup | null;
 
   let authUserId = existingAuth?.user?.id ?? null;
-  if (authUserId && authUserId !== args.currentAuthId) {
+  if (authUserId) {
+    if (authUserId !== args.currentAuthId) throw new ConvexError("This login exists but is not linked to this identity. Reconciliation is required.");
     const authIdUsage = await ctx.runQuery(
       internal.functions.platform.index.inspectProvisioningAuthIdInternal,
       {
@@ -228,6 +232,11 @@ export async function provisionSchoolPortalAuthUser(
 
     authUserId = createdUser.id;
 
+    if (args.portalOperation) {
+      await ctx.runMutation(internal.functions.academic.studentEnrollment.recordPortalAuthInternal, {
+        ...args.portalOperation, authId: authUserId,
+      });
+    }
     try {
       await authContext.internalAdapter.linkAccount({
         userId: createdUser.id,
@@ -247,7 +256,7 @@ export async function provisionSchoolPortalAuthUser(
       name: args.name,
     });
 
-    if (existingAuth?.accounts?.length) {
+    if (existingAuth?.accounts?.some(account => account.providerId === "credential")) {
       await authContext.internalAdapter.updatePassword(authUserId, passwordHash);
     } else {
       await authContext.internalAdapter.linkAccount({

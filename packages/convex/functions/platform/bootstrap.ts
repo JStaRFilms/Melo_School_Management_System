@@ -2,7 +2,7 @@ import { action, internalMutation, internalQuery } from "../../_generated/server
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
+import { resolveStoredUserNameFields } from "../academic/studentNameCompat";
 
 type BootstrapPlatformAdminIds = {
   platformAdminId: Id<"platformAdmins">;
@@ -77,6 +77,9 @@ async function ensurePlatformAuthUser(args: {
 export const bootstrapPlatformAdminInternal = internalMutation({
   args: {
     adminName: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     adminEmail: v.string(),
     adminAuthId: v.string(),
   },
@@ -93,7 +96,7 @@ export const bootstrapPlatformAdminInternal = internalMutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         authId: args.adminAuthId,
-        name: normalizePersonName(args.adminName),
+        ...resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName, fallbackName: existing.name, fallbackFirstName: existing.firstName, fallbackMiddleName: existing.middleName, fallbackLastName: existing.lastName }),
         isActive: true,
         updatedAt: now,
       });
@@ -104,7 +107,7 @@ export const bootstrapPlatformAdminInternal = internalMutation({
     const platformAdminId = await ctx.db.insert("platformAdmins", {
       authId: args.adminAuthId,
       email: args.adminEmail,
-      name: normalizePersonName(args.adminName),
+      ...resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName }),
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -142,6 +145,9 @@ export const bootstrapPlatformAdmin = action({
   args: {
     bootstrapToken: v.string(),
     adminName: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     adminEmail: v.string(),
     adminPassword: v.string(),
     origin: v.string(),
@@ -177,7 +183,8 @@ export const bootstrapPlatformAdmin = action({
       );
     }
 
-    const normalizedName = normalizeHumanName(args.adminName);
+    const nameFields = resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName });
+    const normalizedName = nameFields.name;
     const normalizedEmail = args.adminEmail.trim().toLowerCase();
     const existingAuthId = await ctx.runQuery(
       internal.functions.platform.bootstrap.resolveExistingAuthIdByEmailInternal,
@@ -198,6 +205,7 @@ export const bootstrapPlatformAdmin = action({
       internal.functions.platform.bootstrap.bootstrapPlatformAdminInternal,
       {
         adminName: normalizedName,
+        firstName: nameFields.firstName, middleName: nameFields.middleName, lastName: nameFields.lastName,
         adminEmail: normalizedEmail,
         adminAuthId,
       }

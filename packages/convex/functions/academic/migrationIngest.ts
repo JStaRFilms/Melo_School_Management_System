@@ -4,8 +4,8 @@ import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { assertMigrationAccess } from "./migrationAuth";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import {
-  parseHumanName,
   normalizePhoneNumber,
   evaluateClash,
   generateFamilyClusterKey,
@@ -15,6 +15,7 @@ const stagedRecordInputValidator = v.object({
   rowNumber: v.number(),
   rawPayload: v.record(v.string(), v.any()),
   parsedData: v.object({
+    name: v.optional(v.string()),
     firstName: v.string(),
     lastName: v.string(),
     middleName: v.optional(v.string()),
@@ -186,21 +187,11 @@ export const stageRecordsBatch = mutation({
       const data = { ...rec.parsedData };
       const validationErrors: string[] = [];
 
-      // Normalize name & phone
-      const parsedName = parseHumanName(
-        data.middleName
-          ? `${data.firstName} ${data.middleName} ${data.lastName}`
-          : `${data.firstName} ${data.lastName}`,
-      );
-      if (!data.firstName || data.firstName === "Unknown") {
-        data.firstName = parsedName.firstName;
-      }
-      if (!data.lastName) {
-        data.lastName = parsedName.lastName;
-      }
-      if (!data.middleName && parsedName.middleName) {
-        data.middleName = parsedName.middleName;
-      }
+      // Explicit reviewed columns keep their boundaries. Do not reparse a full name.
+      const nameParts = normalizeStructuredPersonName(data);
+      data.firstName = nameParts.firstName ?? "";
+      data.middleName = nameParts.middleName;
+      data.lastName = nameParts.lastName ?? "";
 
       if (data.guardianPhone) {
         data.guardianPhone =
@@ -226,8 +217,9 @@ export const stageRecordsBatch = mutation({
       }
 
       // Validation Checks
-      if (!data.firstName.trim()) {
-        validationErrors.push("First name is required");
+      if (!data.name?.trim() || data.firstName.trim() || data.lastName.trim()) {
+        if (!data.firstName.trim()) validationErrors.push("First name is required");
+        if (!data.lastName.trim()) validationErrors.push("Last name is required");
       }
 
       if (rec.entityType === "grade_record") {

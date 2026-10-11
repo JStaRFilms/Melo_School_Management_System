@@ -15,6 +15,7 @@ import {
   requireCapability,
 } from "./rbac";
 import { isTrustedLegacySubjectIssuer } from "./identityResolver";
+import { getReadableUserName, resolveStoredUserNameFields } from "./studentNameCompat";
 
 import { schoolThemeValidator } from "../foundation/brandingContract";
 import {
@@ -595,7 +596,8 @@ export const listGroupStaffCandidates = query({
         continue;
       candidates.push({
         personId: person._id,
-        name: person.name,
+        name: getReadableUserName(sourceUser).displayName,
+        ...getReadableUserName(sourceUser),
         email: person.email,
         sourceSchoolId: source.school._id,
         sourceSchoolName: source.school.name,
@@ -698,7 +700,8 @@ export const listGroupBranchStaff = query({
       staff.push({
         membershipId: membership._id,
         personId: person._id,
-        name: person.name,
+        name: getReadableUserName(user).displayName,
+        ...getReadableUserName(user),
         email: person.email,
         role: user.role,
         displayTitle: membership.displayTitle ?? null,
@@ -851,9 +854,7 @@ export const assignUserToBranch = mutation({
         authId: sourceUser.authId,
         authTokenIdentifier: person.authTokenIdentifier,
         personId: person._id,
-        name: person.name,
-        firstName: sourceUser.firstName,
-        lastName: sourceUser.lastName,
+        ...resolveStoredUserNameFields({ fallbackName: sourceUser.name, fallbackFirstName: sourceUser.firstName, fallbackMiddleName: sourceUser.middleName, fallbackLastName: sourceUser.lastName }),
         email: person.email,
         phone: sourceUser.phone,
         role: args.role,
@@ -866,7 +867,6 @@ export const assignUserToBranch = mutation({
       await ctx.db.patch(existingTargetUser._id, {
         authId: sourceUser.authId,
         authTokenIdentifier: person.authTokenIdentifier,
-        name: person.name,
         email: person.email,
         role: args.role,
         isSchoolAdmin: args.role === "admin",

@@ -12,6 +12,8 @@ import {
 } from "./admissionNumbers";
 import { recordAuditEventHelper } from "./audit";
 import { adjustSchoolEnrollmentCount } from "./studentEnrollmentCounts";
+import { resolveStoredUserNameFields } from "./studentNameCompat";
+import { allocateStudentLogin } from "./studentEnrollment";
 import {
   deriveForSessionPolicy,
   validateScoresForPolicy,
@@ -34,17 +36,12 @@ async function createImportedStudentIdentity(
   record: Doc<"stagedImportRecords">,
 ): Promise<Id<"users">> {
   const now = Date.now();
-  const name = [
-    record.parsedData.firstName,
-    record.parsedData.middleName,
-    record.parsedData.lastName,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const nameFields = resolveStoredUserNameFields(record.parsedData.firstName || record.parsedData.lastName
+    ? record.parsedData : { name: record.parsedData.name });
   const opaqueIdentity = `migration:${String(schoolId)}:${String(record._id)}`;
   const email = `${String(record._id)}@student-import.invalid`;
   const personId = await ctx.db.insert("persons", {
-    name,
+    ...nameFields,
     email,
     status: "active",
     primarySchoolId: schoolId,
@@ -56,15 +53,15 @@ async function createImportedStudentIdentity(
     schoolId,
     personId,
     authId: opaqueIdentity,
-    name,
-    firstName: record.parsedData.firstName,
-    lastName: record.parsedData.lastName,
+    ...nameFields,
     email,
     role: "student",
     isArchived: false,
     createdAt: now,
     updatedAt: now,
   });
+  const loginEmail = await allocateStudentLogin(ctx, userId, schoolId, record.parsedData.admissionNumber ?? "student");
+  await ctx.db.patch(personId, { email: loginEmail });
   await ctx.db.insert("branchMemberships", {
     personId,
     schoolId,

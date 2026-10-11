@@ -197,7 +197,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "993:1471224:fcfc87a0"
+    "shape": "1324:2d4130c3:36f81cc9"
   },
   "admissionsApplications": {
     "ownership": "direct-indexed",
@@ -2307,7 +2307,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "437:8799de61:ea81dad"
+    "shape": "506:f5020fc6:5d41d6a6"
   },
   "familyMembers": {
     "ownership": "direct-indexed",
@@ -2341,7 +2341,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "672:fe013957:bb3e4c4f"
+    "shape": "889:71901ac6:ac35589e"
   },
   "feePlanApplications": {
     "ownership": "direct-indexed",
@@ -3448,7 +3448,7 @@
     ],
     "bySchool": false,
     "storage": {},
-    "shape": "774:5cea7bb9:d704cc2f"
+    "shape": "954:da1e650:42c9951a"
   },
   "platformAdmins": {
     "ownership": "shared-or-global",
@@ -3456,7 +3456,7 @@
     "references": [],
     "bySchool": false,
     "storage": {},
-    "shape": "451:c5196ede:d7bf6500"
+    "shape": "631:dcc8eef5:3ae36f95"
   },
   "rateLimitCounters": {
     "ownership": "direct-indexed",
@@ -4261,13 +4261,18 @@
         "path": "logoStorageId",
         "target": "_storage",
         "optional": true
+      },
+      {
+        "path": "studentLoginDomainId",
+        "target": "schoolEmailDomains",
+        "optional": true
       }
     ],
     "bySchool": false,
     "storage": {
       "logoStorageId": "school-logo"
     },
-    "shape": "1536:7e763385:85075d01"
+    "shape": "1712:ff8bdf4:ba63e95c"
   },
   "schoolSiteAssets": {
     "ownership": "direct-indexed",
@@ -4668,7 +4673,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "7475:4ece748d:730e91bd"
+    "shape": "7530:1cc3cd:e335b9f5"
   },
   "studentGraduations": {
     "ownership": "direct-indexed",
@@ -4876,7 +4881,7 @@
     "storage": {
       "photoStorageId": "legacy-extractor"
     },
-    "shape": "2725:581d3d60:606057ba"
+    "shape": "3031:d3fbb014:ba7c5d0a"
   },
   "studentSubjectAggregationOptOuts": {
     "ownership": "direct-indexed",
@@ -5435,7 +5440,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1353:443fd1ca:1af48a7e"
+    "shape": "2041:a0fd6470:3fb33288"
   },
   "classResultExclusions": {
     "ownership": "direct-indexed",

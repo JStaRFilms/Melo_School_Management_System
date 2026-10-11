@@ -382,6 +382,38 @@ async function commitAll(
 }
 
 describe("R1 reviewed import remediation", () => {
+  it("commits middle names and legacy full names without inference or truncation", async () => {
+    const f = await fixture();
+    const workspaceId = await createWorkspace(f, "Name contracts");
+    await f.session.mutation(api.functions.academic.migrationIngest.stageRecordsBatch, {
+      schoolId: f.schoolId, workspaceId, records: [
+        { rowNumber: 1, rawPayload: {}, entityType: "student", parsedData: { firstName: "Mary Anne", middleName: "Helen", lastName: "Van Dyke", gender: "Female", className: "JSS 1A", dateOfBirth: Date.UTC(2018, 1, 1), address: "Imported home", guardianName: "Legacy carer", guardianPhone: "08012345678" } },
+        { rowNumber: 2, rawPayload: {}, entityType: "student", parsedData: { name: "Legacy Full Name With No Guessed Parts", firstName: "", lastName: "", gender: "Female", className: "JSS 1A" } },
+        { rowNumber: 3, rawPayload: {}, entityType: "student", parsedData: { firstName: "Jo Anne", lastName: "Van Dyke", gender: "Female", className: "JSS 1A" } },
+      ],
+    });
+    const records = await f.session.query(api.functions.academic.migrationWorkspace.getWorkspaceRecords, { schoolId: f.schoolId, workspaceId, limit: 10 });
+    for (const record of records) await f.session.mutation(api.functions.academic.migrationAutosave.reviewStagedRecord, {
+      schoolId: f.schoolId, recordId: record._id, expectedRowRevision: record.rowRevision ?? 1, resolutionAction: "create_new", selectedClassId: f.classId, selectedFamilyId: f.familyId,
+      admissionNumberMode: "official_generated", expectedNumberPolicyVersion: 1, expectedNumberFormatVersion: "branch:1:0",
+      expectedNumberCounterKey: "default", expectedNumberCounterVersion: 0, expectedNumberSessionId: f.sessionId, expectedNumberResetPeriod: "continuous",
+    });
+    await approveAll(f, workspaceId);
+    await commitAll(f, workspaceId);
+    const users = await f.t.run(ctx => ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).collect());
+    expect(users.find(user => user.name === "Mary Anne Helen Van Dyke")).toMatchObject({ firstName: "Mary Anne", middleName: "Helen", lastName: "Van Dyke", email: expect.stringContaining(".students.local") });
+    const legacy = users.find(user => user.name === "Legacy Full Name With No Guessed Parts");
+    expect(legacy).toBeDefined();
+    expect(legacy?.firstName).toBeUndefined();
+    expect(legacy?.lastName).toBeUndefined();
+    await f.t.run(ctx => ctx.db.insert("membershipDirectGrants", { membershipId: f.membershipId, capability: "enrollment.intakes.manage", grantedAt: 1 }));
+    const students = await f.t.run(ctx => ctx.db.query("students").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).collect());
+    const profiles = await Promise.all(students.map(student => f.session.query(api.functions.academic.studentEnrollment.getStudentProfile, { studentId: student._id })));
+    expect(profiles.find(profile => profile.name === "Mary Anne Helen Van Dyke")).toMatchObject({ firstName: "Mary Anne", middleName: "Helen", lastName: "Van Dyke", gender: "Female", dateOfBirth: Date.UTC(2018, 1, 1), address: "Imported home", addressSource: "legacy", emergencyContact: { source: "legacy", name: "Legacy carer" } });
+    expect(profiles.find(profile => profile.name === "Jo Anne Van Dyke")).toMatchObject({ firstName: "Jo", middleName: "Anne", lastName: "Van Dyke" });
+    expect(students.every(student => student.familyId === f.familyId)).toBe(true);
+  });
+
   it("hard-fails legacy public commit and import-local numbering until a plan is approved", async () => {
     const f = await fixture();
     await expect(

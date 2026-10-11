@@ -200,6 +200,8 @@ describe("student enrollment registered functions", () => {
       studentId: ids.studentId,
       classId: ids.sourceClassId,
       confirmClassAssignment: true,
+      expectedClassId: ids.targetClassId,
+      expectedSessionId: ids.futureSessionId,
     });
     const [targetAfterRestoration, sourceAfterRestoration] = await Promise.all([
       admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, {
@@ -423,6 +425,9 @@ describe("student enrollment registered functions", () => {
     await viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
       studentId: ids.studentId,
       classId: ids.targetClassId,
+      confirmClassAssignment: true,
+      expectedClassId: ids.sourceClassId,
+      expectedSessionId: ids.activeSessionId,
     });
     await viewer.mutation(api.functions.academic.studentEnrollment.updateStudent, {
       studentId: ids.studentId,
