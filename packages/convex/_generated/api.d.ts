@@ -11,6 +11,7 @@
 import type * as betterAuth from "../betterAuth.js";
 import type * as crons from "../crons.js";
 import type * as functions_academic___tests___securityFixtures from "../functions/academic/__tests__/securityFixtures.js";
+import type * as functions_academic_accountNotices from "../functions/academic/accountNotices.js";
 import type * as functions_academic_academicSetup from "../functions/academic/academicSetup.js";
 import type * as functions_academic_adminLeadership from "../functions/academic/adminLeadership.js";
 import type * as functions_academic_adminLeadershipHelpers from "../functions/academic/adminLeadershipHelpers.js";
@@ -197,6 +198,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   "functions/academic/__tests__/securityFixtures": typeof functions_academic___tests___securityFixtures;
   "functions/academic/academicSetup": typeof functions_academic_academicSetup;
+  "functions/academic/accountNotices": typeof functions_academic_accountNotices;
   "functions/academic/adminLeadership": typeof functions_academic_adminLeadership;
   "functions/academic/adminLeadershipHelpers": typeof functions_academic_adminLeadershipHelpers;
   "functions/academic/adminSelectors": typeof functions_academic_adminSelectors;

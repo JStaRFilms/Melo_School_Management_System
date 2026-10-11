@@ -4,6 +4,7 @@ import type { TableNames } from "../../_generated/dataModel";
 // Generated from top-level required schoolId fields in schema.ts. Every table
 // must expose by_school so cleanup remains indexed and bounded.
 export const TENANT_SCHOOL_TABLES = [
+  "accountNoticeOutbox",
   "academicSessions",
   "academicTerms",
   "academicTimelineAuditEvents",
@@ -174,6 +175,7 @@ export const TENANT_SCHOOL_TABLES = [
 export type TenantSchoolTable = (typeof TENANT_SCHOOL_TABLES)[number];
 
 export const tenantSchoolTableValidator = v.union(
+  v.literal("accountNoticeOutbox"),
   v.literal("academicSessions"),
   v.literal("academicTerms"),
   v.literal("academicTimelineAuditEvents"),

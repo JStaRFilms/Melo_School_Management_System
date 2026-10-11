@@ -37,7 +37,7 @@ const profileKey = (value?: SchoolSeedProfileKey): SchoolSeedProfileKey => value
 // `by_school` schema index (including rateLimitCounters); auth component and
 // platform tables are never part of a tenant reset.
 export const DEMO_SCHOOL_TABLES = [
-  "demoSeedRuns", "contentAuditEvents", "aiRunLogs", "rateLimitCounters",
+  "accountNoticeOutbox", "demoSeedRuns", "contentAuditEvents", "aiRunLogs", "rateLimitCounters",
   "assessmentBankItems", "assessmentBanks", "assessmentGenerationProfiles",
   "instructionArtifactSources", "instructionArtifactRevisions", "instructionArtifactDocuments", "instructionArtifacts", "instructionTemplates",
   "curriculumUnits", "curriculumImports",

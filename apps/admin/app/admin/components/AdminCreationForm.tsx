@@ -7,6 +7,8 @@ import { getUserFacingErrorMessage, PersonNameFields, emptyPersonName } from "@s
 import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import { api } from "@school/convex/_generated/api";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { AccountNoticePanel } from "../../academic/students/components/AccountNoticePanel";
 
 interface AdminCreationFormProps {
   onSuccess: (message: string) => void;
@@ -24,6 +26,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
   const [email, setEmail] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [completedAdminId, setCompletedAdminId] = useState<Id<"users"> | null>(null);
 
   const submitCreateAdmin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -47,6 +50,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
         origin: window.location.origin,
       });
 
+      setCompletedAdminId(created.adminId);
       setPerson(emptyPersonName);
       setEmail("");
       setTemporaryPassword("");
@@ -115,6 +119,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
           {isBusy ? "Processing..." : "Authorize Role"}
         </button>
       </form>
+      {completedAdminId && <AccountNoticePanel userId={completedAdminId} />}
     </AdminSurface>
   );
 }

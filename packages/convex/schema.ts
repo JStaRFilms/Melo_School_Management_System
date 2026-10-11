@@ -1450,6 +1450,27 @@ export default defineSchema({
     .index("by_event", ["eventId"])
     .index("by_school", ["schoolId"]),
 
+  accountNoticeOutbox: defineTable({
+    schoolId: v.id("schools"),
+    targetUserId: v.id("users"),
+    operationId: v.string(),
+    kind: v.union(v.literal("ready"), v.literal("reset")),
+    recipientUserId: v.optional(v.id("users")),
+    recipientEmail: v.optional(v.string()),
+    subject: v.string(),
+    text: v.string(),
+    state: v.union(v.literal("pending"), v.literal("sending"), v.literal("accepted"), v.literal("failed"), v.literal("not_configured"), v.literal("suppressed"), v.literal("ineligible"), v.literal("reconciliation_required")),
+    attemptCount: v.number(),
+    nextAttemptAt: v.number(),
+    firstAttemptAt: v.optional(v.number()),
+    providerFrom: v.optional(v.string()),
+    providerId: v.optional(v.string()),
+    lastErrorCode: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_target_user_and_operation", ["targetUserId", "operationId"])
+    .index("by_school", ["schoolId"]),
+
   users: defineTable({
     schoolId: v.id("schools"),
     authId: v.string(),
@@ -1461,6 +1482,11 @@ export default defineSchema({
     firstName: v.optional(v.string()),
     middleName: v.optional(v.string()),
     lastName: v.optional(v.string()),
+    lastCredentialOperation: v.optional(v.object({
+      operationId: v.string(),
+      kind: v.union(v.literal("ready"), v.literal("reset")),
+      committedAt: v.number(),
+    })),
     portalAccount: v.optional(v.object({
       state: v.union(v.literal("provisioning"), v.literal("resetting"), v.literal("provisioned"), v.literal("reconciliation_required")),
       operationId: v.string(),

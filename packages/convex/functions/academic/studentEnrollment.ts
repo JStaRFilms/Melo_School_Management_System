@@ -368,7 +368,8 @@ export const finishPortalProvisionInternal = internalMutation({
       personId, schoolId: user.schoolId, status: "active", isDefaultBranch: true, legacyUserId: user._id, joinedAt: now, updatedAt: now,
     });
     await ctx.db.patch(user._id, { authId: args.authId, authTokenIdentifier: token, personId, updatedAt: now,
-      portalAccount: { ...evidence, state: "provisioned", authId: args.authId, updatedAt: now } });
+      portalAccount: { ...evidence, state: "provisioned", authId: args.authId, updatedAt: now },
+      lastCredentialOperation: { operationId: args.operationId, kind: evidence.state === "resetting" ? "reset" : "ready", committedAt: now } });
     return null;
   },
 });
@@ -3838,6 +3839,8 @@ async function upsertPortalCredentialsHandler(
     });
     throw error;
   }
+  // Notice work is separate from the committed credentials. It cannot erase the password handoff.
+  await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: target.userId, operationId }).catch(() => null);
   return { userId: target.userId, email: target.email, temporaryPassword: args.temporaryPassword, operationId };
 }
 

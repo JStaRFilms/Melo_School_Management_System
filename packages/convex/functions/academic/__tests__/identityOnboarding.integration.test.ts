@@ -4,6 +4,8 @@ import { api, internal } from "../../../_generated/api";
 import schema from "../../../schema";
 import { createCanonicalStudentEnrollmentHelper } from "../studentEnrollment";
 import { getStudentClassForSession } from "../studentClassMembership";
+import rateLimiterSchema from "../../../node_modules/@convex-dev/rate-limiter/src/component/schema";
+const rateModules = import.meta.glob("../../../node_modules/@convex-dev/rate-limiter/src/component/**/*.ts");
 
 const authStore = vi.hoisted(() => ({
   users: new Map<string, { id: string; email: string; name: string }>(),
@@ -57,7 +59,7 @@ const enrollment = api.functions.academic.studentEnrollment;
 const identity = { subject: "b1-admin", tokenIdentifier: "https://auth.test|b1-admin" };
 
 beforeEach(() => { authStore.users.clear(); authStore.passwords.clear(); authStore.next = 0; authStore.resets = 0; authStore.failLink = false; vi.stubEnv("CONVEX_SITE_URL", "https://school.convex.site"); });
-afterEach(() => { vi.unstubAllEnvs(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -201,6 +203,27 @@ test("atomic contact choice preserves existing identity and retries without anot
   const failed = { ...args, requestKey: "invalid-contact", admissionNumber: "B1/003", confirmDuplicateLink: false };
   await expect(f.actor.mutation(enrollment.createStudent, failed)).rejects.toThrow("confirm");
   expect(await f.t.run(ctx => ctx.db.query("students").withIndex("by_school_and_admission_number", q => q.eq("schoolId", f.ids.schoolId).eq("admissionNumber", "B1/003")).first())).toBeNull();
+});
+
+test("notice configuration failure preserves committed parent access and the temporary password return", async () => {
+  vi.useFakeTimers(); vi.stubEnv("RESEND_API_KEY", ""); vi.stubEnv("MELO_EMAIL_FROM", "");
+  const provider = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("No real provider request allowed"));
+  const f = await fixture(); f.t.registerComponent("rateLimiter", rateLimiterSchema, rateModules);
+  const parent = await f.actor.mutation(enrollment.upsertStudentFamilyLink, { studentId: f.studentId, firstName: "Grace", lastName: "Anthony", email: "grace@example.test" });
+  const result = await f.actor.action(enrollment.upsertPortalCredentials, { userId: parent.parentUserId, temporaryPassword: "transient-not-for-email", requestKey: "notice-ready" });
+  expect(result).toMatchObject({ operationId: "notice-ready", temporaryPassword: "transient-not-for-email" });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const notice = await f.actor.query(api.functions.academic.accountNotices.getAccountNoticeState, { userId: parent.parentUserId });
+  expect(notice.notice?.state).toBe("not_configured");
+  expect((await f.actor.query(enrollment.getPortalAccountState, { userId: parent.parentUserId })).state).toBe("provisioned");
+  const reset = await f.actor.action(enrollment.upsertPortalCredentials, { userId: parent.parentUserId, temporaryPassword: "new-transient-not-for-email", requestKey: "notice-reset" });
+  expect(reset).toMatchObject({ operationId: "notice-reset", temporaryPassword: "new-transient-not-for-email" });
+  const stored = await f.t.run(ctx => ctx.db.get(parent.parentUserId));
+  expect(stored?.lastCredentialOperation).toMatchObject({ kind: "reset", operationId: "notice-reset" });
+  const rows = await f.t.run(ctx => ctx.db.query("accountNoticeOutbox").withIndex("by_target_user_and_operation", q => q.eq("targetUserId", parent.parentUserId)).take(3));
+  expect(JSON.stringify(rows)).not.toContain("transient-not-for-email");
+  expect(JSON.stringify(stored)).not.toContain("transient-not-for-email");
+  expect(provider).not.toHaveBeenCalled();
 });
 
 test("exact-email Grace Anthony match ignores incoming identity typos and consumes one admission on retry", async () => {

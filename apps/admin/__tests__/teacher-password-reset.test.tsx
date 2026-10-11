@@ -3,6 +3,8 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { TeacherEditForm } from "../app/academic/teachers/components/TeacherEditForm";
 import type { TeacherRecord } from "../lib/types";
 
+vi.mock("convex/react", () => ({ useQuery: () => undefined, useMutation: () => vi.fn() }));
+
 const mockTeacher: TeacherRecord = {
   _id: "teacher-123",
   name: "Dr. Tariq Adeleke",
