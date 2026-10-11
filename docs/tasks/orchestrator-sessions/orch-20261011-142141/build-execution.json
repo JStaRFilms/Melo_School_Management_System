@@ -118,11 +118,61 @@
         "adminTypecheck": "passed",
         "verification": "B2-parent-verification.md"
       }
+    },
+    {
+      "id": "B3",
+      "taskId": "node:delegated-task:command%3Amcp%3Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%3Adelegate-task%3Aorch-20261011-142141-B3-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%3Adelegate-task%3Aorch-20261011-142141-B3-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%253Adelegate-task%253Aorch-20261011-142141-B3-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%3Adelegate-task%3Aorch-20261011-142141-B3-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "f41441d",
+        "405c4cc",
+        "cda6b37"
+      ],
+      "result": "B3-result.md",
+      "parentChecks": {
+        "convexTests": 28,
+        "adminFiles": 85,
+        "adminTests": 381,
+        "typechecks": [
+          "Convex",
+          "Portal"
+        ],
+        "verification": "B3-parent-verification.md"
+      }
     }
   ],
   "pendingBuild": [
-    "B3",
     "B4"
   ],
-  "gitIndexOwner": "parent"
+  "gitIndexOwner": "parent",
+  "deliveryBranches": {
+    "PR1": {
+      "branch": "fix/identity-onboarding-portal",
+      "commit": "637d6911e4aa92b16af366de671a1c1818a9fb5a",
+      "status": "locally checked, review/browser/publish pending"
+    },
+    "PR2": {
+      "branch": "fix/portal-status-history-notices",
+      "baseCommit": "637d6911e4aa92b16af366de671a1c1818a9fb5a",
+      "status": "locally checked, review/browser/publish pending"
+    }
+  }
 }
