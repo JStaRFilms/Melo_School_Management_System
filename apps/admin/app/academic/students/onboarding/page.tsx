@@ -134,7 +134,10 @@ export default function StudentOnboardingPage() {
           ...(closure ? { draftId: closure.draftId, expectedDraftRevision: closure.expectedRevision, draftFormKey: "student_onboarding" } : {}),
         };
       }
-      const id = await createStudent({ ...submittedArgs.current, confirmDuplicateLink: confirmDuplicateLink || undefined });
+      if (confirmDuplicateLink) {
+        submittedArgs.current = { ...submittedArgs.current, confirmDuplicateLink: true };
+      }
+      const id = await createStudent(submittedArgs.current);
       setCompletedStudentId(id); draft.submissionSucceeded();
       let photoError: string | null = null;
       if (studentPhotoFile) {

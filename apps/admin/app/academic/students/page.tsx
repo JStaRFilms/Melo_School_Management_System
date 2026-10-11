@@ -843,7 +843,10 @@ function StudentsPageContent() {
         addressMode: "residential",
         emergencyContactMode: emergencyContactMode === "legacy" ? undefined : emergencyContactMode,
       };
-      const createdStudentId = await createStudent({ ...submittedAdmission.current, confirmDuplicateLink: confirmDuplicateLink || undefined });
+      if (confirmDuplicateLink) {
+        submittedAdmission.current = { ...submittedAdmission.current, confirmDuplicateLink: true };
+      }
+      const createdStudentId = await createStudent(submittedAdmission.current);
 
       let photoUploadError: string | null = null;
       if (studentPhotoFile) {
