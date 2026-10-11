@@ -17,7 +17,7 @@ function fill() {
   fireEvent.change(screen.getByLabelText("Last name"), { target: { value: "De la Cruz" } });
 }
 
-it("provisions teacher names with exact structured parts and no password in the draft projection", async () => {
+it("provisions teacher names with exact structured parts", async () => {
   const provision = vi.fn().mockResolvedValue({ teacherId: "teacher", email: "teacher@example.test", temporaryPassword: "Synthetic!123" });
   render(<DepartureGuardProvider><TeacherCreationForm onProvision={provision} isSubmitting={false} /></DepartureGuardProvider>);
   fill();
