@@ -5,6 +5,7 @@ import type { TableNames } from "../../_generated/dataModel";
 // must expose by_school so cleanup remains indexed and bounded.
 export const TENANT_SCHOOL_TABLES = [
   "accountNoticeOutbox",
+  "profileCorrectionRequests",
   "academicSessions",
   "academicTerms",
   "academicTimelineAuditEvents",
@@ -176,6 +177,7 @@ export type TenantSchoolTable = (typeof TENANT_SCHOOL_TABLES)[number];
 
 export const tenantSchoolTableValidator = v.union(
   v.literal("accountNoticeOutbox"),
+  v.literal("profileCorrectionRequests"),
   v.literal("academicSessions"),
   v.literal("academicTerms"),
   v.literal("academicTimelineAuditEvents"),

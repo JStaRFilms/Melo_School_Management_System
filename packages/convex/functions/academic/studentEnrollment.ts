@@ -55,6 +55,7 @@ import { getStudentClassForSession, isStudentEnrolledInClassForSession } from ".
 import { assertBranchDoc } from "../foundation/tenantScope";
 import { isEmailAddress } from "../foundation/normalize";
 import { studentLoginSuffix } from "./institutionalEmail";
+import { contactAddressPatch } from "./familyContactAddress";
 
 async function activeStudentAssignment(ctx: QueryCtx | MutationCtx, student: Doc<"students">) {
   const sessions = await ctx.db.query("academicSessions")
@@ -661,19 +662,6 @@ export async function createCanonicalStudentEnrollmentHelper(
   // platform backfill initializes the school's counter row.
   await adjustSchoolEnrollmentCount(ctx, args.schoolId, 1);
   return { studentId, studentUserId, admissionNumber };
-}
-
-function contactAddressPatch(
-  args: { addressMode?: "residential" | "different"; addressOverride?: string | null },
-  existing?: Doc<"familyMembers">,
-): Pick<Doc<"familyMembers">, "addressMode" | "addressOverride"> {
-  if (args.addressMode === undefined && args.addressOverride === undefined)
-    return existing ? { addressMode: existing.addressMode, addressOverride: existing.addressOverride } : { addressMode: "residential" };
-  const mode = args.addressMode ?? existing?.addressMode;
-  if (!mode) throw new ConvexError("Choose same residential address or different address");
-  const addressOverride = mode === "different" ? normalizeOptionalText(args.addressOverride === undefined ? existing?.addressOverride : args.addressOverride) : undefined;
-  if (mode === "different" && !addressOverride) throw new ConvexError("Enter the different contact address");
-  return { addressMode: mode, addressOverride };
 }
 
 const parentGuardianValidator = v.union(
