@@ -1,9 +1,8 @@
-import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { parseDraftPayload } from "@school/shared/drafts";
 import { usePersistentFormDraft } from "@/usePersistentFormDraft";
-import { FamilyOnboardingForm } from "../app/academic/students/components/FamilyOnboardingForm";
+import { restoreAdmissionContact } from "../app/academic/students/components/admissionContact";
 
 const mocks = vi.hoisted(() => ({
   server: null as null | Record<string, unknown>,
@@ -121,70 +120,12 @@ it("offers timestamped recovery without overwriting edits and resumes the server
   }));
 });
 
-it("uses validated required progress while exposing an invalid optional family section", () => {
-  const noop = vi.fn();
-  const props: ComponentProps<typeof FamilyOnboardingForm> = {
-    selectedClassName: "Synthetic Class",
-    classes: [{ _id: "class-one", name: "Synthetic Class", level: "Primary" }],
-    selectedClassId: null,
-    onClassIdChange: noop,
-    studentFirstName: "",
-    onStudentFirstNameChange: noop,
-    onStudentFirstNameBlur: noop,
-    studentLastName: "",
-    onStudentLastNameChange: noop,
-    onStudentLastNameBlur: noop,
-    admissionNumber: "",
-    onAdmissionNumberChange: noop,
-    admissionNumberMode: "automatic",
-    numberingPolicyConfigured: false,
-    numberingPolicyLoading: false,
-    numberingPreview: null,
-    canOverrideAdmissionNumber: false,
-    overrideReason: "",
-    overrideConfirmed: false,
-    overrideCounterDecision: "",
-    advanceCounterTo: "",
-    onAdmissionNumberModeChange: noop,
-    onOverrideReasonChange: noop,
-    onOverrideConfirmedChange: noop,
-    onOverrideCounterDecisionChange: noop,
-    onAdvanceCounterToChange: noop,
-    gender: "",
-    onGenderChange: noop,
-    parentFirstName: "",
-    onParentFirstNameChange: noop,
-    onParentFirstNameBlur: noop,
-    parentLastName: "",
-    onParentLastNameChange: noop,
-    onParentLastNameBlur: noop,
-    parentEmail: "",
-    onParentEmailChange: noop,
-    parentPhone: "",
-    onParentPhoneChange: noop,
-    parentRelationship: "",
-    onParentRelationshipChange: noop,
-    isParentPrimaryContact: true,
-    onIsParentPrimaryContactChange: noop,
-    isSubmitting: false,
-    draftStatus: "idle",
-    draftLastSavedAt: null,
-    onSubmit: vi.fn(),
-    inputRef: { current: null },
-  };
-  const view = render(<FamilyOnboardingForm {...props} />);
-  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
-  view.rerender(<FamilyOnboardingForm
-    {...props}
-    selectedClassId="class-one"
-    studentFirstName="Synthetic"
-    studentLastName="Student"
-    admissionNumber="SYN-1"
-    gender="Female"
-    parentFirstName="Incomplete"
-  />);
-  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
-  expect(screen.getByText(/Family link: error/)).toBeInTheDocument();
+it("recovers existing family drafts into the unified contact choice without guessing name parts", () => {
+  const old = parseDraftPayload("family_onboarding", { studentFirstName: "Synthetic", studentLastName: "Student", parentFirstName: "Existing", parentLastName: "Parent", parentEmail: "parent@example.test", parentRelationship: "Family friend" });
+  expect(restoreAdmissionContact(old)).toMatchObject({ contactChoice: "new", parentRelationship: "Family friend", parentMiddleName: "" });
+  const selected = parseDraftPayload("student_onboarding", { contactChoice: "existing", selectedContactId: "parent-one", parentEmail: "parent@example.test", middleName: "Middle", emergencyContactMode: "override" });
+  expect(restoreAdmissionContact(selected)).toMatchObject({ contactChoice: "existing", selectedContactId: "parent-one" });
+  expect(selected.middleName).toBe("Middle");
 });
 
 it("rejects credential and raw-file shaped people payloads", () => {

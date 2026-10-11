@@ -1,6 +1,7 @@
 import { createRef } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { emptyAdmissionContact } from "../app/academic/students/components/admissionContact";
 import { StudentCreationForm } from "../app/academic/students/components/StudentCreationForm";
 import { StudentProfileEditor } from "../app/academic/students/components/StudentProfileEditor";
 import { DepartureGuardProvider } from "@school/shared/drafts";
@@ -70,6 +71,12 @@ it("keeps a governed creation form nonmutating until submit and permits automati
     <StudentCreationForm
       selectedClassName="Primary 1"
       studentFirstName="Ada"
+      studentMiddleName=""
+      onStudentMiddleNameChange={vi.fn()}
+      contact={emptyAdmissionContact}
+      onContactChange={vi.fn()}
+      emergencyContactMode="primary"
+      onEmergencyContactModeChange={vi.fn()}
       studentLastName="Student"
       admissionNumber=""
       admissionNumberMode="automatic"
@@ -118,7 +125,7 @@ it("keeps a governed creation form nonmutating until submit and permits automati
 
   expect(screen.getByText("SCH-0001")).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
-  const submit = screen.getByRole("button", { name: "Complete Admission" });
+  const submit = screen.getByRole("button", { name: "Admit student" });
   expect(submit).toBeEnabled();
   const form = submit.closest("form");
   if (!form) throw new Error("Expected creation form");
