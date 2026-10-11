@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "../lib/AuthProvider";
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 
 const mocks = vi.hoisted(() => ({
+  storedName: "Stored school name",
   query: vi.fn(),
   convexAuth: vi.fn(() => ({ isLoading: false, isAuthenticated: true })),
 }));
@@ -33,20 +34,30 @@ const branches = [
 ];
 function Probe() {
   const auth = useAuth();
-  return <div><p data-testid="selection">{auth.selectedSchoolId ?? "default"}</p><p data-testid="access">{auth.workspaceAccess?.state === "ready" ? auth.workspaceAccess.branch.schoolId : auth.workspaceAccess?.state ?? "loading"}</p><p data-testid="is-loading">{String(auth.isLoading)}</p><p data-testid="is-authenticated">{String(auth.isAuthenticated)}</p><p data-testid="has-session">{String(Boolean(auth.session))}</p><button onClick={() => auth.selectSchool("default")}>Default</button></div>;
+  return <div><p data-testid="selection">{auth.selectedSchoolId ?? "default"}</p><p data-testid="access">{auth.workspaceAccess?.state === "ready" ? auth.workspaceAccess.branch.schoolId : auth.workspaceAccess?.state ?? "loading"}</p><p data-testid="is-loading">{String(auth.isLoading)}</p><p data-testid="is-authenticated">{String(auth.isAuthenticated)}</p><p data-testid="has-session">{String(Boolean(auth.session))}</p><p data-testid="stored-name">{auth.session?.user.name}</p><button onClick={() => auth.selectSchool("default")}>Default</button></div>;
 }
 
 beforeEach(() => {
   localStorage.clear();
   mocks.query.mockReset();
+  mocks.storedName = "Stored school name";
   mocks.convexAuth.mockReset();
   mocks.convexAuth.mockReturnValue({ isLoading: false, isAuthenticated: true });
   mocks.query.mockImplementation((reference: unknown, args: unknown) => {
     if (args === "skip") return undefined;
     const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
     if (name.includes("listUserBranches")) return branches;
+    if (name.includes("getViewerContext")) return { name: mocks.storedName };
     return ready((args as { schoolId?: string }).schoolId ?? "default");
   });
+});
+
+it("refreshes displayed names from the authorized school identity without changing the auth-session name", async () => {
+  const view = render(<AuthProvider><Probe /></AuthProvider>);
+  await waitFor(() => expect(screen.getByTestId("stored-name")).toHaveTextContent("Stored school name"));
+  mocks.storedName = "Edited school name";
+  view.rerender(<AuthProvider><Probe /></AuthProvider>);
+  expect(screen.getByTestId("stored-name")).toHaveTextContent("Edited school name");
 });
 
 describe("teacher account-scoped branch selection", () => {

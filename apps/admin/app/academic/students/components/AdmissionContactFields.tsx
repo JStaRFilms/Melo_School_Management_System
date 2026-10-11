@@ -6,7 +6,7 @@ import { api } from "@school/convex/_generated/api";
 import { cleanEmailInput, cleanPhoneInput } from "@school/shared";
 import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import type { AdmissionContact } from "./admissionContact";
-import { RelationshipField } from "./RelationshipField";
+import { RelationshipField } from "@school/shared";
 import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import { PortalStateLabel } from "./PortalStateLabel";
 

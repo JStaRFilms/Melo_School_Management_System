@@ -1,7 +1,8 @@
 "use client";
 
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameFinalStrict } from "@/human-name";
+import { PersonNameFields, emptyPersonName } from "@school/shared";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import { Check, Copy, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useDirtyForm, type DraftConnection, type DraftPayload } from "@school/shared/drafts";
@@ -22,7 +23,7 @@ interface DraftClosure {
 }
 
 interface TeacherCreationFormProps {
-  onProvision: (name: string, email: string, password: string, draft?: DraftClosure) => Promise<ProvisionResult>;
+  onProvision: (name: string, email: string, password: string, draft?: DraftClosure, parts?: { firstName: string; middleName?: string; lastName: string }) => Promise<ProvisionResult>;
   isSubmitting: boolean;
   draftContext?: {
     schoolId: Id<"schools">;
@@ -32,14 +33,16 @@ interface TeacherCreationFormProps {
 }
 
 export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }: TeacherCreationFormProps) {
-  const [name, setName] = useState("");
+  const [person, setPerson] = useState(emptyPersonName);
+  const parts = normalizeStructuredPersonName(person);
+  const name = person.structured ? [parts.firstName, parts.middleName, parts.lastName].filter(Boolean).join(" ") : person.fullName.trim();
   const [email, setEmail] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [draftInstanceKey, setDraftInstanceKey] = useState(0);
-  const draftData = useMemo<DraftPayload<"staff_onboarding">>(() => ({ name, email }), [email, name]);
+  const draftData = useMemo<DraftPayload<"staff_onboarding">>(() => ({ name, email, ...(person.structured ? { firstName: person.firstName, middleName: person.middleName, lastName: person.lastName } : {}) }), [email, name, person]);
   const draftIsDirty = isSubmitting || (!result && Boolean(name || email || temporaryPassword !== "Teacher123!Pass"));
   const draft = usePersistentFormDraft({
     formKey: "staff_onboarding",
@@ -50,7 +53,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
     isDirty: draftIsDirty,
     instanceKey: draftInstanceKey,
     onRestore: (payload) => {
-      setName(payload.name);
+      setPerson({ firstName: payload.firstName ?? "", middleName: payload.middleName ?? "", lastName: payload.lastName ?? "", fullName: payload.name, structured: Boolean(payload.firstName && payload.lastName) });
       setEmail(payload.email);
       setTemporaryPassword("");
       setResult(null);
@@ -59,7 +62,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
   });
 
   const resetForm = () => {
-    setName("");
+    setPerson(emptyPersonName);
     setEmail("");
     setTemporaryPassword("Teacher123!Pass");
     setResult(null);
@@ -81,7 +84,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || !name || !email || !temporaryPassword) return;
+    if (isSubmitting || !name || !email || !temporaryPassword || (person.structured && (!parts.firstName || !parts.lastName))) return;
 
     setSubmitError("");
     let closure: DraftClosure | null = null;
@@ -94,7 +97,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
       }
     }
     try {
-      const res = await onProvision(name, email, temporaryPassword, closure ?? undefined);
+      const res = await onProvision(name, email, temporaryPassword, closure ?? undefined, person.structured && parts.firstName && parts.lastName ? { firstName: parts.firstName, middleName: parts.middleName, lastName: parts.lastName } : undefined);
       if (res) {
         if (draftContext) draft.submissionSucceeded();
         setResult(res);
@@ -186,17 +189,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
-        <FormField label="Name">
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={(e) => setName(humanNameFinalStrict(e.target.value))}
-            placeholder="Adebayo Ogunlesi"
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
-          />
-        </FormField>
+        <PersonNameFields value={person} onChange={setPerson} allowFullName={!person.structured || Boolean(person.fullName)} />
 
         <FormField label="Email">
           <input

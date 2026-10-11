@@ -14,6 +14,9 @@ export * from "./planning-context";
 export * from "./toast";
 
 // Components
+export { RelationshipField } from "./components/RelationshipField";
+export { PersonNameFields, emptyPersonName } from "./components/PersonNameFields";
+export type { PersonNameValue } from "./components/PersonNameFields";
 export { NarrativeSubjectEntry } from "./features/narrative";
 export type { CommentRow } from "./features/narrative";
 export { WorkspaceNavbar } from "./components/WorkspaceNavbar";

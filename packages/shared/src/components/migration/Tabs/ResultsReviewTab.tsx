@@ -18,7 +18,7 @@ export function ResultsReviewTab({ records, onPatchField, onReview }: ResultsRev
   const filtered = gradeRecords.filter((rec) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
-    const name = `${rec.parsedData.firstName} ${rec.parsedData.lastName}`.toLowerCase();
+    const name = ([rec.parsedData.firstName, rec.parsedData.middleName, rec.parsedData.lastName].filter(Boolean).join(" ") || rec.parsedData.name || "").toLowerCase();
     const subj = rec.parsedData.subjectName?.toLowerCase() || "";
     const cls = rec.parsedData.className.toLowerCase();
     return name.includes(term) || subj.includes(term) || cls.includes(term);
@@ -80,7 +80,7 @@ export function ResultsReviewTab({ records, onPatchField, onReview }: ResultsRev
                   <tr key={rec._id} className="hover:bg-slate-50/60 transition-colors text-xs">
                     <td className="px-4 py-3 font-mono text-slate-400">#{rec.rowNumber}</td>
                     <td className="px-4 py-3 font-bold text-slate-900">
-                      {rec.parsedData.firstName} {rec.parsedData.lastName}
+                      {[rec.parsedData.firstName, rec.parsedData.middleName, rec.parsedData.lastName].filter(Boolean).join(" ") || rec.parsedData.name}
                     </td>
                     <td className="px-4 py-3 text-slate-700">{rec.parsedData.className}</td>
                     <td className="px-4 py-3 font-medium text-indigo-900">

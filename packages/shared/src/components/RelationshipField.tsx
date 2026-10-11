@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { PARENT_GUARDIAN_RELATIONSHIPS } from "@school/shared/name-format";
+import { PARENT_GUARDIAN_RELATIONSHIPS } from "../name-format";
 
 export function RelationshipField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const id = useId();

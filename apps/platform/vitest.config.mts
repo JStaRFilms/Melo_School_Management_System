@@ -13,7 +13,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./"),
+      "@": path.resolve(__dirname, "./lib"),
       "@school/shared": path.resolve(__dirname, "../../packages/shared/src"),
       "@school/convex": path.resolve(__dirname, "../../packages/convex"),
       "react/jsx-runtime": path.resolve(

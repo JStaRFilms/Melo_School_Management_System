@@ -1,5 +1,7 @@
 "use client";
 
+import { StudentLoginPolicy } from "./StudentLoginPolicy";
+
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
@@ -192,6 +194,7 @@ function EmailWorkbench({ schoolId, accountId }: { schoolId: Id<"schools">; acco
       </form> : <p>Read-only domain context. Only delegated domain policy authority can register or change policy.</p>}
       {confirmation === "domain" && <div className="space-y-2 rounded border p-3"><p>Register {domain} as an unverified intent? No provider will be contacted.</p><button className={button} disabled={pending || duplicateDomain} onClick={() => void run(async () => { await register({ schoolId, domain, provider }); setDomain(""); }, "Domain intent registered. Verification remains unavailable.")}>Confirm registration</button> <button className={button} disabled={pending} onClick={() => setConfirmation(null)}>Cancel</button></div>}
     </section>
+    {(data.permissions.policy || data.permissions.student) && <StudentLoginPolicy schoolId={schoolId} domains={domains} />}
     <section className="space-y-3" aria-labelledby="policy-title"><h2 id="policy-title" className="font-semibold">Staff and student address templates</h2>
       <p>Version {data.policy?.version ?? 0} · default firstname.lastname. New proposals only; existing addresses and historical attribution are never rewritten. Initials reduce exposure but do not establish legal compliance or anonymity.</p>
       {data.policyDomainUnavailable && <p role="alert">Inherited domain is no longer available. Its owner must restore sharing or this branch must save a reviewed replacement policy before new approvals.</p>}

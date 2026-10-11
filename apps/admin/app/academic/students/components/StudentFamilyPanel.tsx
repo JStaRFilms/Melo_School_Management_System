@@ -12,7 +12,7 @@ import { AdmissionContactFields } from "./AdmissionContactFields";
 import { admissionParentGuardian, emptyAdmissionContact } from "./admissionContact";
 import { PortalCredentialPanel } from "./PortalCredentialPanel";
 import { PortalStateLabel } from "./PortalStateLabel";
-import { RelationshipField } from "./RelationshipField";
+import { RelationshipField } from "@school/shared";
 import type { EnrollmentNotice } from "./types";
 
 type Parent = FunctionReturnType<typeof api.functions.academic.studentEnrollment.getStudentFamilyProfile>["parents"][number];
