@@ -1,0 +1,51 @@
+{
+  "sessionId": "orch-20261011-142141",
+  "stage": "build",
+  "activeTask": {
+    "id": "B1",
+    "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+    "childThreadId": "thread:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+    "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A372f1e64-0066-4c06-8cea-c2a8d883693a%253Adelegate-task%253Aorch-20261011-142141-B1-round1:ordinal:1",
+    "childNodeId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+    "status": "running",
+    "workState": "working",
+    "hasPendingChildRuns": false,
+    "latestTerminalRunId": null,
+    "latestTerminalStatus": null,
+    "latestTerminalSummary": null,
+    "latestTerminalResultContextTransferId": null,
+    "providerInstanceId": "takomi",
+    "model": "openai-codex/gpt-6.1-sol",
+    "summary": null,
+    "resultContextTransferId": null,
+    "waitTimedOut": false,
+    "persona": "coder",
+    "requiredCapabilities": [
+      "write-code"
+    ]
+  },
+  "completedDesign": [
+    {
+      "id": "D1",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-D1-round1",
+      "findings": "D1-contract.md"
+    },
+    {
+      "id": "D2",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-D2-round1",
+      "findings": "D2-contract.md"
+    }
+  ],
+  "validation": {
+    "dependencyInstall": "passed",
+    "adminBaseline": {
+      "files": 77,
+      "tests": 342,
+      "result": "passed"
+    },
+    "browser": "blocked: missing isolated QA profile; Windows direct CLI guard no-op was not a pass"
+  },
+  "future": [
+    "Expiring account setup/reset links"
+  ]
+}
