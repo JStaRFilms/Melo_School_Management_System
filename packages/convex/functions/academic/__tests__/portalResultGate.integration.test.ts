@@ -1,5 +1,6 @@
 declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>> } }
 import { convexTest } from "convex-test";
+import type { FunctionReturnType } from "convex/server";
 import { describe, expect, it } from "vitest";
 import { api } from "../../../_generated/api";
 import { reportCardReviewKey } from "@school/shared/exam-recording";
@@ -61,6 +62,47 @@ async function fixture() {
 }
 
 describe("family graded release gate", () => {
+  it("continues session discovery beyond old caps and denies unlinked children and foreign sessions", async () => {
+    const f = await fixture();
+    const foreign = await f.t.run(async ctx => {
+      for (let i = 0; i < 40; i++) await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: `Earlier ${i}`, startDate: i, endDate: i + 1, isActive: false, isArchived: true, createdAt: i, updatedAt: i });
+      return ctx.db.insert("academicSessions", { schoolId: f.ids.otherSchoolId, name: "Foreign", startDate: 1, endDate: 2, isActive: false, createdAt: 1, updatedAt: 1 });
+    });
+    const seen = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 4; i++) {
+      const page: FunctionReturnType<typeof api.functions.portal.listResultSessions> = await f.parent.query(api.functions.portal.listResultSessions, { studentId: f.ids.studentId, paginationOpts: { numItems: 20, cursor } });
+      seen.push(...page.page);
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    expect(seen).toHaveLength(41);
+    expect(seen.some(row => row.sessionId === foreign)).toBe(false);
+    const args = { studentId: f.ids.studentId, sessionId: foreign, resultKind: "end_of_term" as const, paginationOpts: { numItems: 6, cursor: null } };
+    await expect(f.parent.query(api.functions.portal.listSessionResults, args)).rejects.toThrow("Invalid session");
+    const stranger = f.t.withIdentity({ subject: "stranger", tokenIdentifier: "https://school.test|stranger" });
+    await expect(stranger.query(api.functions.portal.listResultSessions, { studentId: f.ids.studentId, paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow();
+    await expect(stranger.query(api.functions.portal.listSessionResults, { ...args, sessionId: f.ids.sessionId })).rejects.toThrow();
+  });
+  it("continues empty unpublished pages but never exposes ambiguous tuples", async () => {
+    const f = await fixture(); await f.certify(); await f.release();
+    await f.t.run(async ctx => { for (let i = 0; i < 14; i++) await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: `Withheld ${i}`, startDate: i, endDate: i + 1, isActive: false, createdAt: i, updatedAt: i }); });
+    const args = { studentId: f.ids.studentId, sessionId: f.ids.sessionId, resultKind: "end_of_term" as const, paginationOpts: { numItems: 6, cursor: null } };
+    const first = await f.parent.query(api.functions.portal.listSessionResults, args);
+    expect(first.page).toEqual([]); expect(first.isDone).toBe(false);
+    await f.t.run(async ctx => {
+      const issued = await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId)).unique();
+      if (!issued) throw new Error("Fixture card missing");
+      await ctx.db.insert("issuedReportCards", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.nextClassId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId, issuedAt: 1, issuedBy: f.ids.adminId, report: { ...issued.report, classId: f.ids.nextClassId } });
+    });
+    let cursor: string | null = first.continueCursor;
+    for (let i = 0; i < 5; i++) {
+      const page: FunctionReturnType<typeof api.functions.portal.listSessionResults> = await f.parent.query(api.functions.portal.listSessionResults, { ...args, paginationOpts: { numItems: 6, cursor } });
+      expect(page.page).toEqual([]);
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+  });
   it("dispatches by family: a narrative period cannot borrow a frozen graded release", async () => {
     const f = await fixture();
     await f.certify();
@@ -361,6 +403,22 @@ describe("family graded release gate", () => {
     expect(selected.selectedReportCard?.termName).toBe("First");
     expect(selected.history).toHaveLength(4);
     expect(selected.history.every(row => row.termId !== f.ids.oldTermId)).toBe(true);
+    const history = [];
+    let cursor: string | null = null;
+    for (let count = 0; count < 20; count++) {
+      const page: FunctionReturnType<typeof api.functions.portal.listSessionResults> = await f.parent.query(api.functions.portal.listSessionResults, { studentId: f.ids.studentId, sessionId: f.ids.sessionId, resultKind: "end_of_term", paginationOpts: { numItems: 6, cursor } });
+      history.push(...page.page);
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    expect(history).toHaveLength(56);
+    expect(new Set(history.map(row => row.termId)).size).toBe(56);
+    expect(history.find(row => row.termId === f.ids.oldTermId)).toMatchObject({ issued: true, classId: f.ids.classId, resultKind: "end_of_term" });
+    expect(history.every(row => row.href.includes("resultKind=end_of_term"))).toBe(true);
+    await f.t.run(async ctx => { await ctx.db.patch(f.ids.studentId, { classId: f.ids.nextClassId }); await ctx.db.patch(f.ids.classId, { isArchived: true }); await ctx.db.patch(f.ids.sessionId, { isArchived: true, isActive: false }); });
+    const archived = await f.parent.query(api.functions.portal.listSessionResults, { studentId: f.ids.studentId, sessionId: f.ids.sessionId, resultKind: "end_of_term", paginationOpts: { numItems: 6, cursor: null } });
+    expect(archived.page).toHaveLength(6);
+    expect(archived.page.every(row => row.mode !== "needs_review" && row.classId === f.ids.classId)).toBe(true);
   });
 
   it("fails closed for two frozen classes in one term", async () => {
