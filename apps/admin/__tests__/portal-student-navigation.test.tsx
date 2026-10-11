@@ -1,12 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { getFunctionName, type FunctionReference } from "convex/server";
 import { expect, it, vi } from "vitest";
 import PortalLayout from "../../portal/app/(portal)/layout";
 
 const mocks = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), query: vi.fn() }));
 
 vi.mock("convex/react", () => ({
-  useQuery: (reference: string, args: unknown) => {
+  useQuery: (functionReference: FunctionReference<"query">, args: unknown) => {
+    const reference = getFunctionName(functionReference);
     mocks.query(reference, args);
     if (reference.includes("canAccessPortal")) return true;
     if (reference.includes("getPortalShellContext")) return { schoolId: "source-school", selectedStudentId: "resolved-student" };
