@@ -12,6 +12,10 @@
 
 const ACRONYM_LIKE_MAX_LEN = 5;
 
+export const PARENT_GUARDIAN_RELATIONSHIPS = [
+  "Father", "Mother", "Guardian", "Aunt", "Uncle", "Grandfather", "Grandmother", "Sibling",
+] as const;
+
 export function humanNameTyping(input: string): string {
   return formatHumanName(input, false, true);
 }
@@ -34,6 +38,21 @@ export function normalizeHumanName(input: string): string {
 
 export function normalizePersonName(input: string): string {
   return humanNameFinalStrict(input);
+}
+
+export function normalizeStructuredPersonName(parts: {
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+}) {
+  let firstName = parts.firstName ? normalizePersonName(parts.firstName) || undefined : undefined;
+  let middleName = parts.middleName ? normalizePersonName(parts.middleName) || undefined : undefined;
+  const lastName = parts.lastName ? normalizePersonName(parts.lastName) || undefined : undefined;
+  const words = firstName?.split(/\s+/);
+  if (!middleName && words?.length === 2) {
+    [firstName, middleName] = words;
+  }
+  return { firstName, middleName, lastName };
 }
 
 export type ClassNameParts = {

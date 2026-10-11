@@ -11,6 +11,16 @@ const numberingReview = z.object({
 }).strict().nullable();
 const studentOnboarding = z.object({
   firstName: text.default(""),
+  middleName: text.optional(),
+  contactChoice: z.enum(["none", "existing", "new"]).optional(),
+  selectedContactId: identifier.optional(),
+  parentMiddleName: text.optional(),
+  customRelationship: text.optional(),
+  confirmPrimaryChange: z.boolean().optional(),
+  emergencyContactMode: z.enum(["primary", "override", "legacy"]).optional(),
+  addressMode: z.enum(["residential", "different", "legacy"]).optional(),
+  parentAddressMode: z.enum(["residential", "different", "legacy"]).optional(),
+  parentAddressOverride: text.optional(),
   lastName: text.default(""),
   admissionNumber: identifier.default(""),
   admissionNumberMode: z.enum(["automatic", "manual"]).default("automatic"),
@@ -74,6 +84,16 @@ const academicSession = z.object({
 }).strict();
 const familyOnboarding = z.object({
   studentFirstName: text.default(""),
+  studentMiddleName: text.optional(),
+  contactChoice: z.enum(["none", "existing", "new"]).optional(),
+  selectedContactId: identifier.optional(),
+  parentMiddleName: text.optional(),
+  customRelationship: text.optional(),
+  confirmPrimaryChange: z.boolean().optional(),
+  emergencyContactMode: z.enum(["primary", "override", "legacy"]).optional(),
+  addressMode: z.enum(["residential", "different", "legacy"]).optional(),
+  parentAddressMode: z.enum(["residential", "different", "legacy"]).optional(),
+  parentAddressOverride: text.optional(),
   studentLastName: text.default(""),
   admissionNumber: identifier.default(""),
   admissionNumberMode: z.enum(["automatic", "manual"]).default("automatic"),
@@ -106,7 +126,7 @@ const definition = <T extends z.ZodTypeAny>(schema: T, sensitivity: "personal" |
 export const draftRegistry = {
   student_onboarding: definition(studentOnboarding, "personal", 90, "admin"),
   family_onboarding: definition(familyOnboarding, "personal", 90, "admin"),
-  staff_onboarding: definition(z.object({ name: text, email: text }).strict(), "personal", 30, "admin"),
+  staff_onboarding: definition(z.object({ name: text, firstName: text.optional(), middleName: text.optional(), lastName: text.optional(), email: text }).strict(), "personal", 30, "admin"),
   fee_plan_builder: definition(feePlan, "operational", 30, "admin"),
   academic_setup: definition(academicSession, "operational", 30, "admin"),
   report_card_configuration: definition(z.object({ name: text.optional(), description: notes.optional() }).strict(), "operational", 30, "admin"),
