@@ -54,6 +54,21 @@ it("name-only edits omit reassignment, unchanged addresses/emergency and admissi
   for (const field of ["admissionNumber", "guardianName", "guardianPhone", "address", "addressMode", "emergencyContactMode"]) expect(mocks.update.mock.calls[0][0][field]).toBeUndefined();
 });
 
+it.each(["structured", "full-name"] as const)("reports normalized saved names in %s mode without relying on blur", async (mode) => {
+  const notice = vi.fn();
+  mount(notice);
+  await screen.findByLabelText("First Name");
+  if (mode === "structured") {
+    fireEvent.change(screen.getByLabelText("Last Name"), { target: { value: "de la CRUZ-roBERTs" } });
+  } else {
+    fireEvent.click(screen.getByRole("button", { name: "Use full name" }));
+    fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "mARY jANE de la CRUZ-roBERTs" } });
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Save Identity" }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledOnce());
+  expect(notice).toHaveBeenCalledWith({ tone: "success", message: "Mary Jane De La Cruz-Roberts updated." });
+});
+
 it("confirms only an actual class change, preserves fields on cancel and sends reviewed effective expectations", async () => {
   mount();
   fireEvent.change(await screen.findByLabelText("Active Class"), { target: { value: "other" } });

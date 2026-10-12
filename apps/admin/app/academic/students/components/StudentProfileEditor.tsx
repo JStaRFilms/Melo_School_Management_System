@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
-import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import { normalizePersonName, normalizeStructuredPersonName } from "@school/shared/name-format";
 import { useDirtyForm } from "@school/shared/drafts";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
@@ -319,6 +319,10 @@ export function StudentProfileEditor({
 
     setIsSaving(true);
     try {
+      const submittedName = normalizeStructuredPersonName({ firstName, middleName, lastName });
+      const savedDisplayName = structuredName
+        ? [submittedName.firstName, submittedName.middleName, submittedName.lastName].filter(Boolean).join(" ")
+        : normalizePersonName(fullName);
       await updateStudent({
         studentId,
         ...(structuredName ? (firstName !== studentProfile.firstName || middleName !== (studentProfile.middleName ?? "") || lastName !== studentProfile.lastName ? { firstName, middleName: middleName.trim() || null, lastName } : {}) : (fullName !== studentProfile.displayName || studentProfile.firstName ? { name: fullName } : {})),
@@ -385,12 +389,12 @@ export function StudentProfileEditor({
       if (photoUploadError) {
         onNotice({
           tone: "warning",
-          message: `${displayName} updated, but photo upload failed (${photoUploadError}). You can retry uploading the photo.`,
+          message: `${savedDisplayName} updated, but photo upload failed (${photoUploadError}). You can retry uploading the photo.`,
         });
       } else {
         onNotice({
           tone: "success",
-          message: `${displayName} updated.`,
+          message: `${savedDisplayName} updated.`,
         });
       }
     } catch (error) {
