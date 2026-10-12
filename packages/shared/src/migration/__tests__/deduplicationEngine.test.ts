@@ -42,6 +42,35 @@ describe("deduplicationEngine", () => {
   });
 
   describe("evaluateClash", () => {
+    it.each([
+      { name: "Mary Anne De La Cruz", firstName: "", lastName: "" },
+      { firstName: "Mary", middleName: "Anne", lastName: "De La Cruz" },
+      { name: "De La Cruz Mary Anne", firstName: "", lastName: "" },
+    ])("compares full-name-only records against $name $firstName without inferring parts", (other) => {
+      const legacy = { name: "Mary Anne De La Cruz", firstName: "", lastName: "", className: "JSS 1A" };
+      expect(evaluateClash(legacy, { ...other, className: "JSS 1A" }).isWarning).toBe(true);
+      expect(legacy).toEqual({ name: "Mary Anne De La Cruz", firstName: "", lastName: "", className: "JSS 1A" });
+    });
+
+    it.each([
+      { name: "Zainab Adeyemi", firstName: "", lastName: "" },
+      { firstName: "Zainab", lastName: "Adeyemi" },
+      { name: "", firstName: "", lastName: "" },
+      { name: "Amina", firstName: "", lastName: "" },
+      { firstName: "Amina Adeyemi", lastName: "" },
+    ])("rejects full-name sibling, nameless and incomplete evidence against $name $firstName", (other) => {
+      const common = { className: "JSS 1A", guardianPhone: "08031234567", gender: "Female" };
+      expect(evaluateClash(
+        { ...common, name: "Amina Adeyemi", firstName: "", lastName: "" },
+        { ...common, ...other },
+      )).toMatchObject({ isWarning: false, isClash: false });
+    });
+
+    it("preserves exact admission collisions for nameless records", () => {
+      const record = { name: "", firstName: "", lastName: "", admissionNumber: "SCH/2026/001" };
+      expect(evaluateClash(record, record)).toMatchObject({ isClash: true, isWarning: true, confidence: 100 });
+    });
+
     it("flags a high-confidence clash (>= 85%) for similar names + same class + same phone", () => {
       const result = evaluateClash(
         {

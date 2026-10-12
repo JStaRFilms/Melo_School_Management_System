@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { DepartureGuardProvider } from "@school/shared/drafts";
@@ -148,6 +148,42 @@ it("retries a lost atomic response with identical reviewed intent, never a separ
   await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
   expect(mocks.create.mock.calls[0][0]).toEqual(mocks.create.mock.calls[1][0]);
   expect(mocks.link).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.queryByText(/A reviewed request is pending/)).not.toBeInTheDocument());
+  expect(screen.getByLabelText("First name")).toBeEnabled();
+  expect(screen.getByLabelText("First name")).toHaveValue("");
+});
+
+it("clears reactive reviewed status and rotates the request key after discard", async () => {
+  mocks.create.mockRejectedValueOnce(new Error("Lost response"));
+  render(<DepartureGuardProvider><StudentOnboardingPage /></DepartureGuardProvider>);
+  fillStudent();
+  fireEvent.click(screen.getByRole("button", { name: "Admit student" }));
+  await screen.findByText(/A reviewed request is pending/);
+  expect(screen.getByLabelText("First name")).toBeDisabled();
+  const previousKey = mocks.create.mock.calls[0][0].requestKey;
+  fireEvent.click(screen.getByRole("button", { name: "Discard admission" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Discard and leave" }));
+  await waitFor(() => expect(screen.queryByText(/A reviewed request is pending/)).not.toBeInTheDocument());
+  expect(screen.getByLabelText("First name")).toBeEnabled();
+  fillStudent();
+  fireEvent.click(screen.getByRole("button", { name: "Admit student" }));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
+  expect(mocks.create.mock.calls[1][0].requestKey).not.toBe(previousKey);
+});
+
+it("guards synchronous resubmission while preparing the frozen request", async () => {
+  let finishPreparation: () => void = () => { throw new Error("Preparation not started"); };
+  mocks.closure.mockImplementationOnce(() => new Promise<null>(resolve => { finishPreparation = () => resolve(null); }));
+  render(<DepartureGuardProvider><StudentOnboardingPage /></DepartureGuardProvider>);
+  fillStudent();
+  const form = screen.getByRole("button", { name: "Admit student" }).closest("form");
+  if (!form) throw new Error("Admission form missing");
+  fireEvent.submit(form);
+  fireEvent.submit(form);
+  expect(mocks.closure).toHaveBeenCalledOnce();
+  expect(mocks.create).not.toHaveBeenCalled();
+  await act(async () => finishPreparation());
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledOnce());
 });
 
 it("reviews an exact-email household without sending mistyped contact identity as an edit", async () => {

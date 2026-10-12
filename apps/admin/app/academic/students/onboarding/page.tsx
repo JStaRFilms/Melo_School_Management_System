@@ -52,6 +52,7 @@ export default function StudentOnboardingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitting = useRef(false);
   const [duplicateReview, setDuplicateReview] = useState(false);
+  const [hasReviewedRequest, setHasReviewedRequest] = useState(false);
   const [enrollmentRequestKey, setEnrollmentRequestKey] = useState(() => crypto.randomUUID());
   const [draftInstanceKey, setDraftInstanceKey] = useState(0);
   const [completedStudentId, setCompletedStudentId] = useState<Id<"students"> | null>(null);
@@ -83,7 +84,7 @@ export default function StudentOnboardingPage() {
       setEmergencyContactMode(payload.emergencyContactMode ?? (payload.guardianName || payload.guardianPhone ? "legacy" : "primary"));
       setAddress(payload.address); setSelectedClassId(payload.classId); setContact(restoreAdmissionContact(payload));
       setEnrollmentRequestKey(payload.enrollmentRequestKey ?? crypto.randomUUID()); setStudentPhotoFile(null);
-      setCompletedStudentId(null); submittedArgs.current = null;
+      setCompletedStudentId(null); submittedArgs.current = null; setHasReviewedRequest(false);
     },
   });
   const resetForm = () => {
@@ -92,7 +93,7 @@ export default function StudentOnboardingPage() {
     setGender(""); setHouseName(""); setDateOfBirth(""); setGuardianName(""); setGuardianPhone("");
     setEmergencyContactMode("primary"); setAddress(""); setSelectedClassId(""); setContact(emptyAdmissionContact);
     setStudentPhotoFile(null); setStudentPhotoResetKey(key => key + 1); setEnrollmentRequestKey(crypto.randomUUID());
-    submittedArgs.current = null;
+    submittedArgs.current = null; setHasReviewedRequest(false);
   };
   const requestDeparture = useDirtyForm({ name: "Student admission", isDirty: dirty, save: draft.retrySave, discard: async () => {
     if (submitting.current) throw new Error("Wait for admission to finish.");
@@ -133,6 +134,7 @@ export default function StudentOnboardingPage() {
             overrideCounterDecision: overrideCounterDecision || undefined, advanceCounterTo: overrideCounterDecision === "advance" ? Number(advanceCounterTo) : undefined } : {}),
           ...(closure ? { draftId: closure.draftId, expectedDraftRevision: closure.expectedRevision, draftFormKey: "student_onboarding" } : {}),
         };
+        setHasReviewedRequest(true);
       }
       if (confirmDuplicateLink) {
         submittedArgs.current = { ...submittedArgs.current, confirmDuplicateLink: true };
@@ -158,11 +160,11 @@ export default function StudentOnboardingPage() {
   return <div className="mx-auto w-full max-w-3xl space-y-5 overflow-auto p-4 sm:p-6">
     <h1 className="text-xl font-bold text-slate-900">Admit student</h1>
     <PersistentFormDraftControls draft={draft} formTitle="student admission" isDirty={dirty} excludedFieldsNotice="Photos and passwords are not saved. Reselect the photo after recovery." onDiscard={async () => { await draft.handleDiscardDraft(); resetForm(); setDraftInstanceKey(key => key + 1); }} />
-    {submittedArgs.current && !isSubmitting && <p role="status">A reviewed request is pending. Retry sends the same details. Discard the form before starting a different admission.</p>}
+    {hasReviewedRequest && !isSubmitting && <p role="status">A reviewed request is pending. Retry sends the same details. Discard the form before starting a different admission.</p>}
       <StudentCreationForm selectedClassName={classes.find(item => item._id === selectedClassId)?.name ?? "Select class"}
         classes={classes} selectedClassId={selectedClassId} onClassIdChange={setSelectedClassId}
         draftStatus={draft.status} draftLastSavedAt={draft.lastSavedAt}
-        locked={submittedArgs.current !== null}
+        locked={hasReviewedRequest}
         studentFirstName={firstName} studentMiddleName={middleName} studentLastName={lastName}
         onStudentFirstNameChange={setFirstName} onStudentFirstNameBlur={normalizeName} onStudentMiddleNameChange={setMiddleName}
         onStudentLastNameChange={setLastName} onStudentLastNameBlur={normalizeName}

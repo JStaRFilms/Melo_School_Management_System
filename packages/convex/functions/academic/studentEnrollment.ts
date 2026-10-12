@@ -1036,7 +1036,7 @@ export const updateStudent = mutation({
     classId: v.optional(v.id("classes")),
     confirmClassAssignment: v.optional(v.boolean()),
     expectedClassId: v.optional(v.id("classes")),
-    expectedSessionId: v.optional(v.id("academicSessions")),
+    expectedSessionId: v.optional(v.union(v.id("academicSessions"), v.null())),
     houseName: v.optional(v.union(v.string(), v.null())),
     gender: v.optional(v.union(v.string(), v.null())),
     dateOfBirth: v.optional(v.union(v.number(), v.null())),
@@ -1070,7 +1070,7 @@ export const updateStudent = mutation({
 
     const assignment = await activeStudentAssignment(ctx, student);
     if (args.confirmClassAssignment && !args.classId) throw new ConvexError("Choose a class to confirm assignment");
-    if (args.confirmClassAssignment && (!args.expectedClassId || !args.expectedSessionId ||
+    if (args.confirmClassAssignment && (!args.expectedClassId || args.expectedSessionId === undefined ||
         args.expectedClassId !== assignment.classId || args.expectedSessionId !== assignment.sessionId))
       throw new ConvexError("Active-session assignment changed or was not reviewed. Reload the profile and confirm again.");
     const nextClass = await ctx.db.get(args.confirmClassAssignment ? args.classId ?? assignment.classId : assignment.classId);
@@ -3165,17 +3165,23 @@ export const getParentEmailReview = query({
 });
 
 export const searchParentContacts = query({
-  args: { search: v.string(), paginationOpts: paginationOptsValidator },
+  args: { search: v.string(), searchField: v.optional(v.union(v.literal("name"), v.literal("email"))), paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
     if (!Number.isInteger(args.paginationOpts.numItems) || args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 50 || args.search.length > 100)
       throw new ConvexError("Contact search supports pages of 1 to 50 and at most 100 search characters");
-    const result = await ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", actor.schoolId))
+    const search = args.search.trim();
+    const searchField = args.searchField ?? (search.includes("@") ? "email" : "name");
+    const contacts = !search
+      ? ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", actor.schoolId))
+      : searchField === "email"
+        ? ctx.db.query("users").withSearchIndex("search_email_and_school", q => q.search("email", search).eq("schoolId", actor.schoolId))
+        : ctx.db.query("users").withSearchIndex("search_name_and_school", q => q.search("name", search).eq("schoolId", actor.schoolId));
+    const result = await contacts
       .filter(q => q.and(q.neq(q.field("role"), "student"), q.neq(q.field("isArchived"), true)))
       .paginate(args.paginationOpts);
-    const search = args.search.trim().toLowerCase();
-    const page = await Promise.all(result.page.filter(user => !search || getReadableUserName(user).displayName.toLowerCase().includes(search) || user.email.toLowerCase().includes(search)).map(async user => ({
+    const page = await Promise.all(result.page.map(async user => ({
       userId: user._id, ...getReadableUserName(user), email: user.email, phone: user.phone ?? null, role: user.role,
       portalState: await portalAccountState(ctx, user),
       households: await summarizeFamiliesForParentUser(ctx, actor.schoolId, user._id),
