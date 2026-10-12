@@ -91,6 +91,24 @@ for (const [entry, Page] of [["standalone student-first", StudentOnboardingPage]
     expect(screen.queryByText("Account Provisioned")).not.toBeInTheDocument();
   });
 
+  it(`${entry} keeps an unlinked student's address and its reviewed retry intent`, async () => {
+    mocks.create.mockRejectedValueOnce(new Error("Lost response")).mockResolvedValueOnce("student-one");
+    render(<DepartureGuardProvider><Page /></DepartureGuardProvider>);
+    fillStudent();
+    fireEvent.click(screen.getByRole("button", { name: "Admit student" }));
+    const retry = await screen.findByRole("button", { name: "Retry reviewed admission" });
+    await waitFor(() => expect(retry).toBeEnabled());
+    fireEvent.click(retry);
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2));
+    const [submitted, replayed] = mocks.create.mock.calls;
+    expect(submitted[0]).toMatchObject({
+      parentGuardian: { kind: "none" }, address: "Captured student address", addressMode: undefined,
+    });
+    expect(replayed[0]).toEqual(submitted[0]);
+    expect(mocks.link).not.toHaveBeenCalled();
+    expect(mocks.action).not.toHaveBeenCalled();
+  });
+
   it(`${entry} preserves household confirmation when retrying a lost committed response`, async () => {
     mocks.create
       .mockRejectedValueOnce(new Error("Review the duplicate-link details and confirm"))

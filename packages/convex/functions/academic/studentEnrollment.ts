@@ -34,7 +34,7 @@ import {
   teacherHasClassAccess,
 } from "./teacherAccess";
 import { normalizeHumanName } from "@school/shared/name-format";
-import { provisionSchoolPortalAuthUser } from "../platform/provisioningHelpers";
+import { provisionSchoolPortalAuthUser, prepareSchoolPortalPassword } from "../platform/provisioningHelpers";
 import {
   getReadableUserName,
   resolveStoredUserNameFields,
@@ -3821,12 +3821,15 @@ async function upsertPortalCredentialsHandler(
 ): Promise<PortalCredentialProvisionResult> {
   const operationId = args.requestKey ?? crypto.randomUUID();
   if (!operationId || operationId.length > 100) throw new ConvexError("Invalid portal operation key");
+  // Preparation cannot change credentials; do it before claiming a mutating operation.
+  await ctx.runQuery(api.functions.academic.studentEnrollment.getPortalAccountState, { userId: args.userId });
+  const preparedPassword = await prepareSchoolPortalPassword(ctx, args.temporaryPassword);
   const target: { userId: Id<"users">; schoolId: Id<"schools">; name: string; email: string; authId: string } =
     await ctx.runMutation(internal.functions.academic.studentEnrollment.beginPortalProvisionInternal, { userId: args.userId, operationId });
   try {
     const authId = await provisionSchoolPortalAuthUser(ctx, {
       appUserId: String(target.userId), currentAuthId: target.authId, email: target.email,
-      name: target.name, temporaryPassword: args.temporaryPassword,
+      name: target.name, preparedPassword,
       portalOperation: { userId: target.userId, schoolId: target.schoolId, operationId },
     });
     await ctx.runMutation(internal.functions.academic.studentEnrollment.finishPortalProvisionInternal, {

@@ -124,7 +124,7 @@ export default function StudentOnboardingPage() {
           admissionNumber: governed && admissionNumberMode === "automatic" ? "" : admissionNumber.trim(),
           classId: selectedClassId as Id<"classes">, gender, houseName: houseName.trim() || null,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null, address: address.trim() || null,
-          addressMode: "residential", guardianName: guardianName.trim() || null, guardianPhone: guardianPhone.trim() || null,
+          addressMode: parentGuardian.kind === "none" ? undefined : "residential", guardianName: guardianName.trim() || null, guardianPhone: guardianPhone.trim() || null,
           emergencyContactMode: emergencyContactMode === "legacy" ? undefined : emergencyContactMode, parentGuardian,
           ...(governed ? { numberingVersion: numbering.version, numberingFormatVersion: numbering.formatVersion ?? undefined,
             numberingCounterKey: numbering.counter?.key, numberingCounterVersion: numbering.counter?.configVersion,

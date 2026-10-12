@@ -11,11 +11,15 @@ const authStore = vi.hoisted(() => ({
   next: 0,
   resets: 0,
   failLink: false,
+  failHash: false,
 }));
 vi.mock("../../../betterAuth", () => ({
   authComponent: { clientApi: () => ({ getAuthUser: () => null }), safeGetAuthUser: async () => null },
   createAuth: () => ({ $context: Promise.resolve({
-    password: { config: { minPasswordLength: 8, maxPasswordLength: 128 }, hash: async (value: string) => `hashed:${value}` },
+    password: { config: { minPasswordLength: 8, maxPasswordLength: 128 }, hash: async (value: string) => {
+      if (authStore.failHash) throw new Error("Mock password preparation failure");
+      return `hashed:${value}`;
+    } },
     internalAdapter: {
       findUserByEmail: async (email: string) => {
         const user = authStore.users.get(email);
@@ -56,7 +60,7 @@ const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**
 const enrollment = api.functions.academic.studentEnrollment;
 const identity = { subject: "b1-admin", tokenIdentifier: "https://auth.test|b1-admin" };
 
-beforeEach(() => { authStore.users.clear(); authStore.passwords.clear(); authStore.next = 0; authStore.resets = 0; authStore.failLink = false; vi.stubEnv("CONVEX_SITE_URL", "https://school.convex.site"); });
+beforeEach(() => { authStore.users.clear(); authStore.passwords.clear(); authStore.next = 0; authStore.resets = 0; authStore.failLink = false; authStore.failHash = false; vi.stubEnv("CONVEX_SITE_URL", "https://school.convex.site"); });
 afterEach(() => { vi.unstubAllEnvs(); });
 
 async function fixture() {
@@ -161,6 +165,19 @@ test("promoted-session subject clear, all and toggle preserve base class and old
   expect(await f.actor.query(enrollment.getStudentSubjectSelections, { studentId: f.studentId, sessionId: f.ids.sessionId })).toHaveLength(2);
   expect((await f.t.run(ctx => ctx.db.get(f.studentId)))?.classId).toBe(f.ids.classId);
   expect(await history()).toEqual(before);
+});
+
+test("no-household admission keeps a captured address visible with the default address policy", async () => {
+  const f = await fixture();
+  const studentId = await f.actor.mutation(enrollment.createStudent, {
+    firstName: "Ada", lastName: "Student", gender: "Female", admissionNumber: "ADDRESS/1",
+    classId: f.ids.classId, parentGuardian: { kind: "none" }, address: "Captured student address",
+  });
+  expect(await f.actor.query(enrollment.getStudentProfile, { studentId })).toMatchObject({
+    address: "Captured student address", storedAddress: "Captured student address",
+    addressMode: "different", addressSource: "different",
+  });
+  expect((await f.t.run(ctx => ctx.db.get(studentId)))?.familyId).toBeUndefined();
 });
 
 test("standalone, family and canonical helper creation reopen every captured field and preserve legacy photos", async () => {
@@ -346,6 +363,49 @@ test("portal success persists canonical membership, reopens truthfully, authoriz
   expect(authStore.resets).toBe(1);
   expect((await f.t.run(ctx => ctx.db.get(f.userId)))?.email).toBe(result.email);
 });
+
+for (const provisioned of [false, true]) {
+  test(`password preparation failure preserves ${provisioned ? "provisioned reset" : "unprovisioned"} state`, async () => {
+    const f = await fixture();
+    if (provisioned) await f.actor.action(enrollment.upsertPortalCredentials, {
+      userId: f.userId, temporaryPassword: "original-password", requestKey: "initial-provision",
+    });
+    const before = await f.t.run(ctx => ctx.db.get(f.userId));
+    const hashes = [...authStore.passwords.entries()];
+    const users = [...authStore.users.entries()];
+    authStore.failHash = true;
+    const args = { userId: f.userId, temporaryPassword: "correct-password", requestKey: "preparation-retry" };
+    await expect(f.actor.action(enrollment.upsertPortalCredentials, args)).rejects.toThrow("preparation failure");
+    expect(await f.t.run(ctx => ctx.db.get(f.userId))).toEqual(before);
+    expect([...authStore.passwords.entries()]).toEqual(hashes);
+    expect([...authStore.users.entries()]).toEqual(users);
+    authStore.failHash = false;
+    await f.actor.action(enrollment.upsertPortalCredentials, args);
+    expect((await f.actor.query(enrollment.getPortalAccountState, { userId: f.userId })).state).toBe("provisioned");
+  });
+  test.each([
+    ["short", "short", "at least 8"],
+    ["long", "x".repeat(129), "at most 128"],
+  ])(`invalid %s password preserves ${provisioned ? "provisioned reset" : "unprovisioned"} state and permits correction`, async (_label, password, error) => {
+    const f = await fixture();
+    if (provisioned) await f.actor.action(enrollment.upsertPortalCredentials, {
+      userId: f.userId, temporaryPassword: "original-password", requestKey: "initial-provision",
+    });
+    const before = await f.t.run(ctx => ctx.db.get(f.userId));
+    const hashes = [...authStore.passwords.entries()];
+    const users = [...authStore.users.entries()];
+    const args = { userId: f.userId, temporaryPassword: password, requestKey: "correctable-operation" };
+    await expect(f.actor.action(enrollment.upsertPortalCredentials, args)).rejects.toThrow(error);
+    expect(await f.t.run(ctx => ctx.db.get(f.userId))).toEqual(before);
+    expect((await f.actor.query(enrollment.getPortalAccountState, { userId: f.userId })).state).toBe(provisioned ? "provisioned" : "not_provisioned");
+    expect([...authStore.passwords.entries()]).toEqual(hashes);
+    expect([...authStore.users.entries()]).toEqual(users);
+    expect(authStore.resets).toBe(0);
+    await f.actor.action(enrollment.upsertPortalCredentials, { ...args, temporaryPassword: "corrected-password" });
+    expect((await f.actor.query(enrollment.getPortalAccountState, { userId: f.userId })).state).toBe("provisioned");
+    expect(authStore.resets).toBe(provisioned ? 1 : 0);
+  });
+}
 
 test("unowned global auth email fails closed; partial credential failure is reconciliation, not success", async () => {
   const f = await fixture();

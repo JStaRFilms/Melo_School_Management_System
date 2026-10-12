@@ -163,6 +163,18 @@ export async function provisionSchoolAdminAuthUser(
   return createdUser.id;
 }
 
+export async function prepareSchoolPortalPassword(ctx: ActionCtx, password: string) {
+  const authContext = await createAuth(ctx).$context;
+  const policy = authContext.password.config;
+  if (password.length < policy.minPasswordLength) {
+    throw new ConvexError(`Password must be at least ${policy.minPasswordLength} characters`);
+  }
+  if (password.length > policy.maxPasswordLength) {
+    throw new ConvexError(`Password must be at most ${policy.maxPasswordLength} characters`);
+  }
+  return { authContext, passwordHash: await authContext.password.hash(password) };
+}
+
 export async function provisionSchoolPortalAuthUser(
   ctx: ActionCtx,
   args: {
@@ -170,29 +182,12 @@ export async function provisionSchoolPortalAuthUser(
     currentAuthId: string;
     email: string;
     name: string;
-    temporaryPassword: string;
+    preparedPassword: Awaited<ReturnType<typeof prepareSchoolPortalPassword>>;
     portalOperation?: { userId: Id<"users">; schoolId: Id<"schools">; operationId: string };
   }
 ) {
-  const auth = createAuth(ctx);
-  const authContext = await auth.$context;
+  const { authContext, passwordHash } = args.preparedPassword;
   const normalizedEmail = args.email.trim().toLowerCase();
-
-  const minPasswordLength = authContext.password.config.minPasswordLength;
-  if (args.temporaryPassword.length < minPasswordLength) {
-    throw new ConvexError(
-      `Password must be at least ${minPasswordLength} characters`
-    );
-  }
-
-  const maxPasswordLength = authContext.password.config.maxPasswordLength;
-  if (args.temporaryPassword.length > maxPasswordLength) {
-    throw new ConvexError(
-      `Password must be at most ${maxPasswordLength} characters`
-    );
-  }
-
-  const passwordHash = await authContext.password.hash(args.temporaryPassword);
 
   const existingAuth = (await authContext.internalAdapter.findUserByEmail(
     normalizedEmail,

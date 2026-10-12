@@ -31,11 +31,11 @@ Convex schema; studentEnrollment/studentNameCompat/studentClassMembership; acade
 Existing Resend outbox and rate-limiter patterns are the reference for notifications.
 
 ## Proposed data flow
-1. A single admission screen stores student first/middle/last parts explicitly. A family section can be skipped, select an existing authorized parent, or create a new contact.
+1. A single admission screen stores student first/middle/last parts explicitly. A family section can be skipped, select an existing authorized parent, or create a new contact. When no household is linked, an entered address remains the student's own address rather than selecting household inheritance.
 2. Existing-parent linking uses an explicit ID and never updates identity as a side effect. Parent editing remains an explicit operation.
 3. Primary family contact is the default contact source. A genuinely different emergency contact has a separate, clearly labelled override. Existing guardian text is preserved pending review.
 4. Identity-only edits patch named fields and preserve auth/person linkage, promotion and subjects. Class reassignment is a separately confirmed operation against the effective active-session class.
-5. Provision/reset operations return server-derived linked-account state. Reopening loads that state. Passwords remain transient; account status is independent of email delivery.
+5. Provision/reset operations return server-derived linked-account state. Reopening loads that state. Authorize the target, validate the configured password policy and prepare its hash before claiming an operation. Preparation errors leave the prior account record unchanged and retryable; failures after auth writes may have occurred remain reconciliation-required. Passwords and prepared hashes are not stored in school account-state evidence; account status is independent of email delivery.
 6. Parents select session/year, then see all authorized published terms/results for that child in the chosen session. Use bounded continuation to avoid old display caps. Keep result kind explicit for later midterm support without adding a new grading engine. Preserve publication and ownership checks.
 7. Successful provisioning queues an idempotent notification to a deliverable authorized address. Synthetic login IDs never receive email. Missing sender configuration or send failure is reported separately from account creation.
 
