@@ -1,4 +1,6 @@
 import { ConvexError, v } from "convex/values";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import { getReadableUserName } from "../academic/studentNameCompat";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import type { Doc, Id } from "../../_generated/dataModel";
@@ -33,6 +35,10 @@ const immutableProfileValidator = v.object({
 
 const immutableContactValidator = v.object({
   fullName: v.string(),
+  firstName: v.union(v.string(), v.null()),
+  middleName: v.union(v.string(), v.null()),
+  lastName: v.union(v.string(), v.null()),
+  addressMode: v.union(v.literal("residential"), v.literal("different"), v.null()),
   relationship: v.string(),
   email: v.union(v.string(), v.null()),
   phone: v.union(v.string(), v.null()),
@@ -123,8 +129,16 @@ async function loadImmutableDetail(ctx: QueryCtx | MutationCtx, schoolId: Id<"sc
     countryOfBirth: optionalSnapshotString(profileValue.countryOfBirth),
     address: optionalSnapshotString(profileValue.address),
   };
+  const profileParts = normalizeStructuredPersonName(profile);
+  profile.firstName = profileParts.firstName ?? profile.firstName;
+  profile.middleName = profileParts.middleName ?? null;
+  profile.lastName = profileParts.lastName ?? profile.lastName;
+  const contactName = getReadableUserName({ name: requiredSnapshotString(contactValue.fullName, "Primary contact name"), firstName: optionalSnapshotString(contactValue.firstName), middleName: optionalSnapshotString(contactValue.middleName), lastName: optionalSnapshotString(contactValue.lastName) });
+  const addressMode: "residential" | "different" | null = contactValue.addressMode === "residential" || contactValue.addressMode === "different" ? contactValue.addressMode : null;
   const primaryContact = {
-    fullName: requiredSnapshotString(contactValue.fullName, "Primary contact name"),
+    fullName: contactName.displayName,
+    firstName: contactName.firstName, middleName: contactName.middleName, lastName: contactName.lastName,
+    addressMode,
     relationship: requiredSnapshotString(contactValue.relationship, "Primary contact relationship"),
     email: optionalSnapshotString(contactValue.email),
     phone: optionalSnapshotString(contactValue.phone),

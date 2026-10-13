@@ -26,8 +26,9 @@ it("guards teacher edits after a failed submission; Stay retains them and discar
   const provision = vi.fn().mockRejectedValue(new Error("private provider detail"));
   const leave = vi.fn();
   const { container } = render(<DepartureGuardProvider><TeacherCreationForm onProvision={provision} isSubmitting={false} /><Leave onLeave={leave} /></DepartureGuardProvider>);
-  const name = screen.getByPlaceholderText("Adebayo Ogunlesi");
-  fireEvent.change(name, { target: { value: "Synthetic Teacher" } });
+  const name = screen.getByLabelText("First name");
+  fireEvent.change(name, { target: { value: "Synthetic" } });
+  fireEvent.change(screen.getByLabelText("Last name"), { target: { value: "Teacher" } });
   fireEvent.change(screen.getByPlaceholderText("teacher@school.edu"), { target: { value: "synthetic@example.test" } });
   const form = container.querySelector("form");
   if (!form) throw new Error("Missing teacher form");
@@ -39,7 +40,7 @@ it("guards teacher edits after a failed submission; Stay retains them and discar
   await screen.findByRole("dialog");
   expect(screen.queryByText("Save draft and leave")).toBeNull();
   fireEvent.click(screen.getByText("Stay here"));
-  expect(name).toHaveValue("Synthetic Teacher");
+  expect(name).toHaveValue("Synthetic");
   expect(leave).not.toHaveBeenCalled();
   fireEvent.click(screen.getByText("Leave account"));
   fireEvent.click(await screen.findByText("Discard and leave"));

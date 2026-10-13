@@ -1,19 +1,25 @@
 "use client";
 
+import { PersonNameFields, emptyPersonName } from "@school/shared";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import { api } from "@school/convex/_generated/api";
+import type { Id } from "@school/convex/_generated/dataModel";
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { isConvexConfigured } from "@/convex-runtime";
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { ResetSchoolAdminPasswordModal } from "../../ResetSchoolAdminPasswordModal";
-import { ManageFeaturesModal, type SchoolFeatureSet } from "../../ManageFeaturesModal";
+import { ManageFeaturesModal } from "../../ManageFeaturesModal";
 
 function AssignAdminForm() {
   const router = useRouter();
   const params = useParams();
-  const schoolId = params.schoolId as string;
+  const schoolId = params.schoolId as Id<"schools">;
 
-  const [adminName, setAdminName] = useState("");
+  const [person, setPerson] = useState(emptyPersonName);
+  const parts = normalizeStructuredPersonName(person);
+  const adminName = [parts.firstName, parts.middleName, parts.lastName].filter(Boolean).join(" ");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -22,25 +28,12 @@ function AssignAdminForm() {
   const [showFeaturesModal, setShowFeaturesModal] = useState(false);
 
   // Fetch school details
-  const schools = useQuery(
-    "functions/platform/index:listSchools" as never,
-    {} as never
-  ) as
-    | Array<{
-        _id: string;
-        name: string;
-        slug: string;
-        status: string;
-        adminName: string | null;
-        adminEmail: string | null;
-        features: SchoolFeatureSet;
-      }>
-    | undefined;
+  const schools = useQuery(api.functions.platform.index.listSchools, {});
 
   const school = schools?.find((s) => s._id === schoolId);
 
   const provisionAdmin = useAction(
-    "functions/platform/index:provisionSchoolAdmin" as never
+    api.functions.platform.index.provisionSchoolAdmin
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -48,7 +41,7 @@ function AssignAdminForm() {
     const trimmedName = adminName.trim();
     const trimmedEmail = adminEmail.trim().toLowerCase();
 
-    if (!trimmedName) {
+    if (!parts.firstName || !parts.lastName) {
       appToast.warning("Review required before assigning", {
         id: "platform-assign-admin-error",
         description: "Admin name is required.",
@@ -78,9 +71,12 @@ function AssignAdminForm() {
       await provisionAdmin({
         schoolId,
         adminName: trimmedName,
+        firstName: parts.firstName,
+        middleName: parts.middleName,
+        lastName: parts.lastName,
         adminEmail: trimmedEmail,
         adminPassword,
-      } as never);
+      });
 
       setSuccess(true);
       setTimeout(() => {
@@ -268,25 +264,7 @@ function AssignAdminForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Admin Name */}
-          <div>
-            <label
-              htmlFor="adminName"
-              className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
-            >
-              Admin Name *
-            </label>
-            <input
-              id="adminName"
-              type="text"
-              value={adminName}
-              onChange={(e) => setAdminName(e.target.value)}
-              placeholder="e.g. John Doe"
-              className="editor-input"
-              disabled={isSubmitting}
-              autoFocus
-            />
-          </div>
+          <PersonNameFields value={person} onChange={setPerson} disabled={isSubmitting} inputClassName="editor-input" />
 
           {/* Admin Email */}
           <div>

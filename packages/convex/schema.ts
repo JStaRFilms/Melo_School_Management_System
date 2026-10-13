@@ -248,6 +248,9 @@ export default defineSchema({
     authTokenIdentifier: v.optional(v.string()),
     email: v.string(),
     name: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -258,6 +261,8 @@ export default defineSchema({
 
   // Stub tables for prerequisite data (from prior FRs)
   schools: defineTable({
+    studentLoginDomainId: v.optional(v.id("schoolEmailDomains")),
+    studentLoginPolicyVersion: v.optional(v.number()),
     name: v.string(),
     slug: v.string(),
     status: v.optional(v.union(v.literal("pending"), v.literal("active"), v.literal("suspended"))),
@@ -825,7 +830,11 @@ export default defineSchema({
     applicationId: v.id("admissionsApplications"),
     contactKey: v.string(),
     kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
     fullName: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     relationship: v.string(),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
@@ -1166,6 +1175,9 @@ export default defineSchema({
     ),
     email: v.string(),
     name: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     status: v.union(
       v.literal("active"),
       v.literal("suspended"),
@@ -1447,7 +1459,16 @@ export default defineSchema({
     personId: v.optional(v.id("persons")),
     name: v.string(),
     firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
     lastName: v.optional(v.string()),
+    portalAccount: v.optional(v.object({
+      state: v.union(v.literal("provisioning"), v.literal("resetting"), v.literal("provisioned"), v.literal("reconciliation_required")),
+      operationId: v.string(),
+      expectedEmail: v.string(),
+      expectedAuthId: v.string(),
+      authId: v.optional(v.string()),
+      updatedAt: v.number(),
+    })),
     email: v.string(),
     phone: v.optional(v.string()),
     role: v.union(
@@ -1473,7 +1494,9 @@ export default defineSchema({
     .index("by_auth_token_identifier_and_archived", ["authTokenIdentifier", "isArchived"])
     .index("by_email", ["email"])
     .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
-    .index("by_person", ["personId"]),
+    .index("by_person", ["personId"])
+    .searchIndex("search_name_and_school", { searchField: "name", filterFields: ["schoolId"] })
+    .searchIndex("search_email_and_school", { searchField: "email", filterFields: ["schoolId"] }),
 
   schoolAdminEmailUpdateReservations: defineTable({
     schoolId: v.id("schools"),
@@ -1492,6 +1515,7 @@ export default defineSchema({
   families: defineTable({
     schoolId: v.id("schools"),
     name: v.string(),
+    residentialAddress: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     createdBy: v.id("users"),
@@ -1504,6 +1528,8 @@ export default defineSchema({
     schoolId: v.id("schools"),
     familyId: v.id("families"),
     parentUserId: v.id("users"),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
+    addressOverride: v.optional(v.string()),
     relationship: v.optional(v.string()),
     isPrimaryContact: v.boolean(),
     createdAt: v.number(),
@@ -1552,6 +1578,8 @@ export default defineSchema({
     guardianName: v.optional(v.string()),
     guardianPhone: v.optional(v.string()),
     guardianEmail: v.optional(v.string()),
+    emergencyContactMode: v.optional(v.union(v.literal("primary"), v.literal("override"))),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
     address: v.optional(v.string()),
     photoStorageId: v.optional(v.id("_storage")),
     photoFileName: v.optional(v.string()),
@@ -3854,6 +3882,7 @@ export default defineSchema({
     entityType: v.union(v.literal("student"), v.literal("grade_record")),
     rawPayload: v.record(v.string(), v.any()),
     parsedData: v.object({
+      name: v.optional(v.string()),
       firstName: v.string(),
       lastName: v.string(),
       middleName: v.optional(v.string()),

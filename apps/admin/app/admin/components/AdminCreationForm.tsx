@@ -3,8 +3,9 @@
 import { useState, type FormEvent } from "react";
 import { useAction } from "convex/react";
 import { Crown, Loader2, UserPlus } from "lucide-react";
-import { getUserFacingErrorMessage } from "@school/shared";
-import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
+import { getUserFacingErrorMessage, PersonNameFields, emptyPersonName } from "@school/shared";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import { api } from "@school/convex/_generated/api";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 
 interface AdminCreationFormProps {
@@ -14,10 +15,12 @@ interface AdminCreationFormProps {
 
 export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps) {
   const createSchoolAdmin = useAction(
-    "functions/academic/adminLeadership:createSchoolAdmin" as never
+    api.functions.academic.adminLeadership.createSchoolAdmin
   );
 
-  const [name, setName] = useState("");
+  const [person, setPerson] = useState(emptyPersonName);
+  const parts = normalizeStructuredPersonName(person);
+  const name = [parts.firstName, parts.middleName, parts.lastName].filter(Boolean).join(" ");
   const [email, setEmail] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -25,24 +28,26 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
   const submitCreateAdmin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedName = humanNameFinalStrict(name);
     const normalizedEmail = email.trim().toLowerCase();
     const password = temporaryPassword.trim();
-    if (!normalizedName || !normalizedEmail || !password) {
+    if (!parts.firstName || !parts.lastName || !normalizedEmail || !password) {
       return;
     }
 
     setIsBusy(true);
 
     try {
-      const created = (await createSchoolAdmin({
-        name: normalizedName,
+      const created = await createSchoolAdmin({
+        name,
+        firstName: parts.firstName,
+        middleName: parts.middleName,
+        lastName: parts.lastName,
         email: normalizedEmail,
         temporaryPassword: password,
         origin: window.location.origin,
-      } as never)) as { email: string; temporaryPassword: string };
+      });
 
-      setName("");
+      setPerson(emptyPersonName);
       setEmail("");
       setTemporaryPassword("");
       onSuccess(`${created.email} can sign in with the temporary password now.`);
@@ -68,24 +73,14 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
 
       <form onSubmit={submitCreateAdmin} className="space-y-4">
         <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400 pl-1">
-              Full Name
-            </label>
-            <input
-              value={name}
-              onChange={(e) => setName(humanNameTypingStrict(e.target.value))}
-              onBlur={(e) => setName(humanNameFinalStrict(e.target.value))}
-              placeholder="e.g. Grace Okafor"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5 placeholder:text-slate-300"
-            />
-          </div>
+          <PersonNameFields value={person} onChange={setPerson} />
           <div className="space-y-1">
             <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400 pl-1">
               Work Email
             </label>
             <input
               type="email"
+              aria-label="Work email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@school.edu"
@@ -100,6 +95,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
           </label>
           <input
             type="password"
+            aria-label="Temporary password"
             value={temporaryPassword}
             onChange={(e) => setTemporaryPassword(e.target.value)}
             className="h-9 w-full rounded-lg border border-slate-200 bg-white/50 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:bg-white"

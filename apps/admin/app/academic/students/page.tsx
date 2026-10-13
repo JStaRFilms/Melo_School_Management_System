@@ -35,7 +35,10 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { AttestationLetterModal } from "./components/AttestationLetterModal";
 import type { AdmissionCounterDecision } from "./components/AdmissionNumberGovernanceFields";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
-import { FamilyOnboardingForm } from "./components/FamilyOnboardingForm";
+import type { FunctionArgs } from "convex/server";
+import { api } from "@school/convex/_generated/api";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import { admissionParentGuardian, emptyAdmissionContact, restoreAdmissionContact } from "./components/admissionContact";
 import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
@@ -105,7 +108,7 @@ function StudentsPageContent() {
   ) as { allowed: boolean } | undefined;
 
   const createStudent = useMutation(
-    "functions/academic/studentEnrollment:createStudent" as never
+    api.functions.academic.studentEnrollment.createStudent
   );
   const saveStudentPhoto = useAction(
     "functions/academic/studentEnrollment:saveStudentPhoto" as never
@@ -134,6 +137,9 @@ function StudentsPageContent() {
   const [selectedClassId, setSelectedClassId] = useState<string | null>(urlClassId);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(urlSessionId);
   const [studentFirstName, setStudentFirstName] = useState("");
+  const [studentMiddleName, setStudentMiddleName] = useState("");
+  const [contact, setContact] = useState(emptyAdmissionContact);
+  const [emergencyContactMode, setEmergencyContactMode] = useState<"primary" | "override" | "legacy">("primary");
   const [studentLastName, setStudentLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [admissionNumberMode, setAdmissionNumberMode] = useState<
@@ -150,12 +156,7 @@ function StudentsPageContent() {
   const [guardianName, setGuardianName] = useState("");
   const [guardianPhone, setGuardianPhone] = useState("");
   const [address, setAddress] = useState("");
-  const [parentFirstName, setParentFirstName] = useState("");
-  const [parentLastName, setParentLastName] = useState("");
-  const [parentEmail, setParentEmail] = useState("");
-  const [parentPhone, setParentPhone] = useState("");
-  const [parentRelationship, setParentRelationship] = useState("");
-  const [isParentPrimaryContact, setIsParentPrimaryContact] = useState(true);
+  const { parentFirstName, parentLastName, parentEmail, parentPhone, parentRelationship, isParentPrimaryContact } = contact;
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(urlStudentId);
@@ -192,9 +193,10 @@ function StudentsPageContent() {
     urlTab === "profile" ? "profile" : "subjects"
   );
   const [activeTab, setActiveTab] = useState<"profile" | "family">("profile");
-  const [creationTab, setCreationTab] = useState<"quick" | "family">("quick");
   const [isCreationSheetOpen, setIsCreationSheetOpen] = useState(false);
   const [isDuplicateParentLinkConfirmOpen, setIsDuplicateParentLinkConfirmOpen] = useState(false);
+  const admissionInFlight = useRef(false);
+  const submittedAdmission = useRef<FunctionArgs<typeof api.functions.academic.studentEnrollment.createStudent> | null>(null);
   const [enrollmentRequestKey, setEnrollmentRequestKey] = useState(newEnrollmentRequestKey);
   const [familyDraftInstanceKey, setFamilyDraftInstanceKey] = useState(0);
 
@@ -595,6 +597,7 @@ function StudentsPageContent() {
   }, [studentPhotoFile, studentPhotoPreviewUrl]);
 
   const resetStudentCreationForm = useCallback(() => {
+    submittedAdmission.current = null;
     setStudentFirstName("");
     setStudentLastName("");
     setAdmissionNumber("");
@@ -609,12 +612,9 @@ function StudentsPageContent() {
     setGuardianName("");
     setGuardianPhone("");
     setAddress("");
-    setParentFirstName("");
-    setParentLastName("");
-    setParentEmail("");
-    setParentPhone("");
-    setParentRelationship("");
-    setIsParentPrimaryContact(true);
+    setStudentMiddleName("");
+    setContact(emptyAdmissionContact);
+    setEmergencyContactMode("primary");
     setStudentPhotoFile(null);
     setStudentPhotoResetKey((key) => key + 1);
     setEnrollmentRequestKey(newEnrollmentRequestKey());
@@ -622,6 +622,10 @@ function StudentsPageContent() {
 
   const familyDraftData = useMemo<DraftPayload<"family_onboarding">>(() => ({
     studentFirstName,
+    studentMiddleName,
+    ...contact,
+    emergencyContactMode,
+    addressMode: "residential",
     studentLastName,
     admissionNumber,
     admissionNumberMode,
@@ -643,9 +647,9 @@ function StudentsPageContent() {
     parentRelationship,
     isParentPrimaryContact,
     enrollmentRequestKey,
-  }), [address, admissionNumber, admissionNumberMode, advanceCounterTo, dateOfBirth, enrollmentRequestKey, gender, guardianName, guardianPhone, houseName, isParentPrimaryContact, overrideConfirmed, overrideCounterDecision, overrideReason, parentEmail, parentFirstName, parentLastName, parentPhone, parentRelationship, selectedClassId, studentFirstName, studentLastName]);
-  const familyDraftIsDirty = creationTab === "family" && (isSubmitting || Boolean(
-    studentFirstName || studentLastName || admissionNumber || admissionNumberMode !== "automatic" || overrideReason || overrideConfirmed || overrideCounterDecision || advanceCounterTo || gender || houseName || dateOfBirth || guardianName ||
+  }), [contact, emergencyContactMode, studentMiddleName, address, admissionNumber, admissionNumberMode, advanceCounterTo, dateOfBirth, enrollmentRequestKey, gender, guardianName, guardianPhone, houseName, isParentPrimaryContact, overrideConfirmed, overrideCounterDecision, overrideReason, parentEmail, parentFirstName, parentLastName, parentPhone, parentRelationship, selectedClassId, studentFirstName, studentLastName]);
+  const familyDraftIsDirty = (isSubmitting || Boolean(
+    studentFirstName || studentMiddleName || contact.contactChoice !== "none" || studentLastName || admissionNumber || admissionNumberMode !== "automatic" || overrideReason || overrideConfirmed || overrideCounterDecision || advanceCounterTo || gender || houseName || dateOfBirth || guardianName ||
     guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone ||
     parentRelationship || !isParentPrimaryContact || studentPhotoFile
   ));
@@ -659,6 +663,9 @@ function StudentsPageContent() {
     instanceKey: familyDraftInstanceKey,
     onRestore: (payload) => {
       setStudentFirstName(payload.studentFirstName);
+      setStudentMiddleName(payload.studentMiddleName ?? "");
+      setContact(restoreAdmissionContact(payload));
+      setEmergencyContactMode(payload.emergencyContactMode ?? (payload.guardianName || payload.guardianPhone ? "legacy" : "primary"));
       setStudentLastName(payload.studentLastName);
       setAdmissionNumber(payload.admissionNumber);
       setAdmissionNumberMode(payload.admissionNumberMode);
@@ -673,28 +680,21 @@ function StudentsPageContent() {
       setGuardianName(payload.guardianName);
       setGuardianPhone(payload.guardianPhone);
       setAddress(payload.address);
-      setParentFirstName(payload.parentFirstName);
-      setParentLastName(payload.parentLastName);
-      setParentEmail(payload.parentEmail);
-      setParentPhone(payload.parentPhone);
-      setParentRelationship(payload.parentRelationship);
-      setIsParentPrimaryContact(payload.isParentPrimaryContact);
       setEnrollmentRequestKey(payload.enrollmentRequestKey ?? newEnrollmentRequestKey());
       setStudentPhotoFile(null);
-      setCreationTab("family");
     },
   });
 
-  const creationIsDirty = isSubmitting || Boolean(studentFirstName || studentLastName || admissionNumber || admissionNumberMode !== "automatic" || overrideReason || overrideConfirmed || overrideCounterDecision || advanceCounterTo || gender || houseName || dateOfBirth || guardianName || guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship || !isParentPrimaryContact || studentPhotoFile);
+  const creationIsDirty = isSubmitting || Boolean(studentMiddleName || contact.contactChoice !== "none" || studentFirstName || studentLastName || admissionNumber || admissionNumberMode !== "automatic" || overrideReason || overrideConfirmed || overrideCounterDecision || advanceCounterTo || gender || houseName || dateOfBirth || guardianName || guardianPhone || address || parentFirstName || parentLastName || parentEmail || parentPhone || parentRelationship || !isParentPrimaryContact || studentPhotoFile);
   const requestCreationDeparture = useDirtyForm({
-    name: creationTab === "family" ? "Family enrollment" : "Student enrollment",
+    name: "Student admission",
     isDirty: creationIsDirty,
-    save: creationTab === "family" ? familyDraft.retrySave : undefined,
+    save: familyDraft.retrySave,
     discard: async () => {
       if (isSubmitting) throw new Error("Wait for enrollment to finish before leaving.");
-      if (creationTab === "family") await familyDraft.handleDiscardDraft();
+      await familyDraft.handleDiscardDraft();
       resetStudentCreationForm();
-      if (creationTab === "family") setFamilyDraftInstanceKey((key) => key + 1);
+      setFamilyDraftInstanceKey((key) => key + 1);
     },
   });
   const closeCreationSheet = async () => {
@@ -702,10 +702,11 @@ function StudentsPageContent() {
   };
 
   const submitStudent = async (confirmDuplicateLink = false) => {
-    if (isSubmitting) return;
+    if (admissionInFlight.current) return;
     const normalizedStudentFirstName = humanNameFinalStrict(studentFirstName);
     const normalizedStudentLastName = humanNameFinalStrict(studentLastName);
-    const normalizedStudentName = [normalizedStudentFirstName, normalizedStudentLastName].filter(Boolean).join(" ");
+    const normalizedName = normalizeStructuredPersonName({ firstName: normalizedStudentFirstName, middleName: studentMiddleName, lastName: normalizedStudentLastName });
+    const normalizedStudentName = [normalizedName.firstName, normalizedName.middleName, normalizedName.lastName].filter(Boolean).join(" ");
     const trimmedHouseName = houseName.trim();
     const trimmedGuardianName = guardianName.trim();
     const trimmedGuardianPhone = guardianPhone.trim();
@@ -713,18 +714,10 @@ function StudentsPageContent() {
     const normalizedParentFirstName = humanNameFinalStrict(parentFirstName);
     const normalizedParentLastName = humanNameFinalStrict(parentLastName);
     const normalizedParentEmail = parentEmail.trim().toLowerCase();
-    const shouldLinkParent = [
-      parentFirstName,
-      parentLastName,
-      parentEmail,
-      parentPhone,
-      parentRelationship,
-    ].some((value) => value.trim().length > 0);
+    const shouldLinkParent = contact.contactChoice !== "none";
     const missingOptionalFields = [
       !trimmedHouseName ? "house" : null,
       !dateOfBirth ? "date of birth" : null,
-      !trimmedGuardianName ? "guardian name" : null,
-      !trimmedGuardianPhone ? "guardian phone" : null,
       !trimmedAddress ? "address" : null,
       !studentPhotoFile ? "student photo" : null,
     ].filter(Boolean) as string[];
@@ -747,7 +740,7 @@ function StudentsPageContent() {
       return;
     }
 
-    if (shouldLinkParent) {
+    if (contact.contactChoice === "new") {
       if (!normalizedParentFirstName || !normalizedParentLastName || !normalizedParentEmail) {
         showNotice({
           tone: "error",
@@ -773,7 +766,7 @@ function StudentsPageContent() {
       }
     }
 
-    const isFamilySubmission = creationTab === "family";
+    const isFamilySubmission = true;
     let draftClosure: Awaited<ReturnType<typeof familyDraft.prepareSubmission>> = null;
     if (isFamilySubmission) {
       try {
@@ -787,12 +780,16 @@ function StudentsPageContent() {
       }
     }
 
+    if (admissionInFlight.current) return;
+    admissionInFlight.current = true;
     setIsSubmitting(true);
 
     try {
-      const createdStudentId = (await createStudent({
+      submittedAdmission.current ??= {
         requestKey: enrollmentRequestKey,
-        name: normalizedStudentName,
+        firstName: normalizedName.firstName,
+        middleName: normalizedName.middleName || undefined,
+        lastName: normalizedName.lastName,
         admissionNumber: useAutomaticAdmissionNumber
           ? ""
           : admissionNumber.trim(),
@@ -835,26 +832,21 @@ function StudentsPageContent() {
           overrideCounterDecision === "advance"
             ? Number(advanceCounterTo)
             : undefined,
-        classId: selectedClassId,
+        classId: selectedClassId as Id<"classes">,
         gender,
         houseName: trimmedHouseName || null,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
         guardianName: trimmedGuardianName || null,
         guardianPhone: trimmedGuardianPhone || null,
         address: trimmedAddress || null,
-        parentLink:
-          shouldLinkParent && normalizedParentFirstName && normalizedParentLastName
-            ? {
-                firstName: normalizedParentFirstName,
-                lastName: normalizedParentLastName,
-                email: normalizedParentEmail,
-                phone: parentPhone.trim() || null,
-                relationship: parentRelationship.trim() || null,
-                isPrimaryContact: isParentPrimaryContact,
-              }
-            : undefined,
-        confirmDuplicateLink: confirmDuplicateLink || undefined,
-      } as never)) as string;
+        parentGuardian: admissionParentGuardian(contact),
+        addressMode: contact.contactChoice === "none" ? undefined : "residential",
+        emergencyContactMode: emergencyContactMode === "legacy" ? undefined : emergencyContactMode,
+      };
+      if (confirmDuplicateLink) {
+        submittedAdmission.current = { ...submittedAdmission.current, confirmDuplicateLink: true };
+      }
+      const createdStudentId = await createStudent(submittedAdmission.current);
 
       let photoUploadError: string | null = null;
       if (studentPhotoFile) {
@@ -873,7 +865,6 @@ function StudentsPageContent() {
       resetStudentCreationForm();
       setFamilyDraftInstanceKey((key) => key + 1);
       setIsCreationSheetOpen(false);
-      setCreationTab("quick");
       setSelectedStudentId(createdStudentId);
       updateUrlParams({ studentId: createdStudentId });
 
@@ -906,10 +897,15 @@ function StudentsPageContent() {
         message,
       });
     } finally {
+      admissionInFlight.current = false;
       setIsSubmitting(false);
     }
   };
 
+  const normalizeAdmissionName = () => {
+    const name = normalizeStructuredPersonName({ firstName: studentFirstName, middleName: studentMiddleName, lastName: studentLastName });
+    setStudentFirstName(name.firstName ?? ""); setStudentMiddleName(name.middleName ?? ""); setStudentLastName(name.lastName ?? "");
+  };
   const handleCreateStudent = async (event: FormEvent) => {
     event.preventDefault();
     await submitStudent();
@@ -1189,7 +1185,7 @@ function StudentsPageContent() {
         }
       `}} />
 
-      {creationTab === "family" && (
+      {(
         <PersistentFormDraftControls
             draft={familyDraft}
             formTitle="family enrollment"
@@ -1375,35 +1371,16 @@ function StudentsPageContent() {
               />
             ) : (
               <div className="space-y-6">
-                <div className="flex rounded-xl bg-slate-100/60 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setCreationTab("quick")}
-                    className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
-                      creationTab === "quick"
-                        ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    Quick Admission
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCreationTab("family")}
-                    className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition-all ${
-                      creationTab === "family"
-                        ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    Family Onboarding
-                  </button>
-                </div>
-
-                {creationTab === "quick" ? (
-                  <StudentCreationForm
+<StudentCreationForm
                     selectedClassName={selectedClassName}
                     studentFirstName={studentFirstName}
+                    studentMiddleName={studentMiddleName}
+                    locked={submittedAdmission.current !== null}
+                    onStudentMiddleNameChange={setStudentMiddleName}
+                    contact={contact}
+                    onContactChange={setContact}
+                    emergencyContactMode={emergencyContactMode}
+                    onEmergencyContactModeChange={setEmergencyContactMode}
                     studentLastName={studentLastName}
                     admissionNumber={admissionNumber}
                     gender={gender}
@@ -1418,9 +1395,9 @@ function StudentsPageContent() {
                     sectionRef={studentFormRef}
                     inputRef={studentNameInputRef}
                     onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
-                    onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                    onStudentFirstNameBlur={normalizeAdmissionName}
                     onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
-                    onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                    onStudentLastNameBlur={normalizeAdmissionName}
                     onAdmissionNumberChange={setAdmissionNumber}
                     admissionNumberMode={admissionNumberMode}
                     numberingPolicyConfigured={numberingPolicyConfigured}
@@ -1450,57 +1427,6 @@ function StudentsPageContent() {
                     selectedClassId={selectedClassId}
                     onClassIdChange={handleClassChange}
                   />
-                ) : (
-                  <FamilyOnboardingForm
-                    selectedClassName={selectedClassName}
-                    classes={classes}
-                    selectedClassId={selectedClassId}
-                    onClassIdChange={handleClassChange}
-                    studentFirstName={studentFirstName}
-                    onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
-                    onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
-                    studentLastName={studentLastName}
-                    onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
-                    onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
-                    admissionNumber={admissionNumber}
-                    onAdmissionNumberChange={setAdmissionNumber}
-                    admissionNumberMode={admissionNumberMode}
-                    numberingPolicyConfigured={numberingPolicyConfigured}
-                    numberingPolicyLoading={admissionNumbering === undefined}
-                    numberingPreview={admissionNumbering?.preview ?? null}
-                    canOverrideAdmissionNumber={canOverrideAdmissionNumber}
-                    overrideReason={overrideReason}
-                    overrideConfirmed={overrideConfirmed}
-                    overrideCounterDecision={overrideCounterDecision}
-                    advanceCounterTo={advanceCounterTo}
-                    onAdmissionNumberModeChange={setAdmissionNumberMode}
-                    onOverrideReasonChange={setOverrideReason}
-                    onOverrideConfirmedChange={setOverrideConfirmed}
-                    onOverrideCounterDecisionChange={setOverrideCounterDecision}
-                    onAdvanceCounterToChange={setAdvanceCounterTo}
-                    gender={gender}
-                    onGenderChange={setGender}
-                    parentFirstName={parentFirstName}
-                    onParentFirstNameChange={(v) => setParentFirstName(humanNameTypingStrict(v))}
-                    onParentFirstNameBlur={(v) => setParentFirstName(humanNameFinalStrict(v))}
-                    parentLastName={parentLastName}
-                    onParentLastNameChange={(v) => setParentLastName(humanNameTypingStrict(v))}
-                    onParentLastNameBlur={(v) => setParentLastName(humanNameFinalStrict(v))}
-                    parentEmail={parentEmail}
-                    onParentEmailChange={setParentEmail}
-                    parentPhone={parentPhone}
-                    onParentPhoneChange={setParentPhone}
-                    parentRelationship={parentRelationship}
-                    onParentRelationshipChange={setParentRelationship}
-                    isParentPrimaryContact={isParentPrimaryContact}
-                    onIsParentPrimaryContactChange={setIsParentPrimaryContact}
-                    isSubmitting={isSubmitting}
-                    draftStatus={familyDraft.status}
-                    draftLastSavedAt={familyDraft.lastSavedAt}
-                    onSubmit={handleCreateStudent}
-                    inputRef={studentNameInputRef}
-                  />
-                )}
               </div>
             )}
 
@@ -1549,35 +1475,16 @@ function StudentsPageContent() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 pb-12 custom-scrollbar">
-              <div className="mb-6 flex rounded-xl bg-slate-100/60 p-1">
-                <button
-                  type="button"
-                  onClick={() => setCreationTab("quick")}
-                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
-                    creationTab === "quick"
-                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
-                      : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  Quick Admission
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreationTab("family")}
-                  className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${
-                    creationTab === "family"
-                      ? "bg-white text-slate-950 shadow-sm ring-1 ring-slate-950/5"
-                      : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  Family Onboarding
-                </button>
-              </div>
-
-              {creationTab === "quick" ? (
-                <StudentCreationForm
+<StudentCreationForm
                   selectedClassName={selectedClassName}
                   studentFirstName={studentFirstName}
+                  studentMiddleName={studentMiddleName}
+                  locked={submittedAdmission.current !== null}
+                  onStudentMiddleNameChange={setStudentMiddleName}
+                  contact={contact}
+                  onContactChange={setContact}
+                  emergencyContactMode={emergencyContactMode}
+                  onEmergencyContactModeChange={setEmergencyContactMode}
                   studentLastName={studentLastName}
                   admissionNumber={admissionNumber}
                   gender={gender}
@@ -1592,9 +1499,9 @@ function StudentsPageContent() {
                   sectionRef={studentFormRef}
                   inputRef={studentNameInputRef}
                   onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
-                  onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
+                  onStudentFirstNameBlur={normalizeAdmissionName}
                   onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
-                  onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
+                  onStudentLastNameBlur={normalizeAdmissionName}
                   onAdmissionNumberChange={setAdmissionNumber}
                   admissionNumberMode={admissionNumberMode}
                   numberingPolicyConfigured={numberingPolicyConfigured}
@@ -1624,57 +1531,6 @@ function StudentsPageContent() {
                   selectedClassId={selectedClassId}
                   onClassIdChange={handleClassChange}
                 />
-              ) : (
-                <FamilyOnboardingForm
-                  selectedClassName={selectedClassName}
-                  classes={classes}
-                  selectedClassId={selectedClassId}
-                  onClassIdChange={handleClassChange}
-                  studentFirstName={studentFirstName}
-                  onStudentFirstNameChange={(v) => setStudentFirstName(humanNameTypingStrict(v))}
-                  onStudentFirstNameBlur={(v) => setStudentFirstName(humanNameFinalStrict(v))}
-                  studentLastName={studentLastName}
-                  onStudentLastNameChange={(v) => setStudentLastName(humanNameTypingStrict(v))}
-                  onStudentLastNameBlur={(v) => setStudentLastName(humanNameFinalStrict(v))}
-                  admissionNumber={admissionNumber}
-                  onAdmissionNumberChange={setAdmissionNumber}
-                  admissionNumberMode={admissionNumberMode}
-                  numberingPolicyConfigured={numberingPolicyConfigured}
-                  numberingPolicyLoading={admissionNumbering === undefined}
-                  numberingPreview={admissionNumbering?.preview ?? null}
-                  canOverrideAdmissionNumber={canOverrideAdmissionNumber}
-                  overrideReason={overrideReason}
-                  overrideConfirmed={overrideConfirmed}
-                  overrideCounterDecision={overrideCounterDecision}
-                  advanceCounterTo={advanceCounterTo}
-                  onAdmissionNumberModeChange={setAdmissionNumberMode}
-                  onOverrideReasonChange={setOverrideReason}
-                  onOverrideConfirmedChange={setOverrideConfirmed}
-                  onOverrideCounterDecisionChange={setOverrideCounterDecision}
-                  onAdvanceCounterToChange={setAdvanceCounterTo}
-                  gender={gender}
-                  onGenderChange={setGender}
-                  parentFirstName={parentFirstName}
-                  onParentFirstNameChange={(v) => setParentFirstName(humanNameTypingStrict(v))}
-                  onParentFirstNameBlur={(v) => setParentFirstName(humanNameFinalStrict(v))}
-                  parentLastName={parentLastName}
-                  onParentLastNameChange={(v) => setParentLastName(humanNameTypingStrict(v))}
-                  onParentLastNameBlur={(v) => setParentLastName(humanNameFinalStrict(v))}
-                  parentEmail={parentEmail}
-                  onParentEmailChange={setParentEmail}
-                  parentPhone={parentPhone}
-                  onParentPhoneChange={setParentPhone}
-                  parentRelationship={parentRelationship}
-                  onParentRelationshipChange={setParentRelationship}
-                  isParentPrimaryContact={isParentPrimaryContact}
-                  onIsParentPrimaryContactChange={setIsParentPrimaryContact}
-                  isSubmitting={isSubmitting}
-                  draftStatus={familyDraft.status}
-                  draftLastSavedAt={familyDraft.lastSavedAt}
-                  onSubmit={handleCreateStudent}
-                  inputRef={studentNameInputRef}
-                />
-              )}
             </div>
           </div>
         </div>

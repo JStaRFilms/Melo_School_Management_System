@@ -1,3 +1,4 @@
+import { ImportNameFields } from "../ImportNameFields";
 import React, { useState } from "react";
 import { Search, AlertTriangle, AlertCircle, CheckCircle2, Loader2, SlidersHorizontal } from "lucide-react";
 
@@ -24,6 +25,7 @@ export interface StagedStudentRow {
   commitOutcome?: "created" | "merged" | "ignored" | "grade_created";
   commitReceiptId?: string;
   parsedData: {
+    name?: string;
     firstName: string;
     lastName: string;
     middleName?: string;
@@ -93,7 +95,7 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
     if (!searchTerm) return true;
 
     const term = searchTerm.toLowerCase();
-    const fullName = `${rec.parsedData.firstName} ${rec.parsedData.middleName || ""} ${rec.parsedData.lastName}`.toLowerCase();
+    const fullName = ([rec.parsedData.firstName, rec.parsedData.middleName, rec.parsedData.lastName].filter(Boolean).join(" ") || rec.parsedData.name || "").toLowerCase();
     const adm = rec.parsedData.admissionNumber?.toLowerCase() || "";
     const cls = rec.parsedData.className.toLowerCase();
     const phone = rec.parsedData.guardianPhone || "";
@@ -207,30 +209,7 @@ export function RosterReviewTab({ records, onPatchField, onOpenClashModal, onRev
                     #{rec.rowNumber}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        defaultValue={rec.parsedData.firstName}
-                        onBlur={(e) => {
-                          if (e.target.value !== rec.parsedData.firstName) {
-                            onPatchField(rec._id, { firstName: e.target.value });
-                          }
-                        }}
-                        className="w-24 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-xs font-bold text-slate-900 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
-                        placeholder="First"
-                      />
-                      <input
-                        type="text"
-                        defaultValue={rec.parsedData.lastName}
-                        onBlur={(e) => {
-                          if (e.target.value !== rec.parsedData.lastName) {
-                            onPatchField(rec._id, { lastName: e.target.value });
-                          }
-                        }}
-                        className="w-28 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-xs font-bold text-slate-900 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
-                        placeholder="Last"
-                      />
-                    </div>
+                    <ImportNameFields record={rec} onPatchField={onPatchField} />
                   </td>
                   <td className="px-4 py-3">
                     <input

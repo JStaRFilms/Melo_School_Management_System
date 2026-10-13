@@ -47,10 +47,24 @@ Chidi,Okafor,Primary 2,OBCA/26/1002`);
 
     const result = parseSpreadsheetContent(csv);
     expect(result.totalRows).toBe(1);
-    expect(result.rows[0].parsedData.firstName).toBe("Babatunde");
-    expect(result.rows[0].parsedData.lastName).toBe("Adeyemi");
-    expect(result.rows[0].parsedData.middleName).toBe("Tunde");
+    expect(result.rows[0].parsedData.name).toBe("Adeyemi, Babatunde Tunde");
+    expect(result.rows[0].parsedData.firstName).toBe("");
+    expect(result.rows[0].parsedData.lastName).toBe("");
+    expect(result.rows[0].parsedData.middleName).toBeUndefined();
     expect(result.rows[0].parsedData.gender).toBe("Male");
+  });
+
+  it("preserves explicit columns regardless of full-name column order", () => {
+    for (const matrix of [
+      [["Full Name", "First Name", "Middle Name", "Last Name"], ["Reference Name", "Mary Anne", "Grace", "Van Dyke"]],
+      [["First Name", "Last Name", "Full Name"], ["Mary Anne", "Van Dyke", "Reference Name"]],
+    ]) {
+      const row = parseSpreadsheetContent(matrix).rows[0].parsedData;
+      expect(row.name).toBe("Reference Name");
+      expect(row.lastName).toBe("Van Dyke");
+      expect(row.firstName).toBe(matrix[0].includes("Middle Name") ? "Mary Anne" : "Mary");
+      expect(row.middleName).toBe(matrix[0].includes("Middle Name") ? "Grace" : "Anne");
+    }
   });
 
   it("identifies academic grade record rows", () => {

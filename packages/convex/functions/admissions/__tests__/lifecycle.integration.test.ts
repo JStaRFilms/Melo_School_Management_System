@@ -679,6 +679,26 @@ it("resumes primary contact and bound definitions and enforces every mutable cor
   expect(await f.guardian.query(getDraftRef, { applicationId: application.applicationId })).toMatchObject({ requestedEntryLabel: "Primary 2", profile: { preferredName: "K" }, primaryContact: { fullName: "Adaobi Nwosu", email: "adaobi@example.test" } });
 });
 
+it("projects legacy two-word first names without rewriting drafts or immutable snapshots", async () => {
+  const f = await fixture();
+  const { application } = await paidApplication(f, "legacy-name-read");
+  await f.guardian.mutation(saveDraftRef, { applicationId: application.applicationId, expectedVersion: 0, mutationKey: "legacy-name-save", requestedEntryLabel: "Primary 1", profile: { firstName: "Mary Anne", lastName: "Van Dyke", dateOfBirth: Date.UTC(2019, 4, 2) }, primaryContact: { fullName: "Grace Helen Van Anthony", firstName: "Grace Helen", lastName: "Van Anthony", relationship: "Mother", email: "grace@example.test" }, answers: [{ fieldKey: "reason", valueType: "string", serializedValue: "Community" }] });
+  const legacyProfile = await f.t.run(async ctx => {
+    const profile = await ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", q => q.eq("applicationId", application.applicationId)).unique();
+    const contact = await ctx.db.query("admissionsApplicationContacts").withIndex("by_application_and_is_primary", q => q.eq("applicationId", application.applicationId).eq("isPrimary", true)).unique();
+    if (!profile || !contact) throw new Error("Missing draft details");
+    await ctx.db.patch(profile._id, { firstName: "Mary Anne", middleName: undefined });
+    await ctx.db.patch(contact._id, { firstName: "Grace Helen", middleName: undefined });
+    return await ctx.db.get(profile._id);
+  });
+  expect(await f.guardian.query(getDraftRef, { applicationId: application.applicationId })).toMatchObject({ profile: { firstName: "Mary", middleName: "Anne", lastName: "Van Dyke" }, primaryContact: { firstName: "Grace", middleName: "Helen", lastName: "Van Anthony" } });
+  expect(await f.t.run(ctx => ctx.db.query("admissionsApplicantProfiles").withIndex("by_application", q => q.eq("applicationId", application.applicationId)).unique())).toEqual(legacyProfile);
+  const submitted = await f.guardian.mutation(submitRef, { applicationId: application.applicationId, expectedVersion: 1, submissionKey: "legacy-name-submit", signerName: "Grace Helen Van Anthony", signerRelationship: "Mother", declarationAccepted: true });
+  const snapshotBefore = await f.t.run(ctx => ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", q => q.eq("snapshotId", submitted.snapshotId)).collect());
+  expect(await f.staff.query(getApplicationDetailRef, { schoolId: f.schoolId, applicationId: application.applicationId })).toMatchObject({ profile: { firstName: "Mary", middleName: "Anne", lastName: "Van Dyke" }, primaryContact: { firstName: "Grace", middleName: "Helen", lastName: "Van Anthony" } });
+  expect(await f.t.run(ctx => ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", q => q.eq("snapshotId", submitted.snapshotId)).collect())).toEqual(snapshotBefore);
+});
+
 it("lists active conversion classes independently of archived class history", async () => {
   const f = await fixture();
   const { application } = await paidApplication(f, "active-conversion-classes");

@@ -1,3 +1,4 @@
+import { getFunctionName, type FunctionReference } from "convex/server";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { StudentPhotoPanel } from "../app/academic/students/components/StudentPhotoPanel";
@@ -54,8 +55,8 @@ vi.mock("convex/react", () => ({
     if (reference.endsWith(":archiveStudent")) return mocks.archiveStudent;
     return vi.fn();
   },
-  useAction: (reference: string) => {
-    if (reference.endsWith(":saveStudentPhoto")) return mocks.saveStudentPhoto;
+  useAction: (reference: string | FunctionReference<"action">) => {
+    if ((typeof reference === "string" ? reference : getFunctionName(reference)).endsWith(":saveStudentPhoto")) return mocks.saveStudentPhoto;
     return vi.fn();
   },
 }));

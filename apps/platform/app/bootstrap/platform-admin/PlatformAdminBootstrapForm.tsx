@@ -1,5 +1,8 @@
 "use client";
 
+import { PersonNameFields, emptyPersonName } from "@school/shared";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import { api } from "@school/convex/_generated/api";
 import { useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -26,11 +29,13 @@ export function PlatformAdminBootstrapForm() {
 function PlatformAdminBootstrapFormWithConvex() {
   const router = useRouter();
   const bootstrapPlatformAdmin = useAction(
-    "functions/platform/bootstrap:bootstrapPlatformAdmin" as never
+    api.functions.platform.bootstrap.bootstrapPlatformAdmin
   );
 
   const [bootstrapToken, setBootstrapToken] = useState("");
-  const [adminName, setAdminName] = useState("");
+  const [person, setPerson] = useState(emptyPersonName);
+  const parts = normalizeStructuredPersonName(person);
+  const adminName = [parts.firstName, parts.middleName, parts.lastName].filter(Boolean).join(" ");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +59,7 @@ function PlatformAdminBootstrapFormWithConvex() {
       return;
     }
 
-    if (!trimmedName) {
+    if (!parts.firstName || !parts.lastName) {
       setError("Admin name is required.");
       return;
     }
@@ -72,16 +77,16 @@ function PlatformAdminBootstrapFormWithConvex() {
     setIsSubmitting(true);
 
     try {
-      const result = (await bootstrapPlatformAdmin({
+      const result = await bootstrapPlatformAdmin({
         bootstrapToken: trimmedToken,
         adminName: trimmedName,
+        firstName: parts.firstName,
+        middleName: parts.middleName,
+        lastName: parts.lastName,
         adminEmail: trimmedEmail,
         adminPassword: password,
         origin: window.location.origin,
-      } as never)) as {
-        platformAdminId: string;
-        adminEmail: string;
-      };
+      });
 
       setSuccess({
         platformAdminId: result.platformAdminId,
@@ -108,7 +113,7 @@ function PlatformAdminBootstrapFormWithConvex() {
           setSuccess(null);
           setError(null);
           setBootstrapToken("");
-          setAdminName("");
+          setPerson(emptyPersonName);
           setAdminEmail("");
           setAdminPassword("");
         }}
@@ -173,16 +178,7 @@ function PlatformAdminBootstrapFormWithConvex() {
           />
         </PlatformAdminBootstrapFieldShell>
 
-        <PlatformAdminBootstrapFieldShell label="Admin name" hint="The display name for the platform operator.">
-          <input
-            type="text"
-            value={adminName}
-            onChange={(event) => setAdminName(event.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-slate-400 focus:ring-4 focus:ring-white/5"
-            placeholder="e.g. School Owner"
-            autoComplete="name"
-          />
-        </PlatformAdminBootstrapFieldShell>
+        <PersonNameFields value={person} onChange={setPerson} disabled={isSubmitting} inputClassName="w-full rounded-xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white outline-none focus:border-slate-400" />
 
         <PlatformAdminBootstrapFieldShell
           label="Admin email"

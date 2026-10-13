@@ -201,7 +201,7 @@ export function ImportRowReviewDialog({
               Decide what happens to row #{record.rowNumber}
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              {record.parsedData.firstName} {record.parsedData.lastName}. This decision is saved for the final import; it does not change school records yet.
+              {[record.parsedData.firstName, record.parsedData.middleName, record.parsedData.lastName].filter(Boolean).join(" ") || record.parsedData.name}. This decision is saved for the final import; it does not change school records yet.
             </p>
           </div>
           <button
