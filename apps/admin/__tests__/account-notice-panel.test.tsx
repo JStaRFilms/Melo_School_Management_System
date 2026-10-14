@@ -41,6 +41,35 @@ it("retries only the existing outbox record and keeps notice failure distinct fr
   expect(mocks.enqueue).not.toHaveBeenCalled();
 });
 
+it("offers deliberate retry of an ineligible row after its original recipient is repaired", async () => {
+  mocks.state = { ...base, notice: { id: "notice-one", state: "ineligible", recipientEmail: "real@example.test", attemptCount: 1 } };
+  render(<AccountNoticePanel userId={userId} />);
+  expect(mocks.retry).not.toHaveBeenCalled();
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry notice" }));
+  await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith({ outboxId: "notice-one" }));
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+
+it("shows a rejected still-ineligible retry without selecting another guardian or enqueueing", async () => {
+  mocks.state = { ...base, guardians: [], notice: { id: "notice-one", state: "ineligible", recipientEmail: "real@example.test", attemptCount: 1 } };
+  mocks.retry.mockRejectedValueOnce(new Error("Notice recipient is no longer eligible"));
+  render(<AccountNoticePanel userId={userId} />);
+  fireEvent.click(screen.getByRole("button", { name: "Retry notice" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Notice recipient is no longer eligible");
+  expect(mocks.retry).toHaveBeenCalledWith({ outboxId: "notice-one" });
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+});
+
+it.each(["failed", "not_configured", "ineligible"])("does not offer retry for exhausted %s notices", state => {
+  mocks.state = { ...base, notice: { id: "notice-one", state, recipientEmail: "real@example.test", attemptCount: 5 } };
+  render(<AccountNoticePanel userId={userId} />);
+  expect(screen.queryByRole("button", { name: "Retry notice" })).not.toBeInTheDocument();
+  expect(mocks.retry).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+
 it("does not offer student login delivery without eligible guardians or a committed operation", () => {
   mocks.state = { ...base, guardians: [] };
   const view = render(<AccountNoticePanel userId={userId} />);

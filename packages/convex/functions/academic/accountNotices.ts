@@ -137,7 +137,7 @@ export const retryAccountNotice = mutation({
 });
 
 export const claimNotice = internalMutation({
-  args: { outboxId: v.id("accountNoticeOutbox"), from: v.optional(v.string()) },
+  args: { outboxId: v.id("accountNoticeOutbox"), hasApiKey: v.boolean(), from: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.outboxId);
     const now = Date.now();
@@ -154,26 +154,31 @@ export const claimNotice = internalMutation({
     if (!target || target.schoolId !== row.schoolId || !await linkedAccount(ctx, target) || !recipient || !row.recipientEmail || deliverable(recipient) !== row.recipientEmail) {
       await ctx.db.patch(row._id, { state: "ineligible", updatedAt: now }); return null;
     }
-    const attemptNumber = row.attemptCount + 1;
     const from = row.providerFrom ?? args.from;
+    // Configuration failures are not provider submissions and must not consume a lease number or start the deduplication window.
+    if (!args.hasApiKey || !from) {
+      await ctx.db.patch(row._id, { state: "not_configured", lastErrorCode: "EMAIL_NOT_CONFIGURED", nextAttemptAt: now + 60_000, updatedAt: now });
+      return null;
+    }
+    const attemptNumber = row.attemptCount + 1;
     await ctx.db.patch(row._id, { state: "sending", attemptCount: attemptNumber, nextAttemptAt: now + FIVE_MINUTES,
-      ...(row.firstAttemptAt === undefined && from ? { firstAttemptAt: now } : {}), ...(from ? { providerFrom: from } : {}), updatedAt: now });
+      ...(row.firstAttemptAt === undefined ? { firstAttemptAt: now } : {}), providerFrom: from, updatedAt: now });
     // Recover a crashed worker. Attempt-number fencing prevents a late worker from finishing a later lease.
     await ctx.scheduler.runAfter(FIVE_MINUTES, internal.functions.academic.accountNotices.processNotice, { outboxId: row._id });
-    return { attemptNumber, from: from ?? null, to: row.recipientEmail, subject: row.subject, text: row.text };
+    return { attemptNumber, from, to: row.recipientEmail, subject: row.subject, text: row.text };
   },
 });
 
 export const finishNotice = internalMutation({
-  args: { outboxId: v.id("accountNoticeOutbox"), attemptNumber: v.number(), providerId: v.optional(v.string()), notConfigured: v.optional(v.boolean()) },
+  args: { outboxId: v.id("accountNoticeOutbox"), attemptNumber: v.number(), providerId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.outboxId);
     if (!row || row.state !== "sending" || row.attemptCount !== args.attemptNumber) return null;
     const now = Date.now();
-    const state = args.providerId ? "accepted" as const : args.notConfigured ? "not_configured" as const : "failed" as const;
+    const state = args.providerId ? "accepted" as const : "failed" as const;
     const retryAt = now + 60_000 * 2 ** (args.attemptNumber - 1);
     await ctx.db.patch(row._id, { state, ...(args.providerId ? { providerId: args.providerId } : {}),
-      lastErrorCode: args.providerId ? undefined : args.notConfigured ? "EMAIL_NOT_CONFIGURED" : "EMAIL_PROVIDER_UNCONFIRMED", nextAttemptAt: retryAt, updatedAt: now });
+      lastErrorCode: args.providerId ? undefined : "EMAIL_PROVIDER_UNCONFIRMED", nextAttemptAt: retryAt, updatedAt: now });
     if (state === "failed" && args.attemptNumber < 5) await ctx.scheduler.runAfter(retryAt - now, internal.functions.academic.accountNotices.processNotice, { outboxId: row._id });
     return null;
   },
@@ -185,23 +190,20 @@ export const processNotice = internalAction({
     const apiKey = process.env.RESEND_API_KEY?.trim();
     const configuredFrom = process.env.MELO_EMAIL_FROM?.trim();
     const from = apiKey && configuredFrom && /@jstarstudios\.com>?$/i.test(configuredFrom) && !/[\r\n]/.test(configuredFrom) ? configuredFrom : undefined;
-    const delivery = await ctx.runMutation(internal.functions.academic.accountNotices.claimNotice, { ...args, ...(from ? { from } : {}) });
+    const delivery = await ctx.runMutation(internal.functions.academic.accountNotices.claimNotice, { ...args, hasApiKey: Boolean(apiKey), ...(from ? { from } : {}) });
     if (!delivery) return null;
     let providerId: string | undefined;
-    const notConfigured = !apiKey || !delivery.from;
-    if (!notConfigured) {
-      try {
-        const response = await fetch("https://api.resend.com/emails", { method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": `account-notice/${args.outboxId}` },
-          body: JSON.stringify({ from: delivery.from, to: [delivery.to], subject: delivery.subject, text: delivery.text }) });
-        if (response.ok) {
-          const result: unknown = await response.json();
-          if (result && typeof result === "object" && "id" in result && typeof result.id === "string" && result.id.length <= 200) providerId = result.id;
-        }
-      } catch { /* Never persist or log provider response bodies, credentials or secrets. */ }
-    }
+    try {
+      const response = await fetch("https://api.resend.com/emails", { method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "Idempotency-Key": `account-notice/${args.outboxId}` },
+        body: JSON.stringify({ from: delivery.from, to: [delivery.to], subject: delivery.subject, text: delivery.text }) });
+      if (response.ok) {
+        const result: unknown = await response.json();
+        if (result && typeof result === "object" && "id" in result && typeof result.id === "string" && result.id.length <= 200) providerId = result.id;
+      }
+    } catch { /* Never persist or log provider response bodies, credentials or secrets. */ }
     await ctx.runMutation(internal.functions.academic.accountNotices.finishNotice, { ...args, attemptNumber: delivery.attemptNumber,
-      ...(providerId ? { providerId } : {}), notConfigured });
+      ...(providerId ? { providerId } : {}) });
     return null;
   },
 });
