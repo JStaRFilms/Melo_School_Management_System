@@ -189,6 +189,38 @@ test("normalized names are revealed in review and explicit middle clears do not 
   expect((await f.review(legacy)).changes.map(c => c.field)).toEqual(["phone"]);
 });
 
+test("explicit optional clears remove stored fields and personal overrides", async () => {
+  const f = await fixture();
+  await f.t.run(async ctx => {
+    await ctx.db.patch(f.ids.parentId, { name: "Pat Anne Smith", middleName: "Anne" });
+    await ctx.db.patch(f.ids.childUserId, { name: "Sam Jo Smith", middleName: "Jo" });
+    await ctx.db.patch(f.ids.memberId, { addressMode: "different", addressOverride: "Old parent override" });
+    await ctx.db.patch(f.ids.childId, { addressMode: "different", address: "Old child override" });
+  });
+  const before = await f.rows();
+  const args = await f.prepare({ parent: { middleName: null, phone: null }, parentAddress: { mode: "residential" },
+    child: { middleName: null, dateOfBirth: null, gender: null, address: { mode: "residential" } } });
+  expect((await f.review(args.requestId)).changes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ target: "parent", field: "middleName", after: null }),
+    expect.objectContaining({ target: "parent", field: "phone", after: null }),
+    expect.objectContaining({ target: "child", field: "middleName", after: null }),
+    expect.objectContaining({ target: "child", field: "dateOfBirth", after: null }),
+    expect.objectContaining({ target: "child", field: "gender", after: null }),
+  ]));
+  await f.parent.mutation(refs.submit, args);
+  const after = await f.rows();
+  expect(after.parent).not.toHaveProperty("middleName");
+  expect(after.parent).not.toHaveProperty("phone");
+  expect(after.childUser).not.toHaveProperty("middleName");
+  expect(after.child).not.toHaveProperty("dateOfBirth");
+  expect(after.child).not.toHaveProperty("gender");
+  expect(after.child).toMatchObject({ addressMode: "residential" });
+  expect(after.child).not.toHaveProperty("address");
+  expect(after.member).toMatchObject({ addressMode: "residential" });
+  expect(after.member).not.toHaveProperty("addressOverride");
+  expect(after.family).toEqual(before.family);
+});
+
 test("stale values and address sources require explicit refresh even when timestamps do not change", async () => {
   const f = await fixture(); const args = await f.prepare({ parent: { phone: "08022222222" }, child: { address: { mode: "residential" } } });
   await f.t.run(ctx => ctx.db.patch(f.ids.parentId, { phone: "Admin's newer phone" }));
