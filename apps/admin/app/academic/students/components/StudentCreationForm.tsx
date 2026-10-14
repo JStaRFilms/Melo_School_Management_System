@@ -150,6 +150,12 @@ export function StudentCreationForm({
           advanceCounterTo,
         }))
     : Boolean(admissionNumber.trim());
+  const contactReady = contact.contactChoice === "none" ||
+    (contact.contactChoice === "existing"
+      ? Boolean(contact.selectedContactId)
+      : Boolean(contact.parentFirstName.trim() && contact.parentLastName.trim() &&
+          contact.parentEmail.trim() &&
+          (contact.parentAddressMode !== "different" || contact.parentAddressOverride.trim())));
 
   return (
     <div ref={sectionRef} className="space-y-6">
@@ -170,7 +176,7 @@ export function StudentCreationForm({
       <MobileProgressIndicator mode="sections" draftStatus={draftStatus} lastSavedAt={draftLastSavedAt} sections={[
         { id: "placement", title: "Class placement", isValid: Boolean(selectedClassId) },
         { id: "identity", title: "Student identity", isValid: Boolean(studentFirstName.trim() && studentLastName.trim() && gender && admissionNumberReady && !numberingPolicyLoading) },
-        { id: "contacts", title: "Parents and guardians", optional: true, isValid: contact.contactChoice === "none" || (contact.contactChoice === "existing" ? Boolean(contact.selectedContactId) : Boolean(contact.parentFirstName && contact.parentLastName && contact.parentEmail)), hasError: contact.contactChoice === "existing" && !contact.selectedContactId },
+        { id: "contacts", title: "Parents and guardians", optional: true, isValid: contactReady, hasError: contact.contactChoice === "existing" && !contact.selectedContactId },
       ]} />
       <form onSubmit={(event) => void onSubmit(event)} className="space-y-5">
         <fieldset disabled={locked || isSubmitting} className="space-y-5">
@@ -371,6 +377,7 @@ export function StudentCreationForm({
               !studentLastName.trim() ||
               numberingPolicyLoading ||
               !admissionNumberReady ||
+              !contactReady ||
               !gender.trim() ||
               !selectedClassId
             }

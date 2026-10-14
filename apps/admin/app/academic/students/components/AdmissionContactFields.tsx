@@ -20,9 +20,10 @@ export function AdmissionContactFields(props: ContactFieldsProps) {
 
 function AdmissionContactFieldsContent({ value, onChange }: ContactFieldsProps) {
   const [search, setSearch] = useState("");
+  const [searchField, setSearchField] = useState<"name" | "email">("name");
   const [cursor, setCursor] = useState<string | null>(null);
   const contacts = useQuery(api.functions.academic.studentEnrollment.searchParentContacts,
-    value.contactChoice === "existing" && !value.selectedContactId ? { search, paginationOpts: { numItems: 20, cursor } } : "skip");
+    value.contactChoice === "existing" && !value.selectedContactId ? { search, searchField, paginationOpts: { numItems: 20, cursor } } : "skip");
   const review = useQuery(api.functions.academic.studentEnrollment.getParentEmailReview,
     value.contactChoice !== "none" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.parentEmail) ? { email: value.parentEmail } : "skip");
   const selected = review?.matches.find(match => match.userId === value.selectedContactId && !match.isArchived && match.role !== "student");
@@ -41,11 +42,17 @@ function AdmissionContactFieldsContent({ value, onChange }: ContactFieldsProps) 
       </select>
     </label>
     {value.contactChoice === "existing" && !value.selectedContactId && <div className="space-y-2">
-      <label className="block text-xs font-semibold text-slate-600">Search contacts by name or email
+      <label className="block text-xs font-semibold text-slate-600">Search field
+        <select className={inputClass} value={searchField} onChange={event => { setSearchField(event.target.value === "email" ? "email" : "name"); setCursor(null); }}>
+          <option value="name">Name</option><option value="email">Email</option>
+        </select>
+      </label>
+      <label className="block text-xs font-semibold text-slate-600">Search contacts by {searchField}
         <input className={inputClass} maxLength={100} value={search} onChange={event => { setSearch(event.target.value); setCursor(null); }} />
       </label>
+      <p className="text-xs text-slate-600">Matches word prefixes, not text inside a word.</p>
       {contacts === undefined ? <p role="status">Loading contacts...</p> : <>
-        {!contacts.page.length && <p>No contacts on this page.</p>}
+        {!contacts.page.length && <p>{contacts.isDone ? "No matching contacts." : "No matching contacts on this page."}</p>}
         {contacts.page.map(contact => <button type="button" key={contact.userId} onClick={() => choose(contact.userId, contact.email)} className="block w-full break-words rounded-lg border border-slate-200 p-3 text-left text-xs">
           <span className="block font-semibold">{contact.displayName}</span><span className="block">{contact.email}{contact.phone ? ` · ${contact.phone}` : ""}</span>
           <span className="block">{contact.households.map(family => family.name).join(", ") || "No household"}</span><PortalStateLabel state={contact.portalState} />
