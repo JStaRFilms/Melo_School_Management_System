@@ -393,14 +393,16 @@ describe("family graded release gate", () => {
       .toMatchObject({ selectedResultState: "no_eligible_record", selectedReportCard: null, history: [] });
   });
 
-  it("keeps the selected old card when released history exceeds its own budget", async () => {
+  it("keeps the pinned card and pages terms by academic date despite later backfills", async () => {
     const f = await fixture();
     await f.certify();
     await f.release();
     await f.t.run(async ctx => {
       const issued = await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId)).unique();
+      const otherSessionId = await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: "Other session", startDate: 100, endDate: 200, isActive: false, createdAt: 1, updatedAt: 1 });
+      for (let i = 0; i < 8; i++) await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: otherSessionId, name: `Other session ${i}`, startDate: 200 + i, endDate: 300 + i, isActive: false, createdAt: 1, updatedAt: 1 });
       for (let i = 0; i < 55; i++) {
-        const termId = await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: `Released ${i}`, startDate: 10 + i, endDate: 100 + i, isActive: false, createdAt: 1, updatedAt: 1 });
+        const termId = await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: `Released ${i}`, startDate: 64 - i, endDate: 100 - i, isActive: false, createdAt: 1, updatedAt: 1 });
         const copyId = await ctx.db.insert("issuedReportCards", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId, issuedAt: issued!.issuedAt, issuedBy: f.ids.adminId, report: { ...issued!.report, termName: `Released ${i}` } });
         const publicationId = await ctx.db.insert("classResultPublications", { schoolId: f.ids.schoolId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId, releasedAt: i + 2, releasedBy: f.ids.adminId, reviewKey: `released-${i}`, eligibleCount: 1, certifiedCount: 1, excludedCount: 0 });
         await ctx.db.insert("classResultPublicationStudents", { schoolId: f.ids.schoolId, publicationId, studentId: f.ids.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId, releasedAt: i + 2, issuedReportCardId: copyId });
@@ -416,10 +418,12 @@ describe("family graded release gate", () => {
     let cursor: string | null = null;
     for (let count = 0; count < 20; count++) {
       const page: FunctionReturnType<typeof api.functions.portal.listSessionResults> = await f.parent.query(api.functions.portal.listSessionResults, { studentId: f.ids.studentId, sessionId: f.ids.sessionId, resultKind: "end_of_term", paginationOpts: { numItems: 6, cursor } });
+      if (count === 0) expect(page.page.map(row => row.termName)).toEqual(Array.from({ length: 6 }, (_, i) => `Released ${i}`));
       history.push(...page.page);
       if (page.isDone) break;
       cursor = page.continueCursor;
     }
+    expect(history.map(row => row.termName)).toEqual([...Array.from({ length: 55 }, (_, i) => `Released ${i}`), "First"]);
     expect(history).toHaveLength(56);
     expect(new Set(history.map(row => row.termId)).size).toBe(56);
     expect(history.find(row => row.termId === f.ids.oldTermId)).toMatchObject({ issued: true, classId: f.ids.classId, resultKind: "end_of_term" });
