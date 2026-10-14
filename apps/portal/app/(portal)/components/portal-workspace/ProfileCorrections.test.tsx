@@ -28,6 +28,26 @@ it("requests named parent/child fields from persisted context with a bounded rea
   fireEvent.click(screen.getByRole("button", { name: "Request edit permission" }));
   await waitFor(() => expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({ schoolId, scope: { parentFields: ["phone"], childFields: ["dateOfBirth"], childId: studentId, parentMemberId: undefined }, reason: "Correct recorded details" })));
 });
+it("legacy name selections request both required parts without guessing display-name tokens", async () => {
+  mocks.workspace = workspace(); mocks.workspace.parent.firstName = null; mocks.workspace.parent.lastName = null;
+  if (mocks.workspace.child) { mocks.workspace.child.firstName = null; mocks.workspace.child.lastName = null; }
+  mocks.request.mockResolvedValue(requestId);
+  render(<ProfileCorrections schoolId={schoolId} studentId={studentId} />);
+  const first = screen.getAllByRole("checkbox", { name: "First name" });
+  const middle = screen.getAllByRole("checkbox", { name: "Middle name" });
+  const last = screen.getAllByRole("checkbox", { name: "Last name" });
+  fireEvent.click(first[0]); expect(last[0]).toBeChecked();
+  fireEvent.click(last[0]); expect(first[0]).not.toBeChecked();
+  fireEvent.click(middle[0]); expect(first[0]).toBeChecked(); expect(last[0]).toBeChecked();
+  fireEvent.click(middle[1]); expect(first[1]).toBeChecked(); expect(last[1]).toBeChecked();
+  fireEvent.change(screen.getByLabelText("Reason for correction"), { target: { value: "Enter explicit name parts" } });
+  fireEvent.click(screen.getByRole("button", { name: "Request edit permission" }));
+  await waitFor(() => expect(mocks.request).toHaveBeenCalledWith(expect.objectContaining({ scope: expect.objectContaining({
+    parentFields: expect.arrayContaining(["firstName", "middleName", "lastName"]),
+    childFields: expect.arrayContaining(["firstName", "middleName", "lastName"]),
+  }) })));
+});
+
 it("requested permission is not presented as a pending change approval", () => {
   mocks.detail = detail(); mocks.workspace = { ...workspace(), requests: [{ requestId, requesterUserId: "parent" as Id<"users">, state: "requested", requestedScope: mocks.detail.requestedScope, allowedScope: undefined, appliedAt: undefined, revision: 0, createdAt: 1, currentAccess: true }] };
   render(<ProfileCorrections schoolId={schoolId} />);

@@ -57,6 +57,92 @@ async function fixture(role: "parent" | "teacher" | "student" = "parent") {
   return { t, ids, parent, admin, scope, request, context, grant, save, review, prepare, rows };
 }
 
+test.each(["abc", "parent@example.test", "12", "123456", "1234567890123456"])("rejects invalid correction phone %s before draft persistence", async phone => {
+  const f = await fixture(); const id = await f.request(); await f.grant(id);
+  const before = await f.t.run(ctx => ctx.db.get(id));
+  await expect(f.save(id, { parent: { phone } })).rejects.toThrow("Contact phone number");
+  expect(await f.t.run(ctx => ctx.db.get(id))).toEqual(before);
+  expect((await f.rows()).parent?.phone).toBe("08011111111");
+});
+
+test("rejects future correction DOB before draft persistence without changing UTC date-only values", async () => {
+  const f = await fixture(); const id = await f.request(); await f.grant(id);
+  const now = Date.UTC(2026, 9, 11, 12);
+  vi.spyOn(Date, "now").mockReturnValue(now);
+  const before = await f.t.run(ctx => ctx.db.get(id));
+  for (const dateOfBirth of [now, Date.UTC(2026, 9, 12), Date.UTC(2099, 0, 1)]) {
+    await expect(f.save(id, { child: { dateOfBirth } })).rejects.toThrow("date of birth");
+    expect(await f.t.run(ctx => ctx.db.get(id))).toEqual(before);
+  }
+  const today = Date.UTC(2026, 9, 11);
+  await f.save(id, { child: { dateOfBirth: today } });
+  expect((await f.review(id)).changes).toContainEqual(expect.objectContaining({ field: "dateOfBirth", after: today }));
+  // Simulate a draft persisted under the old policy. Review stays deterministic; submit must still reject it.
+  await f.t.run(ctx => ctx.db.patch(id, { draft: { child: { dateOfBirth: Date.UTC(2026, 9, 12) } } }));
+  const reviewed = await f.review(id); const rows = await f.rows();
+  await expect(f.parent.mutation(refs.submit, { ...f.context(id), expectedRevision: 1, expectedDraftRevision: 1, reviewToken: reviewed.reviewToken, submissionKey: "future-dob-submit", acknowledged: true })).rejects.toThrow("date of birth");
+  expect(await f.rows()).toEqual(rows);
+  expect(await f.t.run(ctx => ctx.db.get(id))).toMatchObject({ state: "granted", draftRevision: 1 });
+
+});
+
+test.each(["parent", "child"] as const)("incomplete %s names require first and last permission at request and grant boundaries", async target => {
+  const f = await fixture();
+  await f.t.run(ctx => ctx.db.patch(target === "parent" ? f.ids.parentId : f.ids.childUserId, { name: "Unsplit Legacy Name", firstName: undefined, lastName: " " }));
+  for (const field of ["firstName", "middleName", "lastName"] as const) {
+    const scope: CorrectionScope = target === "parent" ? { parentFields: [field], childFields: [] } : { parentFields: [], childFields: [field], childId: f.ids.childId };
+    await expect(f.request(scope)).rejects.toThrow("first and last");
+  }
+  expect(await f.t.run(ctx => ctx.db.query("profileCorrectionRequests").take(10))).toHaveLength(0);
+  const id = await f.request();
+  const scope: CorrectionScope = target === "parent" ? { parentFields: ["firstName"], childFields: [] } : { parentFields: [], childFields: ["middleName"], childId: f.ids.childId };
+  await expect(f.grant(id, scope)).rejects.toThrow("first and last");
+  expect(await f.t.run(ctx => ctx.db.get(id))).toMatchObject({ state: "requested", revision: 0 });
+  await f.grant(id);
+  await f.save(id, target === "parent" ? { parent: { firstName: "New", lastName: "Name" } } : { child: { firstName: "New", lastName: "Name" } });
+  const reviewed = await f.review(id);
+  await f.parent.mutation(refs.submit, { ...f.context(id), expectedRevision: 1, expectedDraftRevision: 1, reviewToken: reviewed.reviewToken, submissionKey: "legacy-name-submit", acknowledged: true });
+  const rows = await f.rows();
+  expect(target === "parent" ? rows.parent : rows.childUser).toMatchObject({ name: "New Name", firstName: "New", lastName: "Name" });
+});
+
+test("legacy unrelated corrections preserve unsplit names and untouched invalid phone values", async () => {
+  const f = await fixture();
+  await f.t.run(async ctx => {
+    await ctx.db.patch(f.ids.parentId, { name: "Unsplit Legacy Parent", firstName: undefined, lastName: undefined, phone: "Old legacy phone" });
+    await ctx.db.patch(f.ids.childUserId, { name: "Unsplit Legacy Child", firstName: undefined, lastName: undefined });
+  });
+  const scope: CorrectionScope = { parentFields: ["address"], parentMemberId: f.ids.memberId, childFields: [] };
+  const id = await f.request(scope); await f.grant(id, scope);
+  await f.save(id, { parentAddress: { mode: "different", value: "Personal road" } });
+  const reviewed = await f.review(id);
+  await f.parent.mutation(refs.submit, { ...f.context(id), expectedRevision: 1, expectedDraftRevision: 1, reviewToken: reviewed.reviewToken, submissionKey: "legacy-address-submit", acknowledged: true });
+  expect((await f.rows()).parent).toMatchObject({ name: "Unsplit Legacy Parent", phone: "Old legacy phone" });
+  const phoneScope: CorrectionScope = { parentFields: ["phone"], childFields: [] };
+  const phoneId = await f.request(phoneScope, "legacy-phone-request"); await f.grant(phoneId, phoneScope);
+  await f.save(phoneId, { parent: { phone: " +234 (800) 123-4567 " } });
+  expect((await f.review(phoneId)).changes).toEqual([expect.objectContaining({ field: "phone", after: "+234 (800) 123-4567" })]);
+});
+
+test("an old incomplete name request can grant only its requested phone subset", async () => {
+  const f = await fixture(); const id = await f.request({ parentFields: ["firstName", "phone"], childFields: [] });
+  await f.t.run(ctx => ctx.db.patch(f.ids.parentId, { firstName: undefined, lastName: undefined }));
+  await expect(f.grant(id, { parentFields: ["firstName", "lastName"], childFields: [] })).rejects.toThrow("subset");
+  await f.grant(id, { parentFields: ["phone"], childFields: [] });
+  await f.save(id, { parent: { phone: "1234567" } });
+  expect((await f.review(id)).changes.map(c => c.field)).toEqual(["phone"]);
+});
+
+test.each(["requested", "granted"] as const)("existing unusable legacy %s name permission remains closeable", async state => {
+  const f = await fixture(); const scope: CorrectionScope = { parentFields: ["firstName", "phone"], childFields: [] };
+  const id = await f.request(scope); if (state === "granted") await f.grant(id, scope);
+  await f.t.run(ctx => ctx.db.patch(f.ids.parentId, { firstName: undefined, lastName: undefined }));
+  if (state === "requested") await expect(f.grant(id, scope)).rejects.toThrow("first and last");
+  await f.admin.mutation(refs.decide, { ...f.context(id), expectedRevision: state === "requested" ? 0 : 1, decision: state === "requested" ? "reject" : "revoke", reason: "Name scope needs both parts" });
+  expect(await f.t.run(ctx => ctx.db.get(id))).toMatchObject({ state: state === "requested" ? "rejected" : "revoked" });
+  expect(await f.request({ parentFields: ["phone"], childFields: [] }, "new-legacy-phone-request")).not.toBe(id);
+});
+
 test("invalid child links hide PII but can be revoked so a fresh own-profile request is possible", async () => {
   const f = await fixture(); const args = await f.prepare();
   await f.t.run(ctx => ctx.db.patch(f.ids.childId, { familyId: undefined }));

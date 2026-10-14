@@ -4,6 +4,8 @@ import type { QueryCtx, MutationCtx } from "../../_generated/server";
 import { resolvePortalMemberships, getPortalRole } from "./portalIdentity";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 import { contactAddressPatch } from "./familyContactAddress";
+import { normalizeOptionalPhone } from "./familyContactPhone";
+import { requiresCorrectionNamePair, hasUsableCorrectionNameScope } from "@school/shared/profile-corrections";
 import type { CorrectionScope, CorrectionPayload, CorrectionChange } from "./profileCorrectionContract";
 
 type Context = QueryCtx | MutationCtx;
@@ -70,6 +72,11 @@ export async function correctionTargets(ctx: Context, parent: Doc<"users">, scop
   return { parent, identity, member, parentFamily, child, childUser, childFamily, childLink: links[0] ?? null };
 }
 export type CorrectionTargets = Awaited<ReturnType<typeof correctionTargets>>;
+export function validateCorrectionNameScope(t: CorrectionTargets, scope: CorrectionScope) {
+  if (!hasUsableCorrectionNameScope(scope.parentFields, requiresCorrectionNamePair(t.parent)) ||
+      (t.childUser && !hasUsableCorrectionNameScope(scope.childFields, requiresCorrectionNamePair(t.childUser))))
+    correctionError("Incomplete names require permission for both first and last names");
+}
 const nameKeys = ["firstName", "middleName", "lastName"] as const;
 function nameSnapshot(user: Doc<"users">) {
   return { name: user.name, firstName: user.firstName ?? null, middleName: user.middleName ?? null, lastName: user.lastName ?? null };
@@ -94,7 +101,8 @@ function text(value: string | null, max: number) {
   if (value !== null && value.length > max) correctionError("A draft value is too long");
   return value?.trim() || undefined;
 }
-export function normalizedCorrection(t: CorrectionTargets, scope: CorrectionScope, payload: CorrectionPayload) {
+// Mutations supply the current time for admission's future-DOB policy. Review queries do not read the wall clock.
+export function normalizedCorrection(t: CorrectionTargets, scope: CorrectionScope, payload: CorrectionPayload, now?: number) {
   const changes: CorrectionChange[] = [];
   const parentPatch: Partial<Pick<Doc<"users">, "name" | "firstName" | "middleName" | "lastName" | "phone">> = {};
   const childUserPatch: Partial<Pick<Doc<"users">, "name" | "firstName" | "middleName" | "lastName">> = {};
@@ -121,7 +129,8 @@ export function normalizedCorrection(t: CorrectionTargets, scope: CorrectionScop
     names(t.parent, payload.parent, scope.parentFields, parentPatch, "parent");
     if (payload.parent.phone !== undefined) {
       if (!scope.parentFields.includes("phone")) correctionError("Field not granted: phone");
-      const next = text(payload.parent.phone, 40);
+      text(payload.parent.phone, 40);
+      const next = normalizeOptionalPhone(payload.parent.phone);
       if ((next ?? null) !== (t.parent.phone ?? null)) parentPatch.phone = next;
       change("parent", t.parent._id, "phone", t.parent.phone, next);
     }
@@ -151,7 +160,7 @@ export function normalizedCorrection(t: CorrectionTargets, scope: CorrectionScop
       const next = payload.child[field] ?? undefined;
       if (field === "dateOfBirth") {
         const date = payload.child.dateOfBirth;
-        if (date !== null && date !== undefined && (!Number.isInteger(date) || date < -2208988800000 || date > Date.UTC(2100, 0, 1))) correctionError("Invalid date of birth");
+        if (date !== null && date !== undefined && (!Number.isInteger(date) || date < -2208988800000 || date > Date.UTC(2100, 0, 1) || (now !== undefined && date >= now))) correctionError("Invalid date of birth");
         if (t.child.dateOfBirth !== next) childPatch.dateOfBirth = date ?? undefined;
       } else if (t.child.gender !== next) childPatch.gender = payload.child.gender ?? undefined;
       change("child", t.child._id, field, t.child[field], next);

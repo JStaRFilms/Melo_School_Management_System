@@ -12,7 +12,7 @@ const requestId = "request" as Id<"profileCorrectionRequests">;
 function fixture(): FunctionReturnType<typeof api.functions.academic.profileCorrections.getAdminRequest> {
   return { _id: requestId, _creationTime: 1, schoolId, requesterUserId: "parent" as Id<"users">,
     requestKey: "request-key-0001", requestedScope: { parentFields: ["phone", "address"], parentMemberId: "member" as Id<"familyMembers">, childFields: ["gender"], childId: "child" as Id<"students"> },
-    requesterName: "Pat Smith", childName: "Sam Smith", reason: "Correct details", state: "requested", revision: 0, draftRevision: 0, createdAt: 1, updatedAt: 1, stale: false };
+    requesterName: "Pat Smith", childName: "Sam Smith", parentRequiresNamePair: false, childRequiresNamePair: false, reason: "Correct details", state: "requested", revision: 0, draftRevision: 0, createdAt: 1, updatedAt: 1, stale: false };
 }
 afterEach(() => { cleanup(); mocks.decide.mockReset(); });
 it("changed-link permissions can only be closed from the redacted list, never applied or regranted", async () => {
@@ -32,6 +32,39 @@ it("admin grants only an explicit nonempty requested subset, not arbitrary child
   await waitFor(() => expect(mocks.decide).toHaveBeenCalledOnce());
   expect(mocks.decide).toHaveBeenCalledWith({ schoolId, requestId, expectedRevision: 0, decision: "grant", allowedScope: { parentFields: ["phone"], childFields: [], parentMemberId: undefined, childId: undefined } });
 });
+it("legacy name grants keep the required pair and can still grant only phone", async () => {
+  const request: FunctionReturnType<typeof api.functions.academic.profileCorrections.getAdminRequest> = {
+    ...fixture(), parentRequiresNamePair: true, childRequiresNamePair: true,
+    requestedScope: { parentFields: ["firstName", "middleName", "lastName", "phone"], childFields: ["firstName", "lastName"], childId: "child" as Id<"students"> },
+  };
+  render(<CorrectionDecision schoolId={schoolId} request={request} />);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Parent · Middle name" }));
+  expect(screen.getByRole("checkbox", { name: "Parent · First name" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Parent · Last name" })).toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Child · Last name" }));
+  expect(screen.getByRole("checkbox", { name: "Child · First name" })).toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Child · First name" }));
+  expect(screen.getByRole("checkbox", { name: "Child · Last name" })).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Parent · First name" }));
+  expect(screen.getByRole("checkbox", { name: "Parent · Middle name" })).not.toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Parent · Phone" }));
+  fireEvent.click(screen.getByRole("button", { name: "Grant selected edit permission" }));
+  await waitFor(() => expect(mocks.decide).toHaveBeenCalledWith(expect.objectContaining({ allowedScope: { parentFields: ["phone"], childFields: [], parentMemberId: undefined, childId: undefined } })));
+});
+
+it("old partial legacy name requests cannot grant missing unrequested parts but can grant phone", async () => {
+  render(<CorrectionDecision schoolId={schoolId} request={{ ...fixture(), parentRequiresNamePair: true,
+    requestedScope: { parentFields: ["firstName", "phone"], childFields: [] } }} />);
+  expect(screen.queryByRole("checkbox", { name: "Parent · Last name" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Parent · First name" }));
+  expect(screen.getByRole("button", { name: "Grant selected edit permission" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Parent · Phone" }));
+  expect(screen.getByRole("button", { name: "Grant selected edit permission" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Parent · First name" }));
+  fireEvent.click(screen.getByRole("button", { name: "Grant selected edit permission" }));
+  await waitFor(() => expect(mocks.decide).toHaveBeenCalledWith(expect.objectContaining({ allowedScope: { parentFields: ["phone"], childFields: [], parentMemberId: undefined, childId: undefined } })));
+});
+
 it("reject and revoke require a reason and only change initial permission", async () => {
   const view = render(<CorrectionDecision schoolId={schoolId} request={fixture()} />);
   expect(screen.getByRole("button", { name: "Reject permission request" })).toBeDisabled();

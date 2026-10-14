@@ -26,7 +26,9 @@ Address permission is one field encompassing the inheritance choice and target-l
 
 Authentication, email, passwords, login/admission IDs, class/session, subjects, results, fees, house assignment, uploads and unrestricted attributes are excluded by closed validators. No admissions permission or notice API authorizes this workflow.
 
-Omitted fields preserve stored values. Explicit null clears optional middle names, phone, DOB or gender. Name edits use B1's `resolveStoredUserNameFields`; induced first/middle normalization requires permission for every changed part and appears in review, including the derived display name. Full-name-only legacy records are not split during unrelated edits. Personal addresses remain unchanged unless deliberately selected.
+Omitted fields preserve stored values. Explicit null clears optional middle names, phone, DOB or gender. Name edits use B1's `resolveStoredUserNameFields`; induced first/middle normalization requires permission for every changed part and appears in review, including the derived display name. Full-name-only legacy records are not split during unrelated edits. When either structured first or last name is missing or blank, name requests and grants must include both first and last fields. The request and grant checkboxes select that pair together; the parent supplies explicit parts, never guessed display-name tokens. Unrelated phone/address corrections remain valid, and admins can close existing unusable name permissions or grant only a usable requested subset. Personal addresses remain unchanged unless deliberately selected.
+
+Changed phone values use the existing family-contact validator: no letters or email addresses and 7 to 15 digits, with trimmed formatting retained. Omitted legacy phone values are not revalidated. Draft saves and final submit reject DOB values at or after the current time using the admission cutoff; existing integer/range checks and null clearing remain unchanged. The editor and review keep UTC date-only IO. Review queries do not read the wall clock.
 
 ## Client components
 

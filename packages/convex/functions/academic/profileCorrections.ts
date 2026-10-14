@@ -3,9 +3,10 @@ import { paginationOptsValidator } from "convex/server";
 import { query, mutation, type QueryCtx, type MutationCtx } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { correctionScope, correctionPayload, correctionState, type CorrectionScope } from "./profileCorrectionContract";
-import { parentInSchool, parentProjection, correctionTargets, targetBaseline, normalizedCorrection, applyCorrection, validateScope, correctionError } from "./profileCorrectionTargets";
+import { parentInSchool, parentProjection, correctionTargets, targetBaseline, normalizedCorrection, applyCorrection, validateScope, validateCorrectionNameScope, correctionError } from "./profileCorrectionTargets";
 import { getAuthenticatedSchoolMembership, assertAdminForSchool } from "./auth";
 import { recordAuditEventHelper } from "./audit";
+import { requiresCorrectionNamePair } from "@school/shared/profile-corrections";
 
 type Context = QueryCtx | MutationCtx;
 const contextArgs = { schoolId: v.id("schools"), requestId: v.id("profileCorrectionRequests") };
@@ -98,6 +99,7 @@ export const requestCorrection = mutation({
     key(args.requestKey); const reason = boundedReason(args.reason); const scope = validateScope(args.scope);
     const { user } = await parentInSchool(ctx, args.schoolId);
     const targets = await correctionTargets(ctx, user, scope);
+    validateCorrectionNameScope(targets, scope);
     const existing = await ctx.db.query("profileCorrectionRequests").withIndex("by_schoolId_and_requesterUserId_and_requestKey", q =>
       q.eq("schoolId", args.schoolId).eq("requesterUserId", user._id).eq("requestKey", args.requestKey)).unique();
     if (existing) {
@@ -131,7 +133,7 @@ export const getRequest = query({ args: contextArgs, handler: async (ctx, args) 
 export const saveDraft = mutation({ args: { ...versionArgs, payload: correctionPayload }, handler: async (ctx, args) => {
   const { request, targets } = await loadRequest(ctx, args); requireVersion(request, args);
   const scope = requireGrant(request);
-  normalizedCorrection(targets, scope, args.payload);
+  normalizedCorrection(targets, scope, args.payload, Date.now());
   await ctx.db.patch(request._id, { draft: args.payload, draftRevision: request.draftRevision + 1, lastSavedAt: Date.now(), updatedAt: Date.now() });
   return { draftRevision: request.draftRevision + 1 };
 } });
@@ -166,7 +168,7 @@ export const submit = mutation({ args: { ...versionArgs, reviewToken: v.string()
     return { requestId: request._id, appliedAt: request.applied.appliedAt, replayed: true };
   }
   requireVersion(request, args); const scope = requireGrant(request); requireBaseline(request, targets, scope);
-  const prepared = normalizedCorrection(targets, scope, request.draft ?? {});
+  const prepared = normalizedCorrection(targets, scope, request.draft ?? {}, Date.now());
   if (!prepared.changes.length) correctionError("No changed fields to submit");
   if (await reviewToken(request, prepared.changes) !== args.reviewToken) correctionError("Review changed. Review and acknowledge again.");
   await applyCorrection(ctx, targets, prepared);
@@ -184,7 +186,8 @@ export const listRequests = query({ args: { schoolId: v.id("schools"), state: co
 export const getAdminRequest = query({ args: contextArgs, handler: async (ctx, args) => {
   const { request, targets, original } = await loadRequest(ctx, args, true);
   const { baseline, requesterAuthId, requesterTokenIdentifier, draft, ...detail } = request;
-  return { ...detail, requesterName: original.parent.name, childName: original.childUser?.name ?? null, stale: Boolean(request.allowedScope && targetBaseline(targets, request.allowedScope) !== request.baseline) };
+  return { ...detail, requesterName: original.parent.name, childName: original.childUser?.name ?? null,
+    parentRequiresNamePair: requiresCorrectionNamePair(original.parent), childRequiresNamePair: original.childUser ? requiresCorrectionNamePair(original.childUser) : false, stale: Boolean(request.allowedScope && targetBaseline(targets, request.allowedScope) !== request.baseline) };
 } });
 export const decide = mutation({ args: { ...contextArgs, expectedRevision: v.number(), decision: v.union(v.literal("grant"), v.literal("reject"), v.literal("revoke")), allowedScope: v.optional(correctionScope), reason: v.optional(v.string()) }, handler: async (ctx, args) => {
   const actor = await adminInSchool(ctx, args.schoolId);
@@ -199,6 +202,7 @@ export const decide = mutation({ args: { ...contextArgs, expectedRevision: v.num
     if (scope.parentFields.some(f => !requested.parentFields.includes(f)) || scope.childFields.some(f => !requested.childFields.includes(f)) ||
         (scope.parentMemberId && scope.parentMemberId !== requested.parentMemberId) || (scope.childId && scope.childId !== requested.childId)) correctionError("Grant must be a subset of the requested exact targets and fields");
     const targets = await correctionTargets(ctx, parent, scope);
+    validateCorrectionNameScope(targets, scope);
     await ctx.db.patch(request._id, { state: "granted", allowedScope: scope, baseline: targetBaseline(targets, scope), decisionBy: actorUserId, revision: request.revision + 1, updatedAt: Date.now() });
     await audit(ctx, request, "granted", actorUserId, [...scope.parentFields, ...scope.childFields]);
   } else {

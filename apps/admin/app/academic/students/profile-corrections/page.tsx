@@ -6,7 +6,7 @@ import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { getUserFacingErrorMessage } from "@school/shared";
-import { CORRECTION_FIELD_LABELS, type ParentCorrectionField, type ChildCorrectionField } from "@school/shared/profile-corrections";
+import { CORRECTION_FIELD_LABELS, toggleCorrectionField, hasUsableCorrectionNameScope, type ParentCorrectionField, type ChildCorrectionField } from "@school/shared/profile-corrections";
 import { ProfileCorrectionChanges } from "@school/shared/components/ProfileCorrectionChanges";
 import { useAuth } from "@/AuthProvider";
 import { QueryErrorBoundary } from "../components/QueryErrorBoundary";
@@ -72,9 +72,10 @@ export function CorrectionDecision({ schoolId, request }: { schoolId: Id<"school
     <p className="text-xs text-slate-500">Requester ID: {request.requesterUserId}. {request.requestedScope.childId && `Child ID: ${request.requestedScope.childId}.`}</p>
     <p className="text-sm">Parent&apos;s reason: {request.reason}</p>
     {request.state === "requested" && <fieldset disabled={pending} className="space-y-3"><legend className="mb-3 font-semibold">Grant only these requested fields</legend>
-      {request.requestedScope.parentFields.map(field => <label key={field} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={parentFields.includes(field)} onChange={e => setParentFields(e.target.checked ? [...parentFields, field] : parentFields.filter(f => f !== field))} />Parent · {CORRECTION_FIELD_LABELS[field]}</label>)}
-      {request.requestedScope.childFields.map(field => <label key={field} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={childFields.includes(field)} onChange={e => setChildFields(e.target.checked ? [...childFields, field] : childFields.filter(f => f !== field))} />Child · {CORRECTION_FIELD_LABELS[field]}</label>)}
-      <button className={buttonClass} disabled={!parentFields.length && !childFields.length} onClick={() => void decision("grant")}>Grant selected edit permission</button>
+      {request.requestedScope.parentFields.map(field => <label key={field} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={parentFields.includes(field)} onChange={e => setParentFields(toggleCorrectionField(parentFields, field, e.target.checked, request.parentRequiresNamePair, request.requestedScope.parentFields))} />Parent · {CORRECTION_FIELD_LABELS[field]}</label>)}
+      {request.requestedScope.childFields.map(field => <label key={field} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={childFields.includes(field)} onChange={e => setChildFields(toggleCorrectionField(childFields, field, e.target.checked, request.childRequiresNamePair, request.requestedScope.childFields))} />Child · {CORRECTION_FIELD_LABELS[field]}</label>)}
+      {(request.parentRequiresNamePair || request.childRequiresNamePair) && <p className="text-sm">Incomplete names need both first and last name permission. Selecting a name field includes the requested pair. If either part was not requested, grant unrelated fields only or reject this request so the parent can request both.</p>}
+      <button className={buttonClass} disabled={(!parentFields.length && !childFields.length) || !hasUsableCorrectionNameScope(parentFields, request.parentRequiresNamePair) || !hasUsableCorrectionNameScope(childFields, request.childRequiresNamePair)} onClick={() => void decision("grant")}>Grant selected edit permission</button>
     </fieldset>}
     {request.allowedScope && <p className="text-sm">Granted parent fields: {request.allowedScope.parentFields.join(", ") || "none"}. Granted child fields: {request.allowedScope.childFields.join(", ") || "none"}.</p>}
     {request.state === "granted" && <p className="text-sm">Permission is available for the parent&apos;s one-shot submission. {request.stale ? "The parent must refresh the changed baseline and review again." : "No profile changes have been applied yet."}</p>}
