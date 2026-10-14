@@ -178,7 +178,7 @@ export const finishNotice = internalMutation({
     const row = await ctx.db.get(args.outboxId);
     if (!row || row.state !== "sending" || row.attemptCount !== args.attemptNumber) return null;
     const now = Date.now();
-    const state = args.providerId ? "accepted" as const : "failed" as const;
+    const state = args.providerId ? "accepted" : args.attemptNumber >= 5 ? "reconciliation_required" : "failed";
     const retryAt = now + 60_000 * 2 ** (args.attemptNumber - 1);
     await ctx.db.patch(row._id, { state, ...(args.providerId ? { providerId: args.providerId } : {}),
       lastErrorCode: args.providerId ? undefined : "EMAIL_PROVIDER_UNCONFIRMED", nextAttemptAt: retryAt, updatedAt: now });

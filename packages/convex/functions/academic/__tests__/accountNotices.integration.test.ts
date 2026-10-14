@@ -262,7 +262,9 @@ it("retries provider failure with the same privacy-safe body and stops after fiv
   const f = await fixture();
   const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
   await f.t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(await f.row(id)).toMatchObject({ state: "failed", attemptCount: 5, lastErrorCode: "EMAIL_PROVIDER_UNCONFIRMED" });
+  expect(await f.row(id)).toMatchObject({ state: "reconciliation_required", attemptCount: 5, lastErrorCode: "EMAIL_PROVIDER_UNCONFIRMED" });
+  expect((await f.staff.query(notices.getAccountNoticeState, { userId: f.parentId })).notice)
+    .toMatchObject({ state: "reconciliation_required", attemptCount: 5 });
   expect(fetch).toHaveBeenCalledTimes(5);
   const requests = vi.mocked(fetch).mock.calls.map(call => call[1]);
   expect(new Set(requests.map(request => request?.body)).size).toBe(1);
@@ -278,6 +280,15 @@ it("retries provider failure with the same privacy-safe body and stops after fiv
   await f.t.finishAllScheduledFunctions(vi.runAllTimers);
   expect(fetch).toHaveBeenCalledTimes(5);
   expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toEqual(account);
+});
+
+it("keeps a successful fifth submission accepted rather than requiring operator review", async () => {
+  for (let i = 0; i < 4; i++) vi.mocked(fetch).mockRejectedValueOnce(new Error("unconfirmed submission"));
+  const f = await fixture();
+  const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "accepted", providerId: "provider-one", attemptCount: 5 });
+  expect(fetch).toHaveBeenCalledTimes(5);
 });
 
 it("rejects foreign-school reads, enqueue and retry without exposing recipient state", async () => {

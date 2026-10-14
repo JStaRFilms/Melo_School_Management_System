@@ -66,7 +66,8 @@ export function PersistentFormDraftControls({
 
   const showManualSave = variant === "default" && isDirty && draft.hasUnsavedChanges && draft.status !== "saving";
   const shouldRenderIndicator =
-    hasIssue || (!silentOnSuccess && draft.status !== "idle") || showManualSave;
+    hasIssue || (!silentOnSuccess && draft.status !== "idle") || showManualSave ||
+    (draft.status === "connection_lost" && draft.hasUnsavedChanges);
 
   return (
     <>

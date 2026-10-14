@@ -3,6 +3,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { DraftHeaderStatus, WorkspaceConnectionStatus } from "@school/shared/drafts";
 import { WorkspaceNavbar } from "../../../packages/shared/src/components/WorkspaceNavbar";
 import { MobileProgressIndicator } from "../../../packages/shared/src/components/MobileProgressIndicator";
+import { PersistentFormDraftControls } from "../lib/components/drafts/PersistentFormDraftControls";
+import type { PersistentFormDraftController } from "../lib/usePersistentFormDraft";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -21,6 +23,34 @@ it("reserves fixed mobile/desktop bounds and portals draft actions out of page f
   expect(slot?.className).toBe(bounds);
   view.rerender(shell(false));
   expect(slot?.className).toBe(bounds);
+});
+
+it("keeps compact offline unsaved edits visible in the header but clean drafts silent", () => {
+  const draft: PersistentFormDraftController = {
+    memoryDraft: null, resumeMemoryDraft: vi.fn(), discardMemoryDraft: vi.fn(),
+    status: "connection_lost", hasUnsavedChanges: true, lastSavedAt: null, isOnline: false,
+    showRecoveryModal: false, serverDraft: null, retrySave: vi.fn(async () => {}),
+    handleResumeDraft: vi.fn(), handleDiscardDraft: vi.fn(async () => {}),
+    prepareSubmission: vi.fn(async () => null), submissionFailed: vi.fn(), submissionSucceeded: vi.fn(),
+    previewLatest: vi.fn(), dismissRecoveryModal: vi.fn(),
+  };
+  const shell = (controller: PersistentFormDraftController) => <WorkspaceNavbar workspace="admin" currentPath="/academic/teachers" connectionStatus={<WorkspaceConnectionStatus connected={controller.isOnline} authenticated />} renderLink={props => <a href={props.href}>{props.children}</a>}>
+    <PersistentFormDraftControls draft={controller} formTitle="Teacher" isDirty={controller.hasUnsavedChanges} variant="compact" onDiscard={async () => {}} />
+  </WorkspaceNavbar>;
+  const view = render(shell(draft));
+  const slot = view.container.querySelector("[data-workspace-status-slot]");
+  expect(screen.getByRole("status")).toHaveTextContent("Server reconnecting");
+  expect(slot).toContainElement(screen.getByText("Unsaved draft"));
+  expect(screen.getAllByText("Unsaved draft")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
+  view.rerender(shell({ ...draft, hasUnsavedChanges: false }));
+  expect(screen.queryByText("Unsaved draft")).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Server reconnecting");
+  view.rerender(shell({ ...draft, status: "saved", hasUnsavedChanges: false, isOnline: true, lastSavedAt: 1 }));
+  expect(screen.getByRole("status")).toHaveTextContent("Connected");
+  expect(screen.queryByText("Unsaved draft")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
+  expect(draft.retrySave).not.toHaveBeenCalled();
 });
 
 it("distinguishes backend, browser and authentication state", () => {
