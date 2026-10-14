@@ -1,4 +1,4 @@
-import { action, query, type QueryCtx } from "../_generated/server";
+import { internalAction, query, type QueryCtx } from "../_generated/server";
 import { authComponent } from "../betterAuth";
 import { createAuth } from "../betterAuth";
 import { ConvexError, v } from "convex/values";
@@ -147,7 +147,7 @@ export const getPlatformViewerContext = query({
   },
 });
 
-export const rotateKeysForStaticConfig = action({
+export const rotateKeysForStaticConfig = internalAction({
   args: {},
   returns: v.array(
     v.object({
