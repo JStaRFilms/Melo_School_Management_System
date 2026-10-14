@@ -70,7 +70,7 @@ function verificationEmailHtml(verificationUrl: string) {
             <a href="${safeUrl}" style="display:inline-block;border-radius:10px;background:#29251f;color:#fffdf8;padding:14px 22px;text-decoration:none;font-size:14px;font-weight:700;">Verify email</a>
             <p style="margin:26px 0 0;color:#82796d;font-size:12px;line-height:1.7;">If the button does not work, copy this link:<br /><span style="word-break:break-all;color:#29251f;">${safeUrl}</span></p>
           </td></tr>
-          <tr><td style="padding:20px 28px;border-top:1px solid #ebe4d8;color:#82796d;font-size:12px;line-height:1.6;">If you did not create a Melo account, you can ignore this email.<br />Melo by J StaR Films Studios</td></tr>
+          <tr><td style="padding:20px 28px;border-top:1px solid #ebe4d8;color:#82796d;font-size:12px;line-height:1.6;">If you did not create a Melo account, you can ignore this email.<br />Melo by JStar Film Studios</td></tr>
         </table>
       </td></tr>
     </table>
