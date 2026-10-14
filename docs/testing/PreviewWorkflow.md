@@ -1,6 +1,6 @@
 # Preview testing and branch workflow
 
-Use this for Melo's copied-data Preview environment. For synthetic, writable QA on `content-poodle-172`, use [Agent QA](AgentQa.md) and the [verify-melo skill](../../.agents/skills/verify-melo/SKILL.md) instead. The standing QA approval does not authorize writes to Preview, normal development, or Production. The Preview sign-ins recorded below are limited browser checks, not full feature acceptance.
+Use this for Melo's copied-data Preview environment. For synthetic, writable QA on `content-poodle-172`, use [Agent QA](AgentQa.md) and the [verify-melo skill](../../.agents/skills/verify-melo/SKILL.md) instead. The standing QA approval does not authorize writes to Preview, normal development, or Production. The Preview sign-ins recorded below are limited browser checks, not full feature acceptance. See the [public status and open work](PreviewStatus.md) for the current follow-ups.
 
 ## Keep the checkouts separate
 
@@ -13,7 +13,13 @@ Use this for Melo's copied-data Preview environment. For synthetic, writable QA 
 
 `git worktree list` shows which branch belongs to each directory. Worktrees share Git history, not uncommitted files, ignored configuration, database contents, or deployment state. Do not copy secrets into a new checkout by default. Do not delete `_w/preview-env`, its branch, or its private archives merely because one test passed. Remove a feature worktree only after its work is integrated or deliberately abandoned and its untracked and ignored files have been reviewed.
 
-`master` is the Production source branch; `preview` is an integration branch, not Production. At the 2026-10-14 pre-integration check, remote `master` was `d825229` and remote `preview` was `9a03865`: master had 26 commits not in preview, while preview had one commit not in master. Both refs advanced afterward. Fetch and reassess before using either count. Do not merge either whole branch into the other on autopilot. A normal merge of a feature based on newer `master` into older `preview` also brings master's other commits. A normal merge of a feature based on `preview` into `master` can bring Preview-only commits. Move only the feature commits across that boundary unless the whole base advance has its own review.
+`master` is the Production source branch; `preview` is an integration branch, not Production. At the 2026-10-14 pre-integration check, remote `master` was `d825229` and remote `preview` was `9a03865`: master had 26 commits not in preview, while preview had one commit not in master. Both refs advanced afterward. Fetch and reassess before using either count. Do not merge either whole branch into the other on autopilot. A normal merge of a feature based on newer `master` into older `preview` also brings master's other commits. A normal merge of a feature based on `preview` into `master` can bring Preview-only commits. Move only the feature commits across that boundary unless the whole base advance has its own review. [Reconcile the branches](https://github.com/JStaRFilms/Melo_School_Management_System/issues/111) once through a reviewed integration before assuming a teammate's master-based branch can target Preview directly.
+
+## Configuration and recovery
+
+Vercel holds frontend environment variables per project and environment or branch. Convex holds backend variables per deployment. A frontend Git build does not deploy Convex functions, schema, or backend variables. Keep only variable names and safe defaults in versioned `.example` files. Use an organization-controlled secrets manager for credentials, access and rotation instructions, and separate encrypted storage for recoverable backups.
+
+Ignored local `.env*.local` profiles and rollback archives are not saved by Git or automatically recovered from Vercel or Convex. Before deleting a worktree, inventory its ignored and untracked files, preserve private profiles and backups through an approved channel, and verify recovery. Windows CurrentUser DPAPI archives also need the original Windows profile to decrypt. Do not put secret values, copied records or private backups in commits, PRs or issues.
 
 ## Bring a change to Preview
 
