@@ -14,6 +14,7 @@ import type { Id } from "@school/convex/_generated/dataModel";
 import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar,ReportScoringPrintWarning } from "@school/shared";
 import { buildPortalHref, formatDate, formatMoney, formatScore, getGreeting } from "./format";
 import { NarrativeReport } from "./NarrativeReport";
+import { PublishedResults } from "./PublishedResults";
 import { useAction,useQuery } from "convex/react";
 import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
 import Link from "next/link";
@@ -57,7 +58,8 @@ function buildQueryArgs(
     termId?: Id<"academicTerms"> | null;
     historyLimit: number;
     now: number;
-  } = { historyLimit, now };
+    resultKind: "end_of_term";
+  } = { historyLimit, now, resultKind: "end_of_term" };
 
   if (studentId) {
     args.studentId = studentId as Id<"students">;
@@ -81,6 +83,8 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
   const studentId = searchParams.get("studentId");
   const sessionId = searchParams.get("sessionId");
   const termId = searchParams.get("termId");
+  const resultKind = searchParams.get("resultKind");
+  const unsupportedKind = resultKind !== null && resultKind !== "end_of_term";
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const refresh = () => setNow(Date.now());
@@ -100,7 +104,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
 
   const workspace = useQuery(
     api.functions.portal.getWorkspaceData,
-    buildQueryArgs(studentId, sessionId, termId, historyLimit, now)
+    unsupportedKind ? "skip" : buildQueryArgs(studentId, sessionId, termId, historyLimit, now)
   ) as PortalWorkspaceData | undefined;
   const billing = useQuery(
     api.functions.portal.getBillingData,
@@ -126,6 +130,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
     }
   }, [workspace?.school?.name, matchesSelection, selectionPending]);
 
+  if (unsupportedKind) return <p role="alert">This result kind is not supported.</p>;
   if (workspace === undefined || selectionPending || !matchesSelection) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -148,6 +153,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
     params.set("studentId", nextStudentId);
     params.delete("sessionId");
     params.delete("termId");
+    params.delete("resultKind");
     setPendingSelection({ from: selectionKey, to: params.toString() });
     router.replace(params.toString() ? `${pathname}?${params.toString()}` : pathname);
   };
@@ -164,6 +170,7 @@ export function PortalWorkspaceContent({ mode }: { mode: import("@/portal-types"
 
     params.set("sessionId", item.sessionId);
     params.set("termId", item.termId);
+    params.set("resultKind", item.mode === "needs_review" ? "end_of_term" : item.resultKind ?? "end_of_term");
     setPendingSelection({ from: selectionKey, to: params.toString() });
     router.replace(`${pathname}?${params.toString()}`);
   };
@@ -631,141 +638,14 @@ export function PortalReportCardLayout({
 
 /* ─── Results View ─────────────────────────────────────────── */
 
-function ResultsView({
-  workspace,
-  onSelectHistoryItem,
-}: {
-  workspace: PortalWorkspaceData;
-  onSelectHistoryItem: (item: PortalHistoryItem) => void;
-}) {
-  const selectedReportCard = selectedIssuedReport(workspace);
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-bold text-slate-900">Academic history</h2>
-        {(selectedReportCard || workspace.selectedNarrativeReport) && (
-          <Link
-            href={buildPortalHref("/report-cards", {
-              studentId: workspace.selectedStudentId,
-              sessionId: workspace.selectedSessionId,
-              termId: workspace.selectedTermId,
-            })}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 cursor-pointer"
-          >
-            {workspace.selectedNarrativeReport ? "Open progress report" : "Open report card"}
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        )}
-      </div>
-
-      {workspace.selectedReportNeedsReview ? <HistoricalReviewNotice /> : !selectedReportCard && !workspace.selectedNarrativeReport && (
-        <p className="rounded-2xl border border-slate-200 bg-white p-4 text-base text-slate-700">
-          {workspace.selectedReportMode === "narrative" ? "Report not ready." : selectedResultMessage(workspace.selectedResultState)}
-        </p>
-      )}
-      {workspace.history.length > 0 && !selectedReportCard && !workspace.selectedNarrativeReport && (
-        <h3 className="text-base font-semibold text-slate-800">Published past results</h3>
-      )}
-      {workspace.history.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          {/* Desktop table */}
-          <table className="hidden w-full text-sm sm:table">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/80">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Session</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Term</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Class</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">{workspace.history.some(item => item.mode === "graded") ? "Average / report" : "Report"}</th>
-                {workspace.history.some(item => item.mode === "graded") && <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Subjects</th>}
-                <th className="w-10 px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {workspace.history.map((item) => {
-                const isActive =
-                  item.sessionId === workspace.selectedSessionId &&
-                  item.termId === workspace.selectedTermId;
-
-                return (
-                  <tr
-                    key={`${item.sessionId}-${item.termId}`}
-                    className={`transition-colors ${
-                      isActive
-                        ? "bg-emerald-50/60"
-                        : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-slate-600">
-                      <button
-                        type="button"
-                        onClick={() => onSelectHistoryItem(item)}
-                        aria-pressed={isActive}
-                        className="rounded-lg text-left font-medium text-slate-700 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
-                      >
-                        {item.sessionName}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-800">{item.termName}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.mode === "needs_review" ? "Not confirmed" : item.className}</td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
-                      {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
-                    </td>
-                    {workspace.history.some(entry => entry.mode === "graded") && <td className="px-4 py-3 text-right text-slate-500 tabular-nums">{item.mode === "graded" ? item.totalSubjects : ""}</td>}
-                    <td className="px-4 py-3 text-right">
-                      {isActive && (
-                        <div className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {/* Mobile list — stacked rows */}
-          <div className="divide-y divide-slate-100 sm:hidden">
-            {workspace.history.map((item) => {
-              const isActive =
-                item.sessionId === workspace.selectedSessionId &&
-                item.termId === workspace.selectedTermId;
-
-              return (
-                <button
-                  key={`m-${item.sessionId}-${item.termId}`}
-                  type="button"
-                  onClick={() => onSelectHistoryItem(item)}
-                  className={`flex w-full items-center justify-between px-4 py-4 text-left transition-colors cursor-pointer ${
-                    isActive ? "bg-emerald-50/60" : "hover:bg-slate-50"
-                  }`}
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      {item.termName} · {item.sessionName}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {item.mode === "needs_review" ? "Not confirmed" : item.className}{item.mode === "graded" ? ` · ${item.totalSubjects} subjects` : ""}
-                    </p>
-                    {item.note && (
-                      <p className="mt-1 text-xs font-medium text-amber-600">{item.note}</p>
-                    )}
-                  </div>
-                  <span className="text-lg font-bold text-slate-900 tabular-nums">
-                    {item.mode === "needs_review" ? "Needs school review" : item.mode === "narrative" ? (item.issued ? "Report available" : "Not ready") : formatScore(item.averageScore)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
-          Result history will appear here once the school publishes term results.
-        </div>
-      )}
-    </div>
-  );
+function ResultsView({ workspace }: { workspace: PortalWorkspaceData; onSelectHistoryItem: (item: PortalHistoryItem) => void }) {
+  const issued = selectedIssuedReport(workspace) || workspace.selectedNarrativeReport;
+  return <div className="space-y-4">
+    {workspace.selectedReportNeedsReview ? <HistoricalReviewNotice /> : !issued && <p className="text-sm text-slate-600">{workspace.selectedReportMode === "narrative" ? "Report not ready." : selectedResultMessage(workspace.selectedResultState)}</p>}
+    {issued && <Link className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm text-white" href={buildPortalHref("/report-cards", { studentId: workspace.selectedStudentId, sessionId: workspace.selectedSessionId, termId: workspace.selectedTermId, resultKind: "end_of_term" })}>{workspace.selectedNarrativeReport ? "Open progress report" : "Open report card"}</Link>}
+    {workspace.selectedStudentId ? <PublishedResults key={workspace.selectedStudentId} studentId={workspace.selectedStudentId as Id<"students">} initialSessionId={workspace.selectedSessionId as Id<"academicSessions"> | null} /> : <p>Select a child to see published reports.</p>}
+  </div>;
 }
-
 /* ─── Billing View ─────────────────────────────────────────── */
 
 function BillingView({

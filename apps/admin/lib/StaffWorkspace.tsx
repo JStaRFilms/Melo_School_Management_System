@@ -11,7 +11,8 @@ import {
   getBranchScopedWorkspaceAccess, getDefaultSchoolWorkspaceAccess, getWorkspaceModuleDenial, getWorkspaceCapabilityDenial,
   isWorkspaceBranchScopedRoute, LEGACY_BRANCH_SWITCH_REASON,
 } from "@school/shared";
-import { useDepartureGuard } from "@school/shared/drafts";
+import { useDepartureGuard, WorkspaceConnectionStatus } from "@school/shared/drafts";
+import { useDraftConnection } from "@/useDraftConnection";
 import { useAuth } from "@/AuthProvider";
 import { authClient } from "@/auth-client";
 import { isConvexConfigured } from "@/convex-runtime";
@@ -76,6 +77,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       workspace="admin"
       currentPath={pathname}
       fullBleed={fullBleed}
+      connectionStatus={configured ? <LiveConnectionStatus /> : undefined}
       userName={session?.user.name}
       userRole={session?.user.role}
       workspaceAccess={access}
@@ -102,4 +104,8 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       {moduleDenial?.state === "module_disabled" ? <AuthoritativeForbiddenView moduleTitle="This module" state="module_disabled" message={moduleDenial.message} onReturnToDashboard={() => router.push("/admin/dashboard")} /> : children}
     </WorkspaceNavbar>
   );
+}
+
+function LiveConnectionStatus() {
+  return <WorkspaceConnectionStatus {...useDraftConnection()} />;
 }

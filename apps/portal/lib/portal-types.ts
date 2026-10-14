@@ -19,6 +19,7 @@ export interface PortalStudentOption {
 }
 
 interface PortalHistoryContext {
+  resultKind?: "end_of_term";
   issued?: boolean;
   sessionId: string;
   termId: string;
@@ -90,6 +91,7 @@ export interface PortalWorkspaceData {
     name: string;
   } | null;
   selectedReportCard: ReportCardSheetData | null;
+  selectedResultKind?: "end_of_term";
   selectedResultState: "released" | "withheld" | "no_eligible_record";
   selectedReportMode: "graded" | "narrative" | null;
   selectedReportNeedsReview: boolean;

@@ -10,6 +10,8 @@ import type { Id } from "@school/convex/_generated/dataModel";
 import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
 import { usePersistentFormDraft } from "@/usePersistentFormDraft";
 
+import { AccountNoticePanel } from "../../students/components/AccountNoticePanel";
+
 interface ProvisionResult {
   teacherId: string;
   email: string;
@@ -148,6 +150,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
           </button>
         </div>
 
+        <AccountNoticePanel userId={result.teacherId as Id<"users">} />
         <button 
           onClick={() => {
             void requestDeparture({ kind: "close" }).then((confirmed) => {

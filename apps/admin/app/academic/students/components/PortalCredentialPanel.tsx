@@ -7,6 +7,7 @@ import { getUserFacingErrorMessage } from "@school/shared";
 
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
+import { AccountNoticePanel } from "./AccountNoticePanel";
 import { PortalStateLabel } from "./PortalStateLabel";
 import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import type { EnrollmentNotice } from "./types";
@@ -159,6 +160,7 @@ function PortalCredentialPanelContent({
           </button>
         </div>
 
+        <AccountNoticePanel userId={userId as Id<"users">} />
         <button
           type="button"
           onClick={() => {
@@ -192,6 +194,7 @@ function PortalCredentialPanelContent({
       </div>
 
       <p className="text-xs font-semibold text-slate-600"><PortalStateLabel state={account?.state} /></p>
+      {account?.state === "provisioned" && <AccountNoticePanel userId={userId as Id<"users">} />}
       <form className="space-y-3" onSubmit={handleSubmit}>
         <label className="space-y-1.5">
           <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">

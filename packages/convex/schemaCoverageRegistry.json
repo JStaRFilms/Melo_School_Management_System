@@ -1,4 +1,16 @@
 {
+  "accountNoticeOutbox": {
+    "ownership": "direct-indexed",
+    "reason": "school-scoped credential notices; indexed tenant purge and demo reset; no storage or credential secrets",
+    "references": [
+      { "path": "recipientUserId", "target": "users", "optional": true },
+      { "path": "schoolId", "target": "schools", "optional": false },
+      { "path": "targetUserId", "target": "users", "optional": false }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1540:6cb1cc6b:8672919b"
+  },
   "academicSessions": {
     "ownership": "direct-indexed",
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
@@ -5440,7 +5452,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "2041:a0fd6470:3fb33288"
+    "shape": "2386:66028afa:fc9f86d8"
   },
   "classResultExclusions": {
     "ownership": "direct-indexed",

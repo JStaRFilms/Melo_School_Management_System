@@ -14,6 +14,101 @@ function options(): UseFormDraftOptions<ReturnType<typeof parse>> {
 function deferred() { let resolve!: (value: { revision: number; lastSavedAt: number }) => void; const promise = new Promise<{ revision: number; lastSavedAt: number }>(r => { resolve = r; }); return { promise, resolve }; }
 
 describe("awaitable draft recovery core", () => {
+  it("clears a clean reconnect and restores saved status without a write", async () => {
+    let o = { ...options(), isDirty: false };
+    const hook = renderHook(() => useFormDraft(o));
+    o = { ...o, connection: { ...o.connection, connected: false } }; hook.rerender();
+    expect(hook.result.current.status).toBe("connection_lost");
+    o = { ...o, connection: { ...o.connection, connected: true } }; hook.rerender();
+    expect(hook.result.current.status).toBe("idle");
+    expect(o.onSave).not.toHaveBeenCalled();
+    o = { ...o, isDirty: true }; hook.rerender();
+    await act(async () => hook.result.current.retrySave());
+    o = { ...o, connection: { ...o.connection, connected: false } }; hook.rerender();
+    o = { ...o, connection: { ...o.connection, connected: true } }; hook.rerender();
+    expect(hook.result.current.status).toBe("saved");
+    expect(hook.result.current.hasUnsavedChanges).toBe(false);
+  });
+  it("clears connected recovery after reverting to the saved payload without another write", async () => {
+    vi.useFakeTimers(); let o = options();
+    const hook = renderHook(() => useFormDraft(o));
+    await act(async () => hook.result.current.retrySave());
+    o = { ...o, currentData: parse({ firstName: "Edited" }), connection: { ...o.connection, connected: false } }; hook.rerender();
+    o = { ...o, connection: { ...o.connection, connected: true } }; hook.rerender();
+    expect(hook.result.current.status).toBe("recovery_pending");
+    o = { ...o, currentData: payload }; hook.rerender();
+    expect(hook.result.current.hasUnsavedChanges).toBe(false);
+    expect(hook.result.current.status).toBe("saved");
+    expect(hook.result.current.lastSavedAt).toBe(100);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(o.onSave).toHaveBeenCalledTimes(1);
+  });
+  it("returns connected recovery to idle after reverting a draft with no prior save", async () => {
+    vi.useFakeTimers(); let o = options();
+    const hook = renderHook(() => useFormDraft(o));
+    o = { ...o, connection: { ...o.connection, connected: false } }; hook.rerender();
+    o = { ...o, connection: { ...o.connection, connected: true } }; hook.rerender();
+    expect(hook.result.current.status).toBe("recovery_pending");
+    o = { ...o, isDirty: false }; hook.rerender();
+    expect(hook.result.current.status).toBe("idle");
+    expect(hook.result.current.lastSavedAt).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(o.onSave).not.toHaveBeenCalled();
+  });
+  it.each([
+    { failure: { data: { code: "CONFLICT" } }, status: "conflict" },
+    { failure: { data: { code: "EXPIRED" } }, status: "expired" },
+    { failure: new Error("rejected"), status: "save_failed" },
+  ])("preserves protected $status after a clean revert and reconnect", async ({ failure, status }) => {
+    vi.useFakeTimers(); let o = options();
+    o.onSave = vi.fn().mockRejectedValue(failure);
+    const hook = renderHook(() => useFormDraft(o));
+    await act(async () => { await expect(hook.result.current.retrySave()).rejects.toEqual(failure); });
+    o = { ...o, isDirty: false, connection: { ...o.connection, connected: false } }; hook.rerender();
+    o = { ...o, connection: { ...o.connection, connected: true } }; hook.rerender();
+    expect(hook.result.current.status).toBe(status);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(o.onSave).toHaveBeenCalledTimes(1);
+  });
+  it("keeps unresolved memory recovery paused when the current form is clean", async () => {
+    vi.useFakeTimers(); let o = options();
+    function Form() { const draft = useFormDraft(o); return <span data-testid="memory-status">{draft.status}</span>; }
+    const view = render(<DepartureGuardProvider><Form /></DepartureGuardProvider>);
+    view.rerender(<DepartureGuardProvider><p>Reauthenticate</p></DepartureGuardProvider>);
+    o = { ...o, isDirty: false, connection: { ...o.connection, connected: false } };
+    view.rerender(<DepartureGuardProvider><Form /></DepartureGuardProvider>);
+    o = { ...o, connection: { ...o.connection, connected: true } };
+    view.rerender(<DepartureGuardProvider><Form /></DepartureGuardProvider>);
+    expect(screen.getByTestId("memory-status")).toHaveTextContent("recovery_pending");
+    o = { ...o, currentData: parse({ firstName: "Clean" }) };
+    view.rerender(<DepartureGuardProvider><Form /></DepartureGuardProvider>);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(screen.getByTestId("memory-status")).toHaveTextContent("recovery_pending");
+    expect(o.onSave).not.toHaveBeenCalled();
+  });
+  it("shows connected unsaved recovery until explicit retry and preserves revision conflicts", async () => {
+    vi.useFakeTimers(); let o = options();
+    const hook = renderHook(() => useFormDraft(o));
+    await act(async () => hook.result.current.retrySave());
+    o = { ...o, currentData: parse({ firstName: "Edited" }), connection: { ...o.connection, connected: false } }; hook.rerender();
+    o = { ...o, connection: { ...o.connection, connected: true } }; hook.rerender();
+    expect(hook.result.current.status).toBe("recovery_pending");
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(o.onSave).toHaveBeenCalledTimes(1);
+    o.onSave = vi.fn().mockRejectedValue({ data: { code: "CONFLICT" } }); hook.rerender();
+    await act(async () => { await expect(hook.result.current.retrySave()).rejects.toEqual({ data: { code: "CONFLICT" } }); });
+    expect(o.onSave).toHaveBeenCalledWith(o.currentData, 1);
+    o = { ...o, connection: { ...o.connection, connected: false } }; hook.rerender();
+    o = { ...o, connection: { ...o.connection, connected: true } }; hook.rerender();
+    expect(hook.result.current.status).toBe("conflict");
+  });
+  it("distinguishes connected context mismatch from server reconnecting without writing", async () => {
+    let o = options(); const hook = renderHook(() => useFormDraft(o));
+    o = { ...o, contextKey: "other-school" }; hook.rerender();
+    expect(hook.result.current.status).toBe("context_mismatch");
+    await act(async () => { await expect(hook.result.current.retrySave()).rejects.toThrow(/same account/); });
+    expect(o.onSave).not.toHaveBeenCalled();
+  });
   it("debounces at 1.5s and reports only server-confirmed saved state", async () => {
     vi.useFakeTimers(); const o = options(); const pending = deferred(); o.onSave = vi.fn(() => pending.promise);
     const hook = renderHook(() => useFormDraft(o));

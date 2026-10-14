@@ -42,6 +42,7 @@ import {
   Archive,
   History,
 } from "lucide-react";
+import { DraftHeaderContext } from "../drafts/WorkspaceStatus";
 import { ChangePasswordModal } from "./ChangePasswordModal";
 import type { WorkspaceAccessSummary } from "../workspace-access";
 import type { RequestWorkspaceDeparture } from "../workspace-route-access";
@@ -82,6 +83,7 @@ export interface WorkspaceNavbarProps {
   schoolBranding?: WorkspaceSchoolBranding | null;
   branchSwitcher?: ReactNode;
   leadershipAlerts?: ReactNode;
+  connectionStatus?: ReactNode;
   workspaceAccess?: WorkspaceAccessSummary;
   /** When true, navigation exposes only routes whose callers use the selected school. */
   branchScopedOnly?: boolean;
@@ -113,6 +115,7 @@ export function WorkspaceNavbar({
   schoolBranding,
   branchSwitcher,
   leadershipAlerts,
+  connectionStatus,
   workspaceAccess,
   branchScopedOnly = false,
   teacherHasAssignments,
@@ -125,6 +128,7 @@ export function WorkspaceNavbar({
   renderLink,
   children,
 }: WorkspaceNavbarProps) {
+  const [draftHeader, setDraftHeader] = useState<HTMLDivElement | null>(null);
   const def = getWorkspaceDefinition(workspace);
   const sections = getAccessibleWorkspaceSections(workspace, { access: workspaceAccess, features: schoolBranding?.features, userRole, branchScopedOnly, teacherHasAssignments });
   const departurePending = useRef(false);
@@ -745,6 +749,10 @@ export function WorkspaceNavbar({
         </header>
 
         
+        <div data-workspace-status-slot className="rc-no-print flex h-8 min-h-8 max-h-8 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 sm:px-6 lg:px-8">
+          {connectionStatus}
+          <div ref={setDraftHeader} className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto whitespace-nowrap" />
+        </div>
         {leadershipAlerts && <div className="rc-no-print shrink-0 px-4 py-2 sm:px-6">{leadershipAlerts}</div>}
         {departureError && <p role="alert" className="px-4 py-2 text-sm text-rose-700">{departureError}</p>}
 
@@ -757,7 +765,7 @@ export function WorkspaceNavbar({
           }`}
         >
           <div className={`workspace-print-content ${fullBleed ? "w-full min-h-full lg:h-full lg:min-h-0" : "mx-auto max-w-[1600px]"}`}>
-            {children}
+            <DraftHeaderContext.Provider value={draftHeader}>{children}</DraftHeaderContext.Provider>
           </div>
         </main>
 

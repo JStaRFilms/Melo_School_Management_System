@@ -2,6 +2,7 @@
 
 import {
   DraftRecoveryModal,
+  DraftHeaderStatus,
   DraftStatusIndicator,
 } from "@school/shared/drafts";
 import type { PersistentFormDraftController } from "@/usePersistentFormDraft";
@@ -56,31 +57,34 @@ export function PersistentFormDraftControls({
   };
 
   const hasIssue =
-    draft.status === "connection_lost" ||
+    draft.status === "recovery_pending" ||
+    draft.status === "context_mismatch" ||
     draft.status === "save_failed" ||
     draft.status === "conflict" ||
     draft.status === "expired" ||
     draft.status === "reauth_required";
 
-  const showManualSave = variant === "default" && isDirty && draft.status !== "saving";
+  const showManualSave = variant === "default" && isDirty && draft.hasUnsavedChanges && draft.status !== "saving";
   const shouldRenderIndicator =
-    hasIssue || (!silentOnSuccess && draft.status !== "idle") || showManualSave;
+    hasIssue || (!silentOnSuccess && draft.status !== "idle") || showManualSave ||
+    (draft.status === "connection_lost" && draft.hasUnsavedChanges);
 
   return (
     <>
-      {shouldRenderIndicator && (
+      <DraftHeaderStatus>{shouldRenderIndicator && (
         <div className={`inline-flex items-center gap-2 shrink-0 ${className}`}>
           {showManualSave && (
             <button
               type="button"
               onClick={() => void draft.retrySave().catch(() => {})}
+              disabled={!draft.isOnline}
               className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition cursor-pointer whitespace-nowrap"
             >
               Save draft
             </button>
           )}
 
-          {(draft.status === "conflict" || draft.status === "expired") && (
+          {(draft.status === "conflict" || draft.status === "expired" || draft.status === "recovery_pending") && (
             <button
               type="button"
               onClick={draft.previewLatest}
@@ -90,17 +94,17 @@ export function PersistentFormDraftControls({
             </button>
           )}
 
-          <DraftStatusIndicator
+          {draft.status === "connection_lost" ? (draft.hasUnsavedChanges && <span className="text-xs">Unsaved draft</span>) : <DraftStatusIndicator
             status={draft.status}
             lastSavedAt={draft.lastSavedAt}
             silentOnSuccess={silentOnSuccess}
             onRetry={() => void draft.retrySave().catch(() => {})}
             className="whitespace-nowrap shrink-0 [&_div]:whitespace-nowrap [&_div]:text-[10px] [&_div]:py-0.5 [&_div]:px-2.5 [&_div]:leading-tight [&_div.absolute]:right-0 [&_div.absolute]:left-auto"
-          />
+          />}
 
           {draft.status !== "connection_lost" && renderNoticeTooltip()}
         </div>
-      )}
+      )}</DraftHeaderStatus>
 
       {draft.serverDraft && (
         <DraftRecoveryModal

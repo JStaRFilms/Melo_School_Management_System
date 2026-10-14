@@ -195,6 +195,7 @@ export const createSchoolAdmin = action({
     const nameFields = resolveStoredUserNameFields(args);
     const normalizedName = nameFields.name;
     const normalizedEmail = args.email.trim().toLowerCase();
+    const operationId = crypto.randomUUID();
     await ctx.runMutation(
       internal.functions.academic.adminLeadershipHelpers.ensureResolvedSchoolLeadAdminRecordInternal,
       {
@@ -245,10 +246,12 @@ export const createSchoolAdmin = action({
         {
           schoolId: viewer.schoolId,
           teacherUserId: teacher._id,
+          credentialOperationId: operationId,
           managerUserId: viewer.appUserId,
         }
       );
 
+      await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: teacher._id, operationId }).catch(() => null);
       return {
         adminId: teacher._id,
         email: normalizedEmail,
@@ -270,12 +273,15 @@ export const createSchoolAdmin = action({
         firstName: nameFields.firstName, middleName: nameFields.middleName, lastName: nameFields.lastName,
         adminEmail: normalizedEmail,
         adminAuthId: authId,
+        credentialOperationId: operationId,
         managerUserId: viewer.appUserId,
         makeLead: false,
         createdBy: viewer.appUserId,
       }
     );
 
+    // Legacy unlinked admin records are not eligible; notice failure never undoes credentials.
+    await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: result.adminUserId, operationId }).catch(() => null);
     return {
       adminId: result.adminUserId,
       email: normalizedEmail,

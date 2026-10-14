@@ -67,21 +67,14 @@ describe("DraftRecoveryModal and Draft Status Components", () => {
   });
 
   describe("Truthful Connectivity and Offline Claim Invariant", () => {
-    it("explicitly flags connection_lost with truthful recovery label (Zero False Offline Claims)", () => {
+    it("describes backend reconnecting without assuming a clean form has unsaved edits", () => {
       const config = DRAFT_STATUS_CONFIGS.connection_lost;
-      expect(config.label).toBe("Connection lost \u2022 Recovery pending");
-      expect(config.truthfulOfflineClaim).toBe(true);
-      expect(config.description).toContain("Changes are held in local browser memory");
-
-      const html = renderToStaticMarkup(
-        createElement(DraftStatusIndicator, {
-          status: "connection_lost",
-          showExplanation: true,
-        })
-      );
-
-      expect(html).toContain("Connection lost \u2022 Recovery pending");
-      expect(html).toContain("Changes are held in local browser memory");
+      expect(config.label).toBe("Server reconnecting");
+      expect(config.description).toContain("If you have unsaved edits");
+      const html = renderToStaticMarkup(createElement(DraftStatusIndicator, { status: "connection_lost", showExplanation: true }));
+      expect(html).toContain("Server reconnecting");
+      expect(html).not.toContain("Changes are held");
+      expect(DRAFT_STATUS_CONFIGS.recovery_pending.description).toContain("server is connected");
     });
 
     it("renders saved status with time when silentOnSuccess is false", () => {

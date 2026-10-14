@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({ state: "provisioned" as string | undefined, fa
 vi.mock("convex/react", () => ({
   useQuery: () => { if (mocks.fail) throw new Error("query failed"); return mocks.state ? { userId: "user-one", email: "stable@school.local", state: mocks.state } : undefined; },
   useAction: () => mocks.action,
+  useMutation: () => vi.fn(),
 }));
 afterEach(() => { cleanup(); mocks.state = "provisioned"; mocks.fail = false; vi.restoreAllMocks(); mocks.action.mockReset(); });
 const props = { title: "Portal access", userId: "user-one", userName: "Synthetic Student", email: "stored@school.local", defaultPassword: "", onNotice: vi.fn() };

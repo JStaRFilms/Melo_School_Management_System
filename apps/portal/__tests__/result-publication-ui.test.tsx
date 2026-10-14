@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getFunctionName } from "convex/server";
 import type { PortalWorkspaceData, PortalWorkspaceMode } from "../lib/portal-types";
 import { PortalWorkspaceContent } from "../app/(portal)/components/portal-workspace/PortalWorkspaceContent";
 
@@ -9,8 +10,9 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(), action: vi.fn(), replace: vi.fn(),
   params: new URLSearchParams("studentId=child&sessionId=current&termId=current-term"),
   pathname: "/results",
+  data: undefined as PortalWorkspaceData | undefined,
 }));
-vi.mock("convex/react", () => ({ useQuery: mocks.query, useAction: () => mocks.action }));
+vi.mock("convex/react", () => ({ useQuery: mocks.query, useAction: () => mocks.action, usePaginatedQuery: (reference: Parameters<typeof getFunctionName>[0], args: { sessionId?: string }) => ({ results: getFunctionName(reference).endsWith(":listResultSessions") ? [{ sessionId: "current", name: "2026" }, { sessionId: "older", name: "2025" }] : mocks.data?.history.filter(item => item.sessionId === args.sessionId && item.issued) ?? [], status: "Exhausted", loadMore: vi.fn() }) }));
 vi.mock("next/navigation", () => ({
   usePathname: () => mocks.pathname,
   useRouter: () => ({ replace: mocks.replace }),
@@ -49,6 +51,7 @@ function workspace(overrides: Partial<PortalWorkspaceData> = {}): PortalWorkspac
   };
 }
 function show(mode: PortalWorkspaceMode, data: PortalWorkspaceData | undefined = workspace()) {
+  mocks.data = data;
   mocks.query.mockReturnValue(data);
   return render(<PortalWorkspaceContent mode={mode} />);
 }
@@ -80,16 +83,16 @@ describe("family graded publication states", () => {
     expect(screen.getByText("School event")).toBeInTheDocument();
   });
 
-  it("shows only released older history on desktop and mobile, without a current report action", () => {
+  it("selects an older session and shows only its released history, without a current report action", () => {
     show("results");
-    expect(screen.getByText("Published past results")).toBeInTheDocument();
     expect(screen.getByText("Results for this term have not been published.")).toBeInTheDocument();
-    expect(screen.getAllByText("83")).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: /First term/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open report card" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "2025" }));
-    expect(mocks.replace).toHaveBeenCalledWith(expect.stringContaining("termId=older-term"));
-    expect(screen.getByRole("status")).toHaveTextContent("Loading results...");
-    expect(screen.queryByText("83")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Session / year"), { target: { value: "older" } });
+    expect(screen.getByRole("link", { name: /First term.*2025.*Average 83/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open report card" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Session / year"), { target: { value: "current" } });
+    expect(screen.queryByRole("link", { name: /First term/ })).not.toBeInTheDocument();
   });
 
   it("does not render a sheet or print controls for withheld or no-eligible states", () => {

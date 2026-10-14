@@ -5,6 +5,8 @@ import { Send, KeyRound, Archive, X, Eye, EyeOff } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { PersonNameFields, emptyPersonName } from "@school/shared";
 import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { AccountNoticePanel } from "../../students/components/AccountNoticePanel";
 import type { TeacherRecord } from "@/types";
 
 interface TeacherEditFormProps {
@@ -146,6 +148,7 @@ export function TeacherEditForm({
             </div>
           </FormField>}
 
+          {canResetPassword && <AccountNoticePanel userId={teacher._id as Id<"users">} />}
           {canArchive && hasArchiveBlockers && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Reassignment required</p>

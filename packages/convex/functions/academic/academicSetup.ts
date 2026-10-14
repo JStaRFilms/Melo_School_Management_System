@@ -243,6 +243,7 @@ export const createTeacherRecordInternal = internalMutation({
       ...teacherName,
       email: normalizedEmail,
       role: "teacher",
+      lastCredentialOperation: { operationId: `teacher-ready:${args.draftId ?? args.authId}`, kind: "ready", committedAt: now },
       createdAt: now,
       updatedAt: now,
     });
@@ -431,6 +432,7 @@ export const createTeacher = action({
           expectedDraftRevision: args.expectedDraftRevision,
         },
       );
+      await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: teacherId, operationId: `teacher-ready:${args.draftId}` }).catch(() => null);
       return { teacherId, email: normalizedEmail, temporaryPassword: args.temporaryPassword };
     } catch (error) {
       let cleanupVerified = !createdThisRun;
@@ -710,6 +712,18 @@ export const updateTeacherProfile = action({
   },
 });
 
+export const recordTeacherPasswordResetInternal = internalMutation({
+  args: { teacherId: v.id("users"), operationId: v.string(), expectedAuthId: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "staff.password.reset" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const teacher = await ctx.db.get(args.teacherId);
+    if (!teacher || teacher.schoolId !== actor.schoolId || teacher.role !== "teacher" || teacher.isArchived || teacher.authId !== args.expectedAuthId) throw new ConvexError("Teacher changed during reset");
+    await ctx.db.patch(teacher._id, { lastCredentialOperation: { operationId: args.operationId, kind: "reset", committedAt: Date.now() } });
+    return null;
+  },
+});
+
 export const resetTeacherPassword = action({
   args: {
     teacherId: v.id("users"),
@@ -751,6 +765,10 @@ export const resetTeacherPassword = action({
     const hashedPassword = await authContext.password.hash(args.temporaryPassword);
     await authContext.internalAdapter.updatePassword(teacher.authId, hashedPassword);
     await authContext.internalAdapter.deleteSessions(teacher.authId);
+    const operationId = crypto.randomUUID();
+    // The password has committed; separate notice bookkeeping must not hide the handoff.
+    await ctx.runMutation(internal.functions.academic.academicSetup.recordTeacherPasswordResetInternal, { teacherId: args.teacherId, operationId, expectedAuthId: teacher.authId })
+      .then(() => ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: args.teacherId, operationId })).catch(() => null);
 
     return {
       teacherId: args.teacherId,

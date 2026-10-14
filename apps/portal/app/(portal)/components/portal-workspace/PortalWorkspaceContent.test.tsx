@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getFunctionName } from "convex/server";
 import type { PortalWorkspaceData } from "@/portal-types";
 
 const state = vi.hoisted(() => ({ workspace: null as unknown }));
-vi.mock("convex/react", () => ({ useQuery: () => state.workspace, useAction: () => vi.fn() }));
+vi.mock("convex/react", () => ({ useQuery: () => state.workspace, useAction: () => vi.fn(), usePaginatedQuery: (reference: Parameters<typeof getFunctionName>[0]) => ({ results: getFunctionName(reference).endsWith(":listResultSessions") ? [{ sessionId: "session", name: "2025" }] : (state.workspace as PortalWorkspaceData).history.filter(item => item.issued), status: "Exhausted", loadMore: vi.fn() }) }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/report-cards", useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
@@ -35,7 +36,8 @@ describe("portal report dispatch", () => {
     expect(screen.queryByText(/Print issued report/)).toBeNull();
     expect(screen.queryByText("Graded sheet")).toBeNull();
     view.rerender(<PortalWorkspaceContent mode="results" />);
-    expect(screen.getAllByText("Not ready").length).toBeGreaterThan(0);
+    expect(screen.getByText("No published reports for this session.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Term 1/ })).toBeNull();
     expect(screen.queryByText(/0 subjects/)).toBeNull();
     view.rerender(<PortalWorkspaceContent mode="dashboard" />);
     expect(screen.getByText(/The school has not published this term/)).toBeTruthy();
@@ -54,7 +56,8 @@ describe("portal report dispatch", () => {
     expect(screen.queryByText(/scored an average|Nursery|Private narrative draft|Graded sheet/)).toBeNull();
     view.rerender(<PortalWorkspaceContent mode="results" />);
     expect(screen.getByRole("status").textContent).toBe("Historical report needs school review.");
-    expect(screen.getAllByText("Needs school review").length).toBeGreaterThan(0);
+    expect(screen.getByText("No published reports for this session.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Term 1/ })).toBeNull();
     expect(screen.queryByText(/Open report card|Open progress report|Graded sheet|Nursery/)).toBeNull();
     view.rerender(<PortalWorkspaceContent mode="report-cards" />);
     expect(screen.getByRole("status").textContent).toBe("Historical report needs school review.");

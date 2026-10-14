@@ -147,6 +147,7 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
     lastName: v.optional(v.string()),
     adminEmail: v.string(),
     adminAuthId: v.string(),
+    credentialOperationId: v.optional(v.string()),
     managerUserId: v.union(v.id("users"), v.null()),
     makeLead: v.boolean(),
     createdBy: v.id("users"),
@@ -177,6 +178,7 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
     if (existingAdmin) {
       await ctx.db.patch(existingAdmin._id, {
         authId: args.adminAuthId,
+        ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "reset" as const, committedAt: now } } : {}),
         ...nameFields,
         email: normalizedEmail,
         role: "admin",
@@ -200,6 +202,7 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
     const adminUserId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.adminAuthId,
+      ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "ready" as const, committedAt: now } } : {}),
       ...nameFields,
       email: normalizedEmail,
       role: "admin",
@@ -226,6 +229,7 @@ export const promoteTeacherToAdminInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
     teacherUserId: v.id("users"),
+    credentialOperationId: v.optional(v.string()),
     managerUserId: v.union(v.id("users"), v.null()),
   },
   returns: v.object({
@@ -246,6 +250,7 @@ export const promoteTeacherToAdminInternal = internalMutation({
     }
 
     await ctx.db.patch(teacher._id, {
+      ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "reset" as const, committedAt: Date.now() } } : {}),
       isSchoolAdmin: true,
       managerUserId: args.managerUserId,
       updatedAt: Date.now(),

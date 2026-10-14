@@ -8,6 +8,8 @@ export type DraftStatus =
   | "saving"
   | "saved"
   | "connection_lost"
+  | "recovery_pending"
+  | "context_mismatch"
   | "save_failed"
   | "conflict"
   | "reauth_required"
@@ -35,7 +37,9 @@ export interface DraftStatusConfig {
 }
 
 export const DRAFT_STATUS_CONFIGS: Record<DraftStatus, DraftStatusConfig> = {
-  reauth_required: { label: "Sign in again • Edits held in memory", description: "Sign in to the same account, then preview the latest draft or retry. Do not close this tab.", badgeClass: "bg-amber-50 text-amber-800 border-amber-300", truthfulOfflineClaim: false },
+  context_mismatch: { label: "Draft context changed", description: "Return to the original account and form context before saving. This draft cannot overwrite another context.", badgeClass: "bg-amber-50 text-amber-800 border-amber-300", truthfulOfflineClaim: false },
+  recovery_pending: { label: "Unsaved draft • Review or retry", description: "The server is connected. Keep this tab open and preview the latest draft or retry saving your unsaved edits.", badgeClass: "bg-amber-50 text-amber-800 border-amber-300", truthfulOfflineClaim: false },
+  reauth_required: { label: "Sign in again", description: "Sign in to the same account, then preview the latest draft or retry. Do not close this tab.", badgeClass: "bg-amber-50 text-amber-800 border-amber-300", truthfulOfflineClaim: false },
   expired: { label: "Draft expired or closed", description: "This instance cannot be saved again. Keep your in-memory edits while starting a new draft explicitly.", badgeClass: "bg-amber-50 text-amber-800 border-amber-300", truthfulOfflineClaim: false },
   idle: {
     label: "Ready",
@@ -55,9 +59,9 @@ export const DRAFT_STATUS_CONFIGS: Record<DraftStatus, DraftStatusConfig> = {
     truthfulOfflineClaim: false,
   },
   connection_lost: {
-    label: "Connection lost • Recovery pending",
+    label: "Server reconnecting",
     description:
-      "Changes are held in local browser memory. Do not close this browser tab. Reconnect, then explicitly retry or preview the latest draft before saving.",
+      "Draft saving is paused. Internet access does not prove the server connection is ready. If you have unsaved edits, keep this tab open, then review or retry after reconnecting.",
     badgeClass: "bg-amber-50 text-amber-800 border-amber-300",
     truthfulOfflineClaim: true, // Specifically flags zero false offline claims!
   },

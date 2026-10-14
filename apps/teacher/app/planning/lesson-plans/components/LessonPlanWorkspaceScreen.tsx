@@ -27,7 +27,7 @@ import {
   FileText,
 } from "lucide-react";
 import { getUserFacingErrorMessage, MobileProgressIndicator } from "@school/shared";
-import { useDirtyForm, type DraftStatus } from "@school/shared/drafts";
+import { DraftHeaderStatus, DraftStatusIndicator, useDirtyForm, type DraftStatus } from "@school/shared/drafts";
 import { useDraftConnection } from "@/lib/useDraftConnection";
 import { appToast } from "@school/shared/toast";
 import { useConvex } from "convex/react";
@@ -535,6 +535,12 @@ export function LessonPlanWorkspaceScreen({
 
   return (
     <div className="h-full flex flex-col xl:flex-row min-h-0 overflow-hidden relative">
+      <DraftHeaderStatus><div className="flex items-center gap-2 text-[11px]">
+        {draftStatus !== "connection_lost" && <DraftStatusIndicator status={draftStatus} lastSavedAt={lastSavedAt} />}
+        {dirty && (draftStatus === "idle" || draftStatus === "connection_lost") && <span>Unsaved draft</span>}
+        {dirty && <button type="button" onClick={() => void handleManualSave().catch(() => {})} disabled={!connection.connected || !connection.authenticated || saveState === "conflict" || saveState === "saving"}>Retry save</button>}
+        {saveState === "conflict" && <button type="button" onClick={loadLatestRevision} disabled={!hasNewerReactiveRevision}>Load latest revision</button>}
+      </div></DraftHeaderStatus>
       <MobileProgressIndicator
         mode="sections"
         topOffset="top-0"
@@ -639,17 +645,7 @@ export function LessonPlanWorkspaceScreen({
                   })}
                 </div>
 
-                <div className="flex items-center gap-2">
-                   <div className={`h-1.5 w-1.5 rounded-full ${draftStatus === "saved" ? "bg-emerald-400" : draftStatus === "saving" ? "bg-amber-400 animate-pulse" : "bg-rose-400"}`} />
-                   <span role="status" className="text-[9px] font-black uppercase tracking-widest text-slate-500">{
-                     draftStatus === "saving" ? "Saving draft" :
-                     draftStatus === "saved" ? "Draft saved" :
-                     draftStatus === "connection_lost" ? "Connection lost · not saved" :
-                     draftStatus === "reauth_required" ? "Sign in again · edits in this tab" :
-                     draftStatus === "conflict" ? "Conflict · load latest" :
-                     draftStatus === "save_failed" ? "Save failed · retry" : dirty ? "Unsaved" : "Synced"
-                   }</span>
-                </div>
+
               </div>
 
               {/* Primary Topic Title */}
