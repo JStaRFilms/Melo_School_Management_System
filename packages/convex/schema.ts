@@ -1940,7 +1940,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
-    .index("by_school_active", ["schoolId", "isActive"]),
+    .index("by_school_active", ["schoolId", "isActive"])
+    .index("by_schoolId_and_startDate", ["schoolId", "startDate"]),
 
   academicTerms: defineTable({
     schoolId: v.id("schools"),

@@ -62,21 +62,30 @@ async function fixture() {
 }
 
 describe("family graded release gate", () => {
-  it("continues session discovery beyond old caps and denies unlinked children and foreign sessions", async () => {
+  it("pages sessions by descending academic date despite older-year backfills and preserves authorization", async () => {
     const f = await fixture();
     const foreign = await f.t.run(async ctx => {
-      for (let i = 0; i < 40; i++) await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: `Earlier ${i}`, startDate: i, endDate: i + 1, isActive: false, isArchived: true, createdAt: i, updatedAt: i });
-      return ctx.db.insert("academicSessions", { schoolId: f.ids.otherSchoolId, name: "Foreign", startDate: 1, endDate: 2, isActive: false, createdAt: 1, updatedAt: 1 });
+      await ctx.db.patch(f.ids.sessionId, { startDate: Date.UTC(2025, 8, 1) });
+      await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: "2026/27", startDate: Date.UTC(2026, 8, 1), endDate: Date.UTC(2027, 7, 31), isActive: false, createdAt: 1, updatedAt: 1 });
+      // Older sessions are inserted after the newer academic dates, as in a history backfill.
+      for (let i = 0; i < 40; i++) await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: `Earlier ${i}`, startDate: Date.UTC(2024 - i, 8, 1), endDate: Date.UTC(2025 - i, 7, 31), isActive: false, isArchived: true, createdAt: i, updatedAt: i });
+      return ctx.db.insert("academicSessions", { schoolId: f.ids.otherSchoolId, name: "Foreign", startDate: Date.UTC(2028, 8, 1), endDate: Date.UTC(2029, 7, 31), isActive: false, createdAt: 1, updatedAt: 1 });
     });
     const seen = [];
     let cursor: string | null = null;
     for (let i = 0; i < 4; i++) {
       const page: FunctionReturnType<typeof api.functions.portal.listResultSessions> = await f.parent.query(api.functions.portal.listResultSessions, { studentId: f.ids.studentId, paginationOpts: { numItems: 20, cursor } });
+      expect(page.page.length).toBeLessThanOrEqual(20);
+      if (i === 0) {
+        expect(page.page[0]).toMatchObject({ name: "2026/27" });
+        expect(page.isDone).toBe(false);
+      }
       seen.push(...page.page);
       if (page.isDone) break;
+      expect(page.continueCursor).not.toBe(cursor);
       cursor = page.continueCursor;
     }
-    expect(seen).toHaveLength(41);
+    expect(seen.map(row => row.name)).toEqual(["2026/27", "2025/26", ...Array.from({ length: 40 }, (_, i) => `Earlier ${i}`)]);
     expect(seen.some(row => row.sessionId === foreign)).toBe(false);
     const args = { studentId: f.ids.studentId, sessionId: foreign, resultKind: "end_of_term" as const, paginationOpts: { numItems: 6, cursor: null } };
     await expect(f.parent.query(api.functions.portal.listSessionResults, args)).rejects.toThrow("Invalid session");

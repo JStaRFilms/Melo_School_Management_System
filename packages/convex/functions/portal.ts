@@ -429,7 +429,7 @@ export const listResultSessions = query({
   handler: async (ctx, args) => {
     const { schoolId } = await resolvePortalStudentContext(ctx, args);
     if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 20) throw new ConvexError("Invalid page size");
-    const result = await ctx.db.query("academicSessions").withIndex("by_school", q => q.eq("schoolId", schoolId))
+    const result = await ctx.db.query("academicSessions").withIndex("by_schoolId_and_startDate", q => q.eq("schoolId", schoolId))
       .order("desc").paginate(args.paginationOpts);
     return { ...result, page: result.page.map(session => ({ sessionId: session._id, name: session.name })) };
   },

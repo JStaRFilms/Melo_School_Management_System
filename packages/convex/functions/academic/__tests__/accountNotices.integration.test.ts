@@ -169,18 +169,29 @@ it("configuration loss preserves a consumed uncertain attempt and its original p
   expect(vi.mocked(fetch).mock.calls[1][1]).toEqual(vi.mocked(fetch).mock.calls[0][1]);
 });
 
-it("configuration loss cannot reopen an expired real-submission window", async () => {
+it("persists operator review on an expired manual retry after configuration-loss workers have drained", async () => {
   const f = await fixture();
+  const account = await f.t.run(ctx => ctx.db.get(f.parentId));
   const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
   vi.mocked(fetch).mockRejectedValueOnce(new Error("uncertain submission"));
   await f.t.action(workers.processNotice, { outboxId: id });
-  const original = await f.row(id);
   vi.stubEnv("RESEND_API_KEY", "");
-  vi.advanceTimersByTime(23 * 60 * 60_000);
-  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).rejects.toThrow("operator review");
   await f.t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(await f.row(id)).toMatchObject({ state: "reconciliation_required", attemptCount: 1, firstAttemptAt: original?.firstAttemptAt });
+  const stopped = await f.row(id);
+  expect(stopped).toMatchObject({ state: "not_configured", attemptCount: 1 });
+  expect(stopped?.firstAttemptAt).toBeTypeOf("number");
+  vi.advanceTimersByTime(23 * 60 * 60_000);
+  const retryAt = Date.now();
+  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).resolves.toBeNull();
+  expect(await f.row(id)).toEqual({ ...stopped, state: "reconciliation_required", updatedAt: retryAt });
+  expect((await f.staff.query(notices.getAccountNoticeState, { userId: f.parentId })).notice)
+    .toMatchObject({ id, state: "reconciliation_required", attemptCount: 1 });
+  vi.stubEnv("RESEND_API_KEY", "mock-key-never-sent");
+  await f.staff.mutation(notices.retryAccountNotice, { outboxId: id });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toEqual({ ...stopped, state: "reconciliation_required", updatedAt: retryAt });
   expect(fetch).toHaveBeenCalledTimes(1);
+  expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toEqual(account);
 });
 
 it("retries a repaired original guardian link and exact address without replacing the row", async () => {
@@ -257,7 +268,16 @@ it("retries provider failure with the same privacy-safe body and stops after fiv
   expect(new Set(requests.map(request => request?.body)).size).toBe(1);
   expect(new Set(requests.map(request => JSON.stringify(request?.headers))).size).toBe(1);
   expect(JSON.stringify(await f.row(id))).not.toContain("provider-secret-body");
-  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).rejects.toThrow("operator review");
+  const exhausted = await f.row(id);
+  const account = await f.t.run(ctx => ctx.db.get(f.parentId));
+  const retryAt = Date.now();
+  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).resolves.toBeNull();
+  expect(await f.row(id)).toEqual({ ...exhausted, state: "reconciliation_required", updatedAt: retryAt });
+  expect((await f.staff.query(notices.getAccountNoticeState, { userId: f.parentId })).notice)
+    .toMatchObject({ id, state: "reconciliation_required", attemptCount: 5 });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(fetch).toHaveBeenCalledTimes(5);
+  expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toEqual(account);
 });
 
 it("rejects foreign-school reads, enqueue and retry without exposing recipient state", async () => {

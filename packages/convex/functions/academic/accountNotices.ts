@@ -127,7 +127,10 @@ export const retryAccountNotice = mutation({
     const recipient = await linkedRecipient(ctx, target, row.recipientUserId);
     if (!recipient || deliverable(recipient) !== row.recipientEmail) throw new ConvexError("Notice recipient is no longer eligible");
     const now = Date.now();
-    if (row.attemptCount >= 5 || row.firstAttemptAt !== undefined && now - row.firstAttemptAt >= 23 * 60 * 60_000) throw new ConvexError("Notice needs operator review; provider deduplication can no longer be assumed");
+    if (row.attemptCount >= 5 || row.firstAttemptAt !== undefined && now - row.firstAttemptAt >= 23 * 60 * 60_000) {
+      await ctx.db.patch(row._id, { state: "reconciliation_required", updatedAt: now });
+      return null;
+    }
     const quota = await limiter.limit(ctx, "accountNotice", { key: `${row.schoolId}:${row.recipientEmail}` });
     if (!quota.ok) { await ctx.db.patch(row._id, { nextAttemptAt: now + quota.retryAfter }); return null; }
     await ctx.db.patch(row._id, { state: "pending", nextAttemptAt: now, updatedAt: now });

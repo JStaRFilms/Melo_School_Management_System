@@ -32,6 +32,18 @@ it("reopens persisted provider acceptance without claiming delivery or recoverin
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
 
+it("reopens persisted operator review without configuration messaging or another retry", () => {
+  mocks.state = { ...base, notice: { id: "notice-one", state: "reconciliation_required", recipientEmail: "real@example.test", attemptCount: 1 } };
+  const view = render(<AccountNoticePanel userId={userId} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Notice needs operator review. Account credentials are unchanged.");
+  view.unmount(); render(<AccountNoticePanel userId={userId} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Notice needs operator review");
+  expect(screen.queryByText(/email is not configured/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(mocks.retry).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+
 it("retries only the existing outbox record and keeps notice failure distinct from account status", async () => {
   mocks.state = { ...base, notice: { id: "notice-one", state: "failed", recipientEmail: "real@example.test", attemptCount: 1 } };
   render(<AccountNoticePanel userId={userId} />);
