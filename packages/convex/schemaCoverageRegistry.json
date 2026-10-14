@@ -5599,5 +5599,79 @@
     "bySchool": true,
     "storage": {},
     "shape": "368:ef768ee2:adc2d95a"
+  },
+  "profileCorrectionRequests": {
+    "ownership": "direct-indexed",
+    "reason": "School-scoped parent permission requests and frozen apply evidence; indexed purge/reset; typed retained identity and family references; no storage",
+    "references": [
+      {
+        "path": "allowedScope.childId",
+        "target": "students",
+        "optional": true
+      },
+      {
+        "path": "allowedScope.parentMemberId",
+        "target": "familyMembers",
+        "optional": true
+      },
+      {
+        "path": "childFamilyId",
+        "target": "families",
+        "optional": true
+      },
+      {
+        "path": "childLinkId",
+        "target": "familyMembers",
+        "optional": true
+      },
+      {
+        "path": "childUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "decisionBy",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "parentFamilyId",
+        "target": "families",
+        "optional": true
+      },
+      {
+        "path": "requestedScope.childId",
+        "target": "students",
+        "optional": true
+      },
+      {
+        "path": "requestedScope.parentMemberId",
+        "target": "familyMembers",
+        "optional": true
+      },
+      {
+        "path": "requesterMembershipId",
+        "target": "branchMemberships",
+        "optional": true
+      },
+      {
+        "path": "requesterPersonId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "requesterUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "6302:9cf641df:2e62e463"
   }
 }

@@ -1,0 +1,44 @@
+{
+  "sessionId": "orch-20261011-142141",
+  "stage": "build",
+  "task": {
+    "id": "R2",
+    "taskId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R2-round1",
+    "childThreadId": "thread:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R2-round1",
+    "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A9bac35d7-c63f-424e-bf59-5d560d1d719c%253Adelegate-task%253Aorch-20261011-142141-R2-round1:ordinal:1",
+    "childNodeId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R2-round1",
+    "status": "running",
+    "workState": "working",
+    "hasPendingChildRuns": false,
+    "latestTerminalRunId": null,
+    "latestTerminalStatus": null,
+    "latestTerminalSummary": null,
+    "latestTerminalResultContextTransferId": null,
+    "providerInstanceId": "takomi",
+    "model": "openai-codex/gpt-6.1-sol",
+    "summary": null,
+    "resultContextTransferId": null,
+    "waitTimedOut": false,
+    "persona": "reviewer",
+    "requiredCapabilities": []
+  },
+  "refs": [
+    {
+      "branch": "fix/identity-onboarding-portal",
+      "commit": "2803bef2a2e7d178d6aff2c5d2763642059a7c6c",
+      "base": "origin/master",
+      "fix": "household-confirmation replay; 16 UI +12 backend focused tests passed"
+    },
+    {
+      "branch": "fix/portal-status-history-notices",
+      "commit": "2bab1af95f20b0691abb5fde7fb4da398899d826",
+      "base": "fix/identity-onboarding-portal"
+    },
+    {
+      "branch": "feat/parent-profile-edit-permissions",
+      "commit": "a9a21d1facc4d40bd78b746c2dd59ee880d0f150",
+      "base": "fix/portal-status-history-notices"
+    }
+  ],
+  "scope": "R1 single confirmed admission retry finding response only"
+}

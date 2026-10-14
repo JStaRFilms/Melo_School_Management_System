@@ -118,6 +118,7 @@ import type * as functions_academic_sessionScoring from "../functions/academic/s
 import type * as functions_academic_settings from "../functions/academic/settings.js";
 import type * as functions_academic_storageEntitlementProvisioning from "../functions/academic/storageEntitlementProvisioning.js";
 import type * as functions_academic_studentClassMembership from "../functions/academic/studentClassMembership.js";
+import type * as functions_academic_profileCorrections from "../functions/academic/profileCorrections.js";
 import type * as functions_academic_studentEnrollment from "../functions/academic/studentEnrollment.js";
 import type * as functions_academic_studentEnrollmentCounts from "../functions/academic/studentEnrollmentCounts.js";
 import type * as functions_academic_studentNameCompat from "../functions/academic/studentNameCompat.js";
@@ -304,6 +305,7 @@ declare const fullApi: ApiFromModules<{
   "functions/academic/settings": typeof functions_academic_settings;
   "functions/academic/storageEntitlementProvisioning": typeof functions_academic_storageEntitlementProvisioning;
   "functions/academic/studentClassMembership": typeof functions_academic_studentClassMembership;
+  "functions/academic/profileCorrections": typeof functions_academic_profileCorrections;
   "functions/academic/studentEnrollment": typeof functions_academic_studentEnrollment;
   "functions/academic/studentEnrollmentCounts": typeof functions_academic_studentEnrollmentCounts;
   "functions/academic/studentNameCompat": typeof functions_academic_studentNameCompat;

@@ -55,6 +55,8 @@ import { getStudentClassForSession, isStudentEnrolledInClassForSession } from ".
 import { assertBranchDoc } from "../foundation/tenantScope";
 import { isEmailAddress } from "../foundation/normalize";
 import { studentLoginSuffix } from "./institutionalEmail";
+import { contactAddressPatch } from "./familyContactAddress";
+import { normalizeOptionalPhone } from "./familyContactPhone";
 
 async function activeStudentAssignment(ctx: QueryCtx | MutationCtx, student: Doc<"students">) {
   const sessions = await ctx.db.query("academicSessions")
@@ -200,32 +202,6 @@ function normalizeOptionalEmail(value: string | null | undefined) {
 
   if (!isEmailAddress(trimmed)) {
     throw new ConvexError("Enter a valid email address");
-  }
-
-  return trimmed;
-}
-
-function normalizeOptionalPhone(value: string | null | undefined) {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (trimmed.includes("@") || /[a-zA-Z]/.test(trimmed)) {
-    throw new ConvexError(
-      "Contact phone number cannot contain letters or email addresses.",
-    );
-  }
-
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length < 7 || digits.length > 15) {
-    throw new ConvexError(
-      "Contact phone number must contain between 7 and 15 digits.",
-    );
   }
 
   return trimmed;
@@ -661,19 +637,6 @@ export async function createCanonicalStudentEnrollmentHelper(
   // platform backfill initializes the school's counter row.
   await adjustSchoolEnrollmentCount(ctx, args.schoolId, 1);
   return { studentId, studentUserId, admissionNumber };
-}
-
-function contactAddressPatch(
-  args: { addressMode?: "residential" | "different"; addressOverride?: string | null },
-  existing?: Doc<"familyMembers">,
-): Pick<Doc<"familyMembers">, "addressMode" | "addressOverride"> {
-  if (args.addressMode === undefined && args.addressOverride === undefined)
-    return existing ? { addressMode: existing.addressMode, addressOverride: existing.addressOverride } : { addressMode: "residential" };
-  const mode = args.addressMode ?? existing?.addressMode;
-  if (!mode) throw new ConvexError("Choose same residential address or different address");
-  const addressOverride = mode === "different" ? normalizeOptionalText(args.addressOverride === undefined ? existing?.addressOverride : args.addressOverride) : undefined;
-  if (mode === "different" && !addressOverride) throw new ConvexError("Enter the different contact address");
-  return { addressMode: mode, addressOverride };
 }
 
 const parentGuardianValidator = v.union(

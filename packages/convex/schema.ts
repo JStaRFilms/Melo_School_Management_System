@@ -1,3 +1,4 @@
+import { correctionRequestFields } from "./functions/academic/profileCorrectionContract";
 import { commercialRate } from "./functions/foundation/commercialContract";
 import { heavyUsageTask, usageEntitlement, usageMeterType } from "./functions/foundation/usageContract";
 import { bankMetadata, paymentInstructionsValidator } from "./functions/foundation/bankInstructions";
@@ -1470,6 +1471,13 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_target_user_and_operation", ["targetUserId", "operationId"])
     .index("by_school", ["schoolId"]),
+
+  profileCorrectionRequests: defineTable(correctionRequestFields)
+    .index("by_school", ["schoolId"])
+    .index("by_schoolId_and_state", ["schoolId", "state"])
+    .index("by_schoolId_and_requesterUserId", ["schoolId", "requesterUserId"])
+    .index("by_schoolId_and_requesterUserId_and_state", ["schoolId", "requesterUserId", "state"])
+    .index("by_schoolId_and_requesterUserId_and_requestKey", ["schoolId", "requesterUserId", "requestKey"]),
 
   users: defineTable({
     schoolId: v.id("schools"),

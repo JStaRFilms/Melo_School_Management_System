@@ -15,6 +15,7 @@ import { getUserFacingErrorMessage,ReportCardPreview,ReportCardToolbar,ReportSco
 import { buildPortalHref, formatDate, formatMoney, formatScore, getGreeting } from "./format";
 import { NarrativeReport } from "./NarrativeReport";
 import { PublishedResults } from "./PublishedResults";
+import { ProfileCorrections } from "./ProfileCorrections";
 import { useAction,useQuery } from "convex/react";
 import { ArrowRight,ChevronRight,ExternalLink } from "lucide-react";
 import Link from "next/link";
@@ -338,9 +339,19 @@ function DashboardView({
   const reportCard = selectedIssuedReport(workspace);
   const summary = reportCard?.summary;
   const studentFirstName = workspace.selectedStudent?.name.split(" ")[0] ?? "Your child";
+  const [correctionTarget, setCorrectionTarget] = useState<"own" | "child" | null>(null);
 
   return (
     <div className="space-y-10">
+      {workspace.viewer.role === "parent" && <section aria-label="Parent and child profile">
+        <h2 className="text-lg font-bold">Profiles</h2>
+        <p className="mt-2 text-sm text-slate-600">{workspace.viewer.name} · {workspace.selectedStudent?.name ?? "No child selected"}</p>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <button className="text-sm font-semibold underline" onClick={() => setCorrectionTarget(correctionTarget === "own" ? null : "own")}>Correct my details</button>
+          {workspace.selectedStudent?.enrollmentState === "active" && <button className="text-sm font-semibold underline" onClick={() => setCorrectionTarget(correctionTarget === "child" ? null : "child")}>Correct this child&apos;s profile</button>}
+        </div>
+        {correctionTarget && <ProfileCorrections key={`${workspace.viewer.userId}:${workspace.school.id}:${workspace.selectedStudentId}:${correctionTarget}`} schoolId={workspace.school.id as Id<"schools">} studentId={correctionTarget === "child" && workspace.selectedStudentId ? workspace.selectedStudentId as Id<"students"> : undefined} />}
+      </section>}
       {/* ── Term Snapshot ── */}
       <section className="space-y-5">
         <div className="flex items-start justify-between gap-4">
