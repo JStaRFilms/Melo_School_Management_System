@@ -27,7 +27,9 @@ class CorrectionQueryBoundary extends Component<{ children: ReactNode }, { faile
 function CorrectionWorkspacePanel({ schoolId, studentId }: { schoolId: Id<"schools">; studentId?: Id<"students"> }) {
   const workspace = useQuery(refs.getWorkspace, { schoolId, studentId });
   const [selected, setSelected] = useState<Id<"profileCorrectionRequests">>();
-  const requestId = selected ?? workspace?.requests.find(r => r.state === "requested" || r.state === "granted")?.requestId;
+  const activeRequestId = workspace?.requests.find(r => r.state === "requested" || r.state === "granted")?.requestId;
+  if (selected === undefined && activeRequestId) setSelected(activeRequestId);
+  const requestId = selected ?? activeRequestId;
   const detail = useQuery(refs.getRequest, requestId ? { schoolId, requestId } : "skip");
   const targetWorkspace = useQuery(refs.getWorkspace, detail?.state === "granted" ? { schoolId, studentId: detail.requestedScope.childId } : "skip");
   if (!workspace) return <p role="status">Loading profile correction access...</p>;

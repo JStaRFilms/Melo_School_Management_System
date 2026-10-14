@@ -65,6 +65,29 @@ it("applied receipt is read-only; further editing starts a fresh permission requ
   expect(screen.getByRole("button", { name: "Request edit permission" })).toBeInTheDocument();
   expect(mocks.request).not.toHaveBeenCalled();
 });
+it("keeps an auto-selected grant visible as an applied receipt until a new request is started", () => {
+  const view = render(<ProfileCorrections schoolId={schoolId} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Loading profile correction access");
+  const granted: CorrectionDetail = { ...detail(), state: "granted", revision: 1, allowedScope: { parentFields: ["phone"], childFields: [] } };
+  const grantedWorkspace: CorrectionWorkspace = { ...workspace(), requests: [{ requestId, requesterUserId: "parent" as Id<"users">, state: "granted", requestedScope: granted.requestedScope, allowedScope: granted.allowedScope, revision: 1, createdAt: 1, appliedAt: undefined, currentAccess: true }] };
+  mocks.detail = granted;
+  mocks.workspace = grantedWorkspace;
+  view.rerender(<ProfileCorrections schoolId={schoolId} />);
+  expect(screen.getByText("Granted editor")).toBeInTheDocument();
+
+  mocks.detail = { ...granted, state: "applied", revision: 2, applied: { key: "submit-key", reviewToken: "token", appliedAt: 100, grantRevision: 1, draftRevision: 1, changes: [{ target: "parent", targetId: "parent", field: "phone", before: "Old phone", after: "07012345678" }] } };
+  mocks.workspace = { ...grantedWorkspace, requests: grantedWorkspace.requests.map(request => ({ ...request, state: "applied", revision: 2, appliedAt: 100 })) };
+  view.rerender(<ProfileCorrections schoolId={schoolId} />);
+  expect(screen.getByText("Applied receipt")).toBeInTheDocument();
+  expect(screen.getByText("07012345678")).toBeInTheDocument();
+  expect(screen.queryByText("Granted editor")).not.toBeInTheDocument();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Start a new permission request" }));
+  expect(screen.getByRole("button", { name: "Request edit permission" })).toBeInTheDocument();
+  expect(screen.queryByText("Applied receipt")).not.toBeInTheDocument();
+  expect(mocks.request).not.toHaveBeenCalled();
+});
 it("request failures retain scope and reason and do not claim the school granted access", async () => {
   mocks.workspace = workspace(); mocks.request.mockRejectedValueOnce(new Error("An open correction request already exists"));
   render(<ProfileCorrections schoolId={schoolId} />);
