@@ -13,6 +13,12 @@ vi.mock("convex/react", () => ({ usePaginatedQuery: (ref: Parameters<typeof getF
 } }));
 afterEach(() => { cleanup(); mocks.args.mockClear(); mocks.sessions.loadMore.mockClear(); mocks.history.loadMore.mockClear(); mocks.history.results = []; });
 
+it("defaults to the first chronologically indexed session when no session is chosen", () => {
+  render(<PublishedResults studentId={"child" as Id<"students">} initialSessionId={null} />);
+  expect(screen.getByLabelText("Session / year")).toHaveValue("new-year");
+  expect(mocks.args).toHaveBeenCalledWith({ studentId: "child", sessionId: "new-year", resultKind: "end_of_term" });
+});
+
 it("selects session/year before terms and continues an empty filtered page", () => {
   render(<PublishedResults studentId={"child" as Id<"students">} initialSessionId={"old-year" as Id<"academicSessions">} />);
   expect(screen.getByLabelText("Session / year")).toHaveValue("old-year");

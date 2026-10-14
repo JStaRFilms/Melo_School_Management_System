@@ -429,7 +429,7 @@ export const listResultSessions = query({
   handler: async (ctx, args) => {
     const { schoolId } = await resolvePortalStudentContext(ctx, args);
     if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 20) throw new ConvexError("Invalid page size");
-    const result = await ctx.db.query("academicSessions").withIndex("by_school", q => q.eq("schoolId", schoolId))
+    const result = await ctx.db.query("academicSessions").withIndex("by_schoolId_and_startDate", q => q.eq("schoolId", schoolId))
       .order("desc").paginate(args.paginationOpts);
     return { ...result, page: result.page.map(session => ({ sessionId: session._id, name: session.name })) };
   },
@@ -444,7 +444,8 @@ export const listSessionResults = query({
     if (!session || session.schoolId !== schoolId) throw new ConvexError("Invalid session");
     if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 6) throw new ConvexError("Invalid page size");
     // Page terms, not a capped window of publications. Empty unpublished pages still continue.
-    const result = await ctx.db.query("academicTerms").withIndex("by_session", q => q.eq("sessionId", session._id))
+    const result = await ctx.db.query("academicTerms").withIndex("by_school_and_start_date", q => q.eq("schoolId", schoolId))
+      .filter(q => q.eq(q.field("sessionId"), session._id))
       .order("desc").paginate(args.paginationOpts);
     const page: Array<Infer<typeof portalHistoryItemValidator>> = [];
     for (const term of result.page) {

@@ -40,7 +40,7 @@ function NoticeContent({ userId }: { userId: Id<"users"> }) {
   };
   if (!state) return <p role="status" className="text-xs text-slate-500">Checking account notice...</p>;
   if (!state.operationId) return <p className="text-xs text-slate-500">No notice operation recorded. Login IDs are not treated as inboxes.</p>;
-  const canRetry = state.linked && state.notice && ["failed", "not_configured", "suppressed"].includes(state.notice.state) && state.notice.attemptCount < 5;
+  const canRetry = state.linked && state.notice && ["failed", "not_configured", "suppressed", "ineligible"].includes(state.notice.state) && state.notice.attemptCount < 5;
   const canQueue = state.linked && !state.notice && (state.student ? state.guardians.some(parent => parent.userId === guardianUserId) : Boolean(state.ownRecipient));
   return <div className="space-y-2 border-t border-slate-200 pt-3 text-xs text-slate-600" aria-label="Account notice">
     <p role="status">{state.notice ? noticeLabels[state.notice.state] : "Account committed. No notice queued."}</p>

@@ -105,6 +105,9 @@ export function useFormDraft<T>(options: UseFormDraftOptions<T>) {
         // Reconnection is not permission to overwrite a newer server revision.
         updateStatus(hasUnsavedChanges || memoryDraft ? "recovery_pending" : lastSavedAt ? "saved" : "idle");
         pause.current = hasUnsavedChanges || Boolean(memoryDraft);
+      } else if (statusRef.current === "recovery_pending" && !hasUnsavedChanges && !memoryDraft) {
+        updateStatus(lastSavedAt ? "saved" : "idle");
+        pause.current = false;
       }
       return;
     }

@@ -6,7 +6,7 @@ import { StudentProfileEditor } from "../app/academic/students/components/Studen
 const mocks = vi.hoisted(() => ({ update: vi.fn(), profile: {
   _id: "student", userId: "user", email: "persisted@school.local", name: "Mary Jane De La Cruz", displayName: "Mary Jane De La Cruz",
   firstName: "Mary" as string | null, middleName: "Jane" as string | null, lastName: "De La Cruz" as string | null,
-  admissionNumber: "ADM-1", classId: "promoted", className: "Promoted class", activeSessionId: "session-new",
+  admissionNumber: "ADM-1", classId: "promoted", className: "Promoted class", activeSessionId: "session-new" as string | null,
   gender: "Female", houseName: "Blue", dateOfBirth: Date.UTC(2014, 4, 15),
   guardianName: "Recorded Guardian", guardianPhone: "legacy phone", address: "Household address", storedAddress: "Retained address", addressMode: "residential", addressSource: "residential",
   emergencyContactMode: null, emergencyContact: { source: "legacy", name: "Recorded Guardian", phone: "legacy phone" },
@@ -24,7 +24,7 @@ vi.mock("convex/react", () => ({
 }));
 vi.mock("../app/academic/students/components/StudentPhotoPanel", () => ({ StudentPhotoPanel: ({ previewUrl }: { previewUrl: string }) => <img alt="Retained photo" src={previewUrl} /> }));
 const classes = [{ _id: "promoted", name: "Promoted class", level: "P2" }, { _id: "other", name: "Other class", level: "P3" }];
-beforeEach(() => { mocks.profile.firstName = "Mary"; mocks.profile.middleName = "Jane"; mocks.profile.lastName = "De La Cruz"; });
+beforeEach(() => { mocks.profile.activeSessionId = "session-new"; mocks.profile.firstName = "Mary"; mocks.profile.middleName = "Jane"; mocks.profile.lastName = "De La Cruz"; });
 afterEach(() => { cleanup(); mocks.update.mockReset(); });
 function mount(onNotice = vi.fn()) { return render(<DepartureGuardProvider><StudentProfileEditor studentId="student" classes={classes} onNotice={onNotice} /></DepartureGuardProvider>); }
 
@@ -54,6 +54,21 @@ it("name-only edits omit reassignment, unchanged addresses/emergency and admissi
   for (const field of ["admissionNumber", "guardianName", "guardianPhone", "address", "addressMode", "emergencyContactMode"]) expect(mocks.update.mock.calls[0][0][field]).toBeUndefined();
 });
 
+it.each(["structured", "full-name"] as const)("reports normalized saved names in %s mode without relying on blur", async (mode) => {
+  const notice = vi.fn();
+  mount(notice);
+  await screen.findByLabelText("First Name");
+  if (mode === "structured") {
+    fireEvent.change(screen.getByLabelText("Last Name"), { target: { value: "de la CRUZ-roBERTs" } });
+  } else {
+    fireEvent.click(screen.getByRole("button", { name: "Use full name" }));
+    fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "mARY jANE de la CRUZ-roBERTs" } });
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Save Identity" }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledOnce());
+  expect(notice).toHaveBeenCalledWith({ tone: "success", message: "Mary Jane De La Cruz-Roberts updated." });
+});
+
 it("confirms only an actual class change, preserves fields on cancel and sends reviewed effective expectations", async () => {
   mount();
   fireEvent.change(await screen.findByLabelText("Active Class"), { target: { value: "other" } });
@@ -65,6 +80,16 @@ it("confirms only an actual class change, preserves fields on cancel and sends r
   fireEvent.click(screen.getByRole("button", { name: "Save Identity" }));
   fireEvent.click(await screen.findByRole("button", { name: "Confirm class change" }));
   await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ classId: "other", confirmClassAssignment: true, expectedClassId: "promoted", expectedSessionId: "session-new" })));
+});
+
+it("sends an explicit reviewed null sentinel when there is no active session", async () => {
+  mocks.profile.activeSessionId = null;
+  mount();
+  fireEvent.change(await screen.findByLabelText("Active Class"), { target: { value: "other" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save Identity" }));
+  expect(mocks.update).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole("button", { name: "Confirm class change" }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ classId: "other", confirmClassAssignment: true, expectedClassId: "promoted", expectedSessionId: null })));
 });
 
 it("reports stale assignments without retrying or overwriting them", async () => {

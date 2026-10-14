@@ -118,13 +118,14 @@ export const stageRecordsBatch = mutation({
     const studentUserIds = liveStudents.map((s) => s.userId);
     const userMap = new Map<
       string,
-      { firstName?: string; lastName?: string; name: string }
+      { firstName?: string; middleName?: string; lastName?: string; name: string }
     >();
     for (const uId of studentUserIds) {
       const uDoc = await ctx.db.get(uId);
       if (uDoc) {
         userMap.set(String(uId), {
           firstName: uDoc.firstName,
+          middleName: uDoc.middleName,
           lastName: uDoc.lastName,
           name: uDoc.name,
         });
@@ -243,6 +244,7 @@ export const stageRecordsBatch = mutation({
       let clashReason: string | undefined = undefined;
 
       const candidate = {
+        name: data.name,
         firstName: data.firstName,
         lastName: data.lastName,
         middleName: data.middleName,
@@ -284,8 +286,10 @@ export const stageRecordsBatch = mutation({
       for (const live of liveStudents) {
         const u = userMap.get(String(live.userId));
         const evalResult = evaluateClash(candidate, {
-          firstName: u?.firstName || u?.name.split(" ")[0] || "",
-          lastName: u?.lastName || u?.name.split(" ")[1] || "",
+          name: u?.name,
+          firstName: u?.firstName ?? "",
+          middleName: u?.middleName,
+          lastName: u?.lastName ?? "",
           className: liveClasses.find((c) => c._id === live.classId)?.name,
           guardianPhone: live.guardianPhone,
           gender: live.gender,
@@ -305,6 +309,7 @@ export const stageRecordsBatch = mutation({
 
       for (const prev of [...existingStaged, ...newlyStaged]) {
         const evalResult = evaluateClash(candidate, {
+          name: prev.parsedData.name,
           firstName: prev.parsedData.firstName,
           lastName: prev.parsedData.lastName,
           middleName: prev.parsedData.middleName,

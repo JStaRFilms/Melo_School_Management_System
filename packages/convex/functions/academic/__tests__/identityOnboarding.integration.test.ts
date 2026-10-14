@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "../../../_generated/api";
+import type { Id } from "../../../_generated/dataModel";
 import schema from "../../../schema";
 import { createCanonicalStudentEnrollmentHelper } from "../studentEnrollment";
 import { getStudentClassForSession } from "../studentClassMembership";
@@ -13,11 +14,15 @@ const authStore = vi.hoisted(() => ({
   next: 0,
   resets: 0,
   failLink: false,
+  failHash: false,
 }));
 vi.mock("../../../betterAuth", () => ({
   authComponent: { clientApi: () => ({ getAuthUser: () => null }), safeGetAuthUser: async () => null },
   createAuth: () => ({ $context: Promise.resolve({
-    password: { config: { minPasswordLength: 8, maxPasswordLength: 128 }, hash: async (value: string) => `hashed:${value}` },
+    password: { config: { minPasswordLength: 8, maxPasswordLength: 128 }, hash: async (value: string) => {
+      if (authStore.failHash) throw new Error("Mock password preparation failure");
+      return `hashed:${value}`;
+    } },
     internalAdapter: {
       findUserByEmail: async (email: string) => {
         const user = authStore.users.get(email);
@@ -58,7 +63,7 @@ const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**
 const enrollment = api.functions.academic.studentEnrollment;
 const identity = { subject: "b1-admin", tokenIdentifier: "https://auth.test|b1-admin" };
 
-beforeEach(() => { authStore.users.clear(); authStore.passwords.clear(); authStore.next = 0; authStore.resets = 0; authStore.failLink = false; vi.stubEnv("CONVEX_SITE_URL", "https://school.convex.site"); });
+beforeEach(() => { authStore.users.clear(); authStore.passwords.clear(); authStore.next = 0; authStore.resets = 0; authStore.failLink = false; authStore.failHash = false; vi.stubEnv("CONVEX_SITE_URL", "https://school.convex.site"); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 async function fixture() {
@@ -104,6 +109,34 @@ test("identity saves preserve canonical links, promotion, historical and active 
   expect(await f.t.run(ctx => ctx.db.get(seeded.promotionId))).toBeNull();
   await f.actor.mutation(enrollment.updateStudent, { studentId: f.studentId, middleName: null });
   expect((await f.actor.query(enrollment.getStudentProfile, { studentId: f.studentId })).middleName).toBeNull();
+});
+
+test("requires current explicit null-session class review and leaves inactive academic records unchanged", async () => {
+  const f = await fixture();
+  const records = await f.t.run(async ctx => {
+    await ctx.db.patch(f.ids.sessionId, { isActive: false });
+    const subjectId = await ctx.db.insert("subjects", { schoolId: f.ids.schoolId, name: "Math", code: "MTH", createdAt: 1, updatedAt: 1 });
+    const selectionId = await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId: f.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId, createdAt: 1, updatedAt: 1 });
+    const promotionId = await ctx.db.insert("studentPromotions", { schoolId: f.ids.schoolId, studentId: f.studentId, fromClassId: f.ids.classId, fromSessionId: f.ids.sessionId, toClassId: f.ids.nextClassId, toSessionId: f.ids.sessionId, subjectEnrollmentMode: "none", subjectEnrollmentCount: 0, batchKey: "inactive-review", createdAt: 2, createdBy: f.ids.adminId });
+    return { selectionId, promotionId };
+  });
+  const history = () => f.t.run(async ctx => ({ selection: await ctx.db.get(records.selectionId), promotion: await ctx.db.get(records.promotionId) }));
+  const before = await history();
+  const reviewed = { studentId: f.studentId, classId: f.ids.nextClassId, confirmClassAssignment: true, expectedClassId: f.ids.classId };
+  await expect(f.actor.mutation(enrollment.updateStudent, reviewed)).rejects.toThrow("Reload");
+  await expect(f.actor.mutation(enrollment.updateStudent, { studentId: f.studentId, classId: f.ids.nextClassId, confirmClassAssignment: true, expectedSessionId: null })).rejects.toThrow("Reload");
+  await expect(f.actor.mutation(enrollment.updateStudent, { ...reviewed, expectedSessionId: f.ids.sessionId })).rejects.toThrow("Reload");
+  await f.actor.mutation(enrollment.updateStudent, { studentId: f.studentId, firstName: "Maria", classId: f.ids.nextClassId, expectedSessionId: null });
+  expect((await f.actor.query(enrollment.getStudentProfile, { studentId: f.studentId }))).toMatchObject({ classId: f.ids.classId, activeSessionId: null, firstName: "Maria" });
+  expect(await history()).toEqual(before);
+
+  await f.t.run(ctx => ctx.db.patch(f.ids.sessionId, { isActive: true }));
+  await expect(f.actor.mutation(enrollment.updateStudent, { ...reviewed, classId: f.ids.classId, expectedClassId: f.ids.nextClassId, expectedSessionId: null })).rejects.toThrow("Reload");
+  await f.t.run(ctx => ctx.db.patch(f.ids.sessionId, { isActive: false }));
+  await f.actor.mutation(enrollment.updateStudent, { ...reviewed, expectedSessionId: null });
+  expect((await f.actor.query(enrollment.getStudentProfile, { studentId: f.studentId }))).toMatchObject({ classId: f.ids.nextClassId, activeSessionId: null });
+  await expect(f.actor.mutation(enrollment.updateStudent, { ...reviewed, classId: f.ids.classId, expectedSessionId: null })).rejects.toThrow("Reload");
+  expect(await history()).toEqual(before);
 });
 
 test("promoted-session subject clear, all and toggle preserve base class and older results and issued snapshots", async () => {
@@ -163,6 +196,19 @@ test("promoted-session subject clear, all and toggle preserve base class and old
   expect(await f.actor.query(enrollment.getStudentSubjectSelections, { studentId: f.studentId, sessionId: f.ids.sessionId })).toHaveLength(2);
   expect((await f.t.run(ctx => ctx.db.get(f.studentId)))?.classId).toBe(f.ids.classId);
   expect(await history()).toEqual(before);
+});
+
+test("no-household admission keeps a captured address visible with the default address policy", async () => {
+  const f = await fixture();
+  const studentId = await f.actor.mutation(enrollment.createStudent, {
+    firstName: "Ada", lastName: "Student", gender: "Female", admissionNumber: "ADDRESS/1",
+    classId: f.ids.classId, parentGuardian: { kind: "none" }, address: "Captured student address",
+  });
+  expect(await f.actor.query(enrollment.getStudentProfile, { studentId })).toMatchObject({
+    address: "Captured student address", storedAddress: "Captured student address",
+    addressMode: "different", addressSource: "different",
+  });
+  expect((await f.t.run(ctx => ctx.db.get(studentId)))?.familyId).toBeUndefined();
 });
 
 test("standalone, family and canonical helper creation reopen every captured field and preserve legacy photos", async () => {
@@ -280,6 +326,52 @@ test("household address inheritance, overrides, legacy text and labels stay sepa
   await expect(f.actor.mutation(enrollment.updateStudentFamilyParentContact, { familyMemberId: second.familyMemberId, isPrimaryContact: true })).rejects.toThrow("Confirm");
 });
 
+test("contact search paginates the school-wide name/email matches and retains directory exclusions", async () => {
+  const f = await fixture();
+  const ids = await f.t.run(async ctx => {
+    for (let i = 0; i < 25; i++) await ctx.db.insert("users", {
+      schoolId: f.ids.schoolId, authId: `unrelated-${i}`, name: `Unrelated Contact ${i}`,
+      email: `unrelated${i}@mail.example`, role: "parent", createdAt: 1, updatedAt: 1,
+    });
+    const matches: Id<"users">[] = [];
+    for (let i = 0; i < 5; i++) matches.push(await ctx.db.insert("users", {
+      schoolId: f.ids.schoolId, authId: `matching-${i}`, name: `Needle Contact ${i}`,
+      email: `emailneedle${i}@mail.example`, role: i === 4 ? "teacher" : "parent", createdAt: 1, updatedAt: 1,
+    }));
+    const excluded: Id<"users">[] = [];
+    for (const entry of [
+      { role: "parent", isArchived: true, schoolId: f.ids.schoolId },
+      { role: "student", isArchived: false, schoolId: f.ids.schoolId },
+      { role: "parent", isArchived: false, schoolId: f.ids.foreignSchoolId },
+    ] as const) excluded.push(await ctx.db.insert("users", {
+      ...entry, authId: `excluded-${excluded.length}`, name: "Needle Excluded",
+      email: `emailneedleexcluded${excluded.length}@mail.example`, createdAt: 1, updatedAt: 1,
+    }));
+    return { matches, excluded };
+  });
+  for (const searchField of ["name", "email"] as const) {
+    const search = searchField === "name" ? "NEED" : "EMAILNEED";
+    const searchArgs = { search, ...(searchField === "email" ? { searchField } : {}) };
+    const first = await f.actor.query(enrollment.searchParentContacts, { ...searchArgs, paginationOpts: { numItems: 2, cursor: null } });
+    expect(first.page).toHaveLength(2);
+    expect(first.isDone).toBe(false);
+    const second = await f.actor.query(enrollment.searchParentContacts, { ...searchArgs, paginationOpts: { numItems: 2, cursor: first.continueCursor } });
+    expect(second.page).toHaveLength(2);
+    expect(second.isDone).toBe(false);
+    const third = await f.actor.query(enrollment.searchParentContacts, { ...searchArgs, paginationOpts: { numItems: 2, cursor: second.continueCursor } });
+    expect(third.page).toHaveLength(1);
+    expect(third.isDone).toBe(true);
+    expect([...first.page, ...second.page, ...third.page].map(contact => contact.userId).sort()).toEqual([...ids.matches].sort());
+  }
+  const legacyEmail = await f.actor.query(enrollment.searchParentContacts, { search: "emailneedle0@mail.example", paginationOpts: { numItems: 20, cursor: null } });
+  expect(legacyEmail.page.map(contact => contact.userId)).toEqual([ids.matches[0]]);
+  const blank = await f.actor.query(enrollment.searchParentContacts, { search: "  ", searchField: "email", paginationOpts: { numItems: 50, cursor: null } });
+  expect(blank.isDone).toBe(true);
+  expect(blank.page).toHaveLength(31);
+  expect(blank.page.some(contact => ids.excluded.includes(contact.userId))).toBe(false);
+  await expect(f.t.query(enrollment.searchParentContacts, { search: "Need", paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow();
+});
+
 test("picker isolation and deletion guard archived students, retained references and foreign identities", async () => {
   const f = await fixture();
   const linked = await f.actor.mutation(enrollment.upsertStudentFamilyLink, { studentId: f.studentId, firstName: "Grace", lastName: "Okafor", email: "parent@school.edu.ng" });
@@ -369,6 +461,49 @@ test("portal success persists canonical membership, reopens truthfully, authoriz
   expect(authStore.resets).toBe(1);
   expect((await f.t.run(ctx => ctx.db.get(f.userId)))?.email).toBe(result.email);
 });
+
+for (const provisioned of [false, true]) {
+  test(`password preparation failure preserves ${provisioned ? "provisioned reset" : "unprovisioned"} state`, async () => {
+    const f = await fixture();
+    if (provisioned) await f.actor.action(enrollment.upsertPortalCredentials, {
+      userId: f.userId, temporaryPassword: "original-password", requestKey: "initial-provision",
+    });
+    const before = await f.t.run(ctx => ctx.db.get(f.userId));
+    const hashes = [...authStore.passwords.entries()];
+    const users = [...authStore.users.entries()];
+    authStore.failHash = true;
+    const args = { userId: f.userId, temporaryPassword: "correct-password", requestKey: "preparation-retry" };
+    await expect(f.actor.action(enrollment.upsertPortalCredentials, args)).rejects.toThrow("preparation failure");
+    expect(await f.t.run(ctx => ctx.db.get(f.userId))).toEqual(before);
+    expect([...authStore.passwords.entries()]).toEqual(hashes);
+    expect([...authStore.users.entries()]).toEqual(users);
+    authStore.failHash = false;
+    await f.actor.action(enrollment.upsertPortalCredentials, args);
+    expect((await f.actor.query(enrollment.getPortalAccountState, { userId: f.userId })).state).toBe("provisioned");
+  });
+  test.each([
+    ["short", "short", "at least 8"],
+    ["long", "x".repeat(129), "at most 128"],
+  ])(`invalid %s password preserves ${provisioned ? "provisioned reset" : "unprovisioned"} state and permits correction`, async (_label, password, error) => {
+    const f = await fixture();
+    if (provisioned) await f.actor.action(enrollment.upsertPortalCredentials, {
+      userId: f.userId, temporaryPassword: "original-password", requestKey: "initial-provision",
+    });
+    const before = await f.t.run(ctx => ctx.db.get(f.userId));
+    const hashes = [...authStore.passwords.entries()];
+    const users = [...authStore.users.entries()];
+    const args = { userId: f.userId, temporaryPassword: password, requestKey: "correctable-operation" };
+    await expect(f.actor.action(enrollment.upsertPortalCredentials, args)).rejects.toThrow(error);
+    expect(await f.t.run(ctx => ctx.db.get(f.userId))).toEqual(before);
+    expect((await f.actor.query(enrollment.getPortalAccountState, { userId: f.userId })).state).toBe(provisioned ? "provisioned" : "not_provisioned");
+    expect([...authStore.passwords.entries()]).toEqual(hashes);
+    expect([...authStore.users.entries()]).toEqual(users);
+    expect(authStore.resets).toBe(0);
+    await f.actor.action(enrollment.upsertPortalCredentials, { ...args, temporaryPassword: "corrected-password" });
+    expect((await f.actor.query(enrollment.getPortalAccountState, { userId: f.userId })).state).toBe("provisioned");
+    expect(authStore.resets).toBe(provisioned ? 1 : 0);
+  });
+}
 
 test("unowned global auth email fails closed; partial credential failure is reconciliation, not success", async () => {
   const f = await fixture();

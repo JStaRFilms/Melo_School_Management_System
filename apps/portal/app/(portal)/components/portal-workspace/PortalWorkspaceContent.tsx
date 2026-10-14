@@ -348,7 +348,7 @@ function DashboardView({
         <p className="mt-2 text-sm text-slate-600">{workspace.viewer.name} · {workspace.selectedStudent?.name ?? "No child selected"}</p>
         <div className="mt-3 flex flex-wrap gap-3">
           <button className="text-sm font-semibold underline" onClick={() => setCorrectionTarget(correctionTarget === "own" ? null : "own")}>Correct my details</button>
-          {workspace.selectedStudent?.enrollmentState === "active" && <button className="text-sm font-semibold underline" onClick={() => setCorrectionTarget(correctionTarget === "child" ? null : "child")}>Correct this child's profile</button>}
+          {workspace.selectedStudent?.enrollmentState === "active" && <button className="text-sm font-semibold underline" onClick={() => setCorrectionTarget(correctionTarget === "child" ? null : "child")}>Correct this child&apos;s profile</button>}
         </div>
         {correctionTarget && <ProfileCorrections key={`${workspace.viewer.userId}:${workspace.school.id}:${workspace.selectedStudentId}:${correctionTarget}`} schoolId={workspace.school.id as Id<"schools">} studentId={correctionTarget === "child" && workspace.selectedStudentId ? workspace.selectedStudentId as Id<"students"> : undefined} />}
       </section>}

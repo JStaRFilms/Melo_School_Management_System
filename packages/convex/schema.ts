@@ -1528,7 +1528,9 @@ export default defineSchema({
     .index("by_auth_token_identifier_and_archived", ["authTokenIdentifier", "isArchived"])
     .index("by_email", ["email"])
     .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
-    .index("by_person", ["personId"]),
+    .index("by_person", ["personId"])
+    .searchIndex("search_name_and_school", { searchField: "name", filterFields: ["schoolId"] })
+    .searchIndex("search_email_and_school", { searchField: "email", filterFields: ["schoolId"] }),
 
   schoolAdminEmailUpdateReservations: defineTable({
     schoolId: v.id("schools"),
@@ -1946,7 +1948,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
-    .index("by_school_active", ["schoolId", "isActive"]),
+    .index("by_school_active", ["schoolId", "isActive"])
+    .index("by_schoolId_and_startDate", ["schoolId", "startDate"]),
 
   academicTerms: defineTable({
     schoolId: v.id("schools"),

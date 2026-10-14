@@ -119,13 +119,110 @@ it("missing configuration never calls the provider or alters account evidence", 
   expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toMatchObject({ authId: "parent", lastCredentialOperation: { operationId: "ready-one" } });
 });
 
+it.each(["RESEND_API_KEY", "MELO_EMAIL_FROM"])("repeated missing %s preserves submission budget and leaves the window unopened until repair", async missing => {
+  vi.stubEnv(missing, "");
+  const f = await fixture();
+  const account = await f.t.run(ctx => ctx.db.get(f.parentId));
+  const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
+  for (let retry = 0; retry < 6; retry++) {
+    if (retry > 0) {
+      vi.advanceTimersByTime(5 * 60_000);
+      await f.staff.mutation(notices.retryAccountNotice, { outboxId: id });
+    }
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    const row = await f.row(id);
+    expect(row).toMatchObject({ state: "not_configured", attemptCount: 0, lastErrorCode: "EMAIL_NOT_CONFIGURED" });
+    expect(row?.firstAttemptAt).toBeUndefined();
+    expect(row?.providerFrom).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toEqual(account);
+  }
+  vi.advanceTimersByTime(24 * 60 * 60_000);
+  vi.stubEnv(missing, missing === "RESEND_API_KEY" ? "mock-key-never-sent" : "Melo <notices@jstarstudios.com>");
+  await f.staff.mutation(notices.retryAccountNotice, { outboxId: id });
+  const submissionAt = Date.now();
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "accepted", attemptCount: 1, firstAttemptAt: submissionAt });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toEqual(account);
+});
+
+it("configuration loss preserves a consumed uncertain attempt and its original provider window and payload", async () => {
+  const f = await fixture();
+  const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
+  vi.mocked(fetch).mockRejectedValueOnce(new Error("uncertain submission"));
+  await f.t.action(workers.processNotice, { outboxId: id });
+  const original = await f.row(id);
+  expect(original).toMatchObject({ state: "failed", attemptCount: 1, providerFrom: "Melo <notices@jstarstudios.com>" });
+  expect(original?.firstAttemptAt).toBeTypeOf("number");
+  vi.stubEnv("RESEND_API_KEY", "");
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "not_configured", attemptCount: 1, firstAttemptAt: original?.firstAttemptAt, providerFrom: original?.providerFrom });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(5 * 60_000);
+  vi.stubEnv("RESEND_API_KEY", "mock-key-never-sent");
+  vi.stubEnv("MELO_EMAIL_FROM", "Changed <other@jstarstudios.com>");
+  await f.staff.mutation(notices.retryAccountNotice, { outboxId: id });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "accepted", attemptCount: 2, firstAttemptAt: original?.firstAttemptAt, providerFrom: original?.providerFrom });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(fetch).mock.calls[1][1]).toEqual(vi.mocked(fetch).mock.calls[0][1]);
+});
+
+it("persists operator review on an expired manual retry after configuration-loss workers have drained", async () => {
+  const f = await fixture();
+  const account = await f.t.run(ctx => ctx.db.get(f.parentId));
+  const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
+  vi.mocked(fetch).mockRejectedValueOnce(new Error("uncertain submission"));
+  await f.t.action(workers.processNotice, { outboxId: id });
+  vi.stubEnv("RESEND_API_KEY", "");
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  const stopped = await f.row(id);
+  expect(stopped).toMatchObject({ state: "not_configured", attemptCount: 1 });
+  expect(stopped?.firstAttemptAt).toBeTypeOf("number");
+  vi.advanceTimersByTime(23 * 60 * 60_000);
+  const retryAt = Date.now();
+  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).resolves.toBeNull();
+  expect(await f.row(id)).toEqual({ ...stopped, state: "reconciliation_required", updatedAt: retryAt });
+  expect((await f.staff.query(notices.getAccountNoticeState, { userId: f.parentId })).notice)
+    .toMatchObject({ id, state: "reconciliation_required", attemptCount: 1 });
+  vi.stubEnv("RESEND_API_KEY", "mock-key-never-sent");
+  await f.staff.mutation(notices.retryAccountNotice, { outboxId: id });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toEqual({ ...stopped, state: "reconciliation_required", updatedAt: retryAt });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toEqual(account);
+});
+
+it("retries a repaired original guardian link and exact address without replacing the row", async () => {
+  const f = await fixture();
+  const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.studentUserId, operationId: "student-one", guardianUserId: f.parentId });
+  await f.t.run(ctx => ctx.db.patch(f.memberId, { parentUserId: f.adminId }));
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "ineligible", attemptCount: 0 });
+  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).rejects.toThrow("no longer eligible");
+  await f.t.run(async ctx => {
+    await ctx.db.patch(f.memberId, { parentUserId: f.parentId });
+    await ctx.db.patch(f.parentId, { email: "changed@example.test" });
+  });
+  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).rejects.toThrow("no longer eligible");
+  expect(fetch).not.toHaveBeenCalled();
+  await f.t.run(ctx => ctx.db.patch(f.parentId, { email: "parent@example.test" }));
+  vi.advanceTimersByTime(5 * 60_000);
+  await f.staff.mutation(notices.retryAccountNotice, { outboxId: id });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "accepted", recipientUserId: f.parentId, recipientEmail: "parent@example.test", attemptCount: 1 });
+  expect(await f.t.run(ctx => ctx.db.query("accountNoticeOutbox").collect())).toHaveLength(1);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
 it("leases fence concurrent workers and late completion, and provider retries keep the payload/key", async () => {
   const f = await fixture();
   const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
-  const claims = await Promise.all([f.t.mutation(workers.claimNotice, { outboxId: id, from: "Melo <notices@jstarstudios.com>" }), f.t.mutation(workers.claimNotice, { outboxId: id })]);
+  const claims = await Promise.all([f.t.mutation(workers.claimNotice, { outboxId: id, hasApiKey: true, from: "Melo <notices@jstarstudios.com>" }), f.t.mutation(workers.claimNotice, { outboxId: id, hasApiKey: true })]);
   expect(claims.filter(Boolean)).toHaveLength(1);
   vi.advanceTimersByTime(5 * 60_000);
-  const second = await f.t.mutation(workers.claimNotice, { outboxId: id, from: "Changed <other@jstarstudios.com>" });
+  const second = await f.t.mutation(workers.claimNotice, { outboxId: id, hasApiKey: true, from: "Changed <other@jstarstudios.com>" });
   expect(second).toMatchObject({ attemptNumber: 2, from: "Melo <notices@jstarstudios.com>" });
   await f.t.mutation(workers.finishNotice, { outboxId: id, attemptNumber: 1, providerId: "late" });
   expect(await f.row(id)).toMatchObject({ state: "sending", attemptCount: 2 });
@@ -134,18 +231,64 @@ it("leases fence concurrent workers and late completion, and provider retries ke
   expect(await f.row(id)).toMatchObject({ state: "accepted", providerId: "confirmed" });
 });
 
+it("configuration loss on a crashed lease does not reuse its number or permit late completion", async () => {
+  const f = await fixture();
+  const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
+  const first = await f.t.mutation(workers.claimNotice, { outboxId: id, hasApiKey: true, from: "Melo <notices@jstarstudios.com>" });
+  expect(first).toMatchObject({ attemptNumber: 1 });
+  const original = await f.row(id);
+  vi.stubEnv("RESEND_API_KEY", "");
+  await f.t.action(workers.processNotice, { outboxId: id });
+  expect(await f.row(id)).toMatchObject({ state: "sending", attemptCount: 1 });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "not_configured", attemptCount: 1, firstAttemptAt: original?.firstAttemptAt });
+  await f.t.mutation(workers.finishNotice, { outboxId: id, attemptNumber: 1, providerId: "late" });
+  expect(await f.row(id)).toMatchObject({ state: "not_configured", attemptCount: 1 });
+  vi.advanceTimersByTime(5 * 60_000);
+  vi.stubEnv("RESEND_API_KEY", "mock-key-never-sent");
+  await f.staff.mutation(notices.retryAccountNotice, { outboxId: id });
+  const second = await f.t.mutation(workers.claimNotice, { outboxId: id, hasApiKey: true });
+  expect(second).toMatchObject({ attemptNumber: 2, from: original?.providerFrom });
+  await f.t.mutation(workers.finishNotice, { outboxId: id, attemptNumber: 1, providerId: "late" });
+  expect(await f.row(id)).toMatchObject({ state: "sending", attemptCount: 2 });
+  await f.t.mutation(workers.finishNotice, { outboxId: id, attemptNumber: 2, providerId: "confirmed" });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "accepted", attemptCount: 2, providerId: "confirmed", firstAttemptAt: original?.firstAttemptAt });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
 it("retries provider failure with the same privacy-safe body and stops after five attempts", async () => {
   vi.mocked(fetch).mockRejectedValue(new Error("provider-secret-body"));
   const f = await fixture();
   const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
   await f.t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(await f.row(id)).toMatchObject({ state: "failed", attemptCount: 5, lastErrorCode: "EMAIL_PROVIDER_UNCONFIRMED" });
+  expect(await f.row(id)).toMatchObject({ state: "reconciliation_required", attemptCount: 5, lastErrorCode: "EMAIL_PROVIDER_UNCONFIRMED" });
+  expect((await f.staff.query(notices.getAccountNoticeState, { userId: f.parentId })).notice)
+    .toMatchObject({ state: "reconciliation_required", attemptCount: 5 });
   expect(fetch).toHaveBeenCalledTimes(5);
   const requests = vi.mocked(fetch).mock.calls.map(call => call[1]);
   expect(new Set(requests.map(request => request?.body)).size).toBe(1);
   expect(new Set(requests.map(request => JSON.stringify(request?.headers))).size).toBe(1);
   expect(JSON.stringify(await f.row(id))).not.toContain("provider-secret-body");
-  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).rejects.toThrow("operator review");
+  const exhausted = await f.row(id);
+  const account = await f.t.run(ctx => ctx.db.get(f.parentId));
+  const retryAt = Date.now();
+  await expect(f.staff.mutation(notices.retryAccountNotice, { outboxId: id })).resolves.toBeNull();
+  expect(await f.row(id)).toEqual({ ...exhausted, state: "reconciliation_required", updatedAt: retryAt });
+  expect((await f.staff.query(notices.getAccountNoticeState, { userId: f.parentId })).notice)
+    .toMatchObject({ id, state: "reconciliation_required", attemptCount: 5 });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(fetch).toHaveBeenCalledTimes(5);
+  expect(await f.t.run(ctx => ctx.db.get(f.parentId))).toEqual(account);
+});
+
+it("keeps a successful fifth submission accepted rather than requiring operator review", async () => {
+  for (let i = 0; i < 4; i++) vi.mocked(fetch).mockRejectedValueOnce(new Error("unconfirmed submission"));
+  const f = await fixture();
+  const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await f.row(id)).toMatchObject({ state: "accepted", providerId: "provider-one", attemptCount: 5 });
+  expect(fetch).toHaveBeenCalledTimes(5);
 });
 
 it("rejects foreign-school reads, enqueue and retry without exposing recipient state", async () => {
@@ -176,7 +319,7 @@ it("ends a crashed fifth lease in reconciliation rather than submitting beyond t
   const f = await fixture();
   const id = await f.staff.mutation(notices.enqueueAccountNotice, { userId: f.parentId, operationId: "ready-one" });
   await f.t.run(ctx => ctx.db.patch(id, { state: "sending", attemptCount: 5, nextAttemptAt: Date.now() }));
-  expect(await f.t.mutation(workers.claimNotice, { outboxId: id })).toBeNull();
+  expect(await f.t.mutation(workers.claimNotice, { outboxId: id, hasApiKey: true })).toBeNull();
   expect(await f.row(id)).toMatchObject({ state: "reconciliation_required", attemptCount: 5 });
   await f.t.finishAllScheduledFunctions(vi.runAllTimers);
   expect(fetch).not.toHaveBeenCalled();

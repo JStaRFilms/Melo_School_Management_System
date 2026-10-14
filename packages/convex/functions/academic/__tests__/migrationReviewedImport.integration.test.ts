@@ -382,6 +382,52 @@ async function commitAll(
 }
 
 describe("R1 reviewed import remediation", () => {
+  it.each(["live legacy", "live structured", "same batch", "previous batch"] as const)("warns for full-name-only duplicates against %s without changing name parts", async (source) => {
+    const f = await fixture();
+    const workspaceId = await createWorkspace(f);
+    const parsedData = { name: "Mary Anne De La Cruz", firstName: "", lastName: "", gender: "Female", className: "JSS 1A" };
+    let liveStudentId: Id<"students"> | undefined;
+    if (source.startsWith("live")) {
+      await f.t.run(ctx => ctx.db.patch(f.studentUserIds[0], {
+        name: parsedData.name,
+        ...(source === "live structured" ? { firstName: "Mary", middleName: "Anne", lastName: "De La Cruz" } : {}),
+      }));
+      liveStudentId = await createExistingStudent(f);
+    }
+    const row = (rowNumber: number) => ({ rowNumber, rawPayload: {}, entityType: "student" as const, parsedData });
+    if (source === "previous batch") await f.session.mutation(api.functions.academic.migrationIngest.stageRecordsBatch, {
+      schoolId: f.schoolId, workspaceId, records: [row(1)],
+    });
+    await f.session.mutation(api.functions.academic.migrationIngest.stageRecordsBatch, {
+      schoolId: f.schoolId, workspaceId, records: source === "same batch" ? [row(1), row(2)] : [row(2)],
+    });
+    const records = await f.session.query(api.functions.academic.migrationWorkspace.getWorkspaceRecords, { schoolId: f.schoolId, workspaceId, limit: 10 });
+    const duplicate = records.find(record => record.rowNumber === 2);
+    expect(duplicate).toMatchObject({ validationStatus: "warning", parsedData, validationErrors: [] });
+    if (liveStudentId) expect(duplicate?.existingStudentId).toBe(liveStudentId);
+    else expect(duplicate?.clashCandidateId).toBe(records.find(record => record.rowNumber === 1)?._id);
+  });
+
+  it("keeps full-name siblings and nameless rows out of duplicate warnings and isolates other schools/workspaces", async () => {
+    const f = await fixture();
+    const workspaceId = await createWorkspace(f);
+    const otherWorkspaceId = await createWorkspace(f, "Other workspace");
+    const common = { firstName: "", lastName: "", className: "JSS 1A", gender: "Female", guardianPhone: "08031234567" };
+    const row = (rowNumber: number, name: string) => ({ rowNumber, rawPayload: {}, entityType: "student" as const, parsedData: { ...common, name } });
+    await f.session.mutation(api.functions.academic.migrationIngest.stageRecordsBatch, { schoolId: f.schoolId, workspaceId: otherWorkspaceId, records: [row(1, "Amina Adeyemi")] });
+    await f.t.run(async ctx => {
+      const userId = await ctx.db.insert("users", { schoolId: f.otherSchoolId, authId: "foreign-duplicate", name: "Amina Adeyemi", email: "foreign@example.test", role: "student", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("students", { schoolId: f.otherSchoolId, classId: f.otherClassId, userId, admissionNumber: "FOREIGN", guardianPhone: common.guardianPhone, gender: "Female", createdAt: 1, updatedAt: 1 });
+    });
+    await f.session.mutation(api.functions.academic.migrationIngest.stageRecordsBatch, { schoolId: f.schoolId, workspaceId, records: [row(1, "Amina Adeyemi"), row(2, "Zainab Adeyemi"), row(3, "")] });
+    const records = await f.session.query(api.functions.academic.migrationWorkspace.getWorkspaceRecords, { schoolId: f.schoolId, workspaceId, limit: 10 });
+    expect(records.map(record => record.validationStatus)).toEqual(["valid", "valid", "error"]);
+    for (const record of records) {
+      expect(record.existingStudentId).toBeUndefined();
+      expect(record.clashCandidateId).toBeUndefined();
+    }
+  });
+
   it("commits middle names and legacy full names without inference or truncation", async () => {
     const f = await fixture();
     const workspaceId = await createWorkspace(f, "Name contracts");

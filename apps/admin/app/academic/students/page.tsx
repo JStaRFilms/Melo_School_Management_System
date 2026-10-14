@@ -840,7 +840,7 @@ function StudentsPageContent() {
         guardianPhone: trimmedGuardianPhone || null,
         address: trimmedAddress || null,
         parentGuardian: admissionParentGuardian(contact),
-        addressMode: "residential",
+        addressMode: contact.contactChoice === "none" ? undefined : "residential",
         emergencyContactMode: emergencyContactMode === "legacy" ? undefined : emergencyContactMode,
       };
       if (confirmDuplicateLink) {

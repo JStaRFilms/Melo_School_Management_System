@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { emptyAdmissionContact } from "../app/academic/students/components/admissionContact";
+import { emptyAdmissionContact, type AdmissionContact } from "../app/academic/students/components/admissionContact";
 import { StudentCreationForm } from "../app/academic/students/components/StudentCreationForm";
 import { StudentProfileEditor } from "../app/academic/students/components/StudentProfileEditor";
 import { DepartureGuardProvider } from "@school/shared/drafts";
@@ -49,6 +49,12 @@ vi.mock("convex/react", () => ({
     if (args && typeof args === "object" && "studentId" in args) {
       return mocks.profile;
     }
+    if (args && typeof args === "object" && "paginationOpts" in args) {
+      return { page: [], isDone: true, continueCursor: "" };
+    }
+    if (args && typeof args === "object" && "email" in args) {
+      return { matches: [] };
+    }
     return { policy: { pattern: "{SCHOOL}-{SEQ:4}" } };
   },
   useMutation: (reference: unknown) =>
@@ -65,7 +71,7 @@ afterEach(() => {
   mocks.action.mockReset();
 });
 
-it("keeps a governed creation form nonmutating until submit and permits automatic allocation without a typed number", () => {
+function mountCreation(contact: AdmissionContact = emptyAdmissionContact) {
   const onSubmit = vi.fn(async () => undefined);
   render(
     <StudentCreationForm
@@ -73,7 +79,7 @@ it("keeps a governed creation form nonmutating until submit and permits automati
       studentFirstName="Ada"
       studentMiddleName=""
       onStudentMiddleNameChange={vi.fn()}
-      contact={emptyAdmissionContact}
+      contact={contact}
       onContactChange={vi.fn()}
       emergencyContactMode="primary"
       onEmergencyContactModeChange={vi.fn()}
@@ -123,6 +129,11 @@ it("keeps a governed creation form nonmutating until submit and permits automati
     />,
   );
 
+  return onSubmit;
+}
+
+it("keeps a governed creation form nonmutating until submit and permits automatic allocation without a typed number", () => {
+  const onSubmit = mountCreation();
   expect(screen.getByText("SCH-0001")).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
   const submit = screen.getByRole("button", { name: "Admit student" });
@@ -131,6 +142,23 @@ it("keeps a governed creation form nonmutating until submit and permits automati
   if (!form) throw new Error("Expected creation form");
   fireEvent.submit(form);
   expect(onSubmit).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  ["unselected existing contact", { ...emptyAdmissionContact, contactChoice: "existing" }, false],
+  ["selected existing contact", { ...emptyAdmissionContact, contactChoice: "existing", selectedContactId: "parent" }, true],
+  ["new contact with blank email", { ...emptyAdmissionContact, contactChoice: "new", parentFirstName: "Ada", parentLastName: "Guardian", parentEmail: " " }, false],
+  ["new contact with missing different address", { ...emptyAdmissionContact, contactChoice: "new", parentFirstName: "Ada", parentLastName: "Guardian", parentEmail: "parent@example.test", parentAddressMode: "different" }, false],
+  ["complete new contact", { ...emptyAdmissionContact, contactChoice: "new", parentFirstName: "Ada", parentLastName: "Guardian", parentEmail: "parent@example.test" }, true],
+] as const)("gates admission for %s", (_description, contact, ready) => {
+  const onSubmit = mountCreation(contact);
+  const submit = screen.getByRole("button", { name: "Admit student" });
+  if (ready) expect(submit).toBeEnabled();
+  else {
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(onSubmit).not.toHaveBeenCalled();
+  }
 });
 
 it("requires profile corrections to send reason, authorization, and an explicit counter choice", async () => {
