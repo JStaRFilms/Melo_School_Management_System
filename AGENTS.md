@@ -17,3 +17,7 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 ## Browser verification
 
 For feature/UI testing, isolated QA startup, or review evidence, read [verify-melo](.agents/skills/verify-melo/SKILL.md). Verify the affected feature's acceptance criteria through real user paths and retain evidence; baseline smoke checks alone are partial coverage. Use its authority and exact-target maintenance procedure for the isolated backend.
+
+## Preview integration
+
+Before merging into `preview`, deploying its backend, or claiming a Preview feature is tested, read [the Preview testing and branch workflow](docs/testing/PreviewWorkflow.md). The synthetic QA backend and copied-data Preview have different write permissions. Keep `_w/preview-env` and its private rollback archives; an app loading there is not permission to test outbound or payment paths. A later merge to `master` needs its own reviewed scope and Production deployment approval.

@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { internalQuery } from "../../_generated/server";
+import { internalMutation, internalQuery } from "../../_generated/server";
 import { Id, type Doc } from "../../_generated/dataModel";
 import { resolveTokenFirstTrustedLegacyRow } from "../academic/identityResolver";
 
@@ -86,5 +86,41 @@ export const requirePlatformAdminInternal = internalQuery({
   }),
   handler: async (ctx) => {
     return await getAuthenticatedPlatformAdmin(ctx);
+  },
+});
+
+/** Link one reviewed bootstrap operator to this deployment's auth issuer. */
+export const reconcilePlatformAdminIdentity = internalMutation({
+  args: {
+    platformAdminId: v.id("platformAdmins"),
+    expectedAuthId: v.string(),
+    expectedEmail: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const admin = await ctx.db.get(args.platformAdminId);
+    if (
+      !admin || !admin.isActive || admin.authId !== args.expectedAuthId ||
+      admin.email.trim().toLowerCase() !== args.expectedEmail.trim().toLowerCase() ||
+      admin.authTokenIdentifier
+    ) {
+      throw new ConvexError("Platform identity requires reviewed reconciliation");
+    }
+
+    const issuer = process.env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
+    if (!issuer) throw new ConvexError("Authentication issuer is not configured");
+    const matches = await ctx.db.query("platformAdmins")
+      .withIndex("by_auth", (q) => q.eq("authId", admin.authId)).take(2);
+    if (matches.length !== 1 || matches[0]._id !== admin._id) {
+      throw new ConvexError("Platform identity is ambiguous");
+    }
+    const tokenIdentifier = `${issuer}|${admin.authId}`;
+    const linked = await ctx.db.query("platformAdmins")
+      .withIndex("by_auth_token_identifier", (q) => q.eq("authTokenIdentifier", tokenIdentifier))
+      .first();
+    if (linked) throw new ConvexError("Platform identity is already linked");
+
+    await ctx.db.patch(admin._id, { authTokenIdentifier: tokenIdentifier, updatedAt: Date.now() });
+    return null;
   },
 });
