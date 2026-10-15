@@ -26,12 +26,12 @@ it("sends the loaded revision, blocks stale overwrite, and explicitly loads reac
   expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
   fireEvent.change(screen.getByPlaceholderText("Start drafting..."), { target: { value: "# Fractions\n\n## Local edits" } });
   fireEvent.click(screen.getByText("Save Snapshot"));
-  await screen.findByText("Load latest revision");
+  await screen.findAllByRole("button", { name: "Load latest revision" });
   expect(save).toHaveBeenCalledWith(expect.objectContaining({ expectedRevisionNumber: 1 }));
-  expect(screen.getByText(/Conflict · load latest/i)).toBeInTheDocument();
+  expect(screen.getByText("Conflict detected")).toBeInTheDocument();
 
   view.rerender(<DepartureGuardProvider><LessonPlanWorkspaceScreen {...props} workspace={workspace(2, "# Fractions\n\n## Objectives\nLatest server text")} /></DepartureGuardProvider>);
-  fireEvent.click(screen.getByText("Load latest revision"));
+  fireEvent.click(screen.getAllByRole("button", { name: "Load latest revision" })[0]);
   expect(screen.getByPlaceholderText("Start drafting...")).toHaveValue("# Fractions\n\n## Objectives\nLatest server text");
   expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
 });
@@ -81,10 +81,12 @@ it("reports disconnect honestly and guards a source/context departure", async ()
   fireEvent.change(screen.getByPlaceholderText("Document Title..."), { target: { value: "Unsaved title" } });
   mocks.connection = { connected: false, authenticated: true, accountId: "teacher-one" };
   view.rerender(<DepartureGuardProvider><LessonPlanWorkspaceScreen {...props} /></DepartureGuardProvider>);
-  expect(screen.getByText(/Connection lost · not saved/i)).toBeInTheDocument();
+  expect(screen.getByText("Unsaved draft")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry save" })).toBeDisabled();
   mocks.connection = { connected: true, authenticated: false, accountId: null };
   view.rerender(<DepartureGuardProvider><LessonPlanWorkspaceScreen {...props} /></DepartureGuardProvider>);
-  expect(screen.getByText(/Sign in again · edits in this tab/i)).toBeInTheDocument();
+  expect(screen.getByText("Sign in again · Edits in memory")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry save" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Remove source Book" }));
   await screen.findByRole("dialog");
   fireEvent.click(screen.getByText("Stay here"));
