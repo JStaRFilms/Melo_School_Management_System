@@ -3,10 +3,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { api } from "@school/convex/_generated/api";
-import { CorrectionDecision, InvalidCorrectionRequestAction } from "../app/academic/students/profile-corrections/page";
+import { CorrectionDecision, InvalidCorrectionRequestAction } from "../app/academic/students/profile-corrections/CorrectionActions";
 const mocks = vi.hoisted(() => ({ decide: vi.fn() }));
-vi.mock("convex/react", () => ({ useMutation: () => mocks.decide, useQuery: () => undefined, usePaginatedQuery: () => ({ results: [], status: "Exhausted", loadMore: vi.fn() }) }));
-vi.mock("@/AuthProvider", () => ({ useAuth: () => ({}) }));
+vi.mock("convex/react", () => ({ useMutation: () => mocks.decide }));
 const schoolId = "school" as Id<"schools">;
 const requestId = "request" as Id<"profileCorrectionRequests">;
 function fixture(): FunctionReturnType<typeof api.functions.academic.profileCorrections.getAdminRequest> {
