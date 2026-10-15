@@ -81,6 +81,7 @@ it("reports disconnect honestly and guards a source/context departure", async ()
   fireEvent.change(screen.getByPlaceholderText("Document Title..."), { target: { value: "Unsaved title" } });
   mocks.connection = { connected: false, authenticated: true, accountId: "teacher-one" };
   view.rerender(<DepartureGuardProvider><LessonPlanWorkspaceScreen {...props} /></DepartureGuardProvider>);
+  expect(screen.getByText("Server reconnecting")).toBeInTheDocument();
   expect(screen.getByText("Unsaved draft")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Retry save" })).toBeDisabled();
   mocks.connection = { connected: true, authenticated: false, accountId: null };
