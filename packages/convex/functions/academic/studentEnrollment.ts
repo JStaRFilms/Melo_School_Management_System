@@ -744,9 +744,7 @@ export const listStudentEnrollmentDirectory = query({
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
     await assertAdminForSchool(ctx, userId, schoolId, role);
-    const source = args.status === "active"
-      ? ctx.db.query("students").withIndex("by_school", q => q.eq("schoolId", schoolId))
-      : ctx.db.query("students").withIndex("by_school_enrollment", q => q.eq("schoolId", schoolId).eq("enrollmentStatus", args.status));
+    const source = ctx.db.query("students").withIndex("by_school", q => q.eq("schoolId", schoolId));
     const page = await source.paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(args.paginationOpts.numItems, 100)) });
     const rows = await Promise.all(page.page.filter(student => !student.isArchived && (student.enrollmentStatus ?? "active") === args.status).map(async student => {
       const account = await ctx.db.get(student.userId);

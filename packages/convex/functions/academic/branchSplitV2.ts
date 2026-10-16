@@ -1172,6 +1172,16 @@ export const cascadeDeleteWrongBranchData = internalMutation({
     for (const student of students) {
       const studentId = student._id;
 
+      // Drain duplicated lifecycle history before removing its student and class.
+      const [enrollmentEvents, enrollmentPeriods] = await Promise.all([
+        ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q => q.eq("studentId", studentId)).take(25),
+        ctx.db.query("studentEnrollmentPeriods").withIndex("by_student", q => q.eq("studentId", studentId)).take(25),
+      ]);
+      if (enrollmentEvents.length || enrollmentPeriods.length) {
+        for (const row of [...enrollmentEvents, ...enrollmentPeriods]) await ctx.db.delete(row._id);
+        return { done: false, target, remainingClasses: classesToDelete.length };
+      }
+
       // Comments
       const comments = await ctx.db
         .query("reportCardComments")

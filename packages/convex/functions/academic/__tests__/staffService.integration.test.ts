@@ -396,6 +396,30 @@ describe("staff service registered functions", () => {
     expect(evidence?.previousPermissions?.compatibilityGrants[0].revokedAt).toBe(3);
   });
 
+  it("expired compatibility grants allow delegated replacement review while retaining audit evidence", async () => {
+    const f = await fixture();
+    const grantId = await f.t.run(async ctx => {
+      const ownerRole = await ctx.db.query("membershipRoleAssignments").withIndex("by_membership", q => q.eq("membershipId", f.ids.ownerMembershipId)).unique();
+      if (!ownerRole) throw new Error("Missing fixture owner role");
+      await ctx.db.delete(ownerRole._id);
+      for (const capability of ["staff.permissions.manage", "staff.account.suspend", "staff.onboard"]) {
+        await ctx.db.insert("membershipDirectGrants", { membershipId: f.ids.ownerMembershipId, capability, grantedAt: 3 });
+      }
+      await ctx.db.insert("delegationCeilings", { membershipId: f.ids.ownerMembershipId, allowedCapabilities: ["staff.list.view"], updatedAt: 3 });
+      return ctx.db.insert("schoolCapabilityGrants", { schoolId: f.ids.schoolId, userId: f.ids.userId, capability: "settings.manage", scope: "school", grantedByUserId: f.ids.ownerId, reason: "Expired compatibility access", isBreakGlass: false, createdAt: 1, expiresAt: 2 });
+    });
+    await f.depart();
+    const review = await f.review(1, true);
+    await f.rehire(review.eventId);
+    const evidence = await f.t.run(ctx => ctx.db.get(review.eventId));
+    expect(evidence?.previousPermissions?.compatibilityGrants).toEqual([
+      expect.objectContaining({ grantId, expiresAt: 2 }),
+    ]);
+    expect(evidence?.proposedPermissions?.effective).toEqual([]);
+    expect(await f.t.run(ctx => ctx.db.get(grantId))).toMatchObject({ expiresAt: 2 });
+    expect((await f.t.withIdentity(f.ids.identity).query(api.functions.foundation.auth.getViewerCapabilities, { schoolId: f.ids.schoolId })).capabilities).toEqual([]);
+  });
+
   it("trusted prelinked legacy staff keep the same person and membership on reviewed return", async () => {
     const f = await fixture("staff", false);
     vi.stubEnv("LEGACY_SUBJECT_TRUSTED_ISSUER", "https://auth.test");

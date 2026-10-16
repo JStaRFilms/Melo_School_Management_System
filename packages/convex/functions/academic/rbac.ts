@@ -756,9 +756,11 @@ export async function reviewStaffPermissions(
     grantId: row._id, capability: row.capability, scope: row.scope,
     programmeId: row.programmeId, intakeId: row.intakeId, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
   }));
-  if (compatibilityRows.some(row => !row.revokedAt) && !auth.owner && auth.membershipId)
+  const now = Date.now();
+  const hasActiveCompatibilityGrants = compatibilityRows.some(row => !row.revokedAt && (!row.expiresAt || row.expiresAt > now));
+  if (hasActiveCompatibilityGrants && !auth.owner && auth.membershipId)
     throw new ConvexError("Compatibility grants require proprietor review");
-  if (decision?.mode === "replace" && compatibilityRows.some(row => !row.revokedAt))
+  if (decision?.mode === "replace" && hasActiveCompatibilityGrants)
     throw new ConvexError("Replace or revoke compatibility grants through their existing authority before reviewing rehire");
   if (!membership) {
     // Preserve the existing unmigrated permission-management authority, without creating grants.

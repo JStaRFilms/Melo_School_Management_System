@@ -1696,7 +1696,6 @@ export default defineSchema({
     .index("by_family", ["familyId"])
     .index("by_school_and_class", ["schoolId", "classId"])
     .index("by_school_class_archived_enrollment", ["schoolId", "classId", "isArchived", "enrollmentStatus"])
-    .index("by_school_enrollment", ["schoolId", "enrollmentStatus"])
     .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
     .index("by_photo_storage", ["photoStorageId"])
     .index("by_school_and_user", ["schoolId", "userId"])

@@ -85,6 +85,20 @@ describe("student lifecycle and registered headcounts", () => {
     expect((await f.read()).periods).toHaveLength(3);
   });
 
+  it("finds inactive enrollment across empty bounded school pages without a new status index", async () => {
+    const f = await fixture();
+    const targetId = await f.t.run(async ctx => {
+      await ctx.db.insert("students", { schoolId: f.ids.otherSchoolId, classId: f.ids.foreignClassId, userId: f.ids.userId, admissionNumber: "FOREIGN", enrollmentStatus: "withdrawn", createdAt: 2, updatedAt: 2 });
+      return ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId, userId: f.ids.userId, admissionNumber: "INACTIVE", enrollmentStatus: "withdrawn", enrollmentRevision: 1, createdAt: 3, updatedAt: 3 });
+    });
+    const first = await f.admin.query(enrollment.listStudentEnrollmentDirectory, { status: "withdrawn", paginationOpts: { numItems: 1, cursor: null } });
+    expect(first.page).toEqual([]);
+    expect(first.isDone).toBe(false);
+    const second = await f.admin.query(enrollment.listStudentEnrollmentDirectory, { status: "withdrawn", paginationOpts: { numItems: 1, cursor: first.continueCursor } });
+    expect(second.page.map(row => row.studentId)).toEqual([targetId]);
+    expect(second.isDone).toBe(true);
+  });
+
   it("serializes competing revision-zero departures into one event and count delta", async () => {
     const f = await fixture();
     const outcomes = await Promise.allSettled([f.depart("withdraw", 0, "competing-withdraw"), f.depart("suspend", 0, "competing-suspend")]);
