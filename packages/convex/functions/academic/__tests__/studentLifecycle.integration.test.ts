@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../../_generated/api";
 import schema from "../../../schema";
+import { scoreRowBaseline } from "@school/shared/drafts/scoreRowBaseline";
 import { seedReviewedTenantOperatorWithCapabilities } from "./securityFixtures";
 
 const root = new URL("../../../", import.meta.url).pathname;
@@ -48,6 +49,18 @@ async function fixture(initialized = true) {
   });
   const placement = { confirmed: true, classId: ids.nextClassId, subjectIds: [ids.subjectId] };
   return { t, ids, admin, platformAdmin, read, depart, placement };
+}
+
+async function assessmentFixture() {
+  const f = await fixture();
+  const recordId = await f.t.run(async ctx => {
+    await ctx.db.insert("gradingBands", { schoolId: f.ids.schoolId, minScore: 0, maxScore: 100, gradeLetter: "A", remark: "Pass", isActive: true, version: 1, createdAt: 1, updatedAt: 1, updatedBy: f.ids.adminId });
+    await ctx.db.patch(f.ids.termId, { isActive: false, endDate: Date.parse("2026-09-30") });
+    return ctx.db.insert("assessmentRecords", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.termId, subjectId: f.ids.subjectId, ca1: 10, ca2: 10, ca3: 10, examRawScore: 40, examScaledScore: 40, total: 70, gradeLetter: "A", remark: "Pass", examInputModeSnapshot: "raw40", examRawMaxSnapshot: 40, status: "draft", enteredBy: f.ids.adminId, updatedBy: f.ids.adminId, createdAt: 1, updatedAt: 1 });
+  });
+  const tuple = { classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.termId, subjectId: f.ids.subjectId };
+  const scores = { studentId: f.ids.studentId, ca1: 11, ca2: 10, ca3: 10, examRawScore: 40 };
+  return { ...f, recordId, tuple, scores };
 }
 
 beforeEach(() => { vi.spyOn(Date, "now").mockReturnValue(NOW); });
@@ -244,6 +257,53 @@ describe("student lifecycle and registered headcounts", () => {
     expect(state.events.map(e => e.type)).toEqual(["graduate", "graduation_corrected", "withdraw"]);
     expect(state.events[0].graduation?.certificateNumber).toBe("CERT-PRESERVE");
     expect(state.events[1].graduation?.certificateNumber).toBe("CERT-PRESERVE");
+  });
+
+  it.each(["withdraw", "suspend"] as const)("corrects an existing completed-term assessment after %s in a still-active session", async action => {
+    const f = await assessmentFixture();
+    const upsert = api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk;
+    expect(await f.admin.mutation(upsert, { ...f.tuple, records: [f.scores] }))
+      .toEqual({ updated: 1, created: 0, errors: [] });
+    await f.depart(action);
+    const history = await f.read();
+    const baseline = scoreRowBaseline(await f.t.run(ctx => ctx.db.get(f.recordId)));
+    expect(await f.admin.mutation(upsert, { ...f.tuple, records: [{ ...f.scores, ca1: 12, expectedRow: baseline }] }))
+      .toEqual({ updated: 1, created: 0, errors: [] });
+    const corrected = await f.t.run(ctx => ctx.db.get(f.recordId));
+    expect(corrected).toMatchObject({ ca1: 12, total: 72, enteredBy: f.ids.adminId, createdAt: 1 });
+    expect(await f.read()).toEqual(history);
+    expect(await f.t.run(ctx => ctx.db.get(f.ids.sessionId))).toMatchObject({ isActive: true });
+
+    expect(await f.admin.mutation(upsert, { ...f.tuple, records: [{ ...f.scores, expectedRow: baseline }] }))
+      .toMatchObject({ updated: 0, created: 0, errors: [{ message: expect.stringContaining("changed since") }] });
+    const missingSubjectId = await f.t.run(ctx => ctx.db.insert("subjects", { schoolId: f.ids.schoolId, name: "English", code: "ENG", createdAt: 1, updatedAt: 1 }));
+    expect(await f.admin.mutation(upsert, { ...f.tuple, subjectId: missingSubjectId, records: [f.scores] }))
+      .toMatchObject({ updated: 0, created: 0, errors: [{ field: "record", message: expect.stringContaining("Inactive") }] });
+    expect(await f.admin.mutation(upsert, { ...f.tuple, classId: f.ids.nextClassId, records: [f.scores] }))
+      .toMatchObject({ updated: 0, created: 0, errors: [{ message: expect.stringContaining("selected class") }] });
+    await expect(f.admin.mutation(upsert, { ...f.tuple, classId: f.ids.foreignClassId, records: [f.scores] })).rejects.toThrow();
+    await f.t.run(ctx => ctx.db.insert("assessmentEditingPolicies", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, termId: f.ids.termId, editingWindowEnabled: false, finalizationEnabled: true, finalizeAt: NOW - 1, createdAt: 1, updatedAt: 1, updatedBy: f.ids.adminId }));
+    await expect(f.admin.mutation(upsert, { ...f.tuple, records: [f.scores] })).rejects.toThrow("Editing closed");
+    expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toEqual(corrected);
+    expect(await f.t.run(ctx => ctx.db.query("assessmentRecords").collect())).toHaveLength(1);
+  });
+
+  it.each(["active", "ongoing", "future", "ends-now", "active-past", "inactive-session-future", "wrong-session"] as const)("denies inactive-student corrections for a noncompleted or mismatched term: %s", async kind => {
+    const f = await assessmentFixture();
+    await f.depart();
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.termId, {
+        isActive: kind === "active" || kind === "active-past",
+        startDate: kind === "future" || kind === "inactive-session-future" ? NOW + 1 : Date.parse("2026-09-01"),
+        endDate: kind === "ends-now" ? NOW : kind === "active-past" || kind === "wrong-session" ? NOW - 1 : NOW + 1000,
+        sessionId: kind === "wrong-session" ? f.ids.futureSessionId : f.ids.sessionId,
+      });
+      if (kind === "inactive-session-future") await ctx.db.patch(f.ids.sessionId, { isActive: false });
+    });
+    const before = await f.t.run(ctx => ctx.db.get(f.recordId));
+    expect(await f.admin.mutation(api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] }))
+      .toMatchObject({ updated: 0, created: 0, errors: [{ field: "record" }] });
+    expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toEqual(before);
   });
 
   it("denies current scoring, attendance and narrative drafts while retaining the existing grade", async () => {

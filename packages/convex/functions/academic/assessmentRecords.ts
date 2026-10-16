@@ -457,6 +457,11 @@ export const upsertAssessmentRecordsBulk = mutation({
       message: string;
     }> = [];
 
+    // Inactive terms may be ongoing or future. Only an ended term in this
+    // session can use historical membership for an existing-row correction.
+    const isCompletedTerm = termDoc.sessionId === args.sessionId &&
+      !termDoc.isActive && termDoc.endDate < Date.now();
+
     // Process each record
     for (const record of args.records) {
       const studentDoc = await ctx.db.get(record.studentId);
@@ -468,7 +473,7 @@ export const upsertAssessmentRecordsBulk = mutation({
           classId: args.classId,
           sessionId: args.sessionId,
           termId: args.termId,
-          currentOperation: sessionDoc.isActive,
+          currentOperation: sessionDoc.isActive && !isCompletedTerm,
         }))
       ) {
         errors.push({
@@ -490,8 +495,8 @@ export const upsertAssessmentRecordsBulk = mutation({
         )
         .collect()
         .then((docs: any[]) => pickMostRecentDoc(docs));
-      if (!isCurrentEnrollment(studentDoc) && !existingRecord) {
-        errors.push({ studentId: record.studentId, field: "record", message: "Inactive students cannot receive new assessment records" });
+      if (!isCurrentEnrollment(studentDoc) && (!existingRecord || !isCompletedTerm)) {
+        errors.push({ studentId: record.studentId, field: "record", message: "Inactive students can only correct existing assessment records in completed terms" });
         continue;
       }
       if (record.expectedRow !== undefined &&
