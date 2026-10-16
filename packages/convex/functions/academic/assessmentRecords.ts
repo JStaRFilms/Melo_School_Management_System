@@ -59,6 +59,8 @@ function entrySheetRecord(record: Doc<"assessmentRecords">) {
  */
 export const getExamEntrySheet = query({
   args: {
+    // Cache invalidation only. Completion and editing authority use server time below.
+    refreshKey: v.optional(v.number()),
     schoolId: v.optional(v.id("schools")),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
@@ -275,7 +277,7 @@ export const getExamEntrySheet = query({
       const studentId = String(record.studentId);
       if (isCompletedTerm && !correctionStudentIds.has(studentId)) {
         const student = await ctx.db.get(record.studentId);
-        if (student && !isCurrentEnrollment(student) && await isStudentEnrolledInClassForSession(ctx, {
+        if (student && await isStudentEnrolledInClassForSession(ctx, {
           student, schoolId, classId: args.classId, sessionId: args.sessionId, termId: args.termId,
         })) {
           correctionStudentIds.add(studentId);

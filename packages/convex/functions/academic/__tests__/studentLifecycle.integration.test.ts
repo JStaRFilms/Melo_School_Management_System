@@ -453,6 +453,90 @@ describe("student lifecycle and registered headcounts", () => {
     expect(await f.t.run(ctx => ctx.db.query("assessmentRecords").collect())).toHaveLength(1);
   });
 
+  it.each([
+    { action: "withdraw", role: "admin" }, { action: "suspend", role: "admin" },
+    { action: "withdraw", role: "teacher" }, { action: "suspend", role: "teacher" },
+  ] as const)("corrects old class A after $action and reviewed return to B as $role", async ({ action, role }) => {
+    const f = await assessmentFixture();
+    const assessments = api.functions.academic.assessmentRecords;
+    const teacherIdentity = { subject: "return-teacher", tokenIdentifier: "test|return-teacher" };
+    const assignmentId = await f.t.run(async ctx => {
+      await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: "Second", startDate: Date.parse("2026-10-01"), endDate: Date.parse("2026-12-31"), isActive: true, createdAt: 1, updatedAt: 1 });
+      const teacherId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: teacherIdentity.subject, authTokenIdentifier: teacherIdentity.tokenIdentifier, name: "Teacher", email: "return-teacher@test.invalid", role: "teacher", createdAt: 1, updatedAt: 1 });
+      return ctx.db.insert("teacherAssignments", { schoolId: f.ids.schoolId, teacherId, classId: f.ids.classId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+    });
+    const actor = role === "admin" ? f.admin : f.t.withIdentity(teacherIdentity);
+    const initial = await actor.query(assessments.getExamEntrySheet, f.tuple);
+    await f.depart(action);
+    await f.admin.mutation(enrollment.transitionStudentEnrollment, { studentId: f.ids.studentId, action: action === "withdraw" ? "re_enrol" : "reinstate", expectedRevision: 1, operationKey: "return-for-correction", reason: "Reviewed B placement", placement: f.placement });
+    const state = await f.read();
+    expect(state.student).toMatchObject({ classId: f.ids.nextClassId, enrollmentStatus: "active", enrollmentRevision: 2 });
+    expect(state.periods).toHaveLength(2);
+    expect(state.count?.currentStudentCount).toBe(1);
+    // The writer already accepts the exact old row. Its reader must expose the same baseline.
+    expect(await actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [{ ...f.scores, ca1: 10, expectedRow: scoreRowBaseline(initial.roster[0].assessmentRecord) }] })).toEqual({ updated: 1, created: 0, errors: [] });
+    const sheet = await actor.query(assessments.getExamEntrySheet, f.tuple);
+    expect(sheet.roster).toHaveLength(1);
+    expect(sheet.roster[0].assessmentRecord).toMatchObject({ _id: f.recordId, ca1: 10 });
+    const baseline = scoreRowBaseline(sheet.roster[0].assessmentRecord);
+    expect(await actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [{ ...f.scores, expectedRow: baseline }] })).toEqual({ updated: 1, created: 0, errors: [] });
+    const reloaded = await actor.query(assessments.getExamEntrySheet, f.tuple);
+    expect(reloaded.roster[0].assessmentRecord).toMatchObject({ _id: f.recordId, ca1: 11, total: 71, enteredBy: f.ids.adminId, createdAt: 1 });
+    expect(await actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [{ ...f.scores, expectedRow: baseline }] })).toMatchObject({ updated: 0, errors: [{ message: expect.stringContaining("changed since") }] });
+    const classes = await f.admin.query(api.functions.academic.academicSetup.listClasses, {});
+    expect(classes.find(row => row._id === f.ids.classId)?.studentCount).toBe(0);
+    expect(classes.find(row => row._id === f.ids.nextClassId)?.studentCount).toBe(1);
+    expect(await f.admin.query(enrollment.listStudentsByClass, { classId: f.ids.classId })).toEqual([]);
+    expect(await f.admin.query(enrollment.listStudentsByClass, { classId: f.ids.nextClassId })).toHaveLength(1);
+    await f.t.run(ctx => ctx.db.insert("assessmentEditingPolicies", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, termId: f.ids.termId, editingWindowEnabled: false, finalizationEnabled: true, finalizeAt: NOW - 1, createdAt: 1, updatedAt: 1, updatedBy: f.ids.adminId }));
+    expect((await actor.query(assessments.getExamEntrySheet, f.tuple)).editingState.canEdit).toBe(false);
+    await expect(actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] })).rejects.toThrow("Editing closed");
+    if (role === "teacher") {
+      await f.t.run(ctx => ctx.db.delete(assignmentId));
+      await expect(actor.query(assessments.getExamEntrySheet, f.tuple)).rejects.toThrow("Not assigned");
+      await expect(actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] })).rejects.toThrow("Not assigned");
+    }
+    expect(await f.read()).toEqual(state);
+    expect(await f.t.run(ctx => ctx.db.query("assessmentRecords").collect())).toHaveLength(1);
+    await f.t.run(ctx => ctx.db.delete(f.recordId));
+    expect((await f.admin.query(assessments.getExamEntrySheet, f.tuple)).roster).toEqual([]);
+    expect(await f.read()).toEqual(state);
+  });
+
+  it.each(["admin", "teacher"] as const)("refreshes completed-term discovery using server time, not the %s client's token", async role => {
+    const f = await assessmentFixture();
+    const assessments = api.functions.academic.assessmentRecords;
+    const teacherIdentity = { subject: "clock-teacher", tokenIdentifier: "test|clock-teacher" };
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.termId, { endDate: NOW + 30_000 });
+      const teacherId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: teacherIdentity.subject, authTokenIdentifier: teacherIdentity.tokenIdentifier, name: "Teacher", email: "clock@test.invalid", role: "teacher", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("teacherAssignments", { schoolId: f.ids.schoolId, teacherId, classId: f.ids.classId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("assessmentEditingPolicies", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, termId: f.ids.termId, editingWindowEnabled: true, editingWindowStartsAt: NOW - 1, editingWindowEndsAt: NOW + 90_000, finalizationEnabled: false, createdAt: 1, updatedAt: 1, updatedBy: f.ids.adminId });
+    });
+    await f.depart();
+    const actor = role === "admin" ? f.admin : f.t.withIdentity(teacherIdentity);
+    const before = await f.read();
+    // This is server boundary proof, paired with actual client query-key/timer tests.
+    const futureClient = { ...f.tuple, refreshKey: Math.floor((NOW + 86_400_000) / 60_000) };
+    expect((await actor.query(assessments.getExamEntrySheet, futureClient)).roster).toEqual([]);
+    expect(await actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] })).toMatchObject({ updated: 0, errors: [{ field: "record" }] });
+    vi.spyOn(Date, "now").mockReturnValue(NOW + 30_000);
+    expect((await actor.query(assessments.getExamEntrySheet, futureClient)).roster).toEqual([]);
+    vi.spyOn(Date, "now").mockReturnValue(NOW + 60_000);
+    const refreshed = { ...f.tuple, refreshKey: Math.floor((NOW + 60_000) / 60_000) };
+    const sheet = await actor.query(assessments.getExamEntrySheet, refreshed);
+    expect(sheet.roster).toHaveLength(1);
+    expect(sheet.editingState.canEdit).toBe(true);
+    expect(await f.read()).toEqual(before);
+    expect(await actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [{ ...f.scores, expectedRow: scoreRowBaseline(sheet.roster[0].assessmentRecord) }] })).toEqual({ updated: 1, created: 0, errors: [] });
+    vi.spyOn(Date, "now").mockReturnValue(NOW + 120_000);
+    const locked = await actor.query(assessments.getExamEntrySheet, { ...f.tuple, refreshKey: Math.floor((NOW + 120_000) / 60_000) });
+    expect(locked.roster[0].assessmentRecord).toMatchObject({ _id: f.recordId, ca1: 11 });
+    expect(locked.editingState.canEdit).toBe(false);
+    await expect(actor.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] })).rejects.toThrow("Editing closed");
+    expect(await f.read()).toEqual(before);
+  });
+
   it.each(["active", "ongoing", "future", "ends-now", "active-past", "inactive-session-future", "wrong-session"] as const)("denies inactive-student corrections for a noncompleted or mismatched term: %s", async kind => {
     const f = await assessmentFixture();
     await f.depart();
@@ -466,7 +550,7 @@ describe("student lifecycle and registered headcounts", () => {
       if (kind === "inactive-session-future") await ctx.db.patch(f.ids.sessionId, { isActive: false });
     });
     const before = await f.t.run(ctx => ctx.db.get(f.recordId));
-    expect((await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, f.tuple)).roster).toEqual([]);
+    expect((await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, { ...f.tuple, refreshKey: Math.floor((NOW + 86_400_000) / 60_000) })).roster).toEqual([]);
     expect(await f.admin.mutation(api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] }))
       .toMatchObject({ updated: 0, created: 0, errors: [{ field: "record" }] });
     expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toEqual(before);

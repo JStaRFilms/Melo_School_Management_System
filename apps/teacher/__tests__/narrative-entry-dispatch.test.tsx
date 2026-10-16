@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import ExamEntryPage from "../app/assessments/exams/entry/page";
 
@@ -31,6 +31,46 @@ vi.mock("convex/react", () => ({
 }));
 vi.mock("../app/assessments/exams/entry/components/ExamEntryWorkspace", () => ({ ExamEntryWorkspace: ({ subjectUnavailable, isLoadingSubjects }: { subjectUnavailable?: boolean; isLoadingSubjects?: boolean }) => <div><p>Graded entry</p>{subjectUnavailable ? <p role="status">Choose an available subject</p> : isLoadingSubjects ? <p role="status">Loading available subjects</p> : null}</div> }));
 afterEach(() => { cleanup(); state.calls.length = 0; state.options = [{ id: "art", name: "Art" }]; state.gradedOptions = [{ id: "art", name: "Art" }]; state.assignedClasses = [{ _id: "class", name: "Nursery" }]; });
+
+it("refreshes the actual score-sheet query key each minute without writes and cleans up its timer", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-11T12:30:00Z"));
+  const clearInterval = vi.spyOn(window, "clearInterval");
+  state.entry = { mode: "graded", canEnterNarrative: false };
+  const view = render(<ExamEntryPage />);
+  const sheetArgs = () => state.calls.filter(call => call.name.endsWith("getExamEntrySheet")).at(-1)?.args;
+  try {
+    const initial = sheetArgs();
+    expect(initial).toEqual(expect.objectContaining({ schoolId: "school", sessionId: "session", termId: "term", classId: "class", subjectId: "art" }));
+    act(() => { vi.advanceTimersByTime(59_999); });
+    view.rerender(<ExamEntryPage />);
+    expect(sheetArgs()).toEqual(initial);
+    act(() => { vi.advanceTimersByTime(1); });
+    const refreshed = sheetArgs();
+    expect(JSON.stringify(refreshed)).not.toBe(JSON.stringify(initial));
+    expect(refreshed).toEqual(expect.objectContaining({ refreshKey: Math.floor(Date.now() / 60_000) }));
+    expect(refreshed).toEqual(expect.objectContaining({ sessionId: "session", termId: "term", classId: "class", subjectId: "art" }));
+    act(() => { vi.advanceTimersByTime(1); });
+    view.rerender(<ExamEntryPage />);
+    expect(sheetArgs()).toEqual(refreshed);
+    // Leaving graded mode stops the timer as well as skipping the query.
+    state.entry = { mode: "narrative", canEnterNarrative: false };
+    view.rerender(<ExamEntryPage />);
+    expect(sheetArgs()).toBe("skip");
+    expect(clearInterval).toHaveBeenCalledTimes(1);
+    state.entry = { mode: "graded", canEnterNarrative: false };
+    view.rerender(<ExamEntryPage />);
+    view.unmount();
+    expect(clearInterval).toHaveBeenCalledTimes(2);
+    const calls = state.calls.length;
+    act(() => { vi.advanceTimersByTime(120_000); });
+    expect(state.calls).toHaveLength(calls);
+  } finally {
+    view.unmount();
+    clearInterval.mockRestore();
+    vi.useRealTimers();
+  }
+});
 
 it("routes a graded exam officer to the existing score sheet", () => {
   state.entry = { mode: "graded", canEnterNarrative: false };

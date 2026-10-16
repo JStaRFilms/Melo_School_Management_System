@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { ExamEntryWorkspace } from "./components/ExamEntryWorkspace";
@@ -98,11 +98,18 @@ function LiveExamEntryPage({ schoolId, actorId, selection }: { schoolId: Id<"sch
       selection.subjectId &&
       isSelectedClassAssigned && isSelectedSubjectAvailable && entryMode?.mode === "graded"
   );
+  const [refreshKey, setRefreshKey] = useState(() => Math.floor(Date.now() / 60_000));
+  useEffect(() => {
+    if (!isSheetReady) return;
+    const timer = window.setInterval(() => setRefreshKey(Math.floor(Date.now() / 60_000)), 60_000);
+    return () => window.clearInterval(timer);
+  }, [isSheetReady]);
   const sheetData = useQuery(
     "functions/academic/assessmentRecords:getExamEntrySheet" as never,
     isSheetReady
       ? ({
           schoolId,
+          refreshKey,
           sessionId: selection.sessionId,
           termId: selection.termId,
           classId: selection.classId,
