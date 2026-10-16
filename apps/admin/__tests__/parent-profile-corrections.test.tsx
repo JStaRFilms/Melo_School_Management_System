@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { api } from "@school/convex/_generated/api";
-import { CorrectionDecision, InvalidCorrectionRequestAction } from "../app/academic/students/profile-corrections/page";
+import { CorrectionDecision, InvalidCorrectionRequestAction } from "../app/academic/students/profile-corrections/ProfileCorrectionRequests";
 const mocks = vi.hoisted(() => ({ decide: vi.fn() }));
 vi.mock("convex/react", () => ({ useMutation: () => mocks.decide, useQuery: () => undefined, usePaginatedQuery: () => ({ results: [], status: "Exhausted", loadMore: vi.fn() }) }));
 vi.mock("@/AuthProvider", () => ({ useAuth: () => ({}) }));
