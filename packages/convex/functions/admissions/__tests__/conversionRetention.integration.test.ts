@@ -116,6 +116,10 @@ it("converts one accepted application transactionally, reuses canonical admissio
   expect(await f.t.run((ctx) => ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", f.schoolId).eq("number", "ADM/2026/001")).unique())).not.toBeNull();
   expect(await f.t.run((ctx) => ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).collect())).toHaveLength(1);
   expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(1);
+  const convertedStudentId = converted.studentId;
+  const admissionEvents = await f.t.run(ctx => ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q => q.eq("studentId", convertedStudentId)).collect());
+  expect(admissionEvents).toHaveLength(1);
+  expect(admissionEvents[0]).toMatchObject({ type: "admitted", effectiveDay: new Date(Date.now()).toISOString().slice(0, 10) });
   expect(await f.t.run((ctx) => ctx.db.query("admissionsCommunicationOutbox").withIndex("by_conversion_and_event_key", (q) => q.eq("conversionId", converted._id).eq("eventKey", "portal_parent_linkage")).unique())).toMatchObject({ state: "sent", recipientGuardianId: f.guardianId, attemptCount: 1, sentAt: expect.any(Number) });
   expect(fetch).toHaveBeenCalledWith("https://api.resend.com/emails", expect.objectContaining({ method: "POST" }));
   await expect(f.staff.mutation(reopenDecisionRef, { schoolId: f.schoolId, applicationId: f.applicationId, reasonCode: "POST_CONVERSION_REVIEW" })).rejects.toThrow("completed conversion");

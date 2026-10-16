@@ -46,7 +46,9 @@ import {
   deriveEffectiveSubjectSelectionIds,
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
-import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { isStudentEnrolledInClassForSession, studentPeriodClasses } from "./studentClassMembership";
+import { isCurrentEnrollment } from "./studentEnrollmentCounts";
+import { assertStudentParticipating } from "./studentLifecycle";
 import { pickMostRecentDoc } from "./docSelection";
 
 const MAX_COMMENT_LENGTH = 1000;
@@ -359,6 +361,7 @@ async function getStudentsForClassReportCardBatch(
           schoolId: args.schoolId,
           classId: args.classId,
           sessionId: args.sessionId,
+          currentOperation: true,
         })
       ) {
         studentIds.add(String(student._id));
@@ -513,6 +516,8 @@ export async function buildStudentReportCard(
         schoolId: args.schoolId,
         classId: preferredClassId,
         sessionId: args.sessionId,
+        termId: args.termId,
+        currentOperation: session.isActive && term.isActive,
       })
     : false;
   const preferredClassPromotions = preferredClassId
@@ -533,8 +538,8 @@ export async function buildStudentReportCard(
   const preferredClassHasSessionEvidence = session.isActive
     ? studentIsInPreferredClass
     : Boolean(
-        preferredClassPromotion?.schoolId === args.schoolId &&
-        preferredClassPromotion.toClassId === preferredClassId
+        (preferredClassPromotion?.schoolId === args.schoolId && preferredClassPromotion.toClassId === preferredClassId) ||
+        (student.enrollmentRevision !== undefined && studentIsInPreferredClass)
       );
   const recordsForPreferredClass = preferredClassId
     ? termRecords.filter((record: any) => String(record.classId) === String(preferredClassId))
@@ -559,6 +564,11 @@ export async function buildStudentReportCard(
   const currentClassTermRecord = termRecords.find(
     (record: any) => String(record.classId) === String(student.classId)
   );
+  const periodClasses = issued ? [] : await studentPeriodClasses(ctx, { student, sessionId: args.sessionId, termId: args.termId });
+  if (!issued && !preferredClassId && termRecords.length === 0 && selectionClassIds.length === 0) {
+    if (periodClasses.length > 1 && !(session.isActive && term.isActive && isCurrentEnrollment(student))) throw new ConvexError("Enrollment history requires a reviewed class selection");
+    if (periodClasses.length === 0 && !(session.isActive && term.isActive && isCurrentEnrollment(student)) && (student.enrollmentRevision !== undefined || !isCurrentEnrollment(student))) throw new ConvexError("Student has no report-card history in this period");
+  }
   const reportCardClassId =
     issued?.classId ??
     preferredClassId ??
@@ -567,6 +577,8 @@ export async function buildStudentReportCard(
       (selectionClassIds.length === 1
         ? (selectionClassIds[0] as Id<"classes">)
         : undefined) ??
+      (session.isActive && term.isActive && isCurrentEnrollment(student) ? student.classId : undefined) ??
+      (periodClasses.length === 1 ? periodClasses[0] : undefined) ??
       student.classId);
   const records = preferredClassId ? recordsForPreferredClass : termRecords.filter(
     (record: any) => String(record.classId) === String(reportCardClassId)
@@ -1231,6 +1243,7 @@ export const saveStudentReportCardComments = mutation({
     if (!term || term.schoolId !== schoolId || term.sessionId !== args.sessionId) {
       throw new ConvexError("Term not found");
     }
+    if (session.isActive) assertStudentParticipating(student);
     if (issuedReport)
       throw new ConvexError("Certified report-card comments are immutable");
 
@@ -1426,6 +1439,8 @@ export const certifyStudentReportCard = mutation({
       args.confirmation !== student.admissionNumber
     )
       throw new ConvexError("Confirm the student's admission number");
+    const selectedSession = await ctx.db.get(args.sessionId);
+    if (selectedSession?.isActive) assertStudentParticipating(student);
     const narrativeMode = await ctx.db.query("classSessionReportModes")
       .withIndex("by_classId_and_sessionId", q =>
         q.eq("classId", args.classId).eq("sessionId", args.sessionId)).unique();

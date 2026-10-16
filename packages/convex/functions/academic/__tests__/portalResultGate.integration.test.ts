@@ -61,6 +61,47 @@ async function fixture() {
 }
 
 describe("family graded release gate", () => {
+  it("blocks a suspended pupil in new release readiness while the certified copy stays private", async () => {
+    const f = await fixture();
+    await f.certify();
+    const admin = f.t.withIdentity(adminIdentity);
+    await admin.mutation(api.functions.academic.studentEnrollment.transitionStudentEnrollment, { studentId: f.ids.studentId, action: "suspend", expectedRevision: 0, operationKey: "before-release", reason: "Temporary departure" });
+    const readiness = await admin.query(api.functions.academic.resultPublication.getClassReadiness, { classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.oldTermId });
+    expect(readiness.rows).toContainEqual(expect.objectContaining({ studentId: f.ids.studentId, status: "blocked", reasonCode: "enrollment_status" }));
+    expect((await f.workspace()).selectedReportCard).toBeNull();
+  });
+
+  it("keeps released history on suspension and reviewed return without exposing drafts or current learning", async () => {
+    const f = await fixture();
+    await f.certify();
+    await f.release();
+    const before = (await f.workspace()).selectedReportCard;
+    const evidence = await f.t.run(async ctx => ({
+      issued: await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId)).unique(),
+      record: await ctx.db.get(f.ids.recordId),
+    }));
+    const admin = f.t.withIdentity(adminIdentity);
+    await admin.mutation(api.functions.academic.studentEnrollment.transitionStudentEnrollment, {
+      studentId: f.ids.studentId, action: "suspend", expectedRevision: 0, operationKey: "portal-suspend", reason: "Temporary departure",
+    });
+    const suspended = await f.workspace();
+    expect(suspended.selectedStudent?.enrollmentState).toBe("historical");
+    expect(suspended.selectedReportCard).toEqual(before);
+    expect(suspended.history).toHaveLength(1);
+    expect(await f.parent.query(api.functions.portal.canAccessPortal, {})).toBe(true);
+    expect((await f.workspace(f.ids.recentTermId)).selectedReportCard).toBeNull();
+    await expect(f.student.query(api.functions.academic.lessonKnowledgePortal.getPortalTopicIndexData, { studentId: f.ids.studentId })).rejects.toThrow("Active enrollment");
+    await admin.mutation(api.functions.academic.studentEnrollment.transitionStudentEnrollment, {
+      studentId: f.ids.studentId, action: "reinstate", expectedRevision: 1, operationKey: "portal-return", reason: "Placement reviewed",
+      placement: { confirmed: true, classId: f.ids.nextClassId, subjectIds: [] },
+    });
+    expect((await f.workspace()).selectedReportCard).toEqual(before);
+    expect((await f.workspace(f.ids.recentTermId)).selectedReportCard).toBeNull();
+    expect(await f.t.run(async ctx => ({
+      issued: await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q => q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.oldTermId)).unique(),
+      record: await ctx.db.get(f.ids.recordId),
+    }))).toEqual(evidence);
+  });
   it("dispatches by family: a narrative period cannot borrow a frozen graded release", async () => {
     const f = await fixture();
     await f.certify();

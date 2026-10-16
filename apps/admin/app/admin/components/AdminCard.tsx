@@ -6,6 +6,7 @@ type AdminRecord = {
   name: string;
   email: string;
   isArchived: boolean;
+  employmentStatus?: "active" | "departed";
   isLeadAdmin: boolean;
   managerUserId: string | null;
   managerName: string | null;
@@ -40,14 +41,15 @@ export function AdminCard({
   onTransferLeadership: () => void;
 }) {
   const isViewerSelf = admin._id === viewerUserId;
-  const canPromote = canManagePermissions && !admin.isArchived && !isViewerSelf;
-  const canDemote = canManagePermissions && !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
+  const canPromote = canManagePermissions && admin.employmentStatus !== "departed" && !admin.isArchived && !isViewerSelf;
+  const canDemote = canManagePermissions && admin.employmentStatus !== "departed" && !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
   const canArchive = canSuspendAdmins && !admin.isArchived && !admin.isLeadAdmin && !isViewerSelf;
   const canTransfer =
     canManagePermissions &&
     viewerIsLead &&
     leadAdminId === viewerUserId &&
     !admin.isArchived &&
+    admin.employmentStatus !== "departed" &&
     !admin.isLeadAdmin &&
     admin.managerUserId === leadAdminId;
 
@@ -72,6 +74,7 @@ export function AdminCard({
                 Lead
               </span>
             )}
+            {admin.employmentStatus === "departed" && <span className="text-xs font-semibold text-slate-600">Departed</span>}
             {admin.isArchived && (
               <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-widest text-rose-700 ring-1 ring-rose-600/20">
                 Archived

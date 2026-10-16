@@ -69,13 +69,16 @@ export function ConfirmationModal({
     if (!isOpen || !mounted) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isLoading) {
+      if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        event.stopPropagation();
+        if (!isLoading) onClose();
         return;
       }
 
       if (event.key !== "Tab") return;
+      // A confirmation inside an AdminSheet owns keyboard input until it closes.
+      event.stopPropagation();
 
       const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -117,7 +120,7 @@ export function ConfirmationModal({
       case "warning":
         return "bg-amber-600 hover:bg-amber-700 text-white shadow-xs";
       default:
-        return "bg-brand-primary hover:opacity-90 text-white shadow-xs";
+        return "bg-brand-primary hover:opacity-90 text-[var(--school-primary-contrast)] shadow-xs";
     }
   };
 

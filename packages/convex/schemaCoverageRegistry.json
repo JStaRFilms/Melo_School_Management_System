@@ -1178,8 +1178,16 @@
     "ownership": "indirect",
     "reason": "Private staged content belongs to an attempt; tenant purge removes it by indexed attempt before deleting the attempt",
     "references": [
-      { "path": "aiRunLogId", "target": "aiRunLogs", "optional": true },
-      { "path": "attemptId", "target": "usageOperationAttempts", "optional": false }
+      {
+        "path": "aiRunLogId",
+        "target": "aiRunLogs",
+        "optional": true
+      },
+      {
+        "path": "attemptId",
+        "target": "usageOperationAttempts",
+        "optional": false
+      }
     ],
     "bySchool": false,
     "storage": {},
@@ -1697,6 +1705,11 @@
         "optional": true
       },
       {
+        "path": "lifecycleSuspendedByEventId",
+        "target": "staffServiceEvents",
+        "optional": true
+      },
+      {
         "path": "personId",
         "target": "persons",
         "optional": false
@@ -1709,7 +1722,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "853:da955f4d:2f8a16a7"
+    "shape": "960:2cf65478:8006a21c"
   },
   "branchSettingOverrides": {
     "ownership": "direct-indexed",
@@ -4670,9 +4683,48 @@
     "storage": {},
     "shape": "7475:4ece748d:730e91bd"
   },
+  "studentEnrollmentEvents": {
+    "ownership": "direct-indexed",
+    "reason": "Append-only lifecycle evidence is scoped to its school and by_school index; student and event links are references, while transferId may point across schools and does not confer transfer ownership.",
+    "references": [
+      { "path": "actorUserId", "target": "users", "optional": true },
+      { "path": "classId", "target": "classes", "optional": false },
+      { "path": "periodId", "target": "studentEnrollmentPeriods", "optional": true },
+      { "path": "promotionFromClassId", "target": "classes", "optional": true },
+      { "path": "promotionFromSessionId", "target": "academicSessions", "optional": true },
+      { "path": "promotionToClassId", "target": "classes", "optional": true },
+      { "path": "promotionToSessionId", "target": "academicSessions", "optional": true },
+      { "path": "schoolId", "target": "schools", "optional": false },
+      { "path": "sessionId", "target": "academicSessions", "optional": true },
+      { "path": "studentId", "target": "students", "optional": false },
+      { "path": "subjectIds[]", "target": "subjects", "optional": true },
+      { "path": "termId", "target": "academicTerms", "optional": true },
+      { "path": "transferId", "target": "studentTransfers", "optional": true }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "3312:2ee8d045:cd7bcce1"
+  },
+  "studentEnrollmentPeriods": {
+    "ownership": "direct-indexed",
+    "reason": "Enrollment-period evidence is scoped to its school and by_school index; the student and opening/closing event links are references, not independent ownership claims.",
+    "references": [
+      { "path": "classId", "target": "classes", "optional": false },
+      { "path": "closedByEventId", "target": "studentEnrollmentEvents", "optional": true },
+      { "path": "openedByEventId", "target": "studentEnrollmentEvents", "optional": true },
+      { "path": "schoolId", "target": "schools", "optional": false },
+      { "path": "sessionId", "target": "academicSessions", "optional": true },
+      { "path": "studentId", "target": "students", "optional": false },
+      { "path": "subjectIds[]", "target": "subjects", "optional": true },
+      { "path": "termId", "target": "academicTerms", "optional": true }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1296:7e3ddf5f:a748de7d"
+  },
   "studentGraduations": {
     "ownership": "direct-indexed",
-    "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
+    "reason": "School-scoped graduation evidence indexed by school; student, class, session and actor links do not confer ownership of those records.",
     "references": [
       {
         "path": "classId",
@@ -4702,7 +4754,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "688:18a04155:fc899f2d"
+    "shape": "757:a664d697:1bbb1283"
   },
   "studentInvoices": {
     "ownership": "direct-indexed",
@@ -4810,7 +4862,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1026:a2f84bc1:6d4bb311"
+    "shape": "1095:b09d3087:d0d22b3f"
   },
   "students": {
     "ownership": "direct-indexed",
@@ -4825,6 +4877,11 @@
         "path": "classId",
         "target": "classes",
         "optional": false
+      },
+      {
+        "path": "currentEnrollmentPeriodId",
+        "target": "studentEnrollmentPeriods",
+        "optional": true
       },
       {
         "path": "familyId",
@@ -4876,7 +4933,7 @@
     "storage": {
       "photoStorageId": "legacy-extractor"
     },
-    "shape": "2725:581d3d60:606057ba"
+    "shape": "3017:a112e643:c60c989d"
   },
   "studentSubjectAggregationOptOuts": {
     "ownership": "direct-indexed",
@@ -5028,7 +5085,7 @@
     ],
     "bySchool": false,
     "storage": {},
-    "shape": "3883:5e965325:3a67dc7b"
+    "shape": "4038:cc86832a:f8a0fd5a"
   },
   "subjects": {
     "ownership": "direct-indexed",
@@ -5418,6 +5475,11 @@
         "optional": true
       },
       {
+        "path": "currentServicePeriodId",
+        "target": "staffServicePeriods",
+        "optional": true
+      },
+      {
         "path": "managerUserId",
         "target": "users",
         "optional": true
@@ -5428,14 +5490,24 @@
         "optional": true
       },
       {
+        "path": "reviewedRehireEventId",
+        "target": "staffServiceEvents",
+        "optional": true
+      },
+      {
         "path": "schoolId",
         "target": "schools",
         "optional": false
+      },
+      {
+        "path": "staffArchiveAccess.membershipId",
+        "target": "branchMemberships",
+        "optional": true
       }
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1353:443fd1ca:1af48a7e"
+    "shape": "2149:eac6a61a:53cc9c8"
   },
   "classResultExclusions": {
     "ownership": "direct-indexed",
@@ -5582,5 +5654,153 @@
     "bySchool": true,
     "storage": {},
     "shape": "368:ef768ee2:adc2d95a"
+  },
+  "staffServiceEvents": {
+    "ownership": "direct-indexed",
+    "reason": "School-local staff service evidence; tenant inventory only.",
+    "references": [
+      {
+        "path": "actorUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "membershipId",
+        "target": "branchMemberships",
+        "optional": true
+      },
+      {
+        "path": "periodId",
+        "target": "staffServicePeriods",
+        "optional": true
+      },
+      {
+        "path": "permissionDecision.roleTemplateIds[]",
+        "target": "roleTemplates",
+        "optional": true
+      },
+      {
+        "path": "personId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "previousPermissions.compatibilityGrants[].grantId",
+        "target": "schoolCapabilityGrants",
+        "optional": true
+      },
+      {
+        "path": "previousPermissions.compatibilityGrants[].intakeId",
+        "target": "admissionsIntakes",
+        "optional": true
+      },
+      {
+        "path": "previousPermissions.compatibilityGrants[].programmeId",
+        "target": "admissionsProgrammes",
+        "optional": true
+      },
+      {
+        "path": "previousPermissions.roleTemplateIds[]",
+        "target": "roleTemplates",
+        "optional": true
+      },
+      {
+        "path": "proposedPermissions.compatibilityGrants[].grantId",
+        "target": "schoolCapabilityGrants",
+        "optional": true
+      },
+      {
+        "path": "proposedPermissions.compatibilityGrants[].intakeId",
+        "target": "admissionsIntakes",
+        "optional": true
+      },
+      {
+        "path": "proposedPermissions.compatibilityGrants[].programmeId",
+        "target": "admissionsProgrammes",
+        "optional": true
+      },
+      {
+        "path": "proposedPermissions.roleTemplateIds[]",
+        "target": "roleTemplates",
+        "optional": true
+      },
+      {
+        "path": "reviewedEventId",
+        "target": "staffServiceEvents",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": true
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "5557:b21d0353:5b225ecd"
+  },
+  "staffServicePeriods": {
+    "ownership": "direct-indexed",
+    "reason": "School-local staff service evidence; tenant inventory only.",
+    "references": [
+      {
+        "path": "closedByEventId",
+        "target": "staffServiceEvents",
+        "optional": true
+      },
+      {
+        "path": "membershipId",
+        "target": "branchMemberships",
+        "optional": true
+      },
+      {
+        "path": "openedByEventId",
+        "target": "staffServiceEvents",
+        "optional": true
+      },
+      {
+        "path": "personId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sessionId",
+        "target": "academicSessions",
+        "optional": true
+      },
+      {
+        "path": "termId",
+        "target": "academicTerms",
+        "optional": true
+      },
+      {
+        "path": "userId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1340:d21626a6:381dab02"
   }
 }

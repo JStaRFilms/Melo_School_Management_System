@@ -6,6 +6,7 @@ import { Crown, Loader2, UserPlus } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 import { humanNameFinalStrict, humanNameTypingStrict } from "@/human-name";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { JoiningDayField } from "@/components/lifecycle/JoiningDayField";
 
 interface AdminCreationFormProps {
   onSuccess: (message: string) => void;
@@ -18,6 +19,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
   );
 
   const [name, setName] = useState("");
+  const [joiningDay, setJoiningDay] = useState("");
   const [email, setEmail] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -40,8 +42,10 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
         email: normalizedEmail,
         temporaryPassword: password,
         origin: window.location.origin,
+        joiningDay: joiningDay || undefined,
       } as never)) as { email: string; temporaryPassword: string };
 
+      setJoiningDay("");
       setName("");
       setEmail("");
       setTemporaryPassword("");
@@ -67,6 +71,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
       </div>
 
       <form onSubmit={submitCreateAdmin} className="space-y-4">
+        <JoiningDayField value={joiningDay} onChange={setJoiningDay} disabled={isBusy} />
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400 pl-1">

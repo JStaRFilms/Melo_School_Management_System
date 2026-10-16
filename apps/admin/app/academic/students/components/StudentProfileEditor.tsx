@@ -1,12 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
 import { useDirtyForm } from "@school/shared/drafts";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { api } from "@school/convex/_generated/api";
+import type { FunctionReturnType } from "convex/server";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { StudentLifecyclePanel } from "./StudentLifecyclePanel";
 import { useAuth } from "@/AuthProvider";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import {
@@ -32,33 +35,7 @@ interface StudentProfileEditorProps {
   onTabChange?: (tab: "profile" | "family") => void;
 }
 
-type StudentProfile = {
-  _id: string;
-  userId: string;
-  email: string;
-  name: string;
-  displayName: string;
-  firstName: string | null;
-  lastName: string | null;
-  admissionNumber: string;
-  classId: string;
-  className: string;
-  houseName: string | null;
-  gender: string | null;
-  dateOfBirth: number | null;
-  guardianName: string | null;
-  guardianPhone: string | null;
-  address: string | null;
-  photoUrl: string | null;
-  photoFileName: string | null;
-  photoContentType: string | null;
-  enrollmentStatus?: string | null;
-  graduatedAt?: number | null;
-  graduatingSessionId?: string | null;
-  graduatingSessionName?: string | null;
-  graduatingClassId?: string | null;
-  graduatingClassName?: string | null;
-};
+type StudentProfile = FunctionReturnType<typeof api.functions.academic.studentEnrollment.getStudentProfile>;
 
 function toDateInput(value: number | null) {
   if (!value) return "";
@@ -87,9 +64,9 @@ export function StudentProfileEditor({
       ),
   );
   const studentProfile = useQuery(
-    "functions/academic/studentEnrollment:getStudentProfile" as never,
-    studentId ? ({ studentId } as never) : ("skip" as never),
-  ) as StudentProfile | undefined;
+    api.functions.academic.studentEnrollment.getStudentProfile,
+    studentId ? { studentId: studentId as Id<"students"> } : "skip",
+  );
   const updateStudent = useMutation(
     "functions/academic/studentEnrollment:updateStudent" as never,
   );
@@ -333,8 +310,8 @@ export function StudentProfileEditor({
           admissionNumberChanged && overrideCounterDecision === "advance"
             ? numbering?.resetPeriod ?? undefined
             : undefined,
-        classId,
-        confirmClassAssignment: confirmClassAssignment || undefined,
+        classId: studentProfile.enrollmentStatus === "active" ? classId : undefined,
+        confirmClassAssignment: studentProfile.enrollmentStatus === "active" && confirmClassAssignment ? true : undefined,
         houseName: houseName || null,
         gender: gender || null,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
@@ -418,6 +395,8 @@ export function StudentProfileEditor({
         </div>
       )}
 
+      <StudentLifecyclePanel key={studentProfile._id} profile={studentProfile} />
+
       {/* Profile / Family Tabs */}
       <div className="flex rounded-xl bg-slate-100 p-1">
         <button
@@ -500,6 +479,7 @@ export function StudentProfileEditor({
               guardianPhone={guardianPhone}
               address={address}
               classes={classes}
+              placementDisabled={studentProfile.enrollmentStatus !== "active"}
               onFirstNameChange={setFirstName}
               onLastNameChange={setLastName}
               onAdmissionNumberChange={setAdmissionNumber}
@@ -515,7 +495,7 @@ export function StudentProfileEditor({
               onAddressChange={setAddress}
             />
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            {studentProfile.enrollmentStatus === "active" && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={confirmClassAssignment}
@@ -530,7 +510,7 @@ export function StudentProfileEditor({
                   Use the selected class for the active session and replace any existing promotion assignment.
                 </span>
               </span>
-            </label>
+            </label>}
 
             {admissionNumberChanged && (
               <AdmissionNumberGovernanceFields

@@ -35,6 +35,7 @@ import {
 } from "@school/shared/product-modules";
 import { recordAuditEventHelper } from "../academic/audit";
 import { applySchoolAdminEmailUpdate } from "./schoolAdminEmailUpdate";
+import { recordStaffServiceEvent } from "../academic/staffService";
 
 const MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS = 10_000;
 
@@ -615,6 +616,9 @@ export const assignSchoolAdminInternal = internalMutation({
       adminUser,
       args.authTokenIdentifier,
     );
+    const joinedAdmin = await ctx.db.get(adminUserId);
+    if (!joinedAdmin) throw new ConvexError("School administrator joining failed");
+    await recordStaffServiceEvent(ctx, joinedAdmin, { type: "joined", reason: "Initial school admin joining" });
 
     await ctx.runMutation(
       internal.functions.academic.adminLeadershipHelpers.ensureSchoolLeadAdminInternal,

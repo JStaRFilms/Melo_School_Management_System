@@ -30,6 +30,7 @@ import {
 } from "./reportCardExtrasModel";
 import { getReadableUserName } from "./studentNameCompat";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { isCurrentEnrollment } from "./studentEnrollmentCounts";
 
 const scaleTemplateValidator = v.object({
   _id: v.id("reportCardExtraScaleTemplates"),
@@ -600,14 +601,14 @@ export const getStudentReportCardExtrasEntry = query({
       sessionId: args.sessionId,
       termId: args.termId,
       passportUrl,
-      canEdit: access.canEdit,
+      canEdit: access.canEdit && (!session.isActive || isCurrentEnrollment(student)),
       bundles: bundles.map((bundle) => ({
         ...bundle,
         sections: bundle.sections.map((section) => ({
           ...section,
           fields: section.fields.map((field) => ({
             ...field,
-            canEdit: canEditExtrasField(field.source, field.systemKey, access),
+            canEdit: (!session.isActive || isCurrentEnrollment(student)) && canEditExtrasField(field.source, field.systemKey, access),
           })),
         })),
       })),
@@ -663,6 +664,7 @@ export const saveStudentReportCardExtrasEntry = mutation({
     if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
     if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) throw new ConvexError("Class not found");
     if (!session || session.schoolId !== schoolId || session.isArchived) throw new ConvexError("Session not found");
+    if (session.isActive && !isCurrentEnrollment(student)) throw new ConvexError("Inactive students cannot receive current attendance or report extras");
     if (!term || term.schoolId !== schoolId || term.sessionId !== args.sessionId) throw new ConvexError("Term not found");
     if (!(await isStudentEnrolledInClassForSession(ctx, {
       student,

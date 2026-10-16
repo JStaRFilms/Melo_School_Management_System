@@ -1,4 +1,5 @@
 import { createRef } from "react";
+import { getFunctionName, type FunctionReference } from "convex/server";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { StudentCreationForm } from "../app/academic/students/components/StudentCreationForm";
@@ -20,6 +21,8 @@ const mocks = vi.hoisted(() => ({
     admissionNumber: "OLD/001",
     classId: "class",
     className: "Primary 1",
+    enrollmentStatus: "active",
+    enrollmentRevision: 0,
     houseName: null,
     gender: "Female",
     dateOfBirth: null,
@@ -50,8 +53,8 @@ vi.mock("convex/react", () => ({
     }
     return { policy: { pattern: "{SCHOOL}-{SEQ:4}" } };
   },
-  useMutation: (reference: unknown) =>
-    String(reference).includes("updateStudent")
+  useMutation: (reference: string | FunctionReference<"mutation">) =>
+    (typeof reference === "string" ? reference : getFunctionName(reference)).includes("updateStudent")
       ? mocks.updateStudent
       : mocks.otherMutation,
   useAction: () => mocks.action,

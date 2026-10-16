@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import { getFunctionName, type FunctionReference } from "convex/server";
 import { render, screen } from "@testing-library/react";
 import AdminManagementPage from "../app/admin/page";
 
@@ -9,8 +10,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("convex/react", () => ({
-  useQuery: (reference: string) =>
-    reference.includes("listSchoolAdmins")
+  useQuery: (reference: string | FunctionReference<"query">) =>
+    (typeof reference === "string" ? reference : getFunctionName(reference)).includes("listSchoolAdmins")
       ? { viewerUserId: "viewer", leadAdmin: null, admins: [] }
       : [],
 }));
@@ -18,12 +19,14 @@ vi.mock("@/AuthProvider", () => ({
   useAuth: () => ({
     workspaceAccess: {
       state: "ready",
+      branch: { schoolId: "school" },
       effectiveCapabilities: mocks.capabilities,
       membership: { isProprietor: mocks.isProprietor },
       compatibility: { permissionManaged: mocks.permissionManaged },
     },
   }),
 }));
+vi.mock("../app/admin/components/StaffDirectorySection", () => ({ StaffDirectorySection: () => <div>Other staff directory</div> }));
 vi.mock("../app/admin/components/AdminCreationForm", () => ({
   AdminCreationForm: () => <div>Admin creation controls</div>,
 }));

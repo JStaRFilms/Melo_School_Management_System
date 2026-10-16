@@ -149,7 +149,7 @@ async function enrollmentMetric(
     count
       ? "Current active, unique student records."
       : "No active student records meet the reviewed roster policy.",
-    "Current snapshot, not a historical period count. Excludes archived, graduated, withdrawn, transferred-out, wrong-role, wrong-school and duplicate-user rows.",
+    "Current snapshot, not a historical period count. Excludes archived, graduated, withdrawn, suspended, transferred-out, wrong-role, wrong-school and duplicate-user rows.",
     [{ label: "Excluded roster rows", value: excluded, unit: "rows" }],
   );
 }
@@ -166,7 +166,8 @@ async function staffingMetric(
     return overflowMetric("staffing", "User directory");
   const staffKeys = new Set<string>();
   for (const user of users) {
-    if (user.isArchived || (user.role !== "admin" && user.role !== "teacher"))
+    if (user.isArchived || user.employmentStatus === "departed" ||
+        (user.role !== "admin" && user.role !== "teacher" && user.role !== "staff"))
       continue;
     staffKeys.add(
       user.personId
@@ -181,9 +182,9 @@ async function staffingMetric(
     staffKeys.size ? "available" : "empty",
     staffKeys.size,
     staffKeys.size
-      ? "Current nonarchived admin and teacher accounts, deduplicated by canonical person or authentication identity."
-      : "No active admin or teacher accounts were recorded.",
-    "Current account snapshot. This is not an employment, FTE, payroll or attendance measure.",
+      ? "Current active-service admin, teacher and other staff accounts, deduplicated by canonical person or authentication identity."
+      : "No active staff accounts were recorded.",
+    "Current active-service account snapshot. This is not an FTE, payroll or attendance measure.",
   );
 }
 

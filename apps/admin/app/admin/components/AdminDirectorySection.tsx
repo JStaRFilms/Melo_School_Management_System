@@ -2,25 +2,21 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
+import { AdminSheet } from "@/components/ui/AdminSheet";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { StaffLifecyclePanel } from "./StaffLifecyclePanel";
 import { Search } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { AdminCard } from "./AdminCard";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 
-type AdminRecord = {
-  _id: string;
-  name: string;
-  email: string;
-  isArchived: boolean;
-  isLeadAdmin: boolean;
-  managerUserId: string | null;
-  managerName: string | null;
-  createdAt: number;
-};
+type AdminRecord = FunctionReturnType<typeof api.functions.academic.adminLeadership.listSchoolAdmins>["admins"][number];
 
 interface AdminDirectorySectionProps {
   admins: AdminRecord[];
+  schoolId?: Id<"schools">;
   viewerUserId: string | null;
   viewerIsLead: boolean;
   leadAdminId: string | null;
@@ -37,6 +33,7 @@ interface AdminDirectorySectionProps {
 
 export function AdminDirectorySection({
   admins,
+  schoolId,
   viewerUserId,
   viewerIsLead,
   leadAdminId,
@@ -61,20 +58,24 @@ export function AdminDirectorySection({
   );
 
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"active" | "departed" | "archived">("active");
+  const [selectedUserId, setSelectedUserId] = useState<Id<"users">>();
+  const isMobile = useIsMobile();
   const [busyAdminId, setBusyAdminId] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(search);
 
   const filteredAdmins = useMemo(() => {
     const query = deferredSearch.trim().toLowerCase();
-    if (!query) return admins;
+    const visible = admins.filter(admin => filter === "archived" ? admin.isArchived : !admin.isArchived && (admin.employmentStatus ?? "active") === filter);
+    if (!query) return visible;
 
-    return admins.filter(
+    return visible.filter(
       (admin) =>
         admin.name.toLowerCase().includes(query) ||
         admin.email.toLowerCase().includes(query) ||
         (admin.managerName ?? "").toLowerCase().includes(query)
     );
-  }, [admins, deferredSearch]);
+  }, [admins, deferredSearch, filter]);
 
   const handleAction = async (
     adminId: string,
@@ -104,7 +105,9 @@ export function AdminDirectorySection({
         </div>
 
         <div className="relative w-full sm:w-64">
+          <label className="block text-sm">Admin service filter<select className="mb-2 min-h-11 w-full rounded-lg border px-3" value={filter} onChange={e => setFilter(e.target.value === "departed" ? "departed" : e.target.value === "archived" ? "archived" : "active")}><option value="active">Active</option><option value="departed">Departed</option><option value="archived">Archived, separate restriction</option></select></label>
           <input
+            aria-label="Search admins"
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -117,6 +120,7 @@ export function AdminDirectorySection({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {filteredAdmins.map((admin) => (
+          <div key={admin._id} className="space-y-2">
           <AdminCard
             key={admin._id}
             admin={admin}
@@ -172,6 +176,8 @@ export function AdminDirectorySection({
               )
             }
           />
+          {schoolId && <button type="button" className="min-h-11 rounded-lg border px-3 text-sm" onClick={() => setSelectedUserId(admin._id)}>Service history and actions for {admin.name}</button>}
+          </div>
         ))}
 
         {filteredAdmins.length === 0 && (
@@ -190,6 +196,8 @@ export function AdminDirectorySection({
           </div>
         )}
       </div>
+      {schoolId && selectedUserId && !isMobile && <div className="space-y-3"><StaffLifecyclePanel key={selectedUserId} schoolId={schoolId} userId={selectedUserId} /><button type="button" className="min-h-11 rounded-lg border px-3 text-sm" onClick={() => setSelectedUserId(undefined)}>Close service profile</button></div>}
+      <AdminSheet isOpen={isMobile && Boolean(selectedUserId)} onClose={() => setSelectedUserId(undefined)} title="Admin service history">{schoolId && selectedUserId && <StaffLifecyclePanel key={selectedUserId} schoolId={schoolId} userId={selectedUserId} />}</AdminSheet>
     </section>
   );
 }

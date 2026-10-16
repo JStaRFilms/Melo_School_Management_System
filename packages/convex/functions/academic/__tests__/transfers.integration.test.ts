@@ -673,6 +673,18 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     );
   });
 
+  it("rejects a suspended source and blocks departure while a governed transfer is open", async () => {
+    const t = convexTest(schema, modules);
+    const h = await setupTestHarness(t);
+    const source = t.withIdentity(h.adminAIdentity);
+    const args = { sourceSchoolId: h.schoolA, destinationSchoolId: h.schoolB, studentId: h.studentId, guardianConsentRecorded: true, guardianConsentMethod: "Reviewed consent" };
+    const initiated = await source.mutation(initiateStudentTransferRef, args);
+    await expect(source.mutation(api.functions.academic.studentEnrollment.transitionStudentEnrollment, { studentId: h.studentId, action: "suspend", expectedRevision: 0, operationKey: "blocked-departure", reason: "Leave" })).rejects.toThrow("open governed transfer");
+    await source.mutation(rejectOrCancelTransferRef, { transferId: initiated.transferId, action: "cancelled", reason: "Cancelled proposal for review" });
+    await source.mutation(api.functions.academic.studentEnrollment.transitionStudentEnrollment, { studentId: h.studentId, action: "suspend", expectedRevision: 0, operationKey: "suspended-source", reason: "Leave" });
+    await expect(source.mutation(initiateStudentTransferRef, args)).rejects.toThrow("inactive");
+  });
+
   it("2. Negative: Attempting transfer between schools in different groups is strictly rejected (Cross-Group Gate)", async () => {
     const t = convexTest(schema, modules);
     const harness = await setupTestHarness(t);
@@ -1832,10 +1844,33 @@ describe("U6 Portal canonical identity continuity", () => {
         capability: "enrollment.intakes.manage",
         grantedAt: 1,
       });
+      await ctx.db.insert("schoolEnrollmentCounts", { schoolId: h.schoolA, currentStudentCount: 1, updatedAt: 1 });
+      await ctx.db.insert("schoolEnrollmentCounts", { schoolId: h.schoolB, currentStudentCount: 0, updatedAt: 1 });
       return { userId, membershipId };
     });
-    const { accepted } = await completeTransfer(t, h);
+    const { accepted, acceptanceArgs } = await completeTransfer(t, h);
     const destination = t.withIdentity(h.adminBIdentity);
+    const readCounts = () => t.run(async ctx => Promise.all([h.schoolA, h.schoolB].map(async schoolId => ({
+      count: (await ctx.db.query("schoolEnrollmentCounts").withIndex("by_school", q => q.eq("schoolId", schoolId)).unique())?.currentStudentCount,
+      snapshot: (await ctx.db.query("students").withIndex("by_school", q => q.eq("schoolId", schoolId)).collect()).filter(student => !student.isArchived && (student.enrollmentStatus ?? "active") === "active").length,
+    }))));
+    expect(await readCounts()).toEqual([{ count: 0, snapshot: 0 }, { count: 1, snapshot: 1 }]);
+    await destination.mutation(acceptDestinationTransferRef, acceptanceArgs);
+    expect(await readCounts()).toEqual([{ count: 0, snapshot: 0 }, { count: 1, snapshot: 1 }]);
+    const sourceStudentMembershipId = await t.run(async ctx => {
+      const user = await ctx.db.get(h.studentUserId);
+      if (!user?.personId) throw new Error("Missing source person");
+      const personId = user.personId;
+      const membership = await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", personId).eq("schoolId", h.schoolA)).unique();
+      if (!membership) throw new Error("Missing source membership");
+      await ctx.db.patch(membership._id, { status: "suspended" });
+      return membership._id;
+    });
+    await expect(destination.mutation(reverseCompletedTransferRef, {
+      transferId: accepted.transferId, reason: "Correcting a reviewed transfer entered against the wrong branch", confirmation: "REVERSE COMPLETED TRANSFER",
+    })).rejects.toThrow("Independent identity or branch access restriction");
+    expect(await readCounts()).toEqual([{ count: 0, snapshot: 0 }, { count: 1, snapshot: 1 }]);
+    await t.run(ctx => ctx.db.patch(sourceStudentMembershipId, { status: "active" }));
     await destination.mutation(reverseCompletedTransferRef, {
       transferId: accepted.transferId,
       reason: "Correcting a reviewed transfer entered against the wrong branch",
@@ -1851,6 +1886,17 @@ describe("U6 Portal canonical identity continuity", () => {
     expect(state.membership).toMatchObject({ status: "active", legacyUserId: existing.userId });
     expect(state.destinationStudent).toMatchObject({ isArchived: true, enrollmentStatus: "transferred_out" });
     expect(state.sourceStudent).toMatchObject({ isArchived: false, enrollmentStatus: "active" });
+    expect(await readCounts()).toEqual([{ count: 1, snapshot: 1 }, { count: 0, snapshot: 0 }]);
+    const periods = await t.run(async ctx => ({
+      source: await ctx.db.query("studentEnrollmentPeriods").withIndex("by_student", q => q.eq("studentId", h.studentId)).collect(),
+      destination: await ctx.db.query("studentEnrollmentPeriods").withIndex("by_student", q => q.eq("studentId", accepted.destinationStudentId)).collect(),
+      events: await ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q => q.eq("studentId", h.studentId)).collect(),
+    }));
+    expect(periods.source).toHaveLength(2);
+    expect(periods.source[0].closedByEventId).toBeDefined();
+    expect(periods.source[1].startDay).toBeDefined();
+    expect(periods.destination[0].closedByEventId).toBeDefined();
+    expect(periods.events.map(event => event.type)).toEqual(["transfer_out", "transfer_reversed"]);
   });
 
   it("opens the current destination with the same canonical login and keeps source history explicitly selectable", async () => {

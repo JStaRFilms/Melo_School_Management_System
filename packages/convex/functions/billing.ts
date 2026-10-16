@@ -10,6 +10,8 @@ import { recordAuditEventHelper } from "./academic/audit";
 import { snapshotInvoicePaymentInstructionsHelper } from "./academic/bankAccounts";
 import { requireCapability } from "./academic/rbac";
 import { finishFormDraft } from "./academic/drafts";
+import { assertStudentParticipating } from "./academic/studentLifecycle";
+import { isCurrentEnrollment } from "./academic/studentEnrollmentCounts";
 import {
   billingFeePlanApplicationValidator,
   billingFeePlanBillingModeValidator,
@@ -2184,6 +2186,9 @@ export const createInvoiceFromFeePlan = mutation({
     if (!student || student.schoolId !== viewer.schoolId || student.classId !== args.classId) {
       throw new ConvexError("Student not found in the selected class");
     }
+    assertStudentParticipating(student);
+    const studentAccount = await ctx.db.get(student.userId);
+    if (!studentAccount || studentAccount.schoolId !== viewer.schoolId || studentAccount.isArchived) throw new ConvexError("Student account is unavailable for new invoices");
     if (!classDoc || classDoc.schoolId !== viewer.schoolId) {
       throw new ConvexError("Class not found");
     }
@@ -2326,7 +2331,7 @@ export const applyFeePlanToClassStudents = mutation({
     );
     const activeStudents = studentsWithUsers
       .filter(({ student, user }: any) =>
-        !student.isArchived &&
+        isCurrentEnrollment(student) &&
         user !== null &&
         user.schoolId === viewer.schoolId &&
         !user.isArchived

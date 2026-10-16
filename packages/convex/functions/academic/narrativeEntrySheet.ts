@@ -4,6 +4,7 @@ import type { Id } from "../../_generated/dataModel";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import { assertTeacherAssignment } from "./teacherAccess";
 import { getReadableUserName } from "./studentNameCompat";
+import { isCurrentEnrollment } from "./studentEnrollmentCounts";
 import { deriveNarrativeSubjectSelectionIds } from "./subjectAggregationSelectionHelpers";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
 
@@ -82,11 +83,13 @@ export const getSheet = query({
     ]);
     if ([current, arrivals, departures, graduating, issuedRows].some(rows => rows.length > 200) || assignments.length > 100)
       throw new ConvexError("Roster exceeds supported size");
-    const candidateIds = [...new Set([...current.map(s => s._id), ...arrivals.map(p => p.studentId), ...departures.map(p => p.studentId), ...graduating.map(g => g.studentId)])];
+    const candidateIds = [...new Set([...current.map(s => s._id), ...arrivals.map(p => p.studentId), ...departures.map(p => p.studentId), ...graduating.map(g => g.studentId), ...issuedRows.map(row => row.studentId)])];
     if (candidateIds.length > 200) throw new ConvexError("Roster exceeds supported size");
     const students = await Promise.all(candidateIds.map(id => ctx.db.get(id)));
     const enrolled = (await Promise.all(students.map(async student => {
       if (!student || student.schoolId !== auth.schoolId || student.isArchived) return null;
+      if (issuedRows.some(row => row.schoolId === auth.schoolId && row.studentId === student._id)) return student;
+      if (!isCurrentEnrollment(student)) return null;
       // Match assertStaff: a promotion out of this class still proves membership
       // in its old session; the current class alone proves only active enrollment.
       const fromHere = departures.some(p => p.schoolId === auth.schoolId && p.studentId === student._id);

@@ -21,6 +21,7 @@ const FILTER_OPTIONS: Array<{
   { value: "all", label: "All Records" },
   { value: "admin", label: "Administrators" },
   { value: "teacher", label: "Teachers" },
+  { value: "staff", label: "Other staff" },
   { value: "student", label: "Students" },
   { value: "class", label: "Classes" },
   { value: "subject", label: "Subjects" },

@@ -1,94 +1,69 @@
-# Student Lifecycle, Enrollment History & State Machine Specification
+# Student lifecycle and enrollment history
 
-**Status:** Ready for Implementation / Backlog  
-**Module:** Student Records & Historical Timelines  
-**Surface:** Admin Student Profile, Admissions Conversion, Archive Workbench  
+Status: backend and Admin lifecycle UI implemented in the lifecycle worktree. Local registered-function and component checks pass. Independent R1 review remains pending. Browser acceptance is blocked by QA startup prerequisites; no deployment has been run.
 
-## Problem Statement
+## Goal
+Record student admission, departure and return without losing identity, academic records or bills. Show dated events and separate participation periods, and keep active rosters and Platform Super Admin school counts correct.
 
-Students frequently change status during their academic career: they enroll, transfer out to another city, take leaves of absence, return years later, or graduate. Existing simple CRUD systems overwrite the student's current status or delete them, causing permanent data loss, corrupted historical report cards, broken billing audits, and inability to certify past attendance accurately.
+## Approved behavior
+Status defaults to active on legacy rows. Supported states are active, withdrawn, suspended, graduated and transferred_out.
 
-## Solution
+- Admission opens a period for a new student.
+- Withdrawal or suspension closes the current period and removes the student from active participation.
+- Re-enrollment after withdrawal or reinstatement after suspension opens a NEW period on the same student/user identity. Both show a gap.
+- Graduation closes the period. Keep the existing explicit correction path, but reject stale or wrong-session corrections and record the correction.
+- Governed branch-transfer completion closes the source period and opens the destination period under existing canonical identity. A transferred-out source cannot use an ordinary local return to bypass transfer authority.
+- Archive and restore are separate visibility/access operations. Restoring an inactive person does not re-enroll them.
 
-An immutable, event-sourced Student Lifecycle state machine and historical timeline table. Every transition in a student's institutional journey is recorded as an append-only event, strictly governed by allowable state transitions.
+Changes take effect immediately at save. The action's date defaults automatically, and the system captures the session, term and recorded timestamp. Administrative dates may be corrected to valid past/current days, but future scheduling is out of scope. Record the actual configured context, not a guessed session or term. Return placement and subjects need confirmation.
 
----
+## Client components
+`/academic/students` defaults to the Active directory and retains the existing class/session subject matrix. The directory also offers suspended, withdrawn, graduated and transferred-out filters. It does not require class/session selection; searches cover loaded pages and Load more follows native cursors, including empty source pages.
 
-## State Transition Machine
+The selected profile has independent identity lookup and stays open after filter changes or a departure. `StudentLifecyclePanel` shows legal actions, recorded status, paginated periods/gaps and read-only history. The mobile editor uses `AdminSheet`, including profile/family controls. Inactive placement and immediate-save subject edits are disabled; contact and family edits remain available.
 
-```
-                  ┌───────────────┐
-                  │   ADMITTED    │
-                  └───────┬───────┘
-          ┌───────────────┼───────────────┬───────────────┐
-          ▼               ▼               ▼               ▼
-    ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐
-    │ WITHDRAWN │   │ SUSPENDED │   │TRANSFERRED│   │ GRADUATED │
-    └─────┬─────┘   └─────┬─────┘   └─────┬─────┘   └─────┬─────┘
-          │               │               │               │
-          ▼               ▼               ▼               ▼
-     [Re-Enroll]     [Re-instate]    [Re-Enroll]     [TERMINAL]
-          │               │               │         (Permanent)
-          └───────────────┴───────────────┘
-                          │
-                          ▼
-                  (Returns to ADMITTED)
-```
+`StudentLifecycleActionModal` defaults to server UTC today at save, shows actual configured context and permits a valid past/current date correction. Return suggests the previous class only if still available. Subjects start unselected and stay local until the operator confirms class and subject selection. No historical browsing session is submitted as current context. Missing active session blocks return. Quick admission also exposes an optional admission-day correction; blank records the server default. Corrected days are not imported history.
 
-### Transition Invariants
-1. **Admitted / Active:** Can transition to `Withdrawn`, `Suspended`, `Transferred Out`, or `Graduated`. Cannot re-transition to `Admitted`.
-2. **Suspended:** Can transition back to `Admitted / Reinstated`, or to `Withdrawn` / `Expelled`.
-3. **Withdrawn / Transferred Out:** Can only transition to `Re-enrolled` (creating a new enrollment period record while preserving past academic and fee archives).
-4. **Graduated:** Terminal state. The student is permanently sealed as an alumnus. Future courses or programs require an explicit new record.
+Graduated profiles expose only the existing guarded correction of their matching recorded graduation. Transferred-out profiles link to the governed transfer workbench. An authorized open transfer blocks local lifecycle actions. Archive Audit shows enrollment status separately, read-only history and a Restore confirmation that does not imply re-enrollment.
 
----
+Archive Audit explains that Restore is not Re-enroll. Existing report-card/history entry points remain usable for inactive people. Student/family Portal keeps already released reports and existing bills, but inactive students cannot participate in current learning or assessment entry.
 
-## Implementation Decisions
+## Server components
+`academic/studentEnrollment.ts` exposes `transitionStudentEnrollment`, `listStudentEnrollmentDirectory`, `getStudentEnrollmentReturnContext`, `getStudentEnrollmentHistory` and `getStudentEnrollmentPeriods`. `studentLifecycle.ts` commits the state, event, period and initialized count delta together. Histories and directories use indexed pagination capped at 100 source rows per request. Active directory pages include legacy absent statuses and can contain fewer visible rows, so clients must follow the cursor until `isDone`.
 
-### 1. Convex Schema
-```typescript
-// packages/convex/schema.ts
-studentEnrollmentEvents: defineTable({
-  schoolId: v.id("schools"),
-  studentId: v.id("students"),
-  academicSessionId: v.id("academicSessions"),
-  classId: v.id("classes"),
-  eventType: v.union(
-    v.literal("admitted"),
-    v.literal("promoted"),
-    v.literal("withdrawn"),
-    v.literal("suspended"),
-    v.literal("transferred_out"),
-    v.literal("re_enrolled"),
-    v.literal("graduated")
-  ),
-  effectiveDate: v.string(), // ISO string YYYY-MM-DD
-  reason: v.optional(v.string()),
-  notes: v.optional(v.string()),
-  supportingDocumentStorageId: v.optional(v.id("_storage")),
-  actorUserId: v.id("users"),
-  createdAt: v.number(),
-})
-  .index("by_student", ["studentId", "createdAt"])
-  .index("by_school_and_type", ["schoolId", "eventType"]);
-```
+Admission and accepted-application conversion record a real admission day. Reviewed imports record an unknown historical start rather than inventing an admission date. Graduation and its existing explicit correction, staged promotion/cancellation, reviewed class assignment, archive/restore and governed transfer completion/reversal append evidence. Graduation facts and promotion endpoints survive deletion or changes to their mutable projections.
 
-### 2. UI Experience
-* **Student Profile Timeline Widget:** A vertical chronological visual timeline on the student profile displaying each event milestone, class level at that time, and reason for withdrawal or transfer.
-* **1-Click Actions:** Context-sensitive action buttons in the Admin Student Workbench:
-  - For Active students: `Withdraw Student`, `Transfer Out`, `Suspend`, `Graduate`.
-  - For Withdrawn/Transferred students: `Re-Enroll Student` (opens class placement modal).
-* **Official Attestation & Transcript Generation:** Automated generation of certified attendance letters (*"This certifies that [Student Name] was enrolled at our institution from [Admission Date] until [Withdrawal Date]..."*).
+Profile edits patch only editable fields. They retain canonical person/auth identity, source application, photo provenance, lifecycle pointers and other protected metadata. Admission-number corrections do not change credential identity or login email. Inactive students cannot change class, select subjects, stage promotions, enter current assessments/attendance/narrative drafts or receive new routine fee invoices. Existing historical score corrections remain subject to the existing period/editing policies. Class headcounts and active rosters exclude inactive states.
 
----
+Authorize from authenticated school membership and existing enrollment capabilities, not actor IDs supplied by clients. Require same-school class/session/entity references, legal state, revision, nonempty bounded departure/return reason, valid chronology and an operation key. Departure accepts active students, with withdrawal also permitted after suspension. Return requires confirmed class/subject placement and an available active session. The configured term is optional and never fabricated. Automatic action/admission days use the server's UTC calendar day; recorded timestamps are milliseconds since epoch.
 
-## Testing Decisions
+Identical authorized replay returns the original event result without writes, even after a later return. Clients should refresh the projection instead of treating a replay's old status/revision as current. Conflicting payloads and stale new requests reject. Open governed transfers block local departure/return and graduation; terminal transferred-out records cannot use local return. Transfer reversal checks the recorded enrollment revisions and refuses independent identity/membership restrictions.
 
-* **State Machine Invariant Enforcement:** Backend mutations must reject invalid transitions (e.g. attempting to re-enroll a student who is already active, or attempting to withdraw a student who graduated).
-* **Historical Report Card Preservation:** Verify that changing a student's lifecycle status does not break past term report cards or billing records.
+## Data flow
+1. Admin selects the person and a legal action, reviews automatically recorded context and confirms date/reason/placement where applicable.
+2. The mutation authorizes the tenant, checks replay and expected revision/state, validates date/context and transfer conflicts.
+3. It appends an immutable event, opens/closes a separate period, patches current state and adjusts any initialized school count in one transaction.
+4. Queries refresh active/inactive directories, timelines and the Platform school list. Historical academic and financial data is not deleted or reissued.
 
----
+## Database changes
+Add suspended to the student status validator. Add bounded pointers/revision fields on the student projection and separate studentEnrollmentEvents and studentEnrollmentPeriods tables. Events record school/student, before/after state, type, effective day, timestamp, reason, actor, operation key/fingerprint and available class/session/term context. Graduation facts and promotion endpoint IDs are retained in evidence. Include admission, withdrawal, suspension, return, graduation/correction, promotion and transfer evidence where those operations occur.
 
-## Out of Scope
+Periods record school/student, opening/closing evidence, known effective bounds and entry context. `endDay` is the first inactive day. Both suspension and withdrawal close the period, and each return opens a different period. Archive/restore do not create, close or reopen periods and do not move the latest participation-effective day. Legacy starts remain unknown with explicit provenance. No unbounded event arrays on student rows. Index tenant/entity chronology and operation keys. Update schema/tenant maintenance table inventories without running maintenance.
 
-* Automated inter-university credit transfer articulation systems (K-12 focus).
+## Active-school counts
+Reuse studentEnrollmentCounts.isCurrentEnrollment and the existing schoolEnrollmentCounts materialized value. Active means nonarchived and active or a legacy absent status. Withdrawn, suspended, graduated and transferred-out pupils do not count. Admission/return and departure must apply eligibility deltas transactionally, with replay zero. Archive/restore count only active people. Transfers update both schools atomically. Uninitialized counts stay null until authorized calculation; do not publish partial counts.
+
+Platform returns aggregate headcounts only, never student identities. Historical archive totals and commercial invoice snapshots are not interchangeable with active headcounts.
+
+## History preservation
+Keep original grades, issued graded/narrative reports, attendance, family links, admission-number history, payments and invoices. Use real historical evidence/period context rather than today's class when viewing a previous session. Do not broaden draft/unreleased Portal visibility. Ordinary departure does not archive student or parent identities.
+
+## Verification
+B1 registered-function coverage includes legal/invalid states, competing revisions, same-key replay, changed payload, old-operation retry after return, chronology, multiple gaps, tenant/capability denial, current-operation rejection and retained history. Extend registered-mutation Platform count tests across lifecycle/archive/transfer changes and preserve zero/null UI distinction. Include class counts, graduation correction and protected profile metadata.
+
+B3 component tests cover inactive discovery with no setup context, retained selection, mobile profile actions, legal/terminal states, default/corrected dates, local return placement, both gaps and unknown starts, cancel/busy/error/stale/unchanged retry, and recorded-context report links. A nested confirmation owns Escape/Tab while open, so a mobile profile sheet cannot close during its commit. Platform consumer tests retain aggregate zero/null behavior in desktop and mobile rendering.
+
+The small reviewed module `scripts/qa/lifecycle-acceptance.mjs` declares synthetic writes to explicitly tagged targets only. It has not been executed. Browser criteria, including released report/bill access and another active child, remain BLOCKED. The existing private profile can be referenced, but QA doctor stops at Windows `pnpm` executable resolution before backend/cohort/origin inspection. Platform needs its own attested origin/account. See the B3 result and verify-melo lifecycle recipe for exact checks and prerequisites.
+
+## Not included
+Payroll, transcripts, external-school transfer automation, scheduled lifecycle transitions, retrospective count replay and invented legacy history.

@@ -1,8 +1,9 @@
 import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
-import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { action, internalMutation, internalQuery, mutation, query, type ActionCtx, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
+import { assertStaffActive, recordStaffServiceEvent, effectiveStaffDay } from "./staffService";
 import { ConvexError } from "convex/values";
 import { createAuth } from "../../betterAuth";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./auth";
 import { getContextCapabilities } from "./rbac";
 import { getActiveSession } from "./sessionScope";
+import { isCurrentEnrollment } from "./studentEnrollmentCounts";
 import {
   formatClassDisplayName,
   normalizeClassGradeName,
@@ -31,6 +33,11 @@ import { finishFormDraft, recordFormDraftProvisionedAuth, releaseFormDraftReserv
 import { resolveDomainSetting } from "./groupSettings";
 import { assertSessionScoringAvailable } from "./sessionScoring";
 import { assertBranchDoc } from "../foundation/tenantScope";
+
+export {
+  transitionStaffService, previewStaffRehirePermissions, confirmStaffRehireReview,
+  listStaffServiceDirectory, getStaffServiceProfile, getStaffServiceHistory, getStaffServicePeriods, setStaffAccountArchive,
+} from "./staffService";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -91,11 +98,8 @@ async function findTeacherByEmailRecords(
   const normalizedEmail = normalizeTeacherEmail(email);
   return await ctx.db
     .query("users")
-    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-    .filter((q) =>
-      q.and(q.eq(q.field("role"), "teacher"), q.eq(q.field("email"), normalizedEmail))
-    )
-    .collect();
+    .withIndex("by_school_and_email", (q) => q.eq("schoolId", schoolId).eq("email", normalizedEmail))
+    .take(2);
 }
 
 function normalizeClassLevel(level: string) {
@@ -156,8 +160,9 @@ function isEligibleFormTeacher(user: {
   role: string;
   isArchived?: boolean;
   isSchoolAdmin?: boolean;
+  employmentStatus?: "active" | "departed";
 } | null, schoolId: Id<"schools">) {
-  if (!user || user.schoolId !== schoolId || user.isArchived) {
+  if (!user || user.schoolId !== schoolId || user.isArchived || user.employmentStatus === "departed") {
     return false;
   }
 
@@ -170,6 +175,9 @@ export const createTeacherRecordInternal = internalMutation({
     name: v.string(),
     email: v.string(),
     authId: v.string(),
+    role: v.optional(v.union(v.literal("teacher"), v.literal("staff"))),
+    joiningDay: v.optional(v.string()),
+    createdBy: v.optional(v.id("users")),
     draftId: v.optional(v.id("formDrafts")),
     expectedDraftRevision: v.optional(v.number()),
   },
@@ -241,7 +249,7 @@ export const createTeacherRecordInternal = internalMutation({
       ...(teacherName.firstName ? { firstName: teacherName.firstName } : {}),
       ...(teacherName.lastName ? { lastName: teacherName.lastName } : {}),
       email: normalizedEmail,
-      role: "teacher",
+      role: args.role ?? "teacher",
       createdAt: now,
       updatedAt: now,
     });
@@ -249,7 +257,7 @@ export const createTeacherRecordInternal = internalMutation({
       personId,
       schoolId: args.schoolId,
       status: "active",
-      displayTitle: "Teacher",
+      displayTitle: args.role === "staff" ? "Staff" : "Teacher",
       isDefaultBranch: true,
       legacyUserId: teacherId,
       joinedAt: now,
@@ -266,6 +274,9 @@ export const createTeacherRecordInternal = internalMutation({
       }, "committed");
     }
 
+    const joinedUser = await ctx.db.get(teacherId);
+    if (!joinedUser) throw new ConvexError("Staff record not found after joining");
+    await recordStaffServiceEvent(ctx, joinedUser, { type: "joined", reason: "New staff joining", effectiveDay: args.joiningDay, actorUserId: args.createdBy });
     return teacherId;
   },
 });
@@ -333,30 +344,20 @@ export const releaseTeacherProvisioningInternal = internalMutation({
   }),
 });
 
-export const createTeacher = action({
-  args: {
+const staffProvisioningArgs = v.object({
     name: v.string(),
     email: v.string(),
     temporaryPassword: v.string(),
     origin: v.string(),
     draftId: v.optional(v.id("formDrafts")),
     expectedDraftRevision: v.optional(v.number()),
-  },
-  returns: v.object({
-    teacherId: v.id("users"),
-    email: v.string(),
-    temporaryPassword: v.string(),
-  }),
-  handler: async (
-    ctx,
-    args
-  ): Promise<{
-      teacherId: Id<"users">;
-      email: string;
-      temporaryPassword: string;
-  }> => {
+    joiningDay: v.optional(v.string()),
+});
+async function provisionStaffAccount(
+  ctx: ActionCtx, args: Infer<typeof staffProvisioningArgs>, staffRole: "teacher" | "staff",
+): Promise<{ teacherId: Id<"users">; email: string; temporaryPassword: string }> {
     if (args.draftId === undefined || args.expectedDraftRevision === undefined) {
-      throw new ConvexError("Teacher provisioning requires an active staff-onboarding draft");
+      throw new ConvexError("Staff provisioning requires an active staff-onboarding draft");
     }
     const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "staff.onboard" });
     if (!viewer) {
@@ -366,6 +367,7 @@ export const createTeacher = action({
       throw new ConvexError("Admin access required");
     }
 
+    effectiveStaffDay(args.joiningDay);
     const schoolId = viewer.schoolId;
     const reservation = await ctx.runMutation(
       internal.functions.academic.academicSetup.reserveTeacherProvisioningInternal,
@@ -397,7 +399,7 @@ export const createTeacher = action({
           email: normalizedEmail,
           emailVerified: false,
         });
-        if (!created?.id) throw new ConvexError("Failed to provision teacher account");
+        if (!created?.id) throw new ConvexError("Failed to provision staff account");
         authId = created.id;
         createdThisRun = true;
         if (args.draftId !== undefined && args.expectedDraftRevision !== undefined) {
@@ -422,6 +424,9 @@ export const createTeacher = action({
           name: normalizeHumanName(args.name),
           email: normalizedEmail,
           authId,
+          role: staffRole,
+          joiningDay: args.joiningDay,
+          createdBy: viewer.appUserId,
           draftId: args.draftId,
           expectedDraftRevision: args.expectedDraftRevision,
         },
@@ -442,12 +447,24 @@ export const createTeacher = action({
         ).catch(() => undefined);
       }
       if (!cleanupVerified)
-        throw new ConvexError("Teacher provisioning needs operator reconciliation; the authentication rollback could not be verified");
+        throw new ConvexError("Staff provisioning needs operator reconciliation; the authentication rollback could not be verified");
       if (error instanceof ConvexError) throw error;
       throw new ConvexError(reservation.provisionedAuthId
-        ? "Teacher provisioning can be retried safely with the same draft"
-        : "Failed to provision teacher account; no authentication account was retained");
+        ? "Staff provisioning can be retried safely with the same draft"
+        : "Failed to provision staff account; no authentication account was retained");
     }
+}
+export const createTeacher = action({
+  args: staffProvisioningArgs.fields,
+  returns: v.object({ teacherId: v.id("users"), email: v.string(), temporaryPassword: v.string() }),
+  handler: (ctx, args) => provisionStaffAccount(ctx, args, "teacher"),
+});
+export const createStaff = action({
+  args: staffProvisioningArgs.fields,
+  returns: v.object({ userId: v.id("users"), email: v.string(), temporaryPassword: v.string() }),
+  handler: async (ctx, args) => {
+    const result = await provisionStaffAccount(ctx, args, "staff");
+    return { userId: result.teacherId, email: result.email, temporaryPassword: result.temporaryPassword };
   },
 });
 
@@ -472,7 +489,8 @@ export const listTeachers = query({
       .filter((q) =>
         q.and(
           q.eq(q.field("role"), "teacher"),
-          q.neq(q.field("isArchived"), true)
+          q.neq(q.field("isArchived"), true),
+          q.neq(q.field("employmentStatus"), "departed")
         )
       )
       .collect();
@@ -535,6 +553,7 @@ export const getTeacherRecordInternal = internalQuery({
       throw new ConvexError("Teacher not found");
     }
 
+    assertStaffActive(teacher);
     return {
       _id: teacher._id,
       authId: teacher.authId,
@@ -554,6 +573,8 @@ export const findTeacherByEmailInternal = internalQuery({
       _id: v.id("users"),
       email: v.string(),
       isArchived: v.boolean(),
+      role: v.string(),
+      employmentStatus: v.union(v.literal("active"), v.literal("departed")),
     }),
     v.null()
   ),
@@ -576,6 +597,8 @@ export const findTeacherByEmailInternal = internalQuery({
       _id: teacher._id,
       email: teacher.email,
       isArchived: teacher.isArchived === true,
+      role: teacher.role,
+      employmentStatus: teacher.employmentStatus ?? "active",
     };
   },
 });
@@ -768,10 +791,12 @@ export const archiveTeacher = mutation({
       archivedBy: userId,
       updatedAt,
     });
-    if (canonical) {
+    await recordStaffServiceEvent(ctx, teacher, { type: "archive", reason: "Account archived", actorUserId: userId });
+    if (canonical && teacher.employmentStatus !== "departed" && canonical.membership.status === "active") {
+      const membershipRevision = Math.max(updatedAt, canonical.membership.updatedAt + 1);
       await ctx.db.patch(canonical.membership._id, {
         status: "archived",
-        updatedAt,
+        updatedAt: membershipRevision,
       });
       const otherActiveMembership = await ctx.db
         .query("branchMemberships")
@@ -779,12 +804,14 @@ export const archiveTeacher = mutation({
           q.eq("personId", canonical.person._id).eq("status", "active"),
         )
         .first();
-      if (!otherActiveMembership) {
-        await ctx.db.patch(canonical.person._id, {
-          status: "archived",
-          updatedAt,
-        });
+      const personRevision = !otherActiveMembership && canonical.person.status === "active"
+        ? Math.max(updatedAt, canonical.person.updatedAt + 1) : undefined;
+      if (personRevision !== undefined) {
+        await ctx.db.patch(canonical.person._id, { status: "archived", updatedAt: personRevision });
       }
+      await ctx.db.patch(teacher._id, { staffArchiveAccess: {
+        membershipId: canonical.membership._id, membershipRevision, personRevision,
+      } });
     }
 
     return null;
@@ -835,18 +862,18 @@ export const restoreTeacher = mutation({
       archivedBy: undefined,
       updatedAt,
     });
-    if (canonical) {
-      await ctx.db.patch(canonical.membership._id, {
-        status: "active",
-        updatedAt,
-      });
-      if (canonical.person.status === "archived") {
-        await ctx.db.patch(canonical.person._id, {
-          status: "active",
-          updatedAt,
-        });
+    await recordStaffServiceEvent(ctx, teacher, { type: "restore", reason: "Account restored; service status unchanged", actorUserId: userId });
+    const owned = teacher.staffArchiveAccess;
+    if (canonical && teacher.employmentStatus !== "departed" && owned &&
+        owned.membershipId === canonical.membership._id && canonical.membership.status === "archived" &&
+        canonical.membership.updatedAt === owned.membershipRevision) {
+      await ctx.db.patch(canonical.membership._id, { status: "active", updatedAt: Math.max(updatedAt, canonical.membership.updatedAt + 1) });
+      if (owned.personRevision !== undefined && canonical.person.status === "archived" &&
+          canonical.person.updatedAt === owned.personRevision) {
+        await ctx.db.patch(canonical.person._id, { status: "active", updatedAt: Math.max(updatedAt, canonical.person.updatedAt + 1) });
       }
     }
+    await ctx.db.patch(teacher._id, { staffArchiveAccess: undefined });
 
     return null;
   },
@@ -2065,7 +2092,7 @@ export const listClasses = query({
                 : undefined,
             subjectNames,
             studentCount: canViewStudentCount
-              ? students.filter((student) => !student.isArchived).length
+              ? students.filter(isCurrentEnrollment).length
               : undefined,
             createdAt: classDoc.createdAt,
           };
@@ -2529,7 +2556,7 @@ export const assignTeacherToClassSubject = mutation({
       !teacher ||
       teacher.schoolId !== schoolId ||
       teacher.role !== "teacher" ||
-      teacher.isArchived
+      teacher.isArchived || teacher.employmentStatus === "departed"
     ) {
       throw new ConvexError("Invalid teacher");
     }

@@ -3,6 +3,7 @@ export type ArchiveRecordType =
   | "session"
   | "class"
   | "teacher"
+  | "staff"
   | "subject"
   | "student"
   | "event"
@@ -35,6 +36,7 @@ export interface ArchivedRecordsSummary {
   archivedSessions: number;
   archivedClasses: number;
   archivedTeachers: number;
+  archivedStaff?: number;
   archivedSubjects: number;
   archivedStudents: number;
   archivedEvents: number;

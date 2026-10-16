@@ -4,6 +4,7 @@ import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 import { initializeSchoolEnrollmentCount } from "./studentEnrollmentCounts";
+import { assertStaffActive, recordStaffServiceEvent } from "./staffService";
 
 type BootstrapIds = {
     schoolId: Id<"schools">;
@@ -131,9 +132,12 @@ export const bootstrapSchoolAdminInternal = internalMutation({
 
     let adminUserId: Id<"users">;
     if (existingAdmin) {
+      assertStaffActive(existingAdmin);
+      if (existingAdmin.isArchived) throw new ConvexError("Restore the archived account separately");
+      if (existingAdmin.role !== "admin" || existingAdmin.authId !== args.adminAuthId)
+        throw new ConvexError("Existing identity cannot be replaced through admin bootstrap");
       adminUserId = existingAdmin._id;
       await ctx.db.patch(adminUserId, {
-        authId: args.adminAuthId,
         name: normalizePersonName(args.adminName),
         email: args.adminEmail,
         role: "admin",
@@ -153,6 +157,9 @@ export const bootstrapSchoolAdminInternal = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
+      const joinedAdmin = await ctx.db.get(adminUserId);
+      if (!joinedAdmin) throw new ConvexError("Bootstrap admin record not found");
+      await recordStaffServiceEvent(ctx, joinedAdmin, { type: "joined", reason: "Initial school admin joining" });
     }
 
     await ctx.runMutation(

@@ -8,9 +8,9 @@ import { useDirtyForm, type DraftConnection, type DraftPayload } from "@school/s
 import type { Id } from "@school/convex/_generated/dataModel";
 import { PersistentFormDraftControls } from "@/components/drafts/PersistentFormDraftControls";
 import { usePersistentFormDraft } from "@/usePersistentFormDraft";
+import { JoiningDayField } from "@/components/lifecycle/JoiningDayField";
 
 interface ProvisionResult {
-  teacherId: string;
   email: string;
   temporaryPassword: string;
 }
@@ -22,7 +22,8 @@ interface DraftClosure {
 }
 
 interface TeacherCreationFormProps {
-  onProvision: (name: string, email: string, password: string, draft?: DraftClosure) => Promise<ProvisionResult>;
+  onProvision: (name: string, email: string, password: string, draft?: DraftClosure, joiningDay?: string) => Promise<ProvisionResult>;
+  accountKind?: "teacher" | "staff";
   isSubmitting: boolean;
   draftContext?: {
     schoolId: Id<"schools">;
@@ -31,16 +32,19 @@ interface TeacherCreationFormProps {
   };
 }
 
-export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }: TeacherCreationFormProps) {
+export function TeacherCreationForm({ onProvision, isSubmitting, draftContext, accountKind = "teacher" }: TeacherCreationFormProps) {
+  const label = accountKind === "staff" ? "Other staff" : "Teacher";
+  const defaultPassword = accountKind === "staff" ? "Staff123!Pass" : "Teacher123!Pass";
+  const [joiningDay, setJoiningDay] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [temporaryPassword, setTemporaryPassword] = useState("Teacher123!Pass");
+  const [temporaryPassword, setTemporaryPassword] = useState(defaultPassword);
   const [result, setResult] = useState<ProvisionResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [draftInstanceKey, setDraftInstanceKey] = useState(0);
   const draftData = useMemo<DraftPayload<"staff_onboarding">>(() => ({ name, email }), [email, name]);
-  const draftIsDirty = isSubmitting || (!result && Boolean(name || email || temporaryPassword !== "Teacher123!Pass"));
+  const draftIsDirty = isSubmitting || (!result && Boolean(name || email || joiningDay || temporaryPassword !== defaultPassword));
   const draft = usePersistentFormDraft({
     formKey: "staff_onboarding",
     schoolId: draftContext?.schoolId,
@@ -50,6 +54,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
     isDirty: draftIsDirty,
     instanceKey: draftInstanceKey,
     onRestore: (payload) => {
+      setJoiningDay("");
       setName(payload.name);
       setEmail(payload.email);
       setTemporaryPassword("");
@@ -59,16 +64,17 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
   });
 
   const resetForm = () => {
+    setJoiningDay("");
     setName("");
     setEmail("");
-    setTemporaryPassword("Teacher123!Pass");
+    setTemporaryPassword(defaultPassword);
     setResult(null);
     setSubmitError("");
     setCopied(false);
   };
 
   const requestDeparture = useDirtyForm({
-    name: "Teacher onboarding",
+    name: `${label} onboarding`,
     isDirty: draftIsDirty,
     save: draftContext ? draft.retrySave : undefined,
     discard: async () => {
@@ -94,7 +100,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
       }
     }
     try {
-      const res = await onProvision(name, email, temporaryPassword, closure ?? undefined);
+      const res = await onProvision(name, email, temporaryPassword, closure ?? undefined, joiningDay || undefined);
       if (res) {
         if (draftContext) draft.submissionSucceeded();
         setResult(res);
@@ -102,7 +108,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
       }
     } catch {
       if (draftContext) draft.submissionFailed();
-      setSubmitError("We could not create that teacher account right now.");
+      setSubmitError(`We could not create that ${label.toLowerCase()} account right now.`);
     }
   };
 
@@ -166,11 +172,11 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
     <AdminSurface intensity="medium" rounded="lg" className="p-4 space-y-4">
       <div className="border-b border-slate-100 pb-3 space-y-1">
         <div className="flex items-center justify-between gap-2 min-h-6">
-          <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add Teacher</h4>
+          <h4 className="text-[10px] font-bold text-slate-950 uppercase tracking-[0.2em] font-display">Add {label}</h4>
           {draftContext && (
             <PersistentFormDraftControls
               draft={draft}
-              formTitle="teacher onboarding"
+              formTitle={`${label.toLowerCase()} onboarding`}
               isDirty={draftIsDirty}
               variant="compact"
               excludedFieldsNotice="Passwords are not stored in drafts for security."
@@ -182,10 +188,11 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
             />
           )}
         </div>
-        <p className="text-[11px] font-medium text-slate-400">Instantly create a new teacher account.</p>
+        <p className="text-[11px] font-medium text-slate-400">Create a new {label.toLowerCase()} account.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
+        <JoiningDayField value={joiningDay} onChange={setJoiningDay} disabled={isSubmitting} />
         <FormField label="Name">
           <input
             type="text"
@@ -204,7 +211,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="teacher@school.edu"
+            placeholder={accountKind === "staff" ? "staff@school.edu" : "teacher@school.edu"}
             className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950 focus:ring-4 focus:ring-slate-950/5"
           />
         </FormField>
@@ -226,7 +233,7 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
           className="mt-2 w-full flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 text-[11px] font-bold uppercase tracking-widest text-white transition-all hover:bg-slate-800 disabled:opacity-50 active:scale-[0.98] cursor-pointer"
         >
           <Send className="h-3.5 w-3.5" />
-          {isSubmitting ? "Creating..." : "Create Teacher Account"}
+          {isSubmitting ? "Creating..." : `Create ${label} Account`}
         </button>
 
         <p className="text-[11px] leading-relaxed text-slate-400 text-center pt-1">
@@ -243,11 +250,11 @@ export function TeacherCreationForm({ onProvision, isSubmitting, draftContext }:
 
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+    <label className="block space-y-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
         {label}
-      </label>
+      </span>
       {children}
-    </div>
+    </label>
   );
 }

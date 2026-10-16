@@ -23,6 +23,7 @@ function chipClasses(recordType: ArchivedRecordItem["type"]) {
     class: `${base} bg-emerald-50 text-emerald-700 ring-emerald-600/10`,
     subject: `${base} bg-amber-50 text-amber-700 ring-amber-600/10`,
     teacher: `${base} bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-600/10`,
+    staff: `${base} bg-slate-50 text-slate-700 ring-slate-600/10`,
     student: `${base} bg-indigo-50 text-indigo-700 ring-indigo-600/10`,
     event: `${base} bg-cyan-50 text-cyan-700 ring-cyan-600/10`,
     session: `${base} bg-slate-50 text-slate-700 ring-slate-600/10`,

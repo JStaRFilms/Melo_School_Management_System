@@ -16,6 +16,7 @@ interface StudentProfileFormFieldsProps {
   guardianPhone: string;
   address: string;
   classes: ClassSummary[];
+  placementDisabled?: boolean;
   onFirstNameChange: (value: string) => void;
   onLastNameChange: (value: string) => void;
   onAdmissionNumberChange: (value: string) => void;
@@ -40,6 +41,7 @@ export function StudentProfileFormFields({
   guardianPhone,
   address,
   classes,
+  placementDisabled = false,
   onFirstNameChange,
   onLastNameChange,
   onAdmissionNumberChange,
@@ -80,6 +82,7 @@ export function StudentProfileFormFields({
       <Field label="Active Class">
         <select
           value={classId}
+          disabled={placementDisabled}
           onChange={(event) => onClassIdChange(event.target.value)}
           className={fieldInputClassName}
         >

@@ -25,6 +25,7 @@ import {
 } from "./assessmentEditingPolicyHelpers";
 import { resolveSessionScoringPolicy } from "./sessionScoring";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { isCurrentEnrollment } from "./studentEnrollmentCounts";
 import { pickMostRecentDoc } from "./docSelection";
 import { matchesScoreRowBaseline, scoreRowBaseline } from "@school/shared/drafts/scoreRowBaseline";
 import { assertBranchDoc } from "../foundation/tenantScope";
@@ -208,6 +209,7 @@ export const getExamEntrySheet = query({
             schoolId,
             classId: args.classId,
             sessionId: args.sessionId,
+            currentOperation: true,
           })
         ) {
           studentIdSet.add(String(student._id));
@@ -230,6 +232,7 @@ export const getExamEntrySheet = query({
           schoolId,
           classId: args.classId,
           sessionId: args.sessionId,
+          currentOperation: sessionDoc.isActive,
         }))
       ) {
         studentIdSet.add(String(promo.studentId));
@@ -273,7 +276,7 @@ export const getExamEntrySheet = query({
       )
     ).filter(
       (student): student is NonNullable<typeof student> =>
-        Boolean(student && student.schoolId === schoolId && !student.isArchived)
+        Boolean(student && student.schoolId === schoolId && !student.isArchived && (!sessionDoc.isActive || isCurrentEnrollment(student)))
     );
 
     // Create a map of studentId -> assessmentRecord for efficient lookup
@@ -464,6 +467,8 @@ export const upsertAssessmentRecordsBulk = mutation({
           schoolId,
           classId: args.classId,
           sessionId: args.sessionId,
+          termId: args.termId,
+          currentOperation: sessionDoc.isActive,
         }))
       ) {
         errors.push({
@@ -485,6 +490,10 @@ export const upsertAssessmentRecordsBulk = mutation({
         )
         .collect()
         .then((docs: any[]) => pickMostRecentDoc(docs));
+      if (!isCurrentEnrollment(studentDoc) && !existingRecord) {
+        errors.push({ studentId: record.studentId, field: "record", message: "Inactive students cannot receive new assessment records" });
+        continue;
+      }
       if (record.expectedRow !== undefined &&
         !matchesScoreRowBaseline(scoreRowBaseline(existingRecord), record.expectedRow)) {
         errors.push({ studentId: record.studentId, field: "record",

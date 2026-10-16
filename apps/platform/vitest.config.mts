@@ -13,6 +13,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "@/convex-runtime": path.resolve(__dirname, "lib/convex-runtime.ts"),
       "@": path.resolve(__dirname, "./"),
       "@school/shared": path.resolve(__dirname, "../../packages/shared/src"),
       "@school/convex": path.resolve(__dirname, "../../packages/convex"),

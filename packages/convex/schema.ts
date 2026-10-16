@@ -23,6 +23,9 @@ import {
   siteRevisionContentValidator,
 } from "./functions/foundation/contracts";
 
+import { studentEnrollmentStatus, studentEnrollmentEventType, studentLifecycleContext } from "./functions/academic/studentLifecycleContract";
+import { staffEmploymentStatus, staffRole, staffPermissionDecision, staffPermissionConfiguration, staffServiceContext } from "./functions/academic/staffServiceContract";
+
 const assessmentPolicySnapshotValidator = v.object({
   // Reviewed imports carry provenance; a manual edit retains only numeric row policy.
   source: v.optional(v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override"))),
@@ -1192,6 +1195,7 @@ export default defineSchema({
     auditModules: v.optional(v.array(v.string())),
     // Terminal RBAC cutover: deleting assignments must not restore legacy authority.
     permissionsManagedAt: v.optional(v.number()),
+    lifecycleSuspendedByEventId: v.optional(v.id("staffServiceEvents")),
     isDefaultBranch: v.boolean(),
     legacyUserId: v.optional(v.id("users")),
     joinedAt: v.number(),
@@ -1459,6 +1463,15 @@ export default defineSchema({
     ),
     isSchoolAdmin: v.optional(v.boolean()),
     managerUserId: v.optional(v.union(v.id("users"), v.null())),
+    employmentStatus: v.optional(staffEmploymentStatus),
+    serviceRevision: v.optional(v.number()),
+    serviceEffectiveDay: v.optional(v.string()),
+    currentServicePeriodId: v.optional(v.id("staffServicePeriods")),
+    reviewedRehireEventId: v.optional(v.id("staffServiceEvents")),
+    staffArchiveAccess: v.optional(v.object({
+      membershipId: v.id("branchMemberships"), membershipRevision: v.number(),
+      personRevision: v.optional(v.number()),
+    })),
     isArchived: v.optional(v.boolean()),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.id("users")),
@@ -1474,6 +1487,39 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
     .index("by_person", ["personId"]),
+
+  staffServiceEvents: defineTable({
+    schoolId: v.id("schools"), userId: v.id("users"),
+    personId: v.optional(v.id("persons")), membershipId: v.optional(v.id("branchMemberships")),
+    type: v.union(v.literal("joined"), v.literal("departed"), v.literal("rehired"), v.literal("access_reviewed"), v.literal("archive"), v.literal("restore")),
+    role: staffRole, beforeStatus: v.optional(staffEmploymentStatus), afterStatus: staffEmploymentStatus,
+    revision: v.number(), effectiveDay: v.optional(v.string()), recordedAt: v.number(),
+    reason: v.string(), actorUserId: v.optional(v.id("users")),
+    operationKey: v.string(), intentFingerprint: v.optional(v.string()),
+    periodId: v.optional(v.id("staffServicePeriods")),
+    suspendedMembershipRevision: v.optional(v.number()),
+    reviewedEventId: v.optional(v.id("staffServiceEvents")),
+    permissionState: v.optional(v.string()),
+    permissionDecision: v.optional(staffPermissionDecision),
+    previousPermissions: v.optional(staffPermissionConfiguration),
+    proposedPermissions: v.optional(staffPermissionConfiguration),
+    ...staffServiceContext,
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_schoolId_and_userId_and_revision", ["schoolId", "userId", "revision"])
+    .index("by_schoolId_and_userId_and_operationKey", ["schoolId", "userId", "operationKey"]),
+
+  staffServicePeriods: defineTable({
+    schoolId: v.id("schools"), userId: v.id("users"),
+    personId: v.optional(v.id("persons")), membershipId: v.optional(v.id("branchMemberships")),
+    roleAtStart: v.optional(staffRole), startDay: v.optional(v.string()),
+    startProvenance: v.union(v.literal("recorded"), v.literal("legacy_unknown")),
+    endDay: v.optional(v.string()), recordedAt: v.number(),
+    openedByEventId: v.optional(v.id("staffServiceEvents")), closedByEventId: v.optional(v.id("staffServiceEvents")),
+    ...staffServiceContext,
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_schoolId_and_userId_and_recordedAt", ["schoolId", "userId", "recordedAt"]),
 
   schoolAdminEmailUpdateReservations: defineTable({
     schoolId: v.id("schools"),
@@ -1565,14 +1611,10 @@ export default defineSchema({
     ),
     photoSourceDocumentId: v.optional(v.id("admissionsDocuments")),
     photoRetentionHold: v.optional(v.boolean()),
-    enrollmentStatus: v.optional(
-      v.union(
-        v.literal("active"),
-        v.literal("graduated"),
-        v.literal("withdrawn"),
-        v.literal("transferred_out")
-      )
-    ),
+    enrollmentStatus: v.optional(studentEnrollmentStatus),
+    enrollmentRevision: v.optional(v.number()),
+    enrollmentEffectiveDay: v.optional(v.string()),
+    currentEnrollmentPeriodId: v.optional(v.id("studentEnrollmentPeriods")),
     graduatedAt: v.optional(v.number()),
     graduatingSessionId: v.optional(v.id("academicSessions")),
     graduatingClassId: v.optional(v.id("classes")),
@@ -1592,10 +1634,55 @@ export default defineSchema({
     .index("by_family", ["familyId"])
     .index("by_school_and_class", ["schoolId", "classId"])
     .index("by_school_class_archived_enrollment", ["schoolId", "classId", "isArchived", "enrollmentStatus"])
+    .index("by_school_enrollment", ["schoolId", "enrollmentStatus"])
     .index("by_school_and_admission_number", ["schoolId", "admissionNumber"])
     .index("by_photo_storage", ["photoStorageId"])
     .index("by_school_and_user", ["schoolId", "userId"])
     .index("by_source_application", ["sourceApplicationId"]),
+
+  studentEnrollmentEvents: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    type: studentEnrollmentEventType,
+    beforeStatus: v.optional(studentEnrollmentStatus),
+    afterStatus: studentEnrollmentStatus,
+    revision: v.number(),
+    effectiveDay: v.optional(v.string()),
+    recordedAt: v.number(),
+    reason: v.string(),
+    actorUserId: v.optional(v.id("users")),
+    operationKey: v.string(),
+    intentFingerprint: v.optional(v.string()),
+    periodId: v.optional(v.id("studentEnrollmentPeriods")),
+    transferId: v.optional(v.id("studentTransfers")),
+    subjectIds: v.optional(v.array(v.id("subjects"))),
+    graduation: v.optional(v.object({
+      graduationDate: v.number(), certificateNumber: v.optional(v.string()), honorsOrRemarks: v.optional(v.string()),
+    })),
+    promotionFromClassId: v.optional(v.id("classes")),
+    promotionFromSessionId: v.optional(v.id("academicSessions")),
+    promotionToClassId: v.optional(v.id("classes")),
+    promotionToSessionId: v.optional(v.id("academicSessions")),
+    ...studentLifecycleContext,
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student_revision", ["studentId", "revision"])
+    .index("by_student_key", ["studentId", "operationKey"]),
+
+  studentEnrollmentPeriods: defineTable({
+    schoolId: v.id("schools"),
+    studentId: v.id("students"),
+    startDay: v.optional(v.string()),
+    endDay: v.optional(v.string()),
+    startProvenance: v.union(v.literal("recorded"), v.literal("legacy_unknown"), v.literal("import_unknown")),
+    openedByEventId: v.optional(v.id("studentEnrollmentEvents")),
+    closedByEventId: v.optional(v.id("studentEnrollmentEvents")),
+    recordedAt: v.number(),
+    subjectIds: v.optional(v.array(v.id("subjects"))),
+    ...studentLifecycleContext,
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_student", ["studentId"]),
 
   // --- Within-Group Branch-to-Branch Student Transfers (F4 / MX-15) ---
   studentTransfers: defineTable({
@@ -1639,6 +1726,8 @@ export default defineSchema({
     destinationMembershipPriorLegacyUserId: v.optional(v.id("users")),
     destinationAcceptedByUserId: v.optional(v.id("users")),
     destinationAcceptedAt: v.optional(v.number()),
+    sourceEnrollmentRevision: v.optional(v.number()),
+    destinationEnrollmentRevision: v.optional(v.number()),
     portableRecordPackage: v.optional(
       v.object({
         studentName: v.string(),
@@ -1827,6 +1916,7 @@ export default defineSchema({
       v.literal("none")
     ),
     subjectEnrollmentCount: v.number(),
+    enrollmentRevision: v.optional(v.number()),
     batchKey: v.string(),
     createdAt: v.number(),
     createdBy: v.id("users"),
@@ -1845,6 +1935,7 @@ export default defineSchema({
     classId: v.id("classes"),
     sessionId: v.id("academicSessions"),
     graduationDate: v.number(),
+    enrollmentRevision: v.optional(v.number()),
     certificateNumber: v.optional(v.string()),
     honorsOrRemarks: v.optional(v.string()),
     createdAt: v.number(),

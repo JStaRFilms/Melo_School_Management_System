@@ -283,6 +283,7 @@ it("corrects an existing student only with reason and explicit version-pinned ad
     const userId = await ctx.db.insert("users", {
       schoolId,
       authId: "existing",
+      authTokenIdentifier: "test|existing",
       name: "Existing Student",
       email: "existing@example.test",
       role: "student",
@@ -318,6 +319,12 @@ it("corrects an existing student only with reason and explicit version-pinned ad
   expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
     admissionNumber: "CORRECT-001",
   });
+  const account = await t.run(async ctx => {
+    const student = await ctx.db.get(studentId);
+    if (!student) throw new Error("Missing corrected student");
+    return ctx.db.get(student.userId);
+  });
+  expect(account).toMatchObject({ authId: "existing", authTokenIdentifier: "test|existing", email: "existing@example.test" });
   const claims = await t.run((ctx) =>
     ctx.db
       .query("admissionNumberClaims")
