@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
 import { makeFunctionReference } from "convex/server";
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 import type { BranchSummary } from "@school/shared";
@@ -56,7 +57,8 @@ type ViewerContext = {
 
 function mapSession(
   session: RawSession,
-  viewerContext: ViewerContext
+  viewerContext: ViewerContext,
+  storedName?: string,
 ): AuthSession | null {
   if (!session?.user || !session?.session) {
     return null;
@@ -66,7 +68,7 @@ function mapSession(
     user: {
       id: session.user.id,
       email: session.user.email,
-      name: session.user.name,
+      name: isConvexConfigured() ? storedName ?? "" : session.user.name,
       role: isConvexConfigured() ? viewerContext?.role : session.user.role,
       schoolId: isConvexConfigured() ? viewerContext?.schoolId : session.user.schoolId,
       image: session.user.image,
@@ -184,6 +186,9 @@ function AuthProviderInternal({
     }
   }, [accountId, availableBranches, selectedIsValidated, selectedSchoolId]);
 
+  const storedIdentity = useQuery(api.functions.auth.getViewerContext,
+    workspaceAccess?.state === "ready" ? { schoolId: workspaceAccess.branch.schoolId as Id<"schools"> } : "skip");
+
   const selectSchool = useCallback((schoolId: string) => {
     if (!accountId || !availableBranches?.some((branch) => branch.schoolId === schoolId)) {
       throw new Error("Target branch is not in the server-validated branch directory.");
@@ -222,8 +227,8 @@ function AuthProviderInternal({
           workspaceAccess.compatibility.legacyDefaultSchoolId === workspaceAccess.branch.schoolId ? {
           role: workspaceAccess.compatibility.legacyRole ?? undefined,
           schoolId: workspaceAccess.branch.schoolId,
-        } : null),
-    [isConvexAuthPending, isConvexUnauthenticated, session, workspaceAccess]
+        } : null, storedIdentity?.name),
+    [isConvexAuthPending, isConvexUnauthenticated, session, workspaceAccess, storedIdentity?.name]
   );
 
   const signIn = useCallback(

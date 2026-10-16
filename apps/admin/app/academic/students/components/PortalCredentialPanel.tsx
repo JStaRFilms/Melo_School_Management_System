@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { BadgeCheck, Copy, KeyRound, RefreshCw } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
+import { api } from "@school/convex/_generated/api";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { AccountNoticePanel } from "./AccountNoticePanel";
+import { PortalStateLabel } from "./PortalStateLabel";
+import { QueryErrorBoundary } from "./QueryErrorBoundary";
 import type { EnrollmentNotice } from "./types";
 
 interface PortalCredentialPanelProps {
@@ -21,9 +26,14 @@ interface PortalCredentialResult {
   userId: string;
   email: string;
   temporaryPassword: string;
+  operationId: string;
 }
 
-export function PortalCredentialPanel({
+export function PortalCredentialPanel(props: PortalCredentialPanelProps) {
+  return <QueryErrorBoundary key={props.userId} message="Could not check portal access."><PortalCredentialPanelContent {...props} /></QueryErrorBoundary>;
+}
+
+function PortalCredentialPanelContent({
   title,
   description,
   userId,
@@ -33,9 +43,10 @@ export function PortalCredentialPanel({
   onNotice,
 }: PortalCredentialPanelProps) {
   const upsertPortalCredentials = useAction(
-    "functions/academic/studentEnrollment:upsertPortalCredentials" as never
+    api.functions.academic.studentEnrollment.upsertPortalCredentials
   );
 
+  const account = useQuery(api.functions.academic.studentEnrollment.getPortalAccountState, { userId: userId as Id<"users"> });
   const [temporaryPassword, setTemporaryPassword] = useState(defaultPassword);
   const [result, setResult] = useState<PortalCredentialResult | null>(null);
   const [copied, setCopied] = useState(false);
@@ -48,13 +59,13 @@ export function PortalCredentialPanel({
   }, [defaultPassword, userId]);
 
   const copyCredentials = async () => {
-    if (!result) {
+    if (!result || result.userId !== userId) {
       return;
     }
 
     try {
       await navigator.clipboard.writeText(
-        `Email: ${result.email}\nTemp Password: ${result.temporaryPassword}`
+        `Login ID: ${result.email}\nTemp Password: ${result.temporaryPassword}`
       );
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
@@ -78,12 +89,16 @@ export function PortalCredentialPanel({
       return;
     }
 
+    if (isSubmitting || !account || !["not_provisioned", "provisioned"].includes(account.state)) return;
+    const targetUserId = userId;
+    setResult(null);
     setIsSubmitting(true);
     try {
-      const response = (await upsertPortalCredentials({
-        userId,
+      const response = await upsertPortalCredentials({
+        userId: targetUserId as Id<"users">,
         temporaryPassword: password,
-      } as never)) as PortalCredentialResult;
+        requestKey: crypto.randomUUID(),
+      });
 
       setResult(response);
       setCopied(false);
@@ -104,7 +119,7 @@ export function PortalCredentialPanel({
     }
   };
 
-  if (result) {
+  if (result && result.userId === userId) {
     return (
       <section className="space-y-4 pt-6 border-t border-slate-200/60">
         <div className="space-y-1">
@@ -125,7 +140,7 @@ export function PortalCredentialPanel({
         <div className="space-y-2 rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-              Login Email
+              Login ID
             </span>
             <span className="text-sm font-black text-slate-950">{result.email}</span>
           </div>
@@ -145,6 +160,7 @@ export function PortalCredentialPanel({
           </button>
         </div>
 
+        <AccountNoticePanel userId={userId as Id<"users">} />
         <button
           type="button"
           onClick={() => {
@@ -173,10 +189,12 @@ export function PortalCredentialPanel({
           {description}
         </p>
         <p className="text-[11px] font-semibold text-slate-400">
-          Login email: <span className="font-black text-slate-700">{email}</span>
+          Login ID: <span className="break-words font-black text-slate-700">{account?.email ?? email}</span>. A login ID is not necessarily an inbox.
         </p>
       </div>
 
+      <p className="text-xs font-semibold text-slate-600"><PortalStateLabel state={account?.state} /></p>
+      {account?.state === "provisioned" && <AccountNoticePanel userId={userId as Id<"users">} />}
       <form className="space-y-3" onSubmit={handleSubmit}>
         <label className="space-y-1.5">
           <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
@@ -193,11 +211,11 @@ export function PortalCredentialPanel({
 
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !account || !["not_provisioned", "provisioned"].includes(account.state)}
           className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-indigo-200/80 bg-indigo-50/70 hover:bg-indigo-100/80 px-4 text-xs font-bold text-indigo-900 transition-all disabled:cursor-not-allowed disabled:opacity-50 shadow-xs"
         >
           <KeyRound className="h-3.5 w-3.5 text-indigo-600" />
-          <span>{isSubmitting ? "Updating..." : "Provision / Reset Access"}</span>
+          <span>{isSubmitting ? "Updating..." : account?.state === "provisioned" ? "Reset password" : "Provision access"}</span>
         </button>
       </form>
     </section>

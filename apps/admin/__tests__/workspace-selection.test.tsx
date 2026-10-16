@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "../lib/AuthProvider";
 import type { WorkspaceAccessSummary } from "@school/shared/workspace-access";
 
 const mocks = vi.hoisted(() => ({
+  storedName: "Stored school name",
   query: vi.fn(),
   convexAuth: vi.fn(() => ({ isLoading: false, isAuthenticated: true })),
   isConvexConfigured: vi.fn(() => true),
@@ -63,7 +64,7 @@ function Probe() {
       <p data-testid="branches">{auth.availableBranches?.length ?? 0}</p>
       <p data-testid="is-loading">{String(auth.isLoading)}</p>
       <p data-testid="is-authenticated">{String(auth.isAuthenticated)}</p>
-      <p data-testid="has-session">{String(Boolean(auth.session))}</p>
+      <p data-testid="has-session">{String(Boolean(auth.session))}</p><p data-testid="stored-name">{auth.session?.user.name}</p>
       <button onClick={() => auth.selectSchool("default")}>Default</button>
     </div>
   );
@@ -77,6 +78,7 @@ const branches = [
 beforeEach(() => {
   localStorage.clear();
   mocks.query.mockReset();
+  mocks.storedName = "Stored school name";
   mocks.convexAuth.mockReset();
   mocks.convexAuth.mockReturnValue({ isLoading: false, isAuthenticated: true });
   mocks.isConvexConfigured.mockReset();
@@ -85,9 +87,18 @@ beforeEach(() => {
     if (args === "skip") return undefined;
     const functionName = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
     if (functionName.includes("listUserBranches")) return branches;
+    if (functionName.includes("getViewerContext")) return { name: mocks.storedName };
     const schoolId = (args as { schoolId?: string }).schoolId ?? "default";
     return ready(schoolId);
   });
+});
+
+it("refreshes displayed names from the authorized school identity without changing the auth-session name", async () => {
+  const view = render(<AuthProvider><Probe /></AuthProvider>);
+  await waitFor(() => expect(screen.getByTestId("stored-name")).toHaveTextContent("Stored school name"));
+  mocks.storedName = "Edited school name";
+  view.rerender(<AuthProvider><Probe /></AuthProvider>);
+  expect(screen.getByTestId("stored-name")).toHaveTextContent("Edited school name");
 });
 
 describe("account-scoped selected school", () => {

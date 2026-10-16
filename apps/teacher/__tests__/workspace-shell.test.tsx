@@ -12,11 +12,11 @@ let selectedSchoolId: string | null = null;
 let sessionRole = "teacher";
 let branches: BranchSummary[] = [];
 
-vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(...args) }));
+vi.mock("convex/react", () => ({ useQuery: (...args: unknown[]) => mocks.query(...args), useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }), useConvexConnectionState: () => ({ isWebSocketConnected: true }) }));
 vi.mock("next/navigation", () => ({ usePathname: () => path, useRouter: () => ({ replace: mocks.replace, push: mocks.push }) }));
 vi.mock("@/lib/convex-runtime", () => ({ isConvexConfigured: () => true }));
 vi.mock("@/lib/auth-client", () => ({ authClient: { changePassword: vi.fn() } }));
-vi.mock("@school/shared/drafts", () => ({ useDepartureGuard: () => ({ requestDeparture: mocks.departure }) }));
+vi.mock("@school/shared/drafts", async importOriginal => ({ ...await importOriginal<typeof import("@school/shared/drafts")>(), useDepartureGuard: () => ({ requestDeparture: mocks.departure }) }));
 vi.mock("@/lib/AuthProvider", () => ({ useAuth: () => ({
   session: { user: { id: "account", name: "Teacher", role: sessionRole } }, workspaceAccess: access,
   availableBranches: branches, selectedSchoolId, selectSchool: mocks.select, clearSelectedSchool: mocks.clear,
@@ -140,7 +140,7 @@ describe("teacher selected-branch shell", () => {
     render(<StaffWorkspace><p>Teacher dashboard content</p></StaffWorkspace>);
 
     expect(screen.getByText("Teacher dashboard content")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("No class or subject has been assigned yet");
+    expect(screen.getByText("No class or subject has been assigned yet.").closest('[role="status"]')).toHaveTextContent("No class or subject has been assigned yet");
     expect(screen.getByRole("link", { name: "Planning" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Exam Entry" })).not.toBeInTheDocument();
   });

@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import { Send, KeyRound, Archive, X, Eye, EyeOff } from "lucide-react";
 import { AdminSurface } from "@/components/ui/AdminSurface";
-import { humanNameFinalStrict } from "@/human-name";
+import { PersonNameFields, emptyPersonName } from "@school/shared";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { AccountNoticePanel } from "../../students/components/AccountNoticePanel";
 import type { TeacherRecord } from "@/types";
 
 interface TeacherEditFormProps {
   teacher: TeacherRecord;
-  onUpdate: (id: string, name: string, email: string) => Promise<void>;
+  onUpdate: (id: string, name: string, email: string, parts?: { firstName: string; middleName: string | null; lastName: string }) => Promise<void>;
   onResetPassword: (id: string, password: string) => Promise<void>;
   onArchive: (id: string) => void | Promise<void>;
   onClose: () => void;
@@ -35,24 +38,26 @@ export function TeacherEditForm({
   canResetPassword,
   canArchive,
 }: TeacherEditFormProps) {
-  const [name, setName] = useState("");
+  const [person, setPerson] = useState(emptyPersonName);
+  const parts = normalizeStructuredPersonName(person);
+  const name = person.structured ? [parts.firstName, parts.middleName, parts.lastName].filter(Boolean).join(" ") : person.fullName.trim();
   const [email, setEmail] = useState("");
   const [resetPass, setResetPass] = useState("");
   const [showResetPass, setShowResetPass] = useState(false);
 
   useEffect(() => {
-    setName(teacher.name);
+    setPerson({ firstName: teacher.firstName ?? "", middleName: teacher.middleName ?? "", lastName: teacher.lastName ?? "", fullName: teacher.name, structured: Boolean(teacher.firstName && teacher.lastName) });
     setEmail(teacher.email);
     setResetPass("");
     setShowResetPass(false);
-  }, [teacher._id, teacher.email, teacher.name]);
+  }, [teacher._id, teacher.email, teacher.name, teacher.firstName, teacher.middleName, teacher.lastName]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
-    if (!trimmedName || !trimmedEmail) return;
-    await onUpdate(teacher._id, trimmedName, trimmedEmail);
+    if (!trimmedName || !trimmedEmail || (person.structured && (!parts.firstName || !parts.lastName))) return;
+    await onUpdate(teacher._id, trimmedName, trimmedEmail, person.structured && parts.firstName && parts.lastName ? { firstName: parts.firstName, middleName: parts.middleName ?? null, lastName: parts.lastName } : undefined);
   };
 
   const handleTriggerResetPassword = async () => {
@@ -84,16 +89,7 @@ export function TeacherEditForm({
       )}
 
       {canEditProfile && <form onSubmit={handleUpdate} className="space-y-3">
-          <FormField label="Full Name">
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={(e) => setName(humanNameFinalStrict(e.target.value))}
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 outline-none transition-all focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10"
-            />
-          </FormField>
+          <PersonNameFields value={person} onChange={setPerson} allowFullName={!teacher.firstName || !teacher.lastName} />
 
           <FormField label="Email Address">
             <input
@@ -152,6 +148,7 @@ export function TeacherEditForm({
             </div>
           </FormField>}
 
+          {canResetPassword && <AccountNoticePanel userId={teacher._id as Id<"users">} />}
           {canArchive && hasArchiveBlockers && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Reassignment required</p>

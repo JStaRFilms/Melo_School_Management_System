@@ -1,8 +1,8 @@
 import { internalMutation, type QueryCtx, type MutationCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
-import { normalizePersonName } from "@school/shared/name-format";
 import { assertStaffActive, recordStaffServiceEvent } from "./staffService";
+import { resolveStoredUserNameFields } from "./studentNameCompat";
 
 type Context = QueryCtx | MutationCtx;
 
@@ -133,8 +133,12 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
     adminName: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.union(v.string(), v.null())),
+    lastName: v.optional(v.string()),
     adminEmail: v.string(),
     adminAuthId: v.string(),
+    credentialOperationId: v.optional(v.string()),
     managerUserId: v.union(v.id("users"), v.null()),
     makeLead: v.boolean(),
     createdBy: v.id("users"),
@@ -145,13 +149,15 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
   }),
   handler: async (ctx, args) => {
     const now = Date.now();
-    const normalizedName = normalizePersonName(args.adminName);
+
     const normalizedEmail = args.adminEmail.trim().toLowerCase();
     const existingAdmin = await ctx.db
       .query("users")
       .withIndex("by_school_and_email", (q) => q.eq("schoolId", args.schoolId).eq("email", normalizedEmail))
       .unique();
 
+    const nameFields = resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName,
+      fallbackName: existingAdmin?.name, fallbackFirstName: existingAdmin?.firstName, fallbackMiddleName: existingAdmin?.middleName, fallbackLastName: existingAdmin?.lastName });
     const leadership = await getSchoolLeadAdmin(ctx, args.schoolId);
     const existingAdminIsLead =
       !!existingAdmin &&
@@ -164,7 +170,8 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
       if (existingAdmin.role !== "admin" || existingAdmin.authId !== args.adminAuthId)
         throw new ConvexError("Existing identity cannot be replaced through admin creation");
       await ctx.db.patch(existingAdmin._id, {
-        name: normalizedName,
+        ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "reset" as const, committedAt: now } } : {}),
+        ...nameFields,
         email: normalizedEmail,
         role: "admin",
         isSchoolAdmin: true,
@@ -193,14 +200,15 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
     ]);
     if (people.length || tokenUsers.length) throw new ConvexError("Authentication identity is already linked; use the existing branch assignment path");
     const personId = await ctx.db.insert("persons", {
-      authTokenIdentifier, identityReconciliationState: "resolved", name: normalizedName, email: normalizedEmail,
+      authTokenIdentifier, identityReconciliationState: "resolved", ...nameFields, email: normalizedEmail,
       status: "active", primarySchoolId: args.schoolId, createdAt: now, updatedAt: now,
     });
     const adminUserId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.adminAuthId,
       authTokenIdentifier, personId,
-      name: normalizedName,
+      ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "ready" as const, committedAt: now } } : {}),
+      ...nameFields,
       email: normalizedEmail,
       role: "admin",
       isSchoolAdmin: true,
@@ -233,6 +241,7 @@ export const promoteTeacherToAdminInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
     teacherUserId: v.id("users"),
+    credentialOperationId: v.optional(v.string()),
     managerUserId: v.union(v.id("users"), v.null()),
   },
   returns: v.object({
@@ -254,6 +263,7 @@ export const promoteTeacherToAdminInternal = internalMutation({
     }
 
     await ctx.db.patch(teacher._id, {
+      ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "reset" as const, committedAt: Date.now() } } : {}),
       isSchoolAdmin: true,
       managerUserId: args.managerUserId,
       updatedAt: Date.now(),

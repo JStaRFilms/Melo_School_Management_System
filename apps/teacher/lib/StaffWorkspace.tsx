@@ -13,7 +13,8 @@ import {
   isWorkspaceBranchScopedRoute, LEGACY_BRANCH_SWITCH_REASON,
 } from "@school/shared";
 import { useAuth } from "@/lib/AuthProvider";
-import { useDepartureGuard } from "@school/shared/drafts";
+import { useDepartureGuard, WorkspaceConnectionStatus } from "@school/shared/drafts";
+import { useDraftConnection } from "@/lib/useDraftConnection";
 import { authClient } from "@/lib/auth-client";
 import { isConvexConfigured } from "@/lib/convex-runtime";
 
@@ -92,6 +93,7 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       workspace="teacher"
       currentPath={pathname}
       fullBleed={fullBleed}
+      connectionStatus={configured ? <LiveConnectionStatus /> : undefined}
       userName={session?.user.name}
       userRole={session?.user.role}
       workspaceAccess={access}
@@ -153,4 +155,8 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
       )}
     </WorkspaceNavbar>
   );
+}
+
+function LiveConnectionStatus() {
+  return <WorkspaceConnectionStatus {...useDraftConnection()} />;
 }

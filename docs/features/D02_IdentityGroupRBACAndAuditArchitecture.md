@@ -25,7 +25,7 @@ The student/staff lifecycle worktree implements the following behavior. This doe
 - Departure owns only its recorded school membership suspension. Other-school access, independent revocations, global person suspension and archive restrictions remain separate. Account Restore never rehires or re-enrolls a person.
 - Unchanged uncertain retries retain their key, original revision and payload. UI subscriptions supply current status; an old replay result never overwrites the current projection.
 
-Entry points are `/academic/students`, `/academic/teachers`, `/admin` and `/academic/archived-records`. Details and local checks are in [student lifecycle](StudentLifecycleAndEnrollmentHistory.md), [staff service](StaffServiceHistory.md) and session `orch-20261011-163833/results/B3.md`. Browser authority is not attested by local component tests. The isolated browser criteria remain blocked until QA doctor and the required role/origin/source proofs pass.
+Entry points are `/academic/students`, `/academic/teachers`, `/admin` and `/academic/archived-records`. Details and local checks are in [student lifecycle](StudentLifecycleAndEnrollmentHistory.md) and [staff service](StaffServiceHistory.md). Local component tests do not establish browser acceptance. Runtime verification remains deferred until the required role, origin and backend source proofs are available.
 
 ---
 

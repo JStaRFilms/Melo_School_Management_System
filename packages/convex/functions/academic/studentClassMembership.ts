@@ -45,7 +45,7 @@ export async function isStudentEnrolledInClassForSession(
   // A return has its own reviewed placement. An old staged promotion must not override it.
   const latestReturn = args.student.currentEnrollmentPeriodId ? await ctx.db.get(args.student.currentEnrollmentPeriodId) : null;
   const openingEvent = latestReturn?.openedByEventId ? await ctx.db.get(latestReturn.openedByEventId) : null;
-  const promotionStillCurrent = !openingEvent || (promotion?.enrollmentRevision ?? 0) >= openingEvent.revision;
+  const promotionStillCurrent = !openingEvent || openingEvent.type === "admitted" || openingEvent.type === "imported" || (promotion?.enrollmentRevision ?? 0) >= openingEvent.revision;
   if (args.currentOperation) {
     if (promotion && promotionStillCurrent) return promotion.toClassId === args.classId;
     return args.student.classId === args.classId;
@@ -66,4 +66,31 @@ export async function isStudentEnrolledInClassForSession(
       selections.some(selection => selection.schoolId === args.schoolId && selection.classId === args.classId);
   }
   return args.student.classId === args.classId;
+}
+
+export async function getStudentClassForSession(
+  ctx: QueryCtx | MutationCtx,
+  args: { student: Doc<"students">; schoolId: Id<"schools">; sessionId: Id<"academicSessions"> },
+): Promise<Id<"classes">> {
+  const promotions = await ctx.db
+    .query("studentPromotions")
+    .withIndex("by_student_and_to_session", (q) =>
+      q.eq("studentId", args.student._id).eq("toSessionId", args.sessionId),
+    )
+    .collect();
+  const promotion = promotions
+    .filter((entry) => entry.schoolId === args.schoolId)
+    .sort(
+      (left, right) =>
+        right.createdAt - left.createdAt ||
+        right._creationTime - left._creationTime,
+    )[0];
+
+  const period = args.student.currentEnrollmentPeriodId ? await ctx.db.get(args.student.currentEnrollmentPeriodId) : null;
+  const openingEvent = period?.openedByEventId ? await ctx.db.get(period.openedByEventId) : null;
+  if (promotion && (!openingEvent || openingEvent.type === "admitted" || openingEvent.type === "imported" || (promotion.enrollmentRevision ?? 0) >= openingEvent.revision)) {
+    return promotion.toClassId;
+  }
+
+  return args.student.classId;
 }

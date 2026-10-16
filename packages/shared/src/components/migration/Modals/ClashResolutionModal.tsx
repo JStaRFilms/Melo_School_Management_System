@@ -5,6 +5,7 @@ export interface StagedRecordItem {
   _id: string;
   rowNumber: number;
   parsedData: {
+    name?: string;
     firstName: string;
     lastName: string;
     middleName?: string;
@@ -51,7 +52,7 @@ export function ClashResolutionModal({
     record.parsedData.lastName,
   ]
     .filter(Boolean)
-    .join(" ");
+    .join(" ") || record.parsedData.name || "Name not recorded";
 
   const candidateFullName = candidateRecord
     ? [
@@ -60,7 +61,7 @@ export function ClashResolutionModal({
         candidateRecord.parsedData.lastName,
       ]
         .filter(Boolean)
-        .join(" ")
+        .join(" ") || candidateRecord.parsedData.name || "Name not recorded"
     : existingStudentMatch?.fullName ?? "Match details unavailable";
 
   return (

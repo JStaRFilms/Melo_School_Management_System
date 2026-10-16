@@ -3,8 +3,10 @@
 import { Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useQuery, useConvexAuth, useConvexConnectionState } from "convex/react";
+import { WorkspaceConnectionStatus } from "@school/shared/drafts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 import {
   AuthoritativeForbiddenView,
@@ -32,43 +34,21 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
 }
 
 function PortalLayoutContent({ children }: { children: ReactNode }) {
-  const { session, signOut, isAuthenticated, isLoading } = useAuth();
+  const { signOut, isAuthenticated, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedStudentId = searchParams.get("studentId");
-  const canAccessPortal = useQuery(
-    "functions/portal:canAccessPortal" as never,
-    isConvexConfigured() && isAuthenticated ? ({} as never) : ("skip" as never)
-  ) as boolean | undefined;
-  const shellContext = useQuery(
-    "functions/portal:getPortalShellContext" as never,
+  const canAccessPortal = useQuery(api.functions.portal.canAccessPortal,
+    isConvexConfigured() && isAuthenticated ? {} : "skip");
+  const shellContext = useQuery(api.functions.portal.getPortalShellContext,
     isConvexConfigured() && isAuthenticated && canAccessPortal === true
-      ? ({ studentId: selectedStudentId ? selectedStudentId as Id<"students"> : null } as never)
-      : ("skip" as never),
-  ) as { schoolId: Id<"schools">; selectedStudentId: Id<"students"> } | undefined;
-  const schoolBranding = useQuery(
-    "functions/academic/schoolBranding:getCurrentSchoolBranding" as never,
-    isConvexConfigured() && isAuthenticated && shellContext
-      ? ({ schoolId: shellContext.schoolId } as never)
-      : ("skip" as never)
-  ) as {
-    name: string;
-    logoUrl: string | null;
-    status?: string;
-    motto?: string;
-    contactEmail?: string;
-    contactPhone?: string;
-    address?: string;
-    theme: { primaryColor: string; accentColor: string };
-    features: {
-      familyPortal: boolean;
-      billing: boolean;
-      curriculum: boolean;
-      knowledgeLibrary: boolean;
-      admissions: boolean;
-    };
-  } | undefined;
+      ? { studentId: selectedStudentId ? selectedStudentId as Id<"students"> : null }
+      : "skip");
+  const authorizedWorkspace = useQuery(api.functions.portal.getWorkspaceData,
+    isConvexConfigured() && isAuthenticated && shellContext ? { studentId: shellContext.selectedStudentId } : "skip");
+  const schoolBranding = useQuery(api.functions.academic.schoolBranding.getCurrentSchoolBranding,
+    isConvexConfigured() && isAuthenticated && shellContext ? { schoolId: shellContext.schoolId } : "skip");
 
   useEffect(() => {
     if (!isConvexConfigured() || isLoading) {
@@ -124,10 +104,11 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
   return (
     <WorkspaceNavbar
       workspace="portal"
+      connectionStatus={isConvexConfigured() ? <LiveConnectionStatus /> : undefined}
       currentPath={pathname}
       fullBleed={true}
-      userName={session?.user?.name}
-      userRole={session?.user?.role}
+      userName={authorizedWorkspace?.viewer.name}
+      userRole={authorizedWorkspace?.viewer.role}
       schoolBranding={schoolBranding ?? null}
       onSignOut={handleSignOut}
       onNavigate={href => router.push(href)}
@@ -155,4 +136,10 @@ function PortalLayoutContent({ children }: { children: ReactNode }) {
       )}
     </WorkspaceNavbar>
   );
+}
+
+function LiveConnectionStatus() {
+  const connection = useConvexConnectionState();
+  const auth = useConvexAuth();
+  return <WorkspaceConnectionStatus connected={connection.isWebSocketConnected} authenticated={auth.isAuthenticated && !auth.isLoading} />;
 }

@@ -7,6 +7,7 @@
 import { normalizePhoneNumber } from "./phoneNormalizer";
 
 export interface CandidateRecord {
+  name?: string;
   firstName: string;
   lastName: string;
   middleName?: string;
@@ -92,18 +93,30 @@ export function jaroWinkler(s1: string, s2: string, prefixScale = 0.1): number {
   return Math.min(1.0, jaro + prefix * prefixScale * (1.0 - jaro));
 }
 
+function comparisonName(record: CandidateRecord): string {
+  return (record.firstName.trim() || record.lastName.trim()
+    ? [record.firstName, record.middleName, record.lastName].filter(Boolean).join(" ")
+    : record.name ?? "").trim().replace(/\s+/g, " ");
+}
+
 /**
- * Computes composite name similarity between two person names, accounting for
- * token reordering (e.g. "Tunde Adeyemi" vs "Babatunde Adeyemi").
+ * Computes composite name similarity without inferring legacy name parts.
  */
 export function computeNameSimilarity(
-  a: { firstName: string; lastName: string; middleName?: string },
-  b: { firstName: string; lastName: string; middleName?: string }
+  a: CandidateRecord,
+  b: CandidateRecord
 ): number {
-  const fullA = [a.firstName, a.middleName, a.lastName].filter(Boolean).join(" ");
-  const fullB = [b.firstName, b.middleName, b.lastName].filter(Boolean).join(" ");
+  const fullA = comparisonName(a);
+  const fullB = comparisonName(b);
+  if (!fullA || !fullB) return 0;
 
   const directScore = jaroWinkler(fullA, fullB);
+  if (!a.firstName.trim() || !a.lastName.trim() || !b.firstName.trim() || !b.lastName.trim()) {
+    return Math.max(directScore, jaroWinkler(
+      fullA.toLowerCase().split(" ").sort().join(" "),
+      fullB.toLowerCase().split(" ").sort().join(" "),
+    ));
+  }
 
   // Inverted full name comparison ("Adeyemi Babatunde" vs "Babatunde Adeyemi")
   const fullAInv = [a.lastName, a.firstName, a.middleName].filter(Boolean).join(" ");
@@ -215,11 +228,25 @@ export function evaluateClash(
         (a.includes(b) || b.includes(a)))
     );
   };
-  const hasMeaningfulIdentityEvidence =
-    (relatedNamePart(recordA.firstName, recordB.firstName) &&
-      relatedNamePart(recordA.lastName, recordB.lastName)) ||
-    (relatedNamePart(recordA.firstName, recordB.lastName) &&
-      relatedNamePart(recordA.lastName, recordB.firstName));
+  const hasStructuredNames = Boolean(
+    recordA.firstName.trim() && recordA.lastName.trim() &&
+    recordB.firstName.trim() && recordB.lastName.trim(),
+  );
+  const fullNameOnly = (record: CandidateRecord) =>
+    !record.firstName.trim() && !record.lastName.trim() && Boolean(record.name?.trim());
+  // Full-name-only evidence requires matching tokens, so a shared surname and
+  // fuzzy given-name overlap cannot turn siblings into duplicate warnings.
+  const tokensA = comparisonName(recordA).toLowerCase().split(" ").filter(Boolean).sort();
+  const tokensB = comparisonName(recordB).toLowerCase().split(" ").filter(Boolean).sort();
+  const hasMeaningfulIdentityEvidence = hasStructuredNames
+    ? (relatedNamePart(recordA.firstName, recordB.firstName) &&
+        relatedNamePart(recordA.lastName, recordB.lastName)) ||
+      (relatedNamePart(recordA.firstName, recordB.lastName) &&
+        relatedNamePart(recordA.lastName, recordB.firstName))
+    : (fullNameOnly(recordA) || Boolean(recordA.firstName.trim() && recordA.lastName.trim())) &&
+      (fullNameOnly(recordB) || Boolean(recordB.firstName.trim() && recordB.lastName.trim())) &&
+      tokensA.length >= 2 && tokensA.length === tokensB.length &&
+      tokensA.every((token, index) => token === tokensB[index]);
   const isHighConfidenceClash =
     hasMeaningfulIdentityEvidence && confidence >= 85;
   const isWarning = hasMeaningfulIdentityEvidence && confidence >= 50;

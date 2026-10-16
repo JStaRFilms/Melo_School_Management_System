@@ -5,13 +5,14 @@
  */
 
 import * as XLSX from "xlsx";
-import { parseHumanName } from "./nameParser";
+import { normalizePersonName, normalizeStructuredPersonName } from "../name-format";
 import { normalizePhoneNumber } from "./phoneNormalizer";
 
 export interface ParsedSpreadsheetRow {
   rowNumber: number;
   rawPayload: Record<string, any>;
   parsedData: {
+    name?: string;
     firstName: string;
     lastName: string;
     middleName?: string;
@@ -397,6 +398,7 @@ export function parseSpreadsheetContent(
     if (!row || !row.some((cell) => cell.trim().length > 0)) continue;
 
     const rawPayload: Record<string, any> = {};
+    let name: string | undefined;
     let firstName = "";
     let lastName = "";
     let middleName: string | undefined = undefined;
@@ -443,13 +445,9 @@ export function parseSpreadsheetContent(
         case "middleName":
           middleName = cellVal.trim() || undefined;
           break;
-        case "fullName": {
-          const parsed = parseHumanName(cellVal);
-          if (!firstName) firstName = parsed.firstName;
-          if (!lastName) lastName = parsed.lastName;
-          if (!middleName && parsed.middleName) middleName = parsed.middleName;
+        case "fullName":
+          name = normalizePersonName(cellVal) || undefined;
           break;
-        }
         case "admissionNumber":
           admissionNumber = cellVal.trim() || undefined;
           break;
@@ -499,13 +497,15 @@ export function parseSpreadsheetContent(
       subjectName || ca1 !== undefined || ca2 !== undefined || exam !== undefined
     );
 
+    const nameParts = normalizeStructuredPersonName({ firstName, middleName, lastName });
     parsedRows.push({
       rowNumber: r + 1,
       rawPayload,
       parsedData: {
-        firstName: firstName || "Unknown",
-        lastName: lastName || "",
-        middleName,
+        ...(name ? { name } : {}),
+        firstName: nameParts.firstName ?? "",
+        lastName: nameParts.lastName ?? "",
+        middleName: nameParts.middleName,
         admissionNumber,
         gender,
         dateOfBirth,

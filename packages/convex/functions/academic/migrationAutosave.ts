@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { generateFamilyClusterKey, normalizePhoneNumber } from "@school/shared";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import { findUniqueMigrationClass, getActiveMigrationClasses, getPrivateMigrationWorkspace } from "./migrationWorkspace";
 import {
   inferAdmissionNumberSequenceHelper,
@@ -207,8 +208,10 @@ async function resolveGradeImportEvidence(
 function baseValidationErrors(record: Doc<"stagedImportRecords">): string[] {
   const data = record.parsedData;
   const errors: string[] = [];
-  if (!data.firstName.trim()) errors.push("First name is required");
-  if (!data.lastName.trim()) errors.push("Last name is required");
+  if (!data.name?.trim() || data.firstName.trim() || data.lastName.trim()) {
+    if (!data.firstName.trim()) errors.push("First name is required");
+    if (!data.lastName.trim()) errors.push("Last name is required");
+  }
   if (record.entityType === "grade_record") {
     if (!data.subjectName?.trim())
       errors.push("Subject name is required for grade records");
@@ -661,9 +664,10 @@ export const patchStagedRecord = mutation({
     schoolId: v.id("schools"),
     recordId: v.id("stagedImportRecords"),
     parsedDataPatch: v.object({
+      name: v.optional(v.string()),
       firstName: v.optional(v.string()),
       lastName: v.optional(v.string()),
-      middleName: v.optional(v.string()),
+      middleName: v.optional(v.union(v.string(), v.null())),
       admissionNumber: v.optional(v.string()),
       gender: v.optional(v.string()),
       dateOfBirth: v.optional(v.number()),
@@ -692,7 +696,9 @@ export const patchStagedRecord = mutation({
       throw new ConvexError(
         "Staged record is already committed; committed row outcomes are immutable",
       );
-    const parsedData = { ...record.parsedData, ...args.parsedDataPatch };
+    const updatedData = { ...record.parsedData, ...args.parsedDataPatch };
+    const parts = normalizeStructuredPersonName(updatedData);
+    const parsedData = { ...updatedData, firstName: parts.firstName ?? "", middleName: parts.middleName, lastName: parts.lastName ?? "" };
     if (args.parsedDataPatch.guardianPhone !== undefined) {
       parsedData.guardianPhone =
         normalizePhoneNumber(args.parsedDataPatch.guardianPhone) ??

@@ -5,6 +5,7 @@ import { action, mutation, query, type MutationCtx } from "../../_generated/serv
 import { ConvexError, v } from "convex/values";
 import { normalizeHumanName, normalizePersonName } from "@school/shared/name-format";
 import { createAuth } from "../../betterAuth";
+import { getReadableUserName, resolveStoredUserNameFields } from "./studentNameCompat";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
@@ -99,7 +100,7 @@ export const listSchoolAdmins = query({
     const sortedAdmins = admins
       .map((admin) => ({
         _id: admin._id,
-        name: normalizePersonName(admin.name),
+        name: getReadableUserName(admin).displayName,
         email: admin.email,
         isArchived: Boolean(admin.isArchived),
         employmentStatus: admin.employmentStatus ?? "active",
@@ -171,6 +172,9 @@ export const getCreateSchoolAdminAuthority = query({
 export const createSchoolAdmin = action({
   args: {
     name: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     email: v.string(),
     temporaryPassword: v.string(),
     origin: v.string(),
@@ -195,8 +199,10 @@ export const createSchoolAdmin = action({
     );
 
     effectiveStaffDay(args.joiningDay);
-    const normalizedName = normalizeHumanName(args.name);
+    const nameFields = resolveStoredUserNameFields(args);
+    const normalizedName = nameFields.name;
     const normalizedEmail = args.email.trim().toLowerCase();
+    const operationId = crypto.randomUUID();
     await ctx.runMutation(
       internal.functions.academic.adminLeadershipHelpers.ensureResolvedSchoolLeadAdminRecordInternal,
       {
@@ -229,7 +235,7 @@ export const createSchoolAdmin = action({
       const authContext = await auth.$context;
       const passwordHash = await authContext.password.hash(args.temporaryPassword);
 
-      await authContext.internalAdapter.updateUser(teacher.authId, {
+      if (!teacher.sharedIdentity) await authContext.internalAdapter.updateUser(teacher.authId, {
         name: normalizedName,
         email: normalizedEmail,
       });
@@ -241,7 +247,7 @@ export const createSchoolAdmin = action({
         {
           teacherId: teacher._id,
           schoolId: viewer.schoolId,
-          name: normalizedName,
+          ...nameFields,
           email: normalizedEmail,
         }
       );
@@ -251,10 +257,12 @@ export const createSchoolAdmin = action({
         {
           schoolId: viewer.schoolId,
           teacherUserId: teacher._id,
+          credentialOperationId: operationId,
           managerUserId: viewer.appUserId,
         }
       );
 
+      await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: teacher._id, operationId }).catch(() => null);
       return {
         adminId: teacher._id,
         email: normalizedEmail,
@@ -273,8 +281,10 @@ export const createSchoolAdmin = action({
       {
         schoolId: viewer.schoolId,
         adminName: normalizedName,
+        firstName: nameFields.firstName, middleName: nameFields.middleName, lastName: nameFields.lastName,
         adminEmail: normalizedEmail,
         adminAuthId: authId,
+        credentialOperationId: operationId,
         managerUserId: viewer.appUserId,
         makeLead: false,
         createdBy: viewer.appUserId,
@@ -282,6 +292,8 @@ export const createSchoolAdmin = action({
       }
     );
 
+    // Legacy unlinked admin records are not eligible; notice failure never undoes credentials.
+    await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: result.adminUserId, operationId }).catch(() => null);
     return {
       adminId: result.adminUserId,
       email: normalizedEmail,

@@ -1,7 +1,9 @@
 "use client";
 
+import { MobileProgressIndicator } from "@school/shared";
+import type { DraftStatus } from "@school/shared/drafts";
 import { Sparkles,UserPlus } from "lucide-react";
-import { useId, useState,type FormEvent, type RefObject } from "react";
+import { useId, useState,type FormEvent, type ReactNode, type RefObject } from "react";
 import {
   AdmissionNumberGovernanceFields,
   hasCompleteAdmissionNumberOverride,
@@ -11,12 +13,24 @@ import { StudentCreationOptionalFields } from "./StudentCreationOptionalFields";
 import { JoiningDayField } from "@/components/lifecycle/JoiningDayField";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import type { ClassSummary } from "./types";
+import { AdmissionContactFields } from "./AdmissionContactFields";
+import type { AdmissionContact } from "./admissionContact";
 
 interface StudentCreationFormProps {
   selectedClassName: string;
   admissionDay?: string;
   onAdmissionDayChange?: (day: string) => void;
   studentFirstName: string;
+  studentMiddleName: string;
+  onStudentMiddleNameChange: (value: string) => void;
+  contact: AdmissionContact;
+  onContactChange: (value: AdmissionContact) => void;
+  emergencyContactMode: "primary" | "override" | "legacy";
+  onEmergencyContactModeChange: (value: "primary" | "override" | "legacy") => void;
+  children?: ReactNode;
+  locked?: boolean;
+  draftStatus?: DraftStatus;
+  draftLastSavedAt?: number | null;
   studentLastName: string;
   admissionNumber: string;
   admissionNumberMode: "automatic" | "manual";
@@ -70,6 +84,16 @@ export function StudentCreationForm({
   admissionDay = "",
   onAdmissionDayChange,
   studentFirstName,
+  studentMiddleName,
+  onStudentMiddleNameChange,
+  contact,
+  onContactChange,
+  emergencyContactMode,
+  onEmergencyContactModeChange,
+  children,
+  locked = false,
+  draftStatus,
+  draftLastSavedAt,
   studentLastName,
   admissionNumber,
   admissionNumberMode,
@@ -131,6 +155,12 @@ export function StudentCreationForm({
           advanceCounterTo,
         }))
     : Boolean(admissionNumber.trim());
+  const contactReady = contact.contactChoice === "none" ||
+    (contact.contactChoice === "existing"
+      ? Boolean(contact.selectedContactId)
+      : Boolean(contact.parentFirstName.trim() && contact.parentLastName.trim() &&
+          contact.parentEmail.trim() &&
+          (contact.parentAddressMode !== "different" || contact.parentAddressOverride.trim())));
 
   return (
     <div ref={sectionRef} className="space-y-6">
@@ -140,7 +170,7 @@ export function StudentCreationForm({
             <UserPlus className="h-4 w-4" />
           </div>
           <h2 className="text-sm font-bold uppercase tracking-[0.1em] text-slate-900">
-            New Admission
+            Admit student
           </h2>
         </div>
         <p className="text-xs font-medium text-slate-500">
@@ -148,14 +178,21 @@ export function StudentCreationForm({
         </p>
       </div>
 
+      <MobileProgressIndicator mode="sections" draftStatus={draftStatus} lastSavedAt={draftLastSavedAt} sections={[
+        { id: "placement", title: "Class placement", isValid: Boolean(selectedClassId) },
+        { id: "identity", title: "Student identity", isValid: Boolean(studentFirstName.trim() && studentLastName.trim() && gender && admissionNumberReady && !numberingPolicyLoading) },
+        { id: "contacts", title: "Parents and guardians", optional: true, isValid: contactReady, hasError: contact.contactChoice === "existing" && !contact.selectedContactId },
+      ]} />
       <form onSubmit={(event) => void onSubmit(event)} className="space-y-5">
+        <fieldset disabled={locked || isSubmitting} className="space-y-5">
         {onAdmissionDayChange && <JoiningDayField label="Admission day" value={admissionDay} onChange={onAdmissionDayChange} disabled={isSubmitting} />}
-        {!selectedClassId && classes && onClassIdChange && (
+        {classes && onClassIdChange && (
           <div className="animate-in fade-in slide-in-from-top-1">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
               Target Class
             </label>
             <select
+              aria-label="Target class"
               value={selectedClassId ?? ""}
               onChange={(e) => onClassIdChange(e.target.value)}
               className="h-10 w-full rounded-lg border border-indigo-100 bg-indigo-50/30 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/5"
@@ -172,12 +209,13 @@ export function StudentCreationForm({
         )}
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
                 First Name
               </label>
               <input
+                aria-label="First name"
                 ref={inputRef}
                 type="text"
                 value={studentFirstName}
@@ -188,12 +226,16 @@ export function StudentCreationForm({
                 required
               />
             </div>
+            <label className="text-[10px] font-bold text-slate-400">Middle name (optional)
+              <input type="text" value={studentMiddleName} onChange={event => onStudentMiddleNameChange(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm text-slate-950" />
+            </label>
             <div>
               <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
                 Last Name
               </label>
               <input
                 type="text"
+                aria-label="Last name"
                 value={studentLastName}
                 onChange={(event) => onStudentLastNameChange(event.target.value)}
                 onBlur={(event) => onStudentLastNameBlur(event.target.value)}
@@ -254,6 +296,7 @@ export function StudentCreationForm({
                 <>
                   <input
                     type="text"
+                    aria-label="Admission ID"
                     value={admissionNumber}
                     onChange={(event) => onAdmissionNumberChange(event.target.value)}
                     className="h-10 w-full rounded-lg border border-slate-200 bg-white/50 px-3 font-mono text-xs font-bold text-slate-950 outline-none transition-all focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/5 placeholder:text-slate-300"
@@ -271,6 +314,7 @@ export function StudentCreationForm({
                 Gender
               </label>
               <select
+                aria-label="Gender"
                 value={gender}
                 onChange={(event) => onGenderChange(event.target.value)}
                 className="h-10 w-auto min-w-full rounded-lg border border-slate-200 bg-white/50 px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/5"
@@ -300,7 +344,7 @@ export function StudentCreationForm({
         )}
 
         <StudentPhotoPanel
-          name={[studentFirstName, studentLastName].filter(Boolean).join(" ") || "Student photo"}
+          name={[studentFirstName, studentMiddleName, studentLastName].filter(Boolean).join(" ") || "Student photo"}
           uploadAvailable={true}
           previewUrl={photoPreviewUrl}
           onPhotoChange={onPhotoChange}
@@ -312,6 +356,8 @@ export function StudentCreationForm({
         />
 
         <StudentCreationOptionalFields
+          emergencyContactMode={emergencyContactMode}
+          onEmergencyContactModeChange={onEmergencyContactModeChange}
           houseName={houseName}
           dateOfBirth={dateOfBirth}
           guardianName={guardianName}
@@ -324,6 +370,9 @@ export function StudentCreationForm({
           onAddressChange={onAddressChange}
         />
 
+        <AdmissionContactFields value={contact} onChange={onContactChange} />
+        {children}
+        </fieldset>
         <div className="pt-2">
           <button
             type="submit"
@@ -334,13 +383,14 @@ export function StudentCreationForm({
               !studentLastName.trim() ||
               numberingPolicyLoading ||
               !admissionNumberReady ||
+              !contactReady ||
               !gender.trim() ||
-              (!selectedClassId && !classes)
+              !selectedClassId
             }
             className="group relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4 text-indigo-400" />
-            <span>{isSubmitting ? "Processing..." : isPhotoProcessing ? "Preparing photo..." : "Complete Admission"}</span>
+            <span>{isSubmitting ? "Admitting student..." : isPhotoProcessing ? "Preparing photo..." : locked ? "Retry reviewed admission" : "Admit student"}</span>
           </button>
         </div>
       </form>

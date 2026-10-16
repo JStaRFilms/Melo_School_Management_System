@@ -41,11 +41,11 @@ export function StaffDirectorySection({ schoolId }: { schoolId: Id<"schools"> })
     <StaffServiceDirectory schoolId={schoolId} role="staff" selectedUserId={userId ?? null} onSelect={setUserId} />
     {!isMobile && detail}
     <AdminSheet isOpen={isMobile && Boolean(userId)} onClose={() => setUserId(undefined)} title="Other staff service">{detail}</AdminSheet>
-    {canOnboard && session?.user.id && <TeacherCreationForm accountKind="staff" isSubmitting={busy} draftContext={{ schoolId, accountId: session.user.id, connection }} onProvision={async (name, email, password, draft, joiningDay) => {
+    {canOnboard && session?.user.id && <TeacherCreationForm accountKind="staff" isSubmitting={busy} draftContext={{ schoolId, accountId: session.user.id, connection }} onProvision={async (name, email, password, draft, parts, joiningDay) => {
       if (!draft) throw new Error("An active staff onboarding draft is required.");
       setBusy(true);
       try {
-        const result = await createStaff({ name: name.trim(), email: email.trim().toLowerCase(), temporaryPassword: password.trim(), origin: window.location.origin, draftId: draft.draftId, expectedDraftRevision: draft.expectedRevision, joiningDay });
+        const result = await createStaff({ name: name.trim(), ...parts, email: email.trim().toLowerCase(), temporaryPassword: password.trim(), origin: window.location.origin, draftId: draft.draftId, expectedDraftRevision: draft.expectedRevision, joiningDay });
         appToast.success("Other staff account created");
         return result;
       } catch (err) { appToast.error(getUserFacingErrorMessage(err, "Could not create the staff account.")); throw err; }

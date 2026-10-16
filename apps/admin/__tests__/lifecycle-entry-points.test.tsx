@@ -64,13 +64,14 @@ it("opens inactive mobile profile through AdminSheet and offers lifecycle rather
 
 it("creates genuine generic staff using a prepared active staff onboarding draft and joining correction", async () => {
   render(<StaffDirectorySection schoolId={"school" as Id<"schools">} />);
-  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Generic Staff" } });
+  fireEvent.change(screen.getByLabelText("First name"), { target: { value: "Generic" } });
+  fireEvent.change(screen.getByLabelText("Last name"), { target: { value: "Staff" } });
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: "staff@test.invalid" } });
   fireEvent.change(screen.getByLabelText(/Joining day correction/), { target: { value: "2026-01-10" } });
   fireEvent.click(screen.getByRole("button", { name: "Create Other staff Account" }));
   await waitFor(() => expect(mocks.action).toHaveBeenCalledOnce());
   expect(mocks.prepare).toHaveBeenCalledOnce();
-  expect(mocks.action).toHaveBeenCalledWith("functions/academic/academicSetup:createStaff", expect.objectContaining({ name: "Generic Staff", draftId: "draft", expectedDraftRevision: 7, joiningDay: "2026-01-10", origin: window.location.origin }));
+  expect(mocks.action).toHaveBeenCalledWith("functions/academic/academicSetup:createStaff", expect.objectContaining({ name: "Generic Staff", firstName: "Generic", lastName: "Staff", draftId: "draft", expectedDraftRevision: 7, joiningDay: "2026-01-10", origin: window.location.origin }));
   expect(mocks.succeeded).toHaveBeenCalledOnce();
 });
 

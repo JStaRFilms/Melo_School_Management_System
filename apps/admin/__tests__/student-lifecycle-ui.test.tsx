@@ -18,6 +18,9 @@ vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: { state: "
 vi.mock("@school/shared/toast", () => ({ appToast: { success: mocks.success, error: mocks.error } }));
 
 const profile: StudentLifecycleProfile = {
+  middleName: null, storedAddress: null, addressMode: null, emergencyContactMode: null,
+  portalState: "not_provisioned", activeSessionId: "session" as Id<"academicSessions">, addressSource: "none",
+  emergencyContact: { source: "none", parentUserId: null, name: null, phone: null, email: null },
   _id: "student" as Id<"students">, userId: "student-user" as Id<"users">, email: "student@test.invalid", name: "Ada Student", displayName: "Ada Student", firstName: "Ada", lastName: "Student", admissionNumber: "001", classId: "class" as Id<"classes">, className: "Primary 1", houseName: null, gender: null, dateOfBirth: null, guardianName: null, guardianPhone: null, address: null, photoUrl: null, photoFileName: null, photoContentType: null, enrollmentStatus: "withdrawn", enrollmentRevision: 3, graduatedAt: null, graduatingSessionId: null, graduatingSessionName: null, graduatingClassId: null, graduatingClassName: null,
 };
 function open(action: "withdraw" | "re_enrol" = "withdraw", props: StudentLifecycleProfile = profile) {

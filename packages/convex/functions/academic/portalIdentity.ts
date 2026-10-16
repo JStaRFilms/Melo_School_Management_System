@@ -29,17 +29,22 @@ function identityError(
   return new ConvexError({ code, message });
 }
 
-async function getPortalRole(
+export async function getPortalRole(
   ctx: QueryCtx,
   user: Doc<"users">,
 ): Promise<"parent" | "student" | null> {
   if (user.role === "student") return "student";
-  if (user.role !== "parent") return null;
-  const link = await ctx.db
+  // Linked staff use their existing school identity as a parent, never an email match.
+  const links = assertBoundedRows(await ctx.db
     .query("familyMembers")
     .withIndex("by_parent_user", (q) => q.eq("parentUserId", user._id))
-    .first();
-  return link && link.schoolId === user.schoolId ? "parent" : null;
+    .take(101), 100, () => { throw identityError("RECONCILIATION_REQUIRED", "Parent family links exceed supported bounds"); });
+  for (const link of links) {
+    if (link.schoolId !== user.schoolId) continue;
+    const family = await ctx.db.get(link.familyId);
+    if (family?.schoolId === user.schoolId) return "parent";
+  }
+  return null;
 }
 
 /** Canonical token -> person -> explicit active branch membership -> linked user. */

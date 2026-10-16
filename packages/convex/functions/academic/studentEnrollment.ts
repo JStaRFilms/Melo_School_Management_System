@@ -11,6 +11,8 @@ import {
   mutation,
   query,
   type MutationCtx,
+  type QueryCtx,
+  type ActionCtx,
 } from "../../_generated/server";
 import {
   allocateNextAdmissionNumberHelper,
@@ -18,11 +20,13 @@ import {
   commitManualAdmissionNumberHelper,
 } from "./admissionNumbers";
 import { api, internal } from "../../_generated/api";
-import type { Doc, Id } from "../../_generated/dataModel";
-import { paginationOptsValidator } from "convex/server";
+import type { Doc, Id, TableNames } from "../../_generated/dataModel";
+import schema from "../../schema";
+import { schemaReferenceInventory } from "../../schemaCoverage";
 import { studentEnrollmentStatus, studentTransitionAction } from "./studentLifecycleContract";
 import { assertNoOpenStudentTransfer, assertStudentParticipating, currentStudentLifecycleContext, effectiveStudentDay, recordStudentEnrollmentEvent } from "./studentLifecycle";
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError } from "convex/values";
 import {
   getAuthenticatedSchoolMembership,
@@ -32,7 +36,7 @@ import {
   teacherHasClassAccess,
 } from "./teacherAccess";
 import { normalizeHumanName } from "@school/shared/name-format";
-import { provisionSchoolPortalAuthUser } from "../platform/provisioningHelpers";
+import { provisionSchoolPortalAuthUser, prepareSchoolPortalPassword } from "../platform/provisioningHelpers";
 import {
   getReadableUserName,
   resolveStoredUserNameFields,
@@ -49,12 +53,36 @@ import {
   listClassAggregationOptOuts,
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
-import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { getStudentClassForSession, isStudentEnrolledInClassForSession } from "./studentClassMembership";
 import { assertBranchDoc } from "../foundation/tenantScope";
 import { isEmailAddress } from "../foundation/normalize";
+import { studentLoginSuffix } from "./institutionalEmail";
+import { contactAddressPatch } from "./familyContactAddress";
+import { normalizeOptionalPhone } from "./familyContactPhone";
 
-function toStudentAuthId(schoolId: string, admissionNumber: string) {
-  return `student:${schoolId}:${admissionNumber.trim().toLowerCase()}`;
+async function activeStudentAssignment(ctx: QueryCtx | MutationCtx, student: Doc<"students">) {
+  const sessions = await ctx.db.query("academicSessions")
+    .withIndex("by_school_active", q => q.eq("schoolId", student.schoolId).eq("isActive", true)).take(2);
+  if (sessions.length > 1) throw new ConvexError("Active academic session configuration requires review");
+  return { sessionId: sessions[0]?._id ?? null, classId: sessions[0]
+    ? await getStudentClassForSession(ctx, { student, schoolId: student.schoolId, sessionId: sessions[0]._id }) : student.classId };
+}
+
+export async function allocateStudentLogin(ctx: MutationCtx, userId: Id<"users">, schoolId: Id<"schools">, admissionNumber: string) {
+  const suffix = await studentLoginSuffix(ctx, schoolId);
+  const prefix = admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "student";
+  const immutablePart = String(userId);
+  if (!/^[a-z0-9]+$/.test(immutablePart) || immutablePart.length > 54) throw new ConvexError("Student identifier cannot be allocated");
+  const email = `${prefix.slice(0, 63 - immutablePart.length)}.${immutablePart}@${suffix}`;
+  if (email.length > 254) throw new ConvexError("Student login domain is too long");
+  const [user, platform, mailbox] = await Promise.all([
+    ctx.db.query("users").withIndex("by_email", q => q.eq("email", email)).first(),
+    ctx.db.query("platformAdmins").withIndex("by_email", q => q.eq("email", email)).first(),
+    ctx.db.query("institutionalMailboxes").withIndex("by_email", q => q.eq("email", email)).first(),
+  ]);
+  if (user || platform || mailbox) throw new ConvexError("Student login identifier is already reserved");
+  await ctx.db.patch(userId, { email });
+  return email;
 }
 
 async function enrollmentIntentFingerprint(intent: unknown): Promise<string> {
@@ -92,7 +120,7 @@ function archivedRecordNotice(recordType: string) {
 }
 
 async function findStudentsByAdmissionNumber(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   admissionNumber: string,
 ) {
@@ -101,30 +129,6 @@ async function findStudentsByAdmissionNumber(
     .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
     .filter((q: any) => q.eq(q.field("admissionNumber"), admissionNumber))
     .collect();
-}
-
-async function findStudentUserByAdmissionNumber(
-  ctx: any,
-  schoolId: Id<"schools">,
-  admissionNumber: string,
-) {
-  const normalizedAuthId = toStudentAuthId(String(schoolId), admissionNumber);
-  const normalizedEmail = `${admissionNumber
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toLowerCase()}@students.local`;
-
-  const users = await ctx.db
-    .query("users")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-    .filter((q: any) =>
-      q.or(
-        q.eq(q.field("authId"), normalizedAuthId),
-        q.eq(q.field("email"), normalizedEmail),
-      ),
-    )
-    .collect();
-
-  return users.find((user: any) => user.role === "student") ?? null;
 }
 
 function normalizeOptionalText(value: string | null | undefined) {
@@ -205,32 +209,6 @@ function normalizeOptionalEmail(value: string | null | undefined) {
   return trimmed;
 }
 
-function normalizeOptionalPhone(value: string | null | undefined) {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (trimmed.includes("@") || /[a-zA-Z]/.test(trimmed)) {
-    throw new ConvexError(
-      "Contact phone number cannot contain letters or email addresses.",
-    );
-  }
-
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length < 7 || digits.length > 15) {
-    throw new ConvexError(
-      "Contact phone number must contain between 7 and 15 digits.",
-    );
-  }
-
-  return trimmed;
-}
-
 function buildFamilyName(args: {
   studentName: string;
   parentName?: string;
@@ -249,24 +227,127 @@ function buildFamilyName(args: {
   return `${baseName} Family`;
 }
 
-export const updatePortalUserAuthIdInternal = internalMutation({
-  args: {
-    userId: v.id("users"),
-    schoolId: v.id("schools"),
-    authId: v.string(),
+const portalAccountStateValidator = v.union(v.literal("not_provisioned"), v.literal("provisioning"), v.literal("resetting"), v.literal("provisioned"), v.literal("reconciliation_required"));
+
+async function portalAccountState(ctx: QueryCtx | MutationCtx, user: Doc<"users">) {
+  const evidence = user.portalAccount;
+  if (evidence?.state === "provisioning" || evidence?.state === "resetting") return evidence.state;
+  if (evidence?.state === "reconciliation_required") return evidence.state;
+  if (!evidence) return user.authTokenIdentifier || user.personId || !/^(student:|parent:|migration:)/.test(user.authId)
+    ? "reconciliation_required" as const : "not_provisioned" as const;
+  if (evidence.authId !== user.authId || evidence.expectedEmail !== user.email || !user.personId || !user.authTokenIdentifier)
+    return "reconciliation_required" as const;
+  const personId = user.personId;
+  const person = await ctx.db.get(personId);
+  const memberships = await ctx.db.query("branchMemberships")
+    .withIndex("by_person_and_school", q => q.eq("personId", personId).eq("schoolId", user.schoolId)).take(2);
+  return person?.status === "active" && person.identityReconciliationState === "resolved" && person.authTokenIdentifier === user.authTokenIdentifier &&
+    memberships.length === 1 && memberships[0].status === "active" && memberships[0].legacyUserId === user._id
+    ? "provisioned" as const : "reconciliation_required" as const;
+}
+
+export const getPortalAccountState = query({
+  args: { userId: v.id("users") },
+  returns: v.object({ userId: v.id("users"), email: v.string(), state: portalAccountStateValidator }),
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.schoolId !== actor.schoolId || user.isArchived) throw new ConvexError("User not found");
+    return { userId: user._id, email: user.email, state: await portalAccountState(ctx, user) };
   },
-  returns: v.null(),
+});
+
+export const beginPortalProvisionInternal = internalMutation({
+  args: { userId: v.id("users"), operationId: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.schoolId !== actor.schoolId || user.isArchived || (user.role !== "student" && user.role !== "parent"))
+      throw new ConvexError("Portal user not found");
+    if (user.portalAccount?.state === "provisioning" || user.portalAccount?.state === "resetting")
+      throw new ConvexError("A portal operation is already in progress. Review access state before retrying.");
+    if (user.portalAccount?.operationId === args.operationId)
+      throw new ConvexError("This operation has already run. Reload access state before starting another operation.");
+    const state = await portalAccountState(ctx, user);
+    const issuer = process.env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
+    if (!issuer) throw new ConvexError("Authentication issuer is not configured");
+    const authId = user.portalAccount?.authId ?? user.authId;
+    const token = `${issuer}|${authId}`;
+    const person = user.personId ? await ctx.db.get(user.personId) : null;
+    if ((user.personId && !person) || (person && (person.status !== "active" || (person.authTokenIdentifier && person.authTokenIdentifier !== token))) ||
+        (user.authTokenIdentifier && user.authTokenIdentifier !== token))
+      throw new ConvexError("Canonical portal identity requires reconciliation before provisioning");
+    const matches = await ctx.db.query("persons").withIndex("by_token_identifier", q => q.eq("authTokenIdentifier", token)).take(2);
+    if (matches.length > 1 || (matches[0] && matches[0]._id !== user.personId))
+      throw new ConvexError("Authentication identity belongs to another canonical person");
+    await ctx.db.patch(user._id, {
+      portalAccount: { state: state === "provisioned" ? "resetting" : "provisioning", operationId: args.operationId,
+        expectedEmail: user.email, expectedAuthId: user.authId, ...(user.portalAccount?.authId ? { authId: user.portalAccount.authId } : {}), updatedAt: Date.now() },
+    });
+    return { userId: user._id, schoolId: user.schoolId, name: getReadableUserName(user).displayName, email: user.email,
+      authId: user.portalAccount?.authId ?? user.authId };
+  },
+});
+
+export const recordPortalAuthInternal = internalMutation({
+  args: { userId: v.id("users"), schoolId: v.id("schools"), operationId: v.string(), authId: v.string() },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
-    if (!user || user.schoolId !== args.schoolId) {
-      throw new ConvexError("User not found");
+    if (!user || user.schoolId !== args.schoolId || user.portalAccount?.operationId !== args.operationId)
+      throw new ConvexError("Portal operation changed");
+    await ctx.db.patch(user._id, { portalAccount: { ...user.portalAccount, authId: args.authId, updatedAt: Date.now() } });
+  },
+});
+
+export const finishPortalProvisionInternal = internalMutation({
+  args: { userId: v.id("users"), schoolId: v.id("schools"), operationId: v.string(), authId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.schoolId !== args.schoolId || actor.schoolId !== args.schoolId || user.portalAccount?.operationId !== args.operationId)
+      throw new ConvexError("Portal operation changed");
+    const evidence = user.portalAccount;
+    if (!args.authId) {
+      await ctx.db.patch(user._id, { portalAccount: { ...evidence, state: "reconciliation_required", updatedAt: Date.now() } });
+      return null;
     }
-
-    await ctx.db.patch(args.userId, {
-      authId: args.authId,
-      updatedAt: Date.now(),
+    if (user.isArchived || (user.role !== "student" && user.role !== "parent") || user.email !== evidence.expectedEmail || user.authId !== evidence.expectedAuthId)
+      throw new ConvexError("Portal identity changed during provisioning");
+    const issuer = process.env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
+    if (!issuer) throw new ConvexError("Authentication issuer is not configured");
+    const authId = args.authId;
+    const token = `${issuer}|${authId}`;
+    const [people, authUsers] = await Promise.all([
+      ctx.db.query("persons").withIndex("by_token_identifier", q => q.eq("authTokenIdentifier", token)).take(2),
+      ctx.db.query("users").withIndex("by_auth", q => q.eq("authId", authId)).take(101),
+    ]);
+    if (people.length > 1 || authUsers.length > 100 || authUsers.some(entry => entry._id !== user._id && (!user.personId || entry.personId !== user.personId)))
+      throw new ConvexError("Authentication identity belongs to another user");
+    const linkedPerson = user.personId ? await ctx.db.get(user.personId) : null;
+    if ((user.personId && !linkedPerson) || (user.authTokenIdentifier && user.authTokenIdentifier !== token) ||
+        (linkedPerson && (linkedPerson.status !== "active" || (linkedPerson.authTokenIdentifier && linkedPerson.authTokenIdentifier !== token))) ||
+        (people[0] && people[0]._id !== user.personId))
+      throw new ConvexError("Canonical identity requires reconciliation");
+    const now = Date.now();
+    const personId = linkedPerson?._id ?? await ctx.db.insert("persons", {
+      name: user.name, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName,
+      email: user.email, authTokenIdentifier: token, identityReconciliationState: "resolved",
+      status: "active", primarySchoolId: user.schoolId, createdAt: now, updatedAt: now,
     });
-
+    if (linkedPerson) await ctx.db.patch(personId, { authTokenIdentifier: token, identityReconciliationState: "resolved", updatedAt: now });
+    const memberships = await ctx.db.query("branchMemberships")
+      .withIndex("by_person_and_school", q => q.eq("personId", personId).eq("schoolId", user.schoolId)).take(2);
+    if (memberships.length > 1 || (memberships[0] && (memberships[0].legacyUserId !== user._id || memberships[0].status !== "active")))
+      throw new ConvexError("Portal branch membership requires reconciliation");
+    if (!memberships.length) await ctx.db.insert("branchMemberships", {
+      personId, schoolId: user.schoolId, status: "active", isDefaultBranch: true, legacyUserId: user._id, joinedAt: now, updatedAt: now,
+    });
+    await ctx.db.patch(user._id, { authId: args.authId, authTokenIdentifier: token, personId, updatedAt: now,
+      portalAccount: { ...evidence, state: "provisioned", authId: args.authId, updatedAt: now },
+      lastCredentialOperation: { operationId: args.operationId, kind: evidence.state === "resetting" ? "reset" : "ready", committedAt: now } });
     return null;
   },
 });
@@ -311,32 +392,31 @@ export const getPortalUserInternal = internalQuery({
 });
 
 async function findUsersByEmail(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   email: string,
 ) {
   return await ctx.db
     .query("users")
-    .withIndex("by_school_and_email", (q: any) =>
-      q.eq("schoolId", schoolId).eq("email", email),
-    )
-    .collect();
+    .withIndex("by_school_and_email", q => q.eq("schoolId", schoolId).eq("email", email))
+    .take(3);
 }
 
 async function findFamiliesForParentUser(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   parentUserId: Id<"users">,
 ) {
   const familyLinks = await ctx.db
     .query("familyMembers")
-    .withIndex("by_parent_user", (q: any) => q.eq("parentUserId", parentUserId))
-    .collect();
+    .withIndex("by_parent_user", q => q.eq("parentUserId", parentUserId))
+    .take(21);
+  if (familyLinks.length > 20) throw new ConvexError("Contact households require bounded operator review");
 
   const families = await Promise.all(
-    familyLinks.map(async (familyLink: any) => {
+    familyLinks.map(async (familyLink) => {
       const family = await ctx.db.get(familyLink.familyId);
-      if (!family || family.schoolId !== schoolId) {
+      if (!family || family.schoolId !== schoolId || familyLink.schoolId !== schoolId) {
         return null;
       }
 
@@ -348,18 +428,18 @@ async function findFamiliesForParentUser(
   );
 
   return families
-    .filter((family: any) => family && !family.isArchived)
-    .sort((a: any, b: any) => a.createdAt - b.createdAt);
+    .filter((family): family is NonNullable<typeof family> => family !== null)
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 async function summarizeFamiliesForParentUser(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   parentUserId: Id<"users">,
 ) {
   const families = await findFamiliesForParentUser(ctx, schoolId, parentUserId);
   return await Promise.all(
-    families.map(async (family: any) => {
+    families.map(async (family) => {
       const [members, students] = await Promise.all([
         getFamilyMembers(ctx, family._id),
         getStudentsForFamily(ctx, family._id),
@@ -368,9 +448,18 @@ async function summarizeFamiliesForParentUser(
       const activeStudents = students.filter(
         (student: any) => !student.isArchived,
       );
+      const primaryMembers = members.filter(member => member.isPrimaryContact && member.schoolId === schoolId);
+      const primaryUser = primaryMembers.length === 1 ? await ctx.db.get(primaryMembers[0].parentUserId) : null;
       return {
         _id: family._id,
         name: family.name,
+        residentialAddress: family.residentialAddress ?? null,
+        contactAddressMode: family.familyLink.addressMode ?? null,
+        contactAddressOverride: family.familyLink.addressOverride ?? null,
+        contactAddress: family.familyLink.addressMode === "residential" ? family.residentialAddress ?? null : family.familyLink.addressOverride ?? null,
+        contactAddressSource: family.familyLink.addressMode ?? ("legacy" as const),
+        primaryContact: primaryUser && primaryUser.schoolId === schoolId && !primaryUser.isArchived && primaryUser.role !== "student"
+          ? { userId: primaryUser._id, name: getReadableUserName(primaryUser).displayName, phone: primaryUser.phone ?? null, email: primaryUser.email } : null,
         studentCount: activeStudents.length,
         parentCount: members.length,
       };
@@ -378,59 +467,36 @@ async function summarizeFamiliesForParentUser(
   );
 }
 
-async function getFamilyMembers(ctx: any, familyId: Id<"families">) {
-  return await ctx.db
+async function getFamilyMembers(ctx: QueryCtx | MutationCtx, familyId: Id<"families">) {
+  const rows = await ctx.db
     .query("familyMembers")
-    .withIndex("by_family", (q: any) => q.eq("familyId", familyId))
-    .collect();
+    .withIndex("by_family", (q) => q.eq("familyId", familyId))
+    .take(101);
+  if (rows.length > 100) throw new ConvexError("Household size requires bounded operator review");
+  const family = await ctx.db.get(familyId);
+  if (!family || rows.some(row => row.schoolId !== family.schoolId)) throw new ConvexError("Household member scope requires review");
+  return rows;
 }
 
-async function getStudentsForFamily(ctx: any, familyId: Id<"families">) {
-  return await ctx.db
+async function getStudentsForFamily(ctx: QueryCtx | MutationCtx, familyId: Id<"families">) {
+  const rows = await ctx.db
     .query("students")
-    .withIndex("by_family", (q: any) => q.eq("familyId", familyId))
-    .collect();
+    .withIndex("by_family", (q) => q.eq("familyId", familyId))
+    .take(101);
+  if (rows.length > 100) throw new ConvexError("Household size requires bounded operator review");
+  return rows;
 }
 
-async function findReusableOrphanFamilyByName(
-  ctx: any,
-  schoolId: Id<"schools">,
-  familyName: string,
-) {
-  const matches = await ctx.db
-    .query("families")
-    .withIndex("by_school_and_name", (q: any) =>
-      q.eq("schoolId", schoolId).eq("name", familyName),
-    )
-    .collect();
-
-  const orphanFamilies = [] as any[];
-
-  for (const family of matches) {
-    const [members, students] = await Promise.all([
-      getFamilyMembers(ctx, family._id),
-      getStudentsForFamily(ctx, family._id),
-    ]);
-
-    const activeStudents = students.filter(
-      (student: any) => !student.isArchived,
-    );
-    if (members.length === 0 && activeStudents.length > 0) {
-      orphanFamilies.push(family);
-    }
-  }
-
-  return orphanFamilies.length === 1 ? orphanFamilies[0] : null;
-}
-
-async function deleteFamilyIfEmpty(ctx: any, familyId: Id<"families">) {
+async function deleteFamilyIfEmpty(ctx: MutationCtx, familyId: Id<"families">) {
   const [members, students] = await Promise.all([
     getFamilyMembers(ctx, familyId),
     getStudentsForFamily(ctx, familyId),
   ]);
 
-  const activeStudents = students.filter((student: any) => !student.isArchived);
-  if (members.length === 0 && activeStudents.length === 0) {
+  if (members.length === 0 && students.length === 0) {
+    // Unlinking must retain a household referenced by admissions or reviewed imports.
+    try { await assertNoRetainedReferences(ctx, String(familyId), "families"); }
+    catch (error) { if (error instanceof ConvexError) return; throw error; }
     await ctx.db.delete(familyId);
   }
 }
@@ -441,6 +507,7 @@ export async function createCanonicalStudentEnrollmentHelper(
     schoolId: Id<"schools">;
     classId: Id<"classes">;
     firstName?: string;
+    middleName?: string;
     lastName?: string;
     name: string;
     admissionNumber: string;
@@ -527,26 +594,21 @@ export async function createCanonicalStudentEnrollmentHelper(
     .withIndex("by_school_and_admission_number", (query) => query.eq("schoolId", args.schoolId).eq("admissionNumber", admissionNumber))
     .take(2);
   if (duplicates.length) throw new ConvexError(duplicates.some((student) => !student.isArchived) ? "A student with this admission number already exists" : archivedRecordNotice("student"));
-  const authId = toStudentAuthId(String(args.schoolId), admissionNumber);
-  const studentEmail = `${admissionNumber.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@students.local`;
-  const [authDuplicates, emailDuplicates] = await Promise.all([
-    ctx.db.query("users").withIndex("by_auth", (query) => query.eq("authId", authId)).take(2),
-    ctx.db.query("users").withIndex("by_school_and_email", (query) => query.eq("schoolId", args.schoolId).eq("email", studentEmail)).take(2),
-  ]);
-  const userDuplicates = [...authDuplicates, ...emailDuplicates];
-  if (userDuplicates.length) throw new ConvexError(userDuplicates.some((user) => !user.isArchived) ? "A student with this admission number already exists" : archivedRecordNotice("student"));
+  const authId = `student:pending:${crypto.randomUUID()}`;
+  const studentEmail = "pending@student.invalid";
   const now = Date.now();
+  const nameFields = resolveStoredUserNameFields(args);
   const studentUserId = await ctx.db.insert("users", {
     schoolId: args.schoolId,
     authId,
-    name: args.name,
-    ...(args.firstName ? { firstName: args.firstName } : {}),
-    ...(args.lastName ? { lastName: args.lastName } : {}),
+    ...nameFields,
     email: studentEmail,
     role: "student",
     createdAt: now,
     updatedAt: now,
   });
+  await allocateStudentLogin(ctx, studentUserId, args.schoolId, admissionNumber);
+  await ctx.db.patch(studentUserId, { authId: `student:${args.schoolId}:${studentUserId}` });
   const studentId = await ctx.db.insert("students", {
     schoolId: args.schoolId,
     classId: args.classId,
@@ -709,6 +771,12 @@ export const getStudentEnrollmentReturnContext = query({
   },
 });
 
+const parentGuardianValidator = v.union(
+  v.object({ kind: v.literal("none") }),
+  v.object({ kind: v.literal("existing"), parentUserId: v.id("users"), relationship: v.optional(v.union(v.string(), v.null())), isPrimaryContact: v.optional(v.boolean()), confirmPrimaryChange: v.optional(v.boolean()) }),
+  v.object({ kind: v.literal("new"), firstName: v.string(), middleName: v.optional(v.string()), lastName: v.string(), email: v.string(), phone: v.optional(v.union(v.string(), v.null())), relationship: v.optional(v.union(v.string(), v.null())), familyName: v.optional(v.union(v.string(), v.null())), isPrimaryContact: v.optional(v.boolean()), confirmPrimaryChange: v.optional(v.boolean()), addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))), addressOverride: v.optional(v.union(v.string(), v.null())) }),
+);
+
 // ==================== STUDENT ROSTER ====================
 
 export const createStudent = mutation({
@@ -732,7 +800,9 @@ export const createStudent = mutation({
     advanceCounterTo: v.optional(v.number()),
     name: v.optional(v.union(v.string(), v.null())),
     firstName: v.optional(v.union(v.string(), v.null())),
+    middleName: v.optional(v.union(v.string(), v.null())),
     lastName: v.optional(v.union(v.string(), v.null())),
+    emergencyContactMode: v.optional(v.union(v.literal("primary"), v.literal("override"))),
     admissionNumber: v.string(),
     classId: v.id("classes"),
     houseName: v.optional(v.union(v.string(), v.null())),
@@ -744,9 +814,12 @@ export const createStudent = mutation({
     photoStorageId: v.optional(v.union(v.id("_storage"), v.null())),
     photoFileName: v.optional(v.union(v.string(), v.null())),
     photoContentType: v.optional(v.union(v.string(), v.null())),
+    parentGuardian: v.optional(parentGuardianValidator),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
     parentLink: v.optional(
       v.object({
         firstName: v.string(),
+        middleName: v.optional(v.string()),
         lastName: v.string(),
         email: v.string(),
         phone: v.optional(v.union(v.string(), v.null())),
@@ -802,6 +875,7 @@ export const createStudent = mutation({
     const studentName = resolveStoredUserNameFields({
       name: args.name,
       firstName: args.firstName,
+      middleName: args.middleName,
       lastName: args.lastName,
       requiredMessage: "Student name is required",
     });
@@ -821,6 +895,7 @@ export const createStudent = mutation({
       classId: args.classId,
       name: studentName.name,
       ...(studentName.firstName ? { firstName: studentName.firstName } : {}),
+      ...(studentName.middleName ? { middleName: studentName.middleName } : {}),
       ...(studentName.lastName ? { lastName: studentName.lastName } : {}),
       admissionNumber: args.admissionNumber,
       gender,
@@ -853,15 +928,26 @@ export const createStudent = mutation({
         intentFingerprint,
       });
 
-    if (args.parentLink) {
-      await ctx.runMutation(
+    if (args.parentLink && args.parentGuardian) throw new ConvexError("Choose one contact input");
+    if (args.emergencyContactMode === "primary" && (guardianName || guardianPhone)) throw new ConvexError("Primary-contact mode cannot include separate emergency details");
+    await ctx.db.patch(studentId, {
+      emergencyContactMode: args.emergencyContactMode ?? (guardianName || guardianPhone ? "override" : "primary"),
+      addressMode: args.addressMode ?? (address ? "different" : "residential"),
+    });
+    const chosenContact = args.parentGuardian && args.parentGuardian.kind !== "none"
+      ? args.parentGuardian : undefined;
+    if (args.parentLink || chosenContact) {
+      const { kind: _kind, ...contact } = chosenContact ?? { kind: "new", ...args.parentLink };
+      const linked: { familyId: Id<"families">; parentUserId: Id<"users">; familyMemberId: Id<"familyMembers">; createdHousehold: boolean } = await ctx.runMutation(
         api.functions.academic.studentEnrollment.upsertStudentFamilyLink,
         {
           studentId,
-          ...args.parentLink,
+          ...contact,
           confirmDuplicateLink: args.confirmDuplicateLink,
         },
       );
+      if (linked.createdHousehold && args.addressMode === undefined)
+        await ctx.db.patch(studentId, { addressMode: "residential" });
     }
     if (args.draftId !== undefined && args.expectedDraftRevision !== undefined && args.draftFormKey !== undefined) {
       await finishFormDraft(ctx, {
@@ -1043,12 +1129,17 @@ export const updateStudent = mutation({
     numberingSessionId: v.optional(v.id("academicSessions")),
     numberingResetPeriod: v.optional(v.string()),
     studentId: v.id("students"),
+    emergencyContactMode: v.optional(v.union(v.literal("primary"), v.literal("override"))),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
     name: v.optional(v.union(v.string(), v.null())),
+    middleName: v.optional(v.union(v.string(), v.null())),
     firstName: v.optional(v.union(v.string(), v.null())),
     lastName: v.optional(v.union(v.string(), v.null())),
     admissionNumber: v.optional(v.string()),
     classId: v.optional(v.id("classes")),
     confirmClassAssignment: v.optional(v.boolean()),
+    expectedClassId: v.optional(v.id("classes")),
+    expectedSessionId: v.optional(v.union(v.id("academicSessions"), v.null())),
     houseName: v.optional(v.union(v.string(), v.null())),
     gender: v.optional(v.union(v.string(), v.null())),
     dateOfBirth: v.optional(v.union(v.number(), v.null())),
@@ -1084,10 +1175,13 @@ export const updateStudent = mutation({
       assertStudentParticipating(student);
       await assertNoOpenStudentTransfer(ctx, student._id);
     }
-
-    // Verify the effective class before selecting a level-specific counter.
-    const nextClass = await ctx.db.get(args.classId ?? student.classId);
-    if (!nextClass || nextClass.schoolId !== schoolId || (nextClass.isArchived && args.classId !== undefined)) {
+    const assignment = await activeStudentAssignment(ctx, student);
+    if (args.confirmClassAssignment && !args.classId) throw new ConvexError("Choose a class to confirm assignment");
+    if (args.confirmClassAssignment && (!args.expectedClassId || args.expectedSessionId === undefined ||
+        args.expectedClassId !== assignment.classId || args.expectedSessionId !== assignment.sessionId))
+      throw new ConvexError("Active-session assignment changed or was not reviewed. Reload the profile and confirm again.");
+    const nextClass = await ctx.db.get(args.confirmClassAssignment ? args.classId ?? assignment.classId : assignment.classId);
+    if (!nextClass || nextClass.schoolId !== schoolId || (nextClass.isArchived && args.confirmClassAssignment)) {
       throw new ConvexError("Selected class is not available");
     }
 
@@ -1143,18 +1237,7 @@ export const updateStudent = mutation({
         );
       }
 
-      const duplicateStudentUser = await findStudentUserByAdmissionNumber(
-        ctx,
-        schoolId,
-        nextAdmissionNumber,
-      );
-      if (duplicateStudentUser && duplicateStudentUser._id !== student.userId) {
-        throw new ConvexError(
-          duplicateStudentUser.isArchived
-            ? archivedRecordNotice("student")
-            : "A student with this admission number already exists",
-        );
-      }
+
     }
 
     const userName = resolveStoredUserNameFields({
@@ -1163,36 +1246,24 @@ export const updateStudent = mutation({
       lastName: args.lastName,
       fallbackName: studentUser.name,
       fallbackFirstName: studentUser.firstName,
+      middleName: args.middleName,
+      fallbackMiddleName: studentUser.middleName,
       fallbackLastName: studentUser.lastName,
       requiredMessage: "Student name is required",
     });
 
-    const nextUserRecord: Partial<Doc<"users">> = {
-      name: userName.name, updatedAt: Date.now(),
-      firstName: userName.firstName ?? undefined, lastName: userName.lastName ?? undefined,
-    };
+
     const uploadedPhotoMetadata = await getValidatedPhotoMetadata(ctx, args);
-    if (
-      args.classId &&
-      (args.classId !== student.classId || args.confirmClassAssignment)
-    ) {
+    if (args.confirmClassAssignment && nextClass._id !== assignment.classId) {
+      if (!args.classId) throw new ConvexError("Choose a class to confirm assignment");
       await retireSupersededActiveSessionPromotions(ctx, {
-        schoolId,
-        studentId: student._id,
-        targetClassId: nextClass._id,
+        schoolId, studentId: student._id, targetClassId: nextClass._id,
       });
-    }
-    if (isCurrentEnrollment(student)) {
       await reconcileActiveSessionSubjectSelections(ctx, {
         schoolId, studentId: student._id, targetClassId: nextClass._id,
       });
     }
 
-    // Patch profile fields only. Identity, admissions provenance and lifecycle evidence are protected.
-    const nextStudentRecord: Partial<Doc<"students">> = {
-      classId: args.classId ?? student.classId,
-      admissionNumber: nextAdmissionNumber, updatedAt: Date.now(),
-    };
 
     const nextGender =
       args.gender === undefined
@@ -1241,25 +1312,31 @@ export const updateStudent = mutation({
           ? Date.now()
           : undefined;
 
-    nextStudentRecord.houseName = nextHouseName;
-    nextStudentRecord.gender = nextGender;
-    nextStudentRecord.dateOfBirth = nextDateOfBirth;
-    nextStudentRecord.guardianName = nextGuardianName;
-    nextStudentRecord.guardianPhone = nextGuardianPhone;
-    nextStudentRecord.address = nextAddress;
-    nextStudentRecord.photoStorageId = nextPhotoStorageId;
-    nextStudentRecord.photoFileName = nextPhotoFileName;
-    nextStudentRecord.photoContentType = nextPhotoContentType;
-    nextStudentRecord.photoUpdatedAt = nextPhotoUpdatedAt;
-    if (args.photoStorageId !== undefined) {
-      nextStudentRecord.photoProvenance = args.photoStorageId ? "school_upload" : undefined;
-      nextStudentRecord.photoSourceDocumentId = undefined;
-      nextStudentRecord.photoRetentionHold = undefined;
-    }
-
-    await ctx.db.patch(studentUser._id, nextUserRecord);
-    await ctx.db.patch(args.studentId, nextStudentRecord);
-    if (nextClass._id !== student.classId || args.confirmClassAssignment) {
+    await ctx.db.patch(studentUser._id, { ...userName, updatedAt: Date.now() });
+    await ctx.db.patch(args.studentId, {
+      ...(args.confirmClassAssignment && nextClass._id !== assignment.classId ? { classId: nextClass._id } : {}),
+      admissionNumber: nextAdmissionNumber,
+      houseName: nextHouseName,
+      gender: nextGender,
+      dateOfBirth: nextDateOfBirth,
+      guardianName: args.emergencyContactMode === "primary" ? undefined : nextGuardianName,
+      guardianPhone: args.emergencyContactMode === "primary" ? undefined : nextGuardianPhone,
+      ...(args.emergencyContactMode === "primary" ? { guardianEmail: undefined } : {}),
+      ...(args.emergencyContactMode !== undefined ? { emergencyContactMode: args.emergencyContactMode } : {}),
+      address: nextAddress,
+      ...(args.addressMode !== undefined || args.address !== undefined ? { addressMode: args.addressMode ?? "different" } : {}),
+      photoStorageId: nextPhotoStorageId,
+      photoFileName: nextPhotoFileName,
+      photoContentType: nextPhotoContentType,
+      photoUpdatedAt: nextPhotoUpdatedAt,
+      ...(args.photoStorageId !== undefined ? {
+        photoProvenance: args.photoStorageId ? "school_upload" as const : undefined,
+        photoSourceDocumentId: undefined,
+        photoRetentionHold: undefined,
+      } : {}),
+      updatedAt: Date.now(),
+    });
+    if (args.confirmClassAssignment) {
       await recordStudentEnrollmentEvent(ctx, student, {
         type: "placement_changed", reason: "Reviewed class assignment", actorUserId: userId,
         context: await currentStudentLifecycleContext(ctx, schoolId, nextClass._id),
@@ -1268,6 +1345,31 @@ export const updateStudent = mutation({
     return null;
   },
 });
+
+const addressSourceValidator = v.union(v.literal("residential"), v.literal("different"), v.literal("legacy"), v.literal("none"));
+const emergencyContactValidator = v.object({
+  source: v.union(v.literal("primary"), v.literal("override"), v.literal("legacy"), v.literal("none")),
+  parentUserId: v.union(v.id("users"), v.null()),
+  name: v.union(v.string(), v.null()), phone: v.union(v.string(), v.null()), email: v.union(v.string(), v.null()),
+});
+
+async function studentContactDetails(ctx: QueryCtx | MutationCtx, student: Doc<"students">) {
+  const family = student.familyId ? await ctx.db.get(student.familyId) : null;
+  const authorizedFamily = family?.schoolId === student.schoolId ? family : null;
+  const address = student.addressMode === "residential" ? authorizedFamily?.residentialAddress ?? null : student.address ?? null;
+  const addressSource = student.addressMode === "residential" ? (authorizedFamily?.residentialAddress ? "residential" as const : "none" as const)
+    : student.addressMode === "different" ? "different" as const : student.address ? "legacy" as const : "none" as const;
+  const empty = { parentUserId: null, name: null, phone: null, email: null };
+  if (student.emergencyContactMode === "override" || (!student.emergencyContactMode && (student.guardianName || student.guardianPhone || student.guardianEmail)))
+    return { address, addressSource, emergencyContact: { ...empty, source: student.emergencyContactMode === "override" ? "override" as const : "legacy" as const,
+      name: student.guardianName ?? null, phone: student.guardianPhone ?? null, email: student.guardianEmail ?? null } };
+  const primary = authorizedFamily ? await ctx.db.query("familyMembers")
+    .withIndex("by_family_and_primary", q => q.eq("familyId", authorizedFamily._id).eq("isPrimaryContact", true)).take(2) : [];
+  const parent = primary.length === 1 && primary[0].schoolId === student.schoolId ? await ctx.db.get(primary[0].parentUserId) : null;
+  return { address, addressSource, emergencyContact: parent && parent.schoolId === student.schoolId && !parent.isArchived && parent.role !== "student"
+    ? { source: "primary" as const, parentUserId: parent._id, name: getReadableUserName(parent).displayName, phone: parent.phone ?? null, email: parent.email }
+    : { ...empty, source: "none" as const } };
+}
 
 export const getStudentProfile = query({
   args: { studentId: v.id("students") },
@@ -1278,16 +1380,24 @@ export const getStudentProfile = query({
     name: v.string(),
     displayName: v.string(),
     firstName: v.union(v.string(), v.null()),
+    middleName: v.union(v.string(), v.null()),
     lastName: v.union(v.string(), v.null()),
     admissionNumber: v.string(),
     classId: v.id("classes"),
     className: v.string(),
+    activeSessionId: v.union(v.id("academicSessions"), v.null()),
     houseName: v.union(v.string(), v.null()),
     gender: v.union(v.string(), v.null()),
     dateOfBirth: v.union(v.number(), v.null()),
     guardianName: v.union(v.string(), v.null()),
     guardianPhone: v.union(v.string(), v.null()),
     address: v.union(v.string(), v.null()),
+    storedAddress: v.union(v.string(), v.null()),
+    addressMode: v.union(v.literal("residential"), v.literal("different"), v.null()),
+    emergencyContactMode: v.union(v.literal("primary"), v.literal("override"), v.null()),
+    addressSource: addressSourceValidator,
+    emergencyContact: emergencyContactValidator,
+    portalState: portalAccountStateValidator,
     photoUrl: v.union(v.string(), v.null()),
     photoFileName: v.union(v.string(), v.null()),
     photoContentType: v.union(v.string(), v.null()),
@@ -1311,10 +1421,12 @@ export const getStudentProfile = query({
       throw new ConvexError("Student not found");
     }
 
+    const assignment = await activeStudentAssignment(ctx, student);
+    const effectiveClassId = assignment.classId;
     const [studentUser, classDoc, photoUrl, gradSessionDoc, gradClassDoc] =
       await Promise.all([
         ctx.db.get(student.userId),
-        ctx.db.get(student.classId),
+        ctx.db.get(effectiveClassId),
         student.photoStorageId
           ? getUnboundStorageUrl(ctx, student.photoStorageId)
           : null,
@@ -1347,16 +1459,22 @@ export const getStudentProfile = query({
       name: studentName.displayName || "Unnamed Student",
       displayName: studentName.displayName || "Unnamed Student",
       firstName: studentName.firstName,
+      middleName: studentName.middleName,
       lastName: studentName.lastName,
       admissionNumber: student.admissionNumber,
-      classId: student.classId,
+      classId: effectiveClassId,
       className: normalizeHumanName(classDoc.name),
+      activeSessionId: assignment.sessionId,
       houseName: student.houseName ?? null,
       gender: student.gender ?? null,
       dateOfBirth: student.dateOfBirth ?? null,
       guardianName: student.guardianName ?? null,
       guardianPhone: student.guardianPhone ?? null,
-      address: student.address ?? null,
+      ...await studentContactDetails(ctx, student),
+      storedAddress: student.address ?? null,
+      addressMode: student.addressMode ?? null,
+      emergencyContactMode: student.emergencyContactMode ?? null,
+      portalState: await portalAccountState(ctx, studentUser),
       photoUrl,
       photoFileName: student.photoFileName ?? null,
       photoContentType: student.photoContentType ?? null,
@@ -1694,20 +1812,9 @@ export const restoreStudent = mutation({
       );
     }
 
-    const studentUserDuplicate = await findStudentUserByAdmissionNumber(
-      ctx,
-      schoolId,
-      student.admissionNumber,
-    );
-    if (
-      studentUserDuplicate &&
-      studentUserDuplicate._id !== student.userId &&
-      !studentUserDuplicate.isArchived
-    ) {
-      throw new ConvexError(
-        "Restore blocked because an active student account already uses this admission number.",
-      );
-    }
+    const userConflicts = await ctx.db.query("users").withIndex("by_school_and_email", q => q.eq("schoolId", schoolId).eq("email", studentUser.email)).take(3);
+    if (userConflicts.some(user => user._id !== studentUser._id && !user.isArchived))
+      throw new ConvexError("Restore blocked because another active account uses this stored login identifier.");
 
     const now = Date.now();
     await ctx.db.patch(args.studentId, {
@@ -2387,15 +2494,14 @@ export const setStudentSubjectSelections = mutation({
     const student = await ctx.db.get(args.studentId);
     assertBranchDoc(student, schoolId, { excludeArchived: true });
     assertStudentParticipating(student);
-    if (student.classId !== args.classId) {
-      throw new ConvexError("Student is not enrolled in this class");
-    }
-
     const classDoc = await ctx.db.get(args.classId);
     assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const session = await ctx.db.get(args.sessionId);
     assertBranchDoc(session, schoolId, { excludeArchived: true });
+    if (!(await isStudentEnrolledInClassForSession(ctx, { student, schoolId, classId: args.classId, sessionId: args.sessionId, currentOperation: session.isActive }))) {
+      throw new ConvexError("Student is not enrolled in this class");
+    }
 
     // Verify all subjects are offered in this class
     const classOfferings = await ctx.db
@@ -2941,7 +3047,7 @@ export const getClassStudentSubjectMatrix = query({
 });
 
 async function loadStudentFamilyProfile(
-  ctx: any,
+  ctx: QueryCtx | MutationCtx,
   schoolId: Id<"schools">,
   studentId: Id<"students">,
 ) {
@@ -2969,7 +3075,8 @@ async function loadStudentFamilyProfile(
 
   const familyMembers = await getFamilyMembers(ctx, family._id);
   const parentRows = await Promise.all(
-    familyMembers.map(async (familyMember: any) => {
+    familyMembers.map(async (familyMember) => {
+      if (familyMember.schoolId !== schoolId) return null;
       const parentUser = await ctx.db.get(familyMember.parentUserId);
       if (
         !parentUser ||
@@ -2986,12 +3093,18 @@ async function loadStudentFamilyProfile(
         parentUserId: parentUser._id,
         name: parentName.displayName || "Unnamed Parent",
         firstName: parentName.firstName,
+        middleName: parentName.middleName,
         lastName: parentName.lastName,
         email: parentUser.email,
         phone: parentUser.phone ?? null,
         role: parentUser.role,
         relationship: familyMember.relationship ?? null,
         isPrimaryContact: familyMember.isPrimaryContact,
+        addressMode: familyMember.addressMode ?? null,
+        addressOverride: familyMember.addressOverride ?? null,
+        effectiveAddress: familyMember.addressMode === "residential" ? family.residentialAddress ?? null : familyMember.addressOverride ?? null,
+        addressSource: familyMember.addressMode ?? ("legacy" as const),
+        portalState: await portalAccountState(ctx, parentUser),
       };
     }),
   );
@@ -3006,7 +3119,7 @@ async function loadStudentFamilyProfile(
     .collect();
 
   const activeStudents = familyStudents.filter(
-    (familyStudent: any) => !familyStudent.isArchived,
+    (familyStudent) => familyStudent.schoolId === schoolId && !familyStudent.isArchived,
   );
   const classIds = [
     ...new Set(
@@ -3031,7 +3144,7 @@ async function loadStudentFamilyProfile(
         .sort((a: any, b: any) =>
           a.admissionNumber.localeCompare(b.admissionNumber),
         )
-        .map(async (familyStudent: any) => {
+        .map(async (familyStudent) => {
           const familyStudentUser = await ctx.db.get(familyStudent.userId);
           if (!familyStudentUser || familyStudentUser.isArchived) {
             return null;
@@ -3054,6 +3167,7 @@ async function loadStudentFamilyProfile(
     family: {
       _id: family._id,
       name: family.name,
+      residentialAddress: family.residentialAddress ?? null,
       studentCount: students.length,
       parentCount: parents.length,
     },
@@ -3070,6 +3184,7 @@ export const getStudentFamilyProfile = query({
       v.object({
         _id: v.id("families"),
         name: v.string(),
+        residentialAddress: v.union(v.string(), v.null()),
         studentCount: v.number(),
         parentCount: v.number(),
       }),
@@ -3080,12 +3195,19 @@ export const getStudentFamilyProfile = query({
         parentUserId: v.id("users"),
         name: v.string(),
         firstName: v.union(v.string(), v.null()),
+        middleName: v.union(v.string(), v.null()),
         lastName: v.union(v.string(), v.null()),
+        addressMode: v.union(v.literal("residential"), v.literal("different"), v.null()),
+        addressOverride: v.union(v.string(), v.null()),
+        effectiveAddress: v.union(v.string(), v.null()),
+        addressSource: addressSourceValidator,
+        portalState: portalAccountStateValidator,
         email: v.string(),
         phone: v.union(v.string(), v.null()),
         role: v.union(
           v.literal("parent"),
           v.literal("teacher"),
+          v.literal("staff"),
           v.literal("admin"),
         ),
         relationship: v.union(v.string(), v.null()),
@@ -3129,6 +3251,7 @@ export const getParentEmailReview = query({
           v.literal("student"),
           v.literal("parent"),
           v.literal("teacher"),
+          v.literal("staff"),
           v.literal("admin"),
         ),
         isArchived: v.boolean(),
@@ -3136,6 +3259,12 @@ export const getParentEmailReview = query({
           v.object({
             _id: v.id("families"),
             name: v.string(),
+            residentialAddress: v.union(v.string(), v.null()),
+            contactAddressMode: v.union(v.literal("residential"), v.literal("different"), v.null()),
+            contactAddressOverride: v.union(v.string(), v.null()),
+            contactAddress: v.union(v.string(), v.null()),
+            contactAddressSource: addressSourceValidator,
+            primaryContact: v.union(v.null(), v.object({ userId: v.id("users"), name: v.string(), phone: v.union(v.string(), v.null()), email: v.string() })),
             studentCount: v.number(),
             parentCount: v.number(),
           }),
@@ -3168,7 +3297,7 @@ export const getParentEmailReview = query({
 
         return {
           userId: user._id,
-          name: user.name,
+          name: getReadableUserName(user).displayName,
           email: user.email,
           phone: user.phone ?? null,
           role: user.role,
@@ -3185,12 +3314,111 @@ export const getParentEmailReview = query({
   },
 });
 
+export const searchParentContacts = query({
+  args: { search: v.string(), searchField: v.optional(v.union(v.literal("name"), v.literal("email"))), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    if (!Number.isInteger(args.paginationOpts.numItems) || args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 50 || args.search.length > 100)
+      throw new ConvexError("Contact search supports pages of 1 to 50 and at most 100 search characters");
+    const search = args.search.trim();
+    const searchField = args.searchField ?? (search.includes("@") ? "email" : "name");
+    const contacts = !search
+      ? ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", actor.schoolId))
+      : searchField === "email"
+        ? ctx.db.query("users").withSearchIndex("search_email_and_school", q => q.search("email", search).eq("schoolId", actor.schoolId))
+        : ctx.db.query("users").withSearchIndex("search_name_and_school", q => q.search("name", search).eq("schoolId", actor.schoolId));
+    const result = await contacts
+      .filter(q => q.and(q.neq(q.field("role"), "student"), q.neq(q.field("isArchived"), true)))
+      .paginate(args.paginationOpts);
+    const page = await Promise.all(result.page.map(async user => ({
+      userId: user._id, ...getReadableUserName(user), email: user.email, phone: user.phone ?? null, role: user.role,
+      portalState: await portalAccountState(ctx, user),
+      households: await summarizeFamiliesForParentUser(ctx, actor.schoolId, user._id),
+    })));
+    return { ...result, page };
+  },
+});
+
+export const updateHousehold = mutation({
+  args: { familyId: v.id("families"), name: v.optional(v.string()), residentialAddress: v.optional(v.union(v.string(), v.null())), confirmed: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const family = await ctx.db.get(args.familyId);
+    if (!family || family.schoolId !== actor.schoolId) throw new ConvexError("Household not found");
+    if (!args.confirmed) throw new ConvexError("Confirm the household change for all inheriting contacts");
+    const name = args.name === undefined ? family.name : normalizeOptionalText(args.name);
+    if (!name) throw new ConvexError("Household label is required");
+    await ctx.db.patch(family._id, { name, ...(args.residentialAddress !== undefined ? { residentialAddress: normalizeOptionalText(args.residentialAddress) } : {}), updatedAt: Date.now(), updatedBy: actor.userId });
+    return null;
+  },
+});
+
+function containsReference(value: unknown, id: string): boolean {
+  if (value === id) return true;
+  if (Array.isArray(value)) return value.some(entry => containsReference(entry, id));
+  return value !== null && typeof value === "object" && Object.values(value).some(entry => containsReference(entry, id));
+}
+
+// Reuse the retention inventory. A bounded scan that cannot prove absence blocks
+// deletion rather than removing a record with unseen retained references.
+async function assertNoRetainedReferences(ctx: QueryCtx | MutationCtx, id: string, target: "users" | "families", ignoredIds = new Set<string>()) {
+  const inventory = schemaReferenceInventory(schema);
+  for (const table of Object.keys(schema.tables) as TableNames[]) {
+    if (table !== "auditEvents" && !inventory[table].references.some(reference => reference.target === target)) continue;
+    const rows = await ctx.db.query(table).take(101);
+    if (rows.length > 100) throw new ConvexError(`Cannot prove this record is unused within the deletion review limit for ${table}. Retain it for operator review.`);
+    if (rows.some(row => !ignoredIds.has(row._id) && containsReference(row, id)))
+      throw new ConvexError(`This record has retained references in ${table} and cannot be deleted`);
+  }
+}
+
+export const deleteUnusedParent = mutation({
+  args: { parentUserId: v.id("users"), confirmed: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    if (!args.confirmed) throw new ConvexError("Confirm permanent deletion of the unused school contact");
+    const parent = await ctx.db.get(args.parentUserId);
+    if (!parent || parent.schoolId !== actor.schoolId || parent.role !== "parent") throw new ConvexError("School parent not found");
+    const links = await ctx.db.query("familyMembers").withIndex("by_parent_user", q => q.eq("parentUserId", parent._id)).take(101);
+    if (links.length > 100 || links.some(link => link.schoolId !== actor.schoolId)) throw new ConvexError("Contact links require operator review");
+    const ignoredIds = new Set<string>([parent._id, ...links.map(link => link._id)]);
+    const emptyFamilies: Id<"families">[] = [];
+    for (const familyId of new Set(links.map(link => link.familyId))) {
+      const family = await ctx.db.get(familyId);
+      if (!family || family.schoolId !== actor.schoolId) throw new ConvexError("Household links require operator review");
+      const students = await ctx.db.query("students").withIndex("by_family", q => q.eq("familyId", familyId)).first();
+      if (students) throw new ConvexError("Contact still has linked students, including retained or archived students");
+      const members = await getFamilyMembers(ctx, familyId);
+      if (members.every(member => member.parentUserId === parent._id)) {
+        await assertNoRetainedReferences(ctx, String(familyId), "families", ignoredIds);
+        emptyFamilies.push(familyId);
+        ignoredIds.add(familyId);
+      }
+    }
+    await assertNoRetainedReferences(ctx, String(parent._id), "users", ignoredIds);
+    for (const link of links) await ctx.db.delete(link._id);
+    for (const familyId of emptyFamilies) await ctx.db.delete(familyId);
+    await ctx.db.delete(parent._id);
+    return null;
+  },
+});
+
 export const upsertStudentFamilyLink = mutation({
   args: {
     studentId: v.id("students"),
-    firstName: v.string(),
-    lastName: v.string(),
-    email: v.string(),
+    parentUserId: v.optional(v.id("users")),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
+    email: v.optional(v.string()),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
+    addressOverride: v.optional(v.union(v.string(), v.null())),
+    confirmPrimaryChange: v.optional(v.boolean()),
     phone: v.optional(v.union(v.string(), v.null())),
     relationship: v.optional(v.union(v.string(), v.null())),
     familyName: v.optional(v.union(v.string(), v.null())),
@@ -3201,6 +3429,7 @@ export const upsertStudentFamilyLink = mutation({
     familyId: v.id("families"),
     parentUserId: v.id("users"),
     familyMemberId: v.id("familyMembers"),
+    createdHousehold: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
@@ -3223,20 +3452,12 @@ export const upsertStudentFamilyLink = mutation({
       throw new ConvexError("Student account not found");
     }
 
-    const normalizedEmail = normalizeOptionalEmail(args.email);
-    if (!normalizedEmail) {
-      throw new ConvexError("Parent email is required");
-    }
-
-    const normalizedPhone = normalizeOptionalPhone(args.phone);
-    const parentName = resolveStoredUserNameFields({
-      firstName: args.firstName,
-      lastName: args.lastName,
-      requiredMessage: "Parent first and last name are required",
-    });
-    const relationship = normalizeOptionalText(args.relationship)
-      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
-      : undefined;
+    const selectedParent = args.parentUserId ? await ctx.db.get(args.parentUserId) : null;
+    if (args.parentUserId && (!selectedParent || selectedParent.schoolId !== schoolId || selectedParent.isArchived || selectedParent.role === "student"))
+      throw new ConvexError("Selected contact is not available in this school");
+    const normalizedEmail = selectedParent?.email ?? normalizeOptionalEmail(args.email);
+    if (!normalizedEmail) throw new ConvexError("Parent email is required");
+    const relationship = normalizeOptionalText(args.relationship);
     const now = Date.now();
 
     const matchingUsers = await findUsersByEmail(
@@ -3271,16 +3492,19 @@ export const upsertStudentFamilyLink = mutation({
       );
     }
 
-    const matchedExistingParentUser = eligibleParentUsers[0] ?? null;
+    const matchedExistingParentUser = selectedParent ?? eligibleParentUsers[0] ?? null;
     const reusedExistingParent = matchedExistingParentUser !== null;
-    let parentUser = matchedExistingParentUser;
+    let parentUser: Doc<"users"> | null = matchedExistingParentUser;
 
     if (!parentUser) {
+      const normalizedPhone = normalizeOptionalPhone(args.phone);
+      const parentName = resolveStoredUserNameFields({ firstName: args.firstName, middleName: args.middleName, lastName: args.lastName, requiredMessage: "Parent first and last name are required" });
       const parentUserId = await ctx.db.insert("users", {
         schoolId,
         authId: `parent:${String(schoolId)}:${normalizedEmail}`,
         name: parentName.name,
         ...(parentName.firstName ? { firstName: parentName.firstName } : {}),
+        ...(parentName.middleName ? { middleName: parentName.middleName } : {}),
         ...(parentName.lastName ? { lastName: parentName.lastName } : {}),
         email: normalizedEmail,
         ...(normalizedPhone ? { phone: normalizedPhone } : {}),
@@ -3289,28 +3513,7 @@ export const upsertStudentFamilyLink = mutation({
         updatedAt: now,
       });
       parentUser = await ctx.db.get(parentUserId);
-    } else if (parentUser.role === "parent") {
-      const nextParentRecord: Record<string, unknown> = {
-        updatedAt: now,
-        name: parentName.name,
-        email: normalizedEmail,
-      };
 
-      if (parentName.firstName) {
-        nextParentRecord.firstName = parentName.firstName;
-      }
-      if (parentName.lastName) {
-        nextParentRecord.lastName = parentName.lastName;
-      }
-      if (normalizedPhone !== undefined) {
-        nextParentRecord.phone = normalizedPhone;
-      }
-
-      await ctx.db.patch(parentUser._id, nextParentRecord as any);
-      parentUser = {
-        ...parentUser,
-        ...nextParentRecord,
-      } as any;
     }
 
     if (!parentUser) {
@@ -3319,7 +3522,8 @@ export const upsertStudentFamilyLink = mutation({
 
     const studentName = getReadableUserName(studentUser);
     let familyId = student.familyId;
-    let familyDoc: any = null;
+    let createdHousehold = false;
+    let familyDoc: Doc<"families"> | null = null;
 
     if (familyId) {
       familyDoc = await ctx.db.get(familyId);
@@ -3329,7 +3533,7 @@ export const upsertStudentFamilyLink = mutation({
     } else {
       const familyName = buildFamilyName({
         studentName: studentName.displayName || studentUser.name,
-        parentName: parentName.name,
+        parentName: getReadableUserName(parentUser).displayName,
         familyName: args.familyName,
       });
       const parentFamilies = await findFamiliesForParentUser(
@@ -3341,25 +3545,12 @@ export const upsertStudentFamilyLink = mutation({
         familyDoc = parentFamilies[0];
         familyId = familyDoc._id;
       } else {
-        const reusableOrphanFamily = await findReusableOrphanFamilyByName(
-          ctx,
-          schoolId,
-          familyName,
-        );
-        if (reusableOrphanFamily) {
-          familyDoc = reusableOrphanFamily;
-          familyId = reusableOrphanFamily._id;
-        } else {
-          familyId = await ctx.db.insert("families", {
-            schoolId,
-            name: familyName,
-            createdAt: now,
-            updatedAt: now,
-            createdBy: userId,
-            updatedBy: userId,
-          });
-          familyDoc = await ctx.db.get(familyId);
-        }
+        familyId = await ctx.db.insert("families", {
+          schoolId, name: familyName, residentialAddress: student.address,
+          createdAt: now, updatedAt: now, createdBy: userId, updatedBy: userId,
+        });
+        familyDoc = await ctx.db.get(familyId);
+        createdHousehold = true;
       }
     }
 
@@ -3373,27 +3564,11 @@ export const upsertStudentFamilyLink = mutation({
         String(familyMember.parentUserId) === String(parentUser._id),
     );
 
-    if (reusedExistingParent && !existingLink && !args.confirmDuplicateLink) {
+    const householdStudents = await getStudentsForFamily(ctx, familyDoc._id);
+    if (reusedExistingParent && ((!args.parentUserId && !existingLink) || householdStudents.some((entry: Doc<"students">) => entry._id !== student._id)) && !args.confirmDuplicateLink) {
       throw new ConvexError(
         "This email already belongs to an existing parent. Review the duplicate-link details and confirm to continue.",
       );
-    }
-
-    const familyNameOverride = normalizeOptionalText(args.familyName);
-    if (
-      familyNameOverride &&
-      normalizeHumanName(familyNameOverride) !== familyDoc.name
-    ) {
-      await ctx.db.patch(familyDoc._id, {
-        name: normalizeHumanName(familyNameOverride),
-        updatedAt: now,
-        updatedBy: userId,
-      });
-      familyDoc = await ctx.db.get(familyDoc._id);
-    }
-
-    if (!familyDoc) {
-      throw new ConvexError("Family could not be updated");
     }
 
     if (
@@ -3412,6 +3587,10 @@ export const upsertStudentFamilyLink = mutation({
         ? true
         : (existingLink?.isPrimaryContact ?? false));
 
+    if (nextIsPrimaryContact && familyMembers.some((member: Doc<"familyMembers">) => member.isPrimaryContact && member.parentUserId !== parentUser._id) && !args.confirmPrimaryChange)
+      throw new ConvexError("Confirm changing the primary contact for every student in this household");
+
+    const addressPatch = contactAddressPatch(existingLink ? {} : args, existingLink);
     if (nextIsPrimaryContact) {
       for (const familyMember of familyMembers) {
         if (String(familyMember._id) === String(existingLink?._id)) {
@@ -3431,6 +3610,7 @@ export const upsertStudentFamilyLink = mutation({
       const nextRelationship =
         relationship !== undefined ? relationship : existingLink.relationship;
       await ctx.db.patch(existingLink._id, {
+        ...addressPatch,
         relationship: nextRelationship,
         isPrimaryContact: nextIsPrimaryContact,
         updatedAt: now,
@@ -3441,6 +3621,7 @@ export const upsertStudentFamilyLink = mutation({
         familyId: familyDoc._id,
         parentUserId: parentUser._id,
         familyMemberId: existingLink._id,
+        createdHousehold,
       };
     }
 
@@ -3448,6 +3629,7 @@ export const upsertStudentFamilyLink = mutation({
       schoolId,
       familyId: familyDoc._id,
       parentUserId: parentUser._id,
+      ...addressPatch,
       relationship,
       isPrimaryContact: nextIsPrimaryContact,
       createdAt: now,
@@ -3460,6 +3642,7 @@ export const upsertStudentFamilyLink = mutation({
       familyId: familyDoc._id,
       parentUserId: parentUser._id,
       familyMemberId,
+      createdHousehold,
     };
   },
 });
@@ -3467,9 +3650,14 @@ export const upsertStudentFamilyLink = mutation({
 export const updateStudentFamilyParentContact = mutation({
   args: {
     familyMemberId: v.id("familyMembers"),
-    firstName: v.string(),
-    lastName: v.string(),
-    email: v.string(),
+    name: v.optional(v.string()),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.union(v.string(), v.null())),
+    lastName: v.optional(v.string()),
+    email: v.optional(v.string()),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
+    addressOverride: v.optional(v.union(v.string(), v.null())),
+    confirmPrimaryChange: v.optional(v.boolean()),
     phone: v.optional(v.union(v.string(), v.null())),
     relationship: v.optional(v.union(v.string(), v.null())),
     isPrimaryContact: v.optional(v.boolean()),
@@ -3507,9 +3695,7 @@ export const updateStudentFamilyParentContact = mutation({
       throw new ConvexError("Parent not found");
     }
 
-    const relationship = normalizeOptionalText(args.relationship)
-      ? normalizeHumanName(normalizeOptionalText(args.relationship) as string)
-      : undefined;
+    const relationship = normalizeOptionalText(args.relationship);
     const now = Date.now();
 
     // Staff may be family contacts, but their identity belongs to staff management.
@@ -3518,6 +3704,8 @@ export const updateStudentFamilyParentContact = mutation({
       const familyMembers = await getFamilyMembers(ctx, family._id);
       const nextIsPrimaryContact =
         args.isPrimaryContact ?? familyMember.isPrimaryContact;
+      if (nextIsPrimaryContact && !familyMember.isPrimaryContact && familyMembers.some((member: Doc<"familyMembers">) => member.isPrimaryContact) && !args.confirmPrimaryChange)
+        throw new ConvexError("Confirm changing the household primary contact");
 
       if (nextIsPrimaryContact) {
         for (const member of familyMembers) {
@@ -3535,7 +3723,8 @@ export const updateStudentFamilyParentContact = mutation({
       }
 
       await ctx.db.patch(familyMember._id, {
-        relationship,
+        ...contactAddressPatch(args, familyMember),
+        relationship: args.relationship === undefined ? familyMember.relationship : relationship,
         isPrimaryContact: nextIsPrimaryContact,
         updatedAt: now,
         updatedBy: userId,
@@ -3548,7 +3737,7 @@ export const updateStudentFamilyParentContact = mutation({
       };
     }
 
-    const normalizedEmail = normalizeOptionalEmail(args.email);
+    const normalizedEmail = args.email === undefined ? parentUser.email : normalizeOptionalEmail(args.email);
     if (!normalizedEmail) {
       throw new ConvexError("Parent email is required");
     }
@@ -3596,9 +3785,15 @@ export const updateStudentFamilyParentContact = mutation({
 
     const normalizedPhone = normalizeOptionalPhone(args.phone);
     const parentName = resolveStoredUserNameFields({
+      name: args.name,
       firstName: args.firstName,
+      middleName: args.middleName,
       lastName: args.lastName,
-      requiredMessage: "Parent first and last name are required",
+      fallbackName: parentUser.name,
+      fallbackFirstName: parentUser.firstName,
+      fallbackMiddleName: parentUser.middleName,
+      fallbackLastName: parentUser.lastName,
+      requiredMessage: "Parent name is required",
     });
     const familyMembers = await getFamilyMembers(ctx, family._id);
     const nextIsPrimaryContact =
@@ -3612,25 +3807,15 @@ export const updateStudentFamilyParentContact = mutation({
         )
       : null;
     const targetFamilyMemberId = duplicateFamilyMember?._id ?? familyMember._id;
+    if (nextIsPrimaryContact && familyMembers.some((member: Doc<"familyMembers">) => member.isPrimaryContact && member._id !== targetFamilyMemberId) && !args.confirmPrimaryChange)
+      throw new ConvexError("Confirm changing the household primary contact");
 
     if (!duplicateParentUser) {
-      const nextParentRecord: Record<string, unknown> = {
+      await ctx.db.patch(parentUser._id, {
+        ...parentName, email: normalizedEmail,
+        ...(args.phone !== undefined ? { phone: normalizedPhone } : {}),
         updatedAt: now,
-        name: parentName.name,
-        email: normalizedEmail,
-      };
-
-      if (parentName.firstName) {
-        nextParentRecord.firstName = parentName.firstName;
-      }
-      if (parentName.lastName) {
-        nextParentRecord.lastName = parentName.lastName;
-      }
-      if (normalizedPhone !== undefined) {
-        nextParentRecord.phone = normalizedPhone;
-      }
-
-      await ctx.db.patch(parentUser._id, nextParentRecord as any);
+      });
     }
 
     if (nextIsPrimaryContact) {
@@ -3650,7 +3835,8 @@ export const updateStudentFamilyParentContact = mutation({
 
     if (duplicateFamilyMember) {
       await ctx.db.patch(duplicateFamilyMember._id, {
-        relationship,
+        ...contactAddressPatch(args, duplicateFamilyMember),
+        relationship: args.relationship === undefined ? duplicateFamilyMember.relationship : relationship,
         isPrimaryContact: nextIsPrimaryContact,
         updatedAt: now,
         updatedBy: userId,
@@ -3659,7 +3845,8 @@ export const updateStudentFamilyParentContact = mutation({
     } else {
       await ctx.db.patch(familyMember._id, {
         parentUserId: targetParentUser._id,
-        relationship,
+        ...contactAddressPatch(args, familyMember),
+        relationship: args.relationship === undefined ? familyMember.relationship : relationship,
         isPrimaryContact: nextIsPrimaryContact,
         updatedAt: now,
         updatedBy: userId,
@@ -3781,100 +3968,51 @@ type PortalCredentialProvisionResult = {
   userId: Id<"users">;
   email: string;
   temporaryPassword: string;
-};
-
-type PortalUserRecord = {
-  _id: Id<"users">;
-  name: string;
-  email: string;
-  authId: string;
-  role: "student" | "parent" | "teacher" | "staff" | "admin";
-  isArchived: boolean | null;
+  operationId: string;
 };
 
 async function upsertPortalCredentialsHandler(
-  ctx: any,
-  args: {
-    userId: Id<"users">;
-    temporaryPassword: string;
-  },
+  ctx: ActionCtx,
+  args: { userId: Id<"users">; temporaryPassword: string; requestKey?: string },
 ): Promise<PortalCredentialProvisionResult> {
-  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {
-    capability: "enrollment.intakes.manage",
-  });
-  if (!viewer) {
-    throw new ConvexError("Unauthorized");
+  const operationId = args.requestKey ?? crypto.randomUUID();
+  if (!operationId || operationId.length > 100) throw new ConvexError("Invalid portal operation key");
+  // Preparation cannot change credentials; do it before claiming a mutating operation.
+  await ctx.runQuery(api.functions.academic.studentEnrollment.getPortalAccountState, { userId: args.userId });
+  const preparedPassword = await prepareSchoolPortalPassword(ctx, args.temporaryPassword);
+  const target: { userId: Id<"users">; schoolId: Id<"schools">; name: string; email: string; authId: string } =
+    await ctx.runMutation(internal.functions.academic.studentEnrollment.beginPortalProvisionInternal, { userId: args.userId, operationId });
+  try {
+    const authId = await provisionSchoolPortalAuthUser(ctx, {
+      appUserId: String(target.userId), currentAuthId: target.authId, email: target.email,
+      name: target.name, preparedPassword,
+      portalOperation: { userId: target.userId, schoolId: target.schoolId, operationId },
+    });
+    await ctx.runMutation(internal.functions.academic.studentEnrollment.finishPortalProvisionInternal, {
+      userId: target.userId, schoolId: target.schoolId, operationId, authId,
+    });
+  } catch (error) {
+    await ctx.runMutation(internal.functions.academic.studentEnrollment.finishPortalProvisionInternal, {
+      userId: target.userId, schoolId: target.schoolId, operationId,
+    });
+    throw error;
   }
-  if (viewer.isSchoolAdmin !== true) {
-    throw new ConvexError("Admin access required");
-  }
-
-  const targetUser = (await ctx.runQuery(
-    (internal as any).functions.academic.studentEnrollment
-      .getPortalUserInternal,
-    {
-      userId: args.userId,
-      schoolId: viewer.schoolId,
-    },
-  )) as PortalUserRecord | null;
-
-  if (!targetUser || targetUser.isArchived) {
-    throw new ConvexError("User not found");
-  }
-
-  if (targetUser.role !== "student" && targetUser.role !== "parent") {
-    throw new ConvexError(
-      "Portal credentials are only available for students and parents",
-    );
-  }
-
-  const normalizedName = resolveStoredUserNameFields({
-    name: targetUser.name,
-    requiredMessage: "User name is required",
-  }).name;
-  const normalizedEmail = normalizeOptionalEmail(targetUser.email);
-  if (!normalizedEmail) {
-    throw new ConvexError(
-      "A valid email address is required before portal access can be provisioned",
-    );
-  }
-
-  const authId = await provisionSchoolPortalAuthUser(ctx, {
-    appUserId: String(targetUser._id),
-    currentAuthId: targetUser.authId,
-    email: normalizedEmail,
-    name: normalizedName,
-    temporaryPassword: args.temporaryPassword,
-  });
-
-  if (authId !== targetUser.authId) {
-    await ctx.runMutation(
-      (internal as any).functions.academic.studentEnrollment
-        .updatePortalUserAuthIdInternal,
-      {
-        userId: targetUser._id,
-        schoolId: viewer.schoolId,
-        authId,
-      },
-    );
-  }
-
-  return {
-    userId: targetUser._id,
-    email: normalizedEmail,
-    temporaryPassword: args.temporaryPassword,
-  };
+  // Notice work is separate from the committed credentials. It cannot erase the password handoff.
+  await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: target.userId, operationId }).catch(() => null);
+  return { userId: target.userId, email: target.email, temporaryPassword: args.temporaryPassword, operationId };
 }
 
 export const upsertPortalCredentials = action({
   args: {
     userId: v.id("users"),
+    requestKey: v.optional(v.string()),
     temporaryPassword: v.string(),
   },
   returns: v.object({
     userId: v.id("users"),
     email: v.string(),
     temporaryPassword: v.string(),
+    operationId: v.string(),
   }),
   handler: upsertPortalCredentialsHandler,
 });
@@ -3903,10 +4041,11 @@ export const getStudentPortalTargetInternal = internalQuery({
 });
 
 const upsertStudentPortalCredentialsByStudentIdHandler = async (
-  ctx: any,
+  ctx: ActionCtx,
   args: {
     studentId: Id<"students">;
     temporaryPassword: string;
+    requestKey?: string;
   },
 ): Promise<PortalCredentialProvisionResult> => {
   const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {
@@ -3935,18 +4074,21 @@ const upsertStudentPortalCredentialsByStudentIdHandler = async (
   return await upsertPortalCredentialsHandler(ctx, {
     userId: target.userId,
     temporaryPassword: args.temporaryPassword,
+    requestKey: args.requestKey,
   });
 };
 
 export const upsertStudentPortalCredentialsByStudentId = action({
   args: {
     studentId: v.id("students"),
+    requestKey: v.optional(v.string()),
     temporaryPassword: v.string(),
   },
   returns: v.object({
     userId: v.id("users"),
     email: v.string(),
     temporaryPassword: v.string(),
+    operationId: v.string(),
   }),
   handler: upsertStudentPortalCredentialsByStudentIdHandler,
 });
@@ -3958,6 +4100,7 @@ export const getStudentAttestationData = query({
       _id: v.id("students"),
       fullName: v.string(),
       firstName: v.union(v.string(), v.null()),
+      middleName: v.union(v.string(), v.null()),
       lastName: v.union(v.string(), v.null()),
       admissionNumber: v.string(),
       gender: v.union(v.string(), v.null()),
@@ -4076,6 +4219,7 @@ export const getStudentAttestationData = query({
         _id: student._id,
         fullName: studentName.displayName || "Student",
         firstName: studentName.firstName,
+        middleName: studentName.middleName,
         lastName: studentName.lastName,
         admissionNumber: student.admissionNumber,
         gender: student.gender ?? null,

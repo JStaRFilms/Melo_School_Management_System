@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { ActionCtx } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
 import { createAuth } from "../../betterAuth";
 
 type ExistingAuthLookup = {
@@ -11,6 +12,7 @@ type ExistingAuthLookup = {
   };
   accounts?: Array<{
     id: string;
+    providerId?: string;
   }>;
 };
 
@@ -90,12 +92,13 @@ export async function provisionSchoolAdminAuthUser(
   if (existingAuth?.user?.id) {
     const existingEmailUsage = await ctx.runQuery(
       internal.functions.platform.index.inspectProvisioningEmailInternal,
-      { email: normalizedEmail }
+      { email: normalizedEmail, authId: existingAuth.user.id }
     );
 
     if (
       existingEmailUsage.schoolUserExists ||
-      existingEmailUsage.platformAdminExists
+      existingEmailUsage.platformAdminExists ||
+      existingEmailUsage.canonicalPersonExists
     ) {
       throw new ConvexError(
         "An account with this email already exists in the system. Please use a different email."
@@ -161,6 +164,18 @@ export async function provisionSchoolAdminAuthUser(
   return createdUser.id;
 }
 
+export async function prepareSchoolPortalPassword(ctx: ActionCtx, password: string) {
+  const authContext = await createAuth(ctx).$context;
+  const policy = authContext.password.config;
+  if (password.length < policy.minPasswordLength) {
+    throw new ConvexError(`Password must be at least ${policy.minPasswordLength} characters`);
+  }
+  if (password.length > policy.maxPasswordLength) {
+    throw new ConvexError(`Password must be at most ${policy.maxPasswordLength} characters`);
+  }
+  return { authContext, passwordHash: await authContext.password.hash(password) };
+}
+
 export async function provisionSchoolPortalAuthUser(
   ctx: ActionCtx,
   args: {
@@ -168,28 +183,12 @@ export async function provisionSchoolPortalAuthUser(
     currentAuthId: string;
     email: string;
     name: string;
-    temporaryPassword: string;
+    preparedPassword: Awaited<ReturnType<typeof prepareSchoolPortalPassword>>;
+    portalOperation?: { userId: Id<"users">; schoolId: Id<"schools">; operationId: string };
   }
 ) {
-  const auth = createAuth(ctx);
-  const authContext = await auth.$context;
+  const { authContext, passwordHash } = args.preparedPassword;
   const normalizedEmail = args.email.trim().toLowerCase();
-
-  const minPasswordLength = authContext.password.config.minPasswordLength;
-  if (args.temporaryPassword.length < minPasswordLength) {
-    throw new ConvexError(
-      `Password must be at least ${minPasswordLength} characters`
-    );
-  }
-
-  const maxPasswordLength = authContext.password.config.maxPasswordLength;
-  if (args.temporaryPassword.length > maxPasswordLength) {
-    throw new ConvexError(
-      `Password must be at most ${maxPasswordLength} characters`
-    );
-  }
-
-  const passwordHash = await authContext.password.hash(args.temporaryPassword);
 
   const existingAuth = (await authContext.internalAdapter.findUserByEmail(
     normalizedEmail,
@@ -197,7 +196,8 @@ export async function provisionSchoolPortalAuthUser(
   )) as ExistingAuthLookup | null;
 
   let authUserId = existingAuth?.user?.id ?? null;
-  if (authUserId && authUserId !== args.currentAuthId) {
+  if (authUserId) {
+    if (authUserId !== args.currentAuthId) throw new ConvexError("This login exists but is not linked to this identity. Reconciliation is required.");
     const authIdUsage = await ctx.runQuery(
       internal.functions.platform.index.inspectProvisioningAuthIdInternal,
       {
@@ -228,6 +228,11 @@ export async function provisionSchoolPortalAuthUser(
 
     authUserId = createdUser.id;
 
+    if (args.portalOperation) {
+      await ctx.runMutation(internal.functions.academic.studentEnrollment.recordPortalAuthInternal, {
+        ...args.portalOperation, authId: authUserId,
+      });
+    }
     try {
       await authContext.internalAdapter.linkAccount({
         userId: createdUser.id,
@@ -247,7 +252,7 @@ export async function provisionSchoolPortalAuthUser(
       name: args.name,
     });
 
-    if (existingAuth?.accounts?.length) {
+    if (existingAuth?.accounts?.some(account => account.providerId === "credential")) {
       await authContext.internalAdapter.updatePassword(authUserId, passwordHash);
     } else {
       await authContext.internalAdapter.linkAccount({

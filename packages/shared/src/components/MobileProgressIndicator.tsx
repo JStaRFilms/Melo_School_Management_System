@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useContext } from "react";
+import { DraftHeaderContext } from "../drafts/WorkspaceStatus";
 import { CheckCircle2, Loader2, CloudOff, AlertTriangle, Layers } from "lucide-react";
 import { DraftStatus } from "../drafts/types";
 
@@ -72,6 +73,7 @@ export function MobileProgressIndicator({
   className = "",
   hidden = false,
 }: MobileProgressIndicatorProps) {
+  const draftHeader = useContext(DraftHeaderContext);
   if (hidden) return null;
   let progressPercent = 0;
   let primaryLabel = "";
@@ -137,13 +139,17 @@ export function MobileProgressIndicator({
       case "connection_lost":
         return (
           <span
-            title="Connection lost • Recovery pending"
+            title="Server reconnecting"
             className="inline-flex items-center gap-1 text-[10px] text-amber-700 font-medium"
           >
             <CloudOff className="h-2.5 w-2.5 text-amber-600" />
-            Recovery pending
+            Server reconnecting
           </span>
         );
+      case "recovery_pending":
+        return <span className="text-[10px] text-amber-800">Unsaved draft · Review or retry</span>;
+      case "context_mismatch":
+        return <span className="text-[10px] text-amber-800">Draft context changed</span>;
       case "reauth_required":
         return <span className="text-[10px] text-amber-800">Sign in again · Edits in memory</span>;
       case "expired":
@@ -195,7 +201,7 @@ export function MobileProgressIndicator({
         <span className="text-[11px] font-medium text-slate-800 truncate">
           {primaryLabel}
         </span>
-        <div className="shrink-0 flex items-center" role="status">{renderStatusPill()}</div>
+        <div className="shrink-0 flex items-center" role="status">{draftHeader === undefined && renderStatusPill()}</div>
       </div>
     </div>
   );

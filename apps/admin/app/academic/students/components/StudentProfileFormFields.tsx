@@ -6,6 +6,17 @@ import type { ClassSummary } from "./types";
 
 interface StudentProfileFormFieldsProps {
   firstName: string;
+  middleName: string;
+  fullName: string;
+  structuredName: boolean;
+  onMiddleNameChange: (value: string) => void;
+  onFullNameChange: (value: string) => void;
+  onStructuredNameChange: (value: boolean) => void;
+  onNameBlur: () => void;
+  addressMode: "residential" | "different" | "legacy";
+  onAddressModeChange: (value: "residential" | "different" | "legacy") => void;
+  emergencyContactMode: "primary" | "override" | "legacy";
+  onEmergencyContactModeChange: (value: "primary" | "override" | "legacy") => void;
   lastName: string;
   admissionNumber: string;
   classId: string;
@@ -30,7 +41,8 @@ interface StudentProfileFormFieldsProps {
 }
 
 export function StudentProfileFormFields({
-  firstName,
+  firstName, middleName, fullName, structuredName, onMiddleNameChange, onFullNameChange, onStructuredNameChange, onNameBlur,
+  addressMode, onAddressModeChange, emergencyContactMode, onEmergencyContactModeChange,
   lastName,
   admissionNumber,
   classId,
@@ -55,14 +67,18 @@ export function StudentProfileFormFields({
 }: StudentProfileFormFieldsProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+      {!structuredName ? <Field label="Full name"><input value={fullName} onChange={event => onFullNameChange(event.target.value)} className={fieldInputClassName} /><button type="button" onClick={() => onStructuredNameChange(true)}>Enter name parts</button></Field> : <>
+      <p className="text-xs text-slate-500 sm:col-span-2">Recorded name: {fullName}<button type="button" className="ml-2 underline" onClick={() => onStructuredNameChange(false)}>Use full name</button></p>
       <Field label="First Name">
         <input
+          onBlur={onNameBlur}
           value={firstName}
           onChange={(event) => onFirstNameChange(event.target.value)}
           className={fieldInputClassName}
           placeholder="First name"
         />
       </Field>
+      <Field label="Middle name (optional)"><input value={middleName} onChange={event => onMiddleNameChange(event.target.value)} onBlur={onNameBlur} className={fieldInputClassName} /></Field>
       <Field label="Last Name">
         <input
           value={lastName}
@@ -71,6 +87,7 @@ export function StudentProfileFormFields({
           placeholder="Last name"
         />
       </Field>
+      </>}
       <Field label="Admission ID">
         <input
           value={admissionNumber}
@@ -121,7 +138,9 @@ export function StudentProfileFormFields({
           className={fieldInputClassName}
         />
       </Field>
-      <Field label="Guardian Name">
+      <Field label="Emergency contact source"><select value={emergencyContactMode} onChange={event => onEmergencyContactModeChange(event.target.value === "primary" ? "primary" : event.target.value === "override" ? "override" : "legacy")} className={fieldInputClassName}><option value="primary">Household primary contact</option><option value="override">Different emergency contact</option><option value="legacy">Previously recorded guardian details</option></select></Field>
+      {emergencyContactMode === "legacy" && <p className="text-xs text-slate-500">Previously recorded guardian details are separate from the linked contact. Unrelated edits retain them.</p>}
+      {emergencyContactMode !== "primary" && <><Field label="Guardian Name">
         <input
           value={guardianName}
           onChange={(event) => onGuardianNameChange(event.target.value)}
@@ -139,14 +158,16 @@ export function StudentProfileFormFields({
           placeholder="+234..."
         />
       </Field>
-      <Field label="Living Address">
+      </>}
+      <Field label="Address source"><select className={fieldInputClassName} value={addressMode} onChange={event => onAddressModeChange(event.target.value === "residential" ? "residential" : event.target.value === "different" ? "different" : "legacy")}><option value="residential">Household residential address</option><option value="different">Different address</option><option value="legacy">Retain recorded address</option></select></Field>
+      {addressMode !== "residential" && <Field label="Living Address">
         <input
           value={address}
           onChange={(event) => onAddressChange(event.target.value)}
           className={fieldInputClassName}
           placeholder="Residential address"
         />
-      </Field>
+      </Field>}
     </div>
   );
 }

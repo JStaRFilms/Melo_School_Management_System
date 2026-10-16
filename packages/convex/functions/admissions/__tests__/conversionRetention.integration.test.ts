@@ -3,7 +3,7 @@ import { makeFunctionReference } from "convex/server";
 import { expect, it, vi } from "vitest";
 import schema from "../../../schema";
 import type { Id } from "../../../_generated/dataModel";
-import { internal } from "../../../_generated/api";
+import { api, internal } from "../../../_generated/api";
 import { seedReviewedTenantOperatorWithCapabilities } from "../../academic/__tests__/securityFixtures";
 import { ADMISSIONS_UPLOAD_OPERATION, DAY_MS, sha256Hex } from "../shared";
 import { processConversionRef, processRetentionCleanupRef } from "../refs";
@@ -99,6 +99,10 @@ it("converts one accepted application transactionally, reuses canonical admissio
   await f.t.run(async (ctx) => {
     const application = await ctx.db.get(f.applicationId);
     if (!application?.latestSnapshotId) throw new Error("accepted snapshot missing");
+    const snapshotId = application.latestSnapshotId;
+    const profile = await ctx.db.query("admissionsSubmissionSnapshotItems").withIndex("by_snapshot_and_item_key", q => q.eq("snapshotId", snapshotId).eq("itemKey", "profile")).unique();
+    if (!profile) throw new Error("Accepted profile missing");
+    await ctx.db.patch(profile._id, { serializedValue: JSON.stringify({ firstName: "Ada", middleName: "Grace", lastName: "Van Okafor", dateOfBirth: Date.UTC(2018, 1, 1), gender: "Female", address: "Home road" }) });
     for (let index = 0; index < 200; index += 1) {
       await ctx.db.insert("admissionsSubmissionSnapshotItems", { schoolId: f.schoolId, snapshotId: application.latestSnapshotId, itemKey: `answer:bounded-${index}`, kind: "answer", valueType: "string", serializedValue: "accepted", dataClass: "personal", createdAt: Date.now() });
     }
@@ -112,11 +116,13 @@ it("converts one accepted application transactionally, reuses canonical admissio
   const replay = await f.staff.mutation(conversionRef, args);
   expect(replay).toMatchObject({ conversionId: converted._id, studentId: converted.studentId, familyId: converted.familyId, admissionNumber: "ADM/2026/001", replayed: true, state: "succeeded" });
   expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).unique())).toMatchObject({ _id: converted.studentId, admissionNumber: "ADM/2026/001", familyId: converted.familyId, photoProvenance: "application_upload", photoSourceDocumentId: f.photoDocumentId, photoRetentionHold: true });
-  expect(await f.t.run((ctx) => ctx.db.get(converted.studentUserId!))).toMatchObject({ name: "Ada Okafor" });
+  const convertedStudentId = converted.studentId;
+  const reopened = await f.staff.query(api.functions.academic.studentEnrollment.getStudentProfile, { studentId: convertedStudentId });
+  expect(reopened).toMatchObject({ name: "Ada Grace Van Okafor", firstName: "Ada", middleName: "Grace", lastName: "Van Okafor", gender: "Female", dateOfBirth: Date.UTC(2018, 1, 1), address: "Home road", addressSource: "residential", emergencyContact: { source: "primary", name: "Grace Okafor" }, photoUrl: expect.any(String) });
+  expect(await f.t.run(ctx => ctx.db.get(convertedStudentId))).toMatchObject({ photoFileName: "photo.jpg", photoContentType: "image/jpeg", familyId: converted.familyId });
   expect(await f.t.run((ctx) => ctx.db.query("admissionNumberClaims").withIndex("by_school_number", (q) => q.eq("schoolId", f.schoolId).eq("number", "ADM/2026/001")).unique())).not.toBeNull();
   expect(await f.t.run((ctx) => ctx.db.query("families").withIndex("by_school", (q) => q.eq("schoolId", f.schoolId)).collect())).toHaveLength(1);
   expect(await f.t.run((ctx) => ctx.db.query("students").withIndex("by_source_application", (q) => q.eq("sourceApplicationId", f.applicationId)).collect())).toHaveLength(1);
-  const convertedStudentId = converted.studentId;
   const admissionEvents = await f.t.run(ctx => ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q => q.eq("studentId", convertedStudentId)).collect());
   expect(admissionEvents).toHaveLength(1);
   expect(admissionEvents[0]).toMatchObject({ type: "admitted", effectiveDay: new Date(Date.now()).toISOString().slice(0, 10) });

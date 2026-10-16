@@ -4,6 +4,7 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { normalizeCapability } from "../academic/rbac";
 import { createCanonicalStudentEnrollmentHelper } from "../academic/studentEnrollment";
+import { resolveStoredUserNameFields } from "../academic/studentNameCompat";
 import { claimOnboardingDeliveryRef, conversionTransactionRef, finishOnboardingDeliveryRef, processConversionRef, processOnboardingRef, queueOnboardingRef } from "./refs";
 import { configuredApplicationOrigin } from "../foundation/applicationLinks";
 import { admissionsError, hasFreshAuthentication, normalizeRequiredText, recordAdmissionsAudit, requireAdmissionsStaff } from "./shared";
@@ -47,7 +48,10 @@ function optionalString(record: Record<string, unknown>, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-async function resolveGuardianUser(ctx: MutationCtx, guardian: Doc<"admissionsGuardians">, schoolId: Id<"schools">, signerName: string) {
+async function resolveGuardianUser(ctx: MutationCtx, guardian: Doc<"admissionsGuardians">, schoolId: Id<"schools">, signerName: string, contact: Record<string, unknown>) {
+  const nameFields = resolveStoredUserNameFields({ name: signerName,
+    ...(optionalString(contact, "fullName") === signerName && optionalString(contact, "firstName") && optionalString(contact, "lastName")
+      ? { firstName: optionalString(contact, "firstName"), middleName: optionalString(contact, "middleName"), lastName: optionalString(contact, "lastName") } : {}) });
   if (!guardian.betterAuthUserId || !guardian.emailVerifiedAt) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Guardian authentication identity is incomplete");
   const persons = await ctx.db.query("persons").withIndex("by_token_identifier", (q) => q.eq("authTokenIdentifier", guardian.authTokenIdentifier)).take(2);
   if (persons.length > 1) admissionsError("CONVERSION_RESOLUTION_REQUIRED", "Guardian identity is ambiguous");
@@ -63,7 +67,7 @@ async function resolveGuardianUser(ctx: MutationCtx, guardian: Doc<"admissionsGu
   let person: Doc<"persons">;
   if (existingPerson) person = existingPerson;
   else {
-    const personId = await ctx.db.insert("persons", { authTokenIdentifier: guardian.authTokenIdentifier, name: signerName, email: guardian.normalizedEmail, status: "active", createdAt: now, updatedAt: now });
+    const personId = await ctx.db.insert("persons", { authTokenIdentifier: guardian.authTokenIdentifier, ...nameFields, email: guardian.normalizedEmail, status: "active", createdAt: now, updatedAt: now });
     const createdPerson = await ctx.db.get(personId);
     if (!createdPerson) throw new ConvexError("Guardian person was not persisted");
     person = createdPerson;
@@ -73,7 +77,7 @@ async function resolveGuardianUser(ctx: MutationCtx, guardian: Doc<"admissionsGu
   let user: Doc<"users">;
   if (existingUser) user = existingUser;
   else {
-    const userId = await ctx.db.insert("users", { schoolId, authId: guardian.betterAuthUserId, authTokenIdentifier: guardian.authTokenIdentifier, personId: person._id, name: signerName, email: guardian.normalizedEmail, role: "parent", createdAt: now, updatedAt: now });
+    const userId = await ctx.db.insert("users", { schoolId, authId: guardian.betterAuthUserId, authTokenIdentifier: guardian.authTokenIdentifier, personId: person._id, ...nameFields, email: guardian.normalizedEmail, role: "parent", createdAt: now, updatedAt: now });
     const createdUser = await ctx.db.get(userId);
     if (!createdUser) throw new ConvexError("Guardian school account was not persisted");
     user = createdUser;
@@ -212,7 +216,7 @@ export const processAcceptedConversionTransaction = internalMutation({
     const lastName = requiredString(profile, "lastName", "Last name");
     const dateOfBirth = profile.dateOfBirth;
     if (typeof dateOfBirth !== "number" || !Number.isSafeInteger(dateOfBirth) || dateOfBirth <= 0) throw new ConvexError("Date of birth is missing from the accepted snapshot");
-    const guardianUser = await resolveGuardianUser(ctx, guardian, conversion.schoolId, snapshot.signerName);
+    const guardianUser = await resolveGuardianUser(ctx, guardian, conversion.schoolId, snapshot.signerName, contact);
     const now = Date.now();
     let family: Doc<"families">;
     if (conversion.familyResolutionKind === "existing") {
@@ -223,14 +227,17 @@ export const processAcceptedConversionTransaction = internalMutation({
       const familyName = conversion.requestedFamilyName?.trim() || `${lastName} Family`;
       const exactFamily = await ctx.db.query("families").withIndex("by_school_and_name", (q) => q.eq("schoolId", conversion.schoolId).eq("name", familyName)).first();
       if (exactFamily) throw new ConvexError("FAMILY_RESOLUTION_AMBIGUOUS");
-      const familyId = await ctx.db.insert("families", { schoolId: conversion.schoolId, name: normalizeRequiredText(familyName, "Family name", 160), createdAt: now, updatedAt: now, createdBy: conversion.requestedByUserId ?? guardianUser._id, updatedBy: conversion.requestedByUserId ?? guardianUser._id });
+      const familyId = await ctx.db.insert("families", { schoolId: conversion.schoolId, name: normalizeRequiredText(familyName, "Family name", 160), residentialAddress: optionalString(profile, "address"), createdAt: now, updatedAt: now, createdBy: conversion.requestedByUserId ?? guardianUser._id, updatedBy: conversion.requestedByUserId ?? guardianUser._id });
       const created = await ctx.db.get(familyId);
       if (!created) throw new ConvexError("Family was not persisted");
       family = created;
     }
     let familyMember = await ctx.db.query("familyMembers").withIndex("by_family_and_parent", (q) => q.eq("familyId", family._id).eq("parentUserId", guardianUser._id)).unique();
     if (!familyMember) {
-      const familyMemberId = await ctx.db.insert("familyMembers", { schoolId: conversion.schoolId, familyId: family._id, parentUserId: guardianUser._id, relationship: snapshot.signerRelationship, isPrimaryContact: true, createdAt: now, updatedAt: now, createdBy: conversion.requestedByUserId ?? guardianUser._id, updatedBy: conversion.requestedByUserId ?? guardianUser._id });
+      const familyMemberId = await ctx.db.insert("familyMembers", { schoolId: conversion.schoolId, familyId: family._id, parentUserId: guardianUser._id, relationship: snapshot.signerRelationship,
+        addressMode: contact.addressMode === "residential" || contact.addressMode === "different" ? contact.addressMode : optionalString(contact, "address") ? undefined : "residential",
+        addressOverride: contact.addressMode === "residential" ? undefined : optionalString(contact, "address"),
+        isPrimaryContact: !(await ctx.db.query("familyMembers").withIndex("by_family_and_primary", q => q.eq("familyId", family._id).eq("isPrimaryContact", true)).first()), createdAt: now, updatedAt: now, createdBy: conversion.requestedByUserId ?? guardianUser._id, updatedBy: conversion.requestedByUserId ?? guardianUser._id });
       const created = await ctx.db.get(familyMemberId);
       if (!created) throw new ConvexError("Family membership was not persisted");
       familyMember = created;
@@ -243,9 +250,9 @@ export const processAcceptedConversionTransaction = internalMutation({
       if (photoManifestItem?.kind !== "document_manifest" || !document || document.schoolId !== conversion.schoolId || document.applicationId !== application._id || document.state !== "accepted" || !document.mimeType.startsWith("image/")) throw new ConvexError("PHOTO_NOT_IN_ACCEPTED_SNAPSHOT");
       photo = { storageId: document.storageId, fileName: document.fileName, contentType: document.mimeType, sourceApplicationId: application._id, sourceDocumentId: document._id };
     }
-    const enrollment = await createCanonicalStudentEnrollmentHelper(ctx, { schoolId: conversion.schoolId, classId: selectedClass._id, name: [firstName, optionalString(profile, "middleName"), lastName].filter(Boolean).join(" "), firstName, lastName, admissionNumber: conversion.requestedAdmissionNumber ?? "", ...(optionalString(profile, "gender") ? { gender: optionalString(profile, "gender") } : {}), dateOfBirth, guardianName: requiredString(contact, "fullName", "Primary contact name"), address: optionalString(profile, "address"), sourceApplicationId: application._id, ...(photo ? { photo } : {}), overrideReason: conversion.overrideReason, overrideConfirmed: conversion.overrideConfirmed, overrideCounterDecision: conversion.overrideCounterDecision, advanceCounterTo: conversion.advanceCounterTo, numberingVersion: conversion.numberingVersion, numberingFormatVersion: conversion.numberingFormatVersion, numberingCounterKey: conversion.numberingCounterKey, numberingCounterVersion: conversion.numberingCounterVersion, numberingSessionId: conversion.numberingSessionId, numberingResetPeriod: conversion.numberingResetPeriod, ...(conversion.requestedByUserId ? { requestedByUserId: conversion.requestedByUserId } : {}) });
-    const guardianEmail = requiredString(contact, "email", "Primary contact email");
-    await ctx.db.patch(enrollment.studentId, { familyId: family._id, guardianEmail, updatedAt: now });
+    const enrollment = await createCanonicalStudentEnrollmentHelper(ctx, { schoolId: conversion.schoolId, classId: selectedClass._id, name: [firstName, optionalString(profile, "middleName"), lastName].filter(Boolean).join(" "), firstName, middleName: optionalString(profile, "middleName"), lastName, admissionNumber: conversion.requestedAdmissionNumber ?? "", ...(optionalString(profile, "gender") ? { gender: optionalString(profile, "gender") } : {}), dateOfBirth, address: optionalString(profile, "address"), sourceApplicationId: application._id, ...(photo ? { photo } : {}), overrideReason: conversion.overrideReason, overrideConfirmed: conversion.overrideConfirmed, overrideCounterDecision: conversion.overrideCounterDecision, advanceCounterTo: conversion.advanceCounterTo, numberingVersion: conversion.numberingVersion, numberingFormatVersion: conversion.numberingFormatVersion, numberingCounterKey: conversion.numberingCounterKey, numberingCounterVersion: conversion.numberingCounterVersion, numberingSessionId: conversion.numberingSessionId, numberingResetPeriod: conversion.numberingResetPeriod, ...(conversion.requestedByUserId ? { requestedByUserId: conversion.requestedByUserId } : {}) });
+    await ctx.db.patch(enrollment.studentId, { familyId: family._id, emergencyContactMode: "primary",
+      addressMode: conversion.familyResolutionKind === "create" || !optionalString(profile, "address") ? "residential" : "different", updatedAt: now });
     await ctx.db.patch(conversion._id, { state: "succeeded", admissionNumber: enrollment.admissionNumber, familyId: family._id, familyMemberId: familyMember._id, guardianUserId: guardianUser._id, studentUserId: enrollment.studentUserId, studentId: enrollment.studentId, completedAt: now, leaseExpiresAt: undefined, errorCode: undefined, updatedAt: now });
     await ctx.db.insert("admissionsConversionAttempts", { schoolId: conversion.schoolId, conversionId: conversion._id, attemptNumber, workerKey: conversion.idempotencyKey, outcome: "succeeded", startedAt, finishedAt: now, createdAt: now });
     await ctx.scheduler.runAfter(0, queueOnboardingRef, { conversionId: conversion._id });

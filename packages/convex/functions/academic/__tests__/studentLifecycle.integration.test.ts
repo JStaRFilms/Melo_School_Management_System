@@ -282,7 +282,7 @@ describe("student lifecycle and registered headcounts", () => {
     const original = { studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.termId };
     await f.admin.mutation(narrative.saveDraft, { ...original, subjectId: f.ids.subjectId, comment: "Entry-class draft" });
     const before = await f.admin.query(enrollment.getStudentEnrollmentPeriods, { studentId, paginationOpts: { cursor: null, numItems: 20 } });
-    await f.admin.mutation(enrollment.updateStudent, { studentId, classId: f.ids.nextClassId, confirmClassAssignment: true });
+    await f.admin.mutation(enrollment.updateStudent, { studentId, classId: f.ids.nextClassId, confirmClassAssignment: true, expectedClassId: f.ids.classId, expectedSessionId: f.ids.sessionId });
     expect(await f.admin.query(enrollment.getStudentEnrollmentPeriods, { studentId, paginationOpts: { cursor: null, numItems: 20 } })).toEqual(before);
     expect(before.page.every(period => period.classId === f.ids.classId)).toBe(true);
     const history = await f.admin.query(enrollment.getStudentEnrollmentHistory, { studentId, paginationOpts: { cursor: null, numItems: 20 } });
@@ -315,7 +315,7 @@ describe("student lifecycle and registered headcounts", () => {
     if (ready.reviewedKey === null) throw new Error("Expected unpublished entry report");
     const issued = await f.admin.mutation(narrative.publish, { ...original, reviewedKey: ready.reviewedKey });
     const unissuedTermId = await f.t.run(ctx => ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, name: "Unissued term", startDate: Date.parse("2026-10-01"), endDate: Date.parse("2026-12-31"), isActive: false, createdAt: 1, updatedAt: 1 }));
-    await f.admin.mutation(enrollment.updateStudent, { studentId, classId: f.ids.nextClassId, confirmClassAssignment: true });
+    await f.admin.mutation(enrollment.updateStudent, { studentId, classId: f.ids.nextClassId, confirmClassAssignment: true, expectedClassId: f.ids.classId, expectedSessionId: f.ids.sessionId });
     const unissuedOriginal = { ...original, termId: unissuedTermId };
     expect(await f.admin.query(narrative.getStaffPreview, original)).toMatchObject({ status: "issued", snapshot: issued.snapshot, reviewedKey: null });
     await expect(f.admin.query(narrative.getStaffPreview, { ...original, classId: f.ids.nextClassId })).rejects.toThrow("Invalid issued report selection");

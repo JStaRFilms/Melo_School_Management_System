@@ -25,6 +25,9 @@ export type SessionRecord = {
 export type TeacherRecord = {
   _id: string;
   name: string;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
   email: string;
   createdAt: number;
   archiveBlockers?: string[];

@@ -1,0 +1,246 @@
+{
+  "sessionId": "orch-20261011-142141",
+  "stage": "build",
+  "activeTask": null,
+  "completedDesign": [
+    {
+      "id": "D1",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-D1-round1",
+      "findings": "D1-contract.md"
+    },
+    {
+      "id": "D2",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-D2-round1",
+      "findings": "D2-contract.md"
+    },
+    {
+      "id": "D3",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-D3-round1",
+      "findings": "D3-contract.md"
+    }
+  ],
+  "validation": {
+    "dependencyInstall": "passed",
+    "adminBaseline": {
+      "files": 77,
+      "tests": 342,
+      "result": "passed"
+    },
+    "browser": "BLOCKED missing isolated private QA profile; not waived; provider delivery unverified",
+    "finalLocal": {
+      "convexTests": 91,
+      "adminTests": 388,
+      "portalTests": 32,
+      "typecheckTargets": 7,
+      "retryFocusedAdminTests": 16,
+      "retryFocusedConvexTests": 12,
+      "review": "R1 blocker resolved by R2",
+      "report": "final-verification.md"
+    }
+  },
+  "future": [
+    "Expiring account setup/reset links"
+  ],
+  "completedBuild": [
+    {
+      "id": "B1",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A372f1e64-0066-4c06-8cea-c2a8d883693a%253Adelegate-task%253Aorch-20261011-142141-B1-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B1-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "f1eb98a",
+        "a70fe2f"
+      ],
+      "result": "B1-result.md",
+      "checks": {
+        "status": "completed",
+        "commits": [
+          "f1eb98a",
+          "a70fe2f"
+        ],
+        "reportedChecks": {
+          "convexTests": 125,
+          "sharedTests": 22,
+          "typechecks": [
+            "convex",
+            "shared"
+          ]
+        },
+        "parentChecks": {
+          "convexTests": 16,
+          "typechecks": [
+            "convex",
+            "shared"
+          ],
+          "initialRunnerAttempt": "Root vitest path absent; corrected using installed Admin Vitest."
+        }
+      }
+    },
+    {
+      "id": "B2",
+      "taskId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B2-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B2-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A372f1e64-0066-4c06-8cea-c2a8d883693a%253Adelegate-task%253Aorch-20261011-142141-B2-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3A372f1e64-0066-4c06-8cea-c2a8d883693a%3Adelegate-task%3Aorch-20261011-142141-B2-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "5245aaa",
+        "e07d63f",
+        "881a83d",
+        "5405562"
+      ],
+      "result": "B2-result.md",
+      "parentChecks": {
+        "adminFiles": 83,
+        "adminTests": 371,
+        "adminTypecheck": "passed",
+        "verification": "B2-parent-verification.md"
+      }
+    },
+    {
+      "id": "B3",
+      "taskId": "node:delegated-task:command%3Amcp%3Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%3Adelegate-task%3Aorch-20261011-142141-B3-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%3Adelegate-task%3Aorch-20261011-142141-B3-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%253Adelegate-task%253Aorch-20261011-142141-B3-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3Af6a8aa3e-fcfa-4587-a951-7d4f9afe1ae5%3Adelegate-task%3Aorch-20261011-142141-B3-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "f41441d",
+        "405c4cc",
+        "cda6b37"
+      ],
+      "result": "B3-result.md",
+      "parentChecks": {
+        "convexTests": 28,
+        "adminFiles": 85,
+        "adminTests": 381,
+        "typechecks": [
+          "Convex",
+          "Portal"
+        ],
+        "verification": "B3-parent-verification.md"
+      }
+    },
+    {
+      "id": "B4",
+      "taskId": "node:delegated-task:command%3Amcp%3Aafee7acf-f998-4379-a5d7-b623c1e0e87a%3Adelegate-task%3Aorch-20261011-142141-B4-round1",
+      "childThreadId": "thread:delegated-task:command%3Amcp%3Aafee7acf-f998-4379-a5d7-b623c1e0e87a%3Adelegate-task%3Aorch-20261011-142141-B4-round1",
+      "childRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253Aafee7acf-f998-4379-a5d7-b623c1e0e87a%253Adelegate-task%253Aorch-20261011-142141-B4-round1:ordinal:1",
+      "childNodeId": "node:delegated-task:command%3Amcp%3Aafee7acf-f998-4379-a5d7-b623c1e0e87a%3Adelegate-task%3Aorch-20261011-142141-B4-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false,
+      "latestTerminalRunId": null,
+      "latestTerminalStatus": null,
+      "latestTerminalSummary": null,
+      "latestTerminalResultContextTransferId": null,
+      "providerInstanceId": "takomi",
+      "model": "openai-codex/gpt-6.1-sol",
+      "summary": null,
+      "resultContextTransferId": null,
+      "waitTimedOut": false,
+      "persona": "coder",
+      "requiredCapabilities": [
+        "write-code"
+      ],
+      "commits": [
+        "b6e9eb9",
+        "5ba2e8c",
+        "60e2b0a"
+      ],
+      "result": "B4-result.md",
+      "parentChecks": {
+        "convexTests": 91,
+        "adminTests": 386,
+        "portalTests": 32,
+        "typecheckTargets": 7,
+        "verification": "B4-parent-verification.md"
+      }
+    }
+  ],
+  "pendingBuild": [],
+  "gitIndexOwner": "parent",
+  "deliveryBranches": {
+    "PR1": {
+      "branch": "fix/identity-onboarding-portal",
+      "commit": "2803bef2a2e7d178d6aff2c5d2763642059a7c6c",
+      "base": "origin/master",
+      "fix": "household-confirmation replay; 16 UI +12 backend focused tests passed"
+    },
+    "PR2": {
+      "branch": "fix/portal-status-history-notices",
+      "commit": "2bab1af95f20b0691abb5fde7fb4da398899d826",
+      "base": "fix/identity-onboarding-portal"
+    },
+    "PR3": {
+      "branch": "feat/parent-profile-edit-permissions",
+      "commit": "a9a21d1facc4d40bd78b746c2dd59ee880d0f150",
+      "base": "fix/portal-status-history-notices"
+    }
+  },
+  "review": {
+    "rounds": [
+      {
+        "id": "R1",
+        "taskId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R1-round1",
+        "status": "completed",
+        "result": "R1-result.md",
+        "finding": "one confirmed admission retry blocker"
+      },
+      {
+        "id": "R2",
+        "taskId": "node:delegated-task:command%3Amcp%3A9bac35d7-c63f-424e-bf59-5d560d1d719c%3Adelegate-task%3Aorch-20261011-142141-R2-round1",
+        "status": "completed",
+        "result": "R2-result.md",
+        "disposition": "confirmed blocker resolved"
+      }
+    ]
+  }
+}

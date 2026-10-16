@@ -16,6 +16,7 @@ import {
   provisionSchoolAdminAuthUser,
 } from "./provisioningHelpers";
 import { createAuth } from "../../betterAuth";
+import { resolveStoredUserNameFields } from "../academic/studentNameCompat";
 import {
   ensureSchoolFreeTrialStorageHelper,
   FREE_TRIAL_DURATION_DAYS,
@@ -117,18 +118,19 @@ async function ensureVerifiedSchoolAdminIdentity(
       authTokenIdentifier,
       identityReconciliationState: "resolved",
       email: user.email,
-      name: user.name,
+      name: user.name, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName,
       status: "active",
       primarySchoolId: user.schoolId,
       createdAt: user.createdAt,
       updatedAt: now,
     }));
 
+  const projections = await ctx.db.query("users").withIndex("by_person", q => q.eq("personId", personId)).take(101);
+  const shared = projections.length > 100 || projections.some(row => row.schoolId !== user.schoolId);
   await ctx.db.patch(personId, {
     authTokenIdentifier,
     identityReconciliationState: "resolved",
-    email: user.email,
-    name: user.name,
+    ...(!shared ? { email: user.email, name: user.name, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName } : {}),
     status: "active",
     updatedAt: now,
   });
@@ -564,6 +566,9 @@ export const assignSchoolAdminInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
     adminName: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     adminEmail: v.string(),
     authId: v.string(),
     authTokenIdentifier: v.string(),
@@ -598,7 +603,7 @@ export const assignSchoolAdminInternal = internalMutation({
       schoolId: args.schoolId,
       authId: args.authId,
       authTokenIdentifier: args.authTokenIdentifier,
-      name: args.adminName,
+      ...resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName }),
       email: args.adminEmail,
       role: "admin",
       isSchoolAdmin: true,
@@ -660,10 +665,12 @@ export const assignSchoolAdminInternal = internalMutation({
 export const inspectProvisioningEmailInternal = internalQuery({
   args: {
     email: v.string(),
+    authId: v.string(),
   },
   returns: v.object({
     schoolUserExists: v.boolean(),
     platformAdminExists: v.boolean(),
+    canonicalPersonExists: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const normalizedEmail = args.email.trim().toLowerCase();
@@ -678,9 +685,14 @@ export const inspectProvisioningEmailInternal = internalQuery({
       .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
       .unique();
 
+    const [personByEmail, personByToken] = await Promise.all([
+      ctx.db.query("persons").withIndex("by_email", q => q.eq("email", normalizedEmail)).first(),
+      ctx.db.query("persons").withIndex("by_token_identifier", q => q.eq("authTokenIdentifier", `${getBetterAuthIssuer()}|${args.authId}`)).first(),
+    ]);
     return {
       schoolUserExists: Boolean(existingSchoolUser),
       platformAdminExists: Boolean(existingPlatformAdmin),
+      canonicalPersonExists: Boolean(personByEmail || personByToken),
     };
   },
 });
@@ -723,6 +735,9 @@ export const provisionSchoolAdmin = action({
   args: {
     schoolId: v.id("schools"),
     adminName: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     adminEmail: v.string(),
     adminPassword: v.string(),
     // Kept for older clients; provisioning does not use caller-supplied origins.
@@ -746,7 +761,8 @@ export const provisionSchoolAdmin = action({
       {}
     );
 
-    const adminName = args.adminName.trim();
+    const nameFields = resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName });
+    const adminName = nameFields.name;
     const adminEmail = args.adminEmail.trim().toLowerCase();
     const adminPassword = args.adminPassword;
 
@@ -777,6 +793,7 @@ export const provisionSchoolAdmin = action({
         {
           schoolId: args.schoolId,
           adminName,
+          firstName: nameFields.firstName, middleName: nameFields.middleName, lastName: nameFields.lastName,
           adminEmail,
           authId,
           authTokenIdentifier,

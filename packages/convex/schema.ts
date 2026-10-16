@@ -1,3 +1,4 @@
+import { correctionRequestFields } from "./functions/academic/profileCorrectionContract";
 import { commercialRate } from "./functions/foundation/commercialContract";
 import { heavyUsageTask, usageEntitlement, usageMeterType } from "./functions/foundation/usageContract";
 import { bankMetadata, paymentInstructionsValidator } from "./functions/foundation/bankInstructions";
@@ -251,6 +252,9 @@ export default defineSchema({
     authTokenIdentifier: v.optional(v.string()),
     email: v.string(),
     name: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -261,6 +265,8 @@ export default defineSchema({
 
   // Stub tables for prerequisite data (from prior FRs)
   schools: defineTable({
+    studentLoginDomainId: v.optional(v.id("schoolEmailDomains")),
+    studentLoginPolicyVersion: v.optional(v.number()),
     name: v.string(),
     slug: v.string(),
     status: v.optional(v.union(v.literal("pending"), v.literal("active"), v.literal("suspended"))),
@@ -828,7 +834,11 @@ export default defineSchema({
     applicationId: v.id("admissionsApplications"),
     contactKey: v.string(),
     kind: v.union(v.literal("parent"), v.literal("guardian"), v.literal("emergency")),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
     fullName: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     relationship: v.string(),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
@@ -1169,6 +1179,9 @@ export default defineSchema({
     ),
     email: v.string(),
     name: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     status: v.union(
       v.literal("active"),
       v.literal("suspended"),
@@ -1442,6 +1455,34 @@ export default defineSchema({
     .index("by_event", ["eventId"])
     .index("by_school", ["schoolId"]),
 
+  accountNoticeOutbox: defineTable({
+    schoolId: v.id("schools"),
+    targetUserId: v.id("users"),
+    operationId: v.string(),
+    kind: v.union(v.literal("ready"), v.literal("reset")),
+    recipientUserId: v.optional(v.id("users")),
+    recipientEmail: v.optional(v.string()),
+    subject: v.string(),
+    text: v.string(),
+    state: v.union(v.literal("pending"), v.literal("sending"), v.literal("accepted"), v.literal("failed"), v.literal("not_configured"), v.literal("suppressed"), v.literal("ineligible"), v.literal("reconciliation_required")),
+    attemptCount: v.number(),
+    nextAttemptAt: v.number(),
+    firstAttemptAt: v.optional(v.number()),
+    providerFrom: v.optional(v.string()),
+    providerId: v.optional(v.string()),
+    lastErrorCode: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_target_user_and_operation", ["targetUserId", "operationId"])
+    .index("by_school", ["schoolId"]),
+
+  profileCorrectionRequests: defineTable(correctionRequestFields)
+    .index("by_school", ["schoolId"])
+    .index("by_schoolId_and_state", ["schoolId", "state"])
+    .index("by_schoolId_and_requesterUserId", ["schoolId", "requesterUserId"])
+    .index("by_schoolId_and_requesterUserId_and_state", ["schoolId", "requesterUserId", "state"])
+    .index("by_schoolId_and_requesterUserId_and_requestKey", ["schoolId", "requesterUserId", "requestKey"]),
+
   users: defineTable({
     schoolId: v.id("schools"),
     authId: v.string(),
@@ -1451,7 +1492,21 @@ export default defineSchema({
     personId: v.optional(v.id("persons")),
     name: v.string(),
     firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
     lastName: v.optional(v.string()),
+    lastCredentialOperation: v.optional(v.object({
+      operationId: v.string(),
+      kind: v.union(v.literal("ready"), v.literal("reset")),
+      committedAt: v.number(),
+    })),
+    portalAccount: v.optional(v.object({
+      state: v.union(v.literal("provisioning"), v.literal("resetting"), v.literal("provisioned"), v.literal("reconciliation_required")),
+      operationId: v.string(),
+      expectedEmail: v.string(),
+      expectedAuthId: v.string(),
+      authId: v.optional(v.string()),
+      updatedAt: v.number(),
+    })),
     email: v.string(),
     phone: v.optional(v.string()),
     role: v.union(
@@ -1486,7 +1541,9 @@ export default defineSchema({
     .index("by_auth_token_identifier_and_archived", ["authTokenIdentifier", "isArchived"])
     .index("by_email", ["email"])
     .index("by_school_and_manager_user", ["schoolId", "managerUserId"])
-    .index("by_person", ["personId"]),
+    .index("by_person", ["personId"])
+    .searchIndex("search_name_and_school", { searchField: "name", filterFields: ["schoolId"] })
+    .searchIndex("search_email_and_school", { searchField: "email", filterFields: ["schoolId"] }),
 
   staffServiceEvents: defineTable({
     schoolId: v.id("schools"), userId: v.id("users"),
@@ -1538,6 +1595,7 @@ export default defineSchema({
   families: defineTable({
     schoolId: v.id("schools"),
     name: v.string(),
+    residentialAddress: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     createdBy: v.id("users"),
@@ -1550,6 +1608,8 @@ export default defineSchema({
     schoolId: v.id("schools"),
     familyId: v.id("families"),
     parentUserId: v.id("users"),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
+    addressOverride: v.optional(v.string()),
     relationship: v.optional(v.string()),
     isPrimaryContact: v.boolean(),
     createdAt: v.number(),
@@ -1598,6 +1658,8 @@ export default defineSchema({
     guardianName: v.optional(v.string()),
     guardianPhone: v.optional(v.string()),
     guardianEmail: v.optional(v.string()),
+    emergencyContactMode: v.optional(v.union(v.literal("primary"), v.literal("override"))),
+    addressMode: v.optional(v.union(v.literal("residential"), v.literal("different"))),
     address: v.optional(v.string()),
     photoStorageId: v.optional(v.id("_storage")),
     photoFileName: v.optional(v.string()),
@@ -1977,7 +2039,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_school", ["schoolId"])
-    .index("by_school_active", ["schoolId", "isActive"]),
+    .index("by_school_active", ["schoolId", "isActive"])
+    .index("by_schoolId_and_startDate", ["schoolId", "startDate"]),
 
   academicTerms: defineTable({
     schoolId: v.id("schools"),
@@ -3945,6 +4008,7 @@ export default defineSchema({
     entityType: v.union(v.literal("student"), v.literal("grade_record")),
     rawPayload: v.record(v.string(), v.any()),
     parsedData: v.object({
+      name: v.optional(v.string()),
       firstName: v.string(),
       lastName: v.string(),
       middleName: v.optional(v.string()),

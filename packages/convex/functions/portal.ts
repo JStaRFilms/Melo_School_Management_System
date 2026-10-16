@@ -1,3 +1,4 @@
+import { paginationOptsValidator, paginationResultValidator } from "convex/server";
 import { getUnboundStorageUrl, isStorageOwnershipDenied } from "./academic/assetStorageBoundary";
 import { ConvexError, v, type Infer } from "convex/values";
 import { invoicePaymentInstructions, paymentInstructionsValidator } from "./foundation/bankInstructions";
@@ -37,6 +38,7 @@ const portalNarrativeReportValidator = v.object({
 });
 
 const historyContext = {
+  resultKind: v.literal("end_of_term"),
   sessionId: v.id("academicSessions"),
   termId: v.id("academicTerms"),
   sessionName: v.string(),
@@ -66,6 +68,7 @@ const portalHistoryItemValidator = v.union(v.object({
   issued: v.boolean(),
 }), v.object({
   mode: v.literal("needs_review"),
+  resultKind: v.literal("end_of_term"),
   issued: v.literal(false),
   sessionId: v.id("academicSessions"),
   termId: v.id("academicTerms"),
@@ -204,6 +207,7 @@ export const portalWorkspaceDataValidator = v.object({
       name: v.string(),
     })
   ),
+  selectedResultKind: v.literal("end_of_term"),
   selectedReportCard: v.union(v.null(), reportCardResultValidator),
   selectedResultState: v.union(v.literal("released"), v.literal("withheld"), v.literal("no_eligible_record")),
   selectedReportMode: v.union(v.null(), v.literal("graded"), v.literal("narrative")),
@@ -398,11 +402,68 @@ async function resolvePortalSelectionForWorkspace(ctx: QueryCtx, args: {
   }
 }
 
+async function publishedHistoryEntry(ctx: QueryCtx, schoolId: Id<"schools">, studentId: Id<"students">, sessionId: Id<"academicSessions">, termId: Id<"academicTerms">): Promise<Infer<typeof portalHistoryItemValidator> | null> {
+  const resolution = await resolvePortalSelectionForWorkspace(ctx, { studentId, sessionId, termId });
+  const selection = resolution.selection;
+  if (!selection || resolution.needsReview) return null;
+  const href = buildPortalHref("/report-cards", { studentId, sessionId, termId, resultKind: "end_of_term" });
+  if (selection.mode === "narrative") {
+    if (!selection.issued || selection.issued.schoolId !== schoolId) return null;
+    const snapshot = selection.issued.snapshot;
+    return { resultKind: "end_of_term", mode: "narrative", issued: true, sessionId, termId,
+      sessionName: snapshot.sessionName, termName: snapshot.termName, classId: selection.classId,
+      className: snapshot.className, generatedAt: selection.issued.issuedAt, href, note: null };
+  }
+  const report = await releasedPortalReport(ctx, schoolId, studentId, sessionId, termId);
+  if (!report || report.classId !== selection.classId) return null;
+  return { resultKind: "end_of_term", mode: "graded", issued: true, sessionId, termId,
+    sessionName: report.sessionName, termName: report.termName, classId: report.classId, className: report.className,
+    generatedAt: report.generatedAt, totalSubjects: report.summary.totalSubjects,
+    recordedSubjects: report.summary.recordedSubjects, pendingSubjects: report.summary.pendingSubjects,
+    averageScore: report.summary.averageScore, totalScore: report.summary.totalScore,
+    resultCalculationMode: report.resultCalculationMode, href, note: null };
+}
+
+export const listResultSessions = query({
+  args: { studentId: v.id("students"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(v.object({ sessionId: v.id("academicSessions"), name: v.string() })),
+  handler: async (ctx, args) => {
+    const { schoolId } = await resolvePortalStudentContext(ctx, args);
+    if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 20) throw new ConvexError("Invalid page size");
+    const result = await ctx.db.query("academicSessions").withIndex("by_schoolId_and_startDate", q => q.eq("schoolId", schoolId))
+      .order("desc").paginate(args.paginationOpts);
+    return { ...result, page: result.page.map(session => ({ sessionId: session._id, name: session.name })) };
+  },
+});
+
+export const listSessionResults = query({
+  args: { studentId: v.id("students"), sessionId: v.id("academicSessions"), resultKind: v.literal("end_of_term"), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(portalHistoryItemValidator),
+  handler: async (ctx, args) => {
+    const { schoolId } = await resolvePortalStudentContext(ctx, args);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.schoolId !== schoolId) throw new ConvexError("Invalid session");
+    if (args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 6) throw new ConvexError("Invalid page size");
+    // Page terms, not a capped window of publications. Empty unpublished pages still continue.
+    const result = await ctx.db.query("academicTerms").withIndex("by_school_and_start_date", q => q.eq("schoolId", schoolId))
+      .filter(q => q.eq(q.field("sessionId"), session._id))
+      .order("desc").paginate(args.paginationOpts);
+    const page: Array<Infer<typeof portalHistoryItemValidator>> = [];
+    for (const term of result.page) {
+      if (term.schoolId !== schoolId) continue;
+      const entry = await publishedHistoryEntry(ctx, schoolId, args.studentId, session._id, term._id);
+      if (entry) page.push(entry);
+    }
+    return { ...result, page };
+  },
+});
+
 export const getWorkspaceData = query({
   args: {
     studentId: v.optional(v.union(v.id("students"), v.null())),
     sessionId: v.optional(v.union(v.id("academicSessions"), v.null())),
     termId: v.optional(v.union(v.id("academicTerms"), v.null())),
+    resultKind: v.optional(v.literal("end_of_term")),
     historyLimit: v.optional(v.number()),
     now: v.optional(v.number()),
   },
@@ -588,7 +649,7 @@ export const getWorkspaceData = query({
         if (selection.mode === "narrative") {
           if (!selection.issued || selection.issued.schoolId !== schoolId) continue;
           const snapshot = selection.issued.snapshot;
-          history.push({ mode: "narrative", issued: true, sessionId: tuple.sessionId, termId: tuple.termId,
+          history.push({ resultKind: "end_of_term", mode: "narrative", issued: true, sessionId: tuple.sessionId, termId: tuple.termId,
             sessionName: snapshot.sessionName, termName: snapshot.termName, classId: selection.classId,
             className: snapshot.className, generatedAt: selection.issued.issuedAt, href, note: null });
           continue;
@@ -597,7 +658,7 @@ export const getWorkspaceData = query({
           ? selectedReportCard
           : await releasedPortalReport(ctx, schoolId, selectedStudent._id, tuple.sessionId, tuple.termId);
         if (!reportCard || reportCard.classId !== selection.classId) continue;
-        history.push({ mode: "graded", issued: true, sessionId: tuple.sessionId, termId: tuple.termId,
+        history.push({ resultKind: "end_of_term", mode: "graded", issued: true, sessionId: tuple.sessionId, termId: tuple.termId,
           sessionName: reportCard.sessionName, termName: reportCard.termName,
           classId: reportCard.classId, className: reportCard.className, generatedAt: reportCard.generatedAt,
           totalSubjects: reportCard.summary.totalSubjects, recordedSubjects: reportCard.summary.recordedSubjects,
@@ -730,6 +791,7 @@ export const getWorkspaceData = query({
         : null,
       selectedReportCard,
       selectedResultState,
+      selectedResultKind: "end_of_term" as const,
       selectedReportMode,
       selectedReportNeedsReview: selectedResolution.needsReview,
       selectedNarrativeReport,

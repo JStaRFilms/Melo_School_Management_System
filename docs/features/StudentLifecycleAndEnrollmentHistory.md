@@ -1,6 +1,6 @@
 # Student lifecycle and enrollment history
 
-Status: backend and Admin lifecycle UI implemented in the lifecycle worktree. Local registered-function and component checks pass. Independent R1 review remains pending. Browser acceptance is blocked by QA startup prerequisites; no deployment has been run.
+Status: backend and Admin lifecycle UI implemented. Local registered-function and component checks pass, including the reviewed current-placement narrative regression. Browser acceptance and backend deployment remain deferred.
 
 ## Goal
 Record student admission, departure and return without losing identity, academic records or bills. Show dated events and separate participation periods, and keep active rosters and Platform Super Admin school counts correct.
@@ -63,7 +63,7 @@ B1 registered-function coverage includes legal/invalid states, competing revisio
 
 B3 component tests cover inactive discovery with no setup context, retained selection, mobile profile actions, legal/terminal states, default/corrected dates, local return placement, both gaps and unknown starts, cancel/busy/error/stale/unchanged retry, and recorded-context report links. A nested confirmation owns Escape/Tab while open, so a mobile profile sheet cannot close during its commit. Platform consumer tests retain aggregate zero/null behavior in desktop and mobile rendering.
 
-The small reviewed module `scripts/qa/lifecycle-acceptance.mjs` declares synthetic writes to explicitly tagged targets only. It has not been executed. Browser criteria, including released report/bill access and another active child, remain BLOCKED. The existing private profile can be referenced, but QA doctor stops at Windows `pnpm` executable resolution before backend/cohort/origin inspection. Platform needs its own attested origin/account. See the B3 result and verify-melo lifecycle recipe for exact checks and prerequisites.
+Browser criteria, including released report/bill access and another active child, remain unverified. Platform needs its own attested origin, account and fixture. QA tooling and runtime acceptance are separate work and are not included in this implementation.
 
 ## Not included
 Payroll, transcripts, external-school transfer automation, scheduled lifecycle transitions, retrospective count replay and invented legacy history.

@@ -1,6 +1,7 @@
 "use client";
 
 import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
+import { normalizePersonName, normalizeStructuredPersonName } from "@school/shared/name-format";
 import { useDirtyForm } from "@school/shared/drafts";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
@@ -77,6 +78,11 @@ export function StudentProfileEditor({
     "functions/academic/studentEnrollment:saveStudentPhoto" as never,
   );
   const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [structuredName, setStructuredName] = useState(false);
+  const [addressMode, setAddressMode] = useState<"residential" | "different" | "legacy">("legacy");
+  const [emergencyContactMode, setEmergencyContactMode] = useState<"primary" | "override" | "legacy">("legacy");
   const [lastName, setLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
@@ -85,7 +91,7 @@ export function StudentProfileEditor({
     useState<AdmissionCounterDecision>("");
   const [advanceCounterTo, setAdvanceCounterTo] = useState("");
   const [classId, setClassId] = useState("");
-  const [confirmClassAssignment, setConfirmClassAssignment] = useState(false);
+  const [classReview, setClassReview] = useState<{ classId: string; expectedClassId: string; expectedSessionId: string | null } | null>(null);
   const [houseName, setHouseName] = useState("");
   const [gender, setGender] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -124,6 +130,11 @@ export function StudentProfileEditor({
 
   const resetProfileFields = useCallback((profile: StudentProfile) => {
     setFirstName(profile.firstName ?? "");
+    setMiddleName(profile.middleName ?? "");
+    setFullName(profile.displayName);
+    setStructuredName(Boolean(profile.firstName && profile.lastName));
+    setAddressMode(profile.addressMode ?? "legacy");
+    setEmergencyContactMode(profile.emergencyContactMode ?? "legacy");
     setLastName(profile.lastName ?? "");
     setAdmissionNumber(profile.admissionNumber ?? "");
     setOverrideReason("");
@@ -131,13 +142,13 @@ export function StudentProfileEditor({
     setOverrideCounterDecision("");
     setAdvanceCounterTo("");
     setClassId(profile.classId);
-    setConfirmClassAssignment(false);
+    setClassReview(null);
     setHouseName(profile.houseName ?? "");
     setGender(profile.gender ?? "");
     setDateOfBirth(toDateInput(profile.dateOfBirth));
     setGuardianName(profile.guardianName ?? "");
     setGuardianPhone(profile.guardianPhone ?? "");
-    setAddress(profile.address ?? "");
+    setAddress(profile.storedAddress ?? profile.address ?? "");
     setPhotoFile(null);
     setIsPhotoProcessing(false);
   }, []);
@@ -151,23 +162,29 @@ export function StudentProfileEditor({
     return studentProfile?.photoUrl ?? null;
   }, [photoFile, studentProfile?.photoUrl]);
 
-  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || studentProfile?.displayName || "Unnamed Student";
+  const displayName = structuredName ? [firstName.trim(), middleName.trim(), lastName.trim()].filter(Boolean).join(" ") : fullName;
+  const normalizeName = () => {
+    const parts = normalizeStructuredPersonName({ firstName, middleName, lastName });
+    setFirstName(parts.firstName ?? ""); setMiddleName(parts.middleName ?? ""); setLastName(parts.lastName ?? "");
+  };
   const admissionNumberChanged = Boolean(
     studentProfile &&
     admissionNumber.trim() !== studentProfile.admissionNumber,
   );
   const profileDirty = Boolean(studentProfile && (
+    fullName !== studentProfile.displayName || structuredName !== Boolean(studentProfile.firstName && studentProfile.lastName) ||
+    middleName !== (studentProfile.middleName ?? "") ||
+    addressMode !== (studentProfile.addressMode ?? "legacy") || emergencyContactMode !== (studentProfile.emergencyContactMode ?? "legacy") ||
     firstName !== (studentProfile.firstName ?? "") ||
     lastName !== (studentProfile.lastName ?? "") ||
     admissionChanged(admissionNumber, studentProfile.admissionNumber) ||
     classId !== studentProfile.classId ||
-    confirmClassAssignment ||
     houseName !== (studentProfile.houseName ?? "") ||
     gender !== (studentProfile.gender ?? "") ||
     dateOfBirth !== toDateInput(studentProfile.dateOfBirth) ||
     guardianName !== (studentProfile.guardianName ?? "") ||
     guardianPhone !== (studentProfile.guardianPhone ?? "") ||
-    address !== (studentProfile.address ?? "") ||
+    address !== (studentProfile.storedAddress ?? studentProfile.address ?? "") ||
     photoFile !== null ||
     overrideReason !== "" || overrideConfirmed ||
     overrideCounterDecision !== "" || advanceCounterTo !== ""
@@ -218,7 +235,12 @@ export function StudentProfileEditor({
     );
   }
 
-  const handleSave = async () => {
+  const handleSave = async (review?: NonNullable<typeof classReview>) => {
+    if (isSaving) return;
+    if (classId !== studentProfile.classId && !review) {
+      setClassReview({ classId, expectedClassId: studentProfile.classId, expectedSessionId: studentProfile.activeSessionId ?? null });
+      return;
+    }
     if (!admissionNumberOverrideReady) {
       onNotice({
         tone: "error",
@@ -228,7 +250,7 @@ export function StudentProfileEditor({
       return;
     }
 
-    if (guardianPhone.trim() && !isValidPhoneNumber(guardianPhone)) {
+    if (guardianPhone !== (studentProfile.guardianPhone ?? "") && guardianPhone.trim() && !isValidPhoneNumber(guardianPhone)) {
       onNotice({
         tone: "error",
         message: "Enter a valid contact phone number (e.g. +234...).",
@@ -267,12 +289,14 @@ export function StudentProfileEditor({
 
     setIsSaving(true);
     try {
+      const submittedName = normalizeStructuredPersonName({ firstName, middleName, lastName });
+      const savedDisplayName = structuredName
+        ? [submittedName.firstName, submittedName.middleName, submittedName.lastName].filter(Boolean).join(" ")
+        : normalizePersonName(fullName);
       await updateStudent({
         studentId,
-        name: displayName,
-        firstName,
-        lastName,
-        admissionNumber,
+        ...(structuredName ? (firstName !== studentProfile.firstName || middleName !== (studentProfile.middleName ?? "") || lastName !== studentProfile.lastName ? { firstName, middleName: middleName.trim() || null, lastName } : {}) : (fullName !== studentProfile.displayName || studentProfile.firstName ? { name: fullName } : {})),
+        admissionNumber: admissionNumberChanged ? admissionNumber : undefined,
         overrideReason: admissionNumberChanged
           ? overrideReason.trim()
           : undefined,
@@ -310,16 +334,17 @@ export function StudentProfileEditor({
           admissionNumberChanged && overrideCounterDecision === "advance"
             ? numbering?.resetPeriod ?? undefined
             : undefined,
-        classId: studentProfile.enrollmentStatus === "active" ? classId : undefined,
-        confirmClassAssignment: studentProfile.enrollmentStatus === "active" && confirmClassAssignment ? true : undefined,
+        ...(studentProfile.enrollmentStatus === "active" && review ? { classId: review.classId, confirmClassAssignment: true, expectedClassId: review.expectedClassId, expectedSessionId: review.expectedSessionId } : {}),
         houseName: houseName || null,
         gender: gender || null,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
-        guardianName: guardianName || null,
-        guardianPhone: guardianPhone || null,
-        address: address || null,
+        guardianName: guardianName !== (studentProfile.guardianName ?? "") ? guardianName || null : undefined,
+        guardianPhone: guardianPhone !== (studentProfile.guardianPhone ?? "") ? guardianPhone || null : undefined,
+        address: address !== (studentProfile.storedAddress ?? studentProfile.address ?? "") ? address || null : undefined,
+        addressMode: addressMode !== (studentProfile.addressMode ?? "legacy") && addressMode !== "legacy" ? addressMode : undefined,
+        emergencyContactMode: emergencyContactMode !== (studentProfile.emergencyContactMode ?? "legacy") && emergencyContactMode !== "legacy" ? emergencyContactMode : undefined,
       } as never);
-      setConfirmClassAssignment(false);
+      setClassReview(null);
 
       let photoUploadError: string | null = null;
       if (photoFile) {
@@ -334,18 +359,18 @@ export function StudentProfileEditor({
       if (photoUploadError) {
         onNotice({
           tone: "warning",
-          message: `${displayName} updated, but photo upload failed (${photoUploadError}). You can retry uploading the photo.`,
+          message: `${savedDisplayName} updated, but photo upload failed (${photoUploadError}). You can retry uploading the photo.`,
         });
       } else {
         onNotice({
           tone: "success",
-          message: `${displayName} updated.`,
+          message: `${savedDisplayName} updated.`,
         });
       }
     } catch (error) {
       onNotice({
         tone: "error",
-        message: getUserFacingErrorMessage(error, "Update failed."),
+        message: `${getUserFacingErrorMessage(error, "Update failed.")} If the assignment changed, reload and review it before saving again.`,
       });
     } finally {
       setIsSaving(false);
@@ -469,6 +494,10 @@ export function StudentProfileEditor({
 
             <StudentProfileFormFields
               firstName={firstName}
+              middleName={middleName} fullName={fullName} structuredName={structuredName}
+              onMiddleNameChange={setMiddleName} onFullNameChange={setFullName} onStructuredNameChange={value => { setStructuredName(value); if (!value) { setFullName(studentProfile.displayName); setFirstName(studentProfile.firstName ?? ""); setMiddleName(studentProfile.middleName ?? ""); setLastName(studentProfile.lastName ?? ""); } }} onNameBlur={normalizeName}
+              addressMode={addressMode} onAddressModeChange={setAddressMode}
+              emergencyContactMode={emergencyContactMode} onEmergencyContactModeChange={setEmergencyContactMode}
               lastName={lastName}
               admissionNumber={admissionNumber}
               classId={classId}
@@ -483,10 +512,7 @@ export function StudentProfileEditor({
               onFirstNameChange={setFirstName}
               onLastNameChange={setLastName}
               onAdmissionNumberChange={setAdmissionNumber}
-              onClassIdChange={(nextClassId) => {
-                setClassId(nextClassId);
-                setConfirmClassAssignment(true);
-              }}
+              onClassIdChange={setClassId}
               onHouseNameChange={setHouseName}
               onGenderChange={setGender}
               onDateOfBirthChange={setDateOfBirth}
@@ -495,22 +521,7 @@ export function StudentProfileEditor({
               onAddressChange={setAddress}
             />
 
-            {studentProfile.enrollmentStatus === "active" && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={confirmClassAssignment}
-                onChange={(event) => setConfirmClassAssignment(event.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300"
-              />
-              <span>
-                <span className="block font-semibold text-slate-900">
-                  Confirm class assignment
-                </span>
-                <span className="mt-1 block text-xs text-slate-600">
-                  Use the selected class for the active session and replace any existing promotion assignment.
-                </span>
-              </span>
-            </label>}
+            <p className="text-xs text-slate-500">Effective address: {studentProfile.address || "Not recorded"} · {studentProfile.addressSource ?? "legacy"}. Emergency source: {studentProfile.emergencyContact?.source ?? "legacy"}{studentProfile.emergencyContact?.name ? ` · ${studentProfile.emergencyContact.name}` : ""}.</p>
 
             {admissionNumberChanged && (
               <AdmissionNumberGovernanceFields
@@ -542,7 +553,7 @@ export function StudentProfileEditor({
             <button
               type="button"
               onClick={() => void handleSave()}
-              disabled={isSaving || isArchiving || isPhotoProcessing || !firstName.trim() || !lastName.trim() || !admissionNumber.trim() || !classId || !admissionNumberOverrideReady}
+              disabled={isSaving || isArchiving || isPhotoProcessing || (structuredName ? !firstName.trim() || !lastName.trim() : !fullName.trim()) || !admissionNumber.trim() || !classId || !admissionNumberOverrideReady}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition-all hover:bg-slate-800 disabled:opacity-50"
             >
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
@@ -590,6 +601,7 @@ export function StudentProfileEditor({
         </div>
       )}
 
+      <ConfirmationModal isOpen={classReview !== null} onClose={() => setClassReview(null)} onConfirm={() => { if (classReview) void handleSave(classReview); }} title="Are you sure?" description={`Change the effective active-session class from ${studentProfile.className} to ${classes.find(item => item._id === classReview?.classId)?.name ?? "the selected class"}? This replaces the current assignment and updates active-session subjects. Historical selections remain unchanged.`} confirmLabel="Confirm class change" isLoading={isSaving} />
       {/* Archive Student Confirmation Modal */}
       <ConfirmationModal
         isOpen={isArchiveConfirmOpen}

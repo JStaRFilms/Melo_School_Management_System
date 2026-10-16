@@ -1,6 +1,6 @@
 # Staff service history and return
 
-Status: backend and lifecycle UI implemented in the lifecycle worktree. B1M repaired the inherited schema registry gate. Local checks pass; independent R1 review is pending. Browser acceptance remains blocked by QA prerequisites, not passed.
+Status: backend and lifecycle UI implemented. Local registered-function, schema coverage and component checks pass. Browser acceptance and backend deployment remain deferred.
 
 ## Goal
 Record teacher, school-admin and generic staff joining, departure and same-identity rehire. Keep historical work and permission evidence while denying departed staff operational access in that school.
@@ -14,13 +14,13 @@ Service panels show named leadership, direct-report, teaching and independent-ac
 
 Periods, continuing gaps, unknown legacy starts and event timestamps are read-only and paginated. Empty source pages do not end discovery. Archive remains separate. Archive Audit now includes generic staff, displays service status for every staff role and confirms that Restore does not rehire. Historical attribution and other-school access are unchanged.
 
-Use the typed contracts in `docs/tasks/orchestrator-sessions/orch-20261011-163833/results/B2.md`. The endpoints are exported through `academicSetup` so existing generated API types can infer them without backend-contacting codegen.
+The endpoints are exported through `academicSetup` so generated API types can infer their contracts without backend-contacting codegen.
 
 ## Server components
 `staffService.ts` owns transitions, indexed histories, profiles, directory discovery and review confirmation. `staffServiceContract.ts` supplies schema validators. Existing RBAC authority checks validate both retained and replacement permissions.
 
 - New teacher and generic-staff accounts share the existing reserved staff-onboarding draft and canonical provisioning path. `createStaff` creates a real `users.role: staff` account, not a teacher or teaching assignment.
-- School-admin creation and Platform initial-admin assignment create canonical person/membership linkage and joining evidence. Legacy initial-admin bootstrap records new joining without inventing canonical metadata; repeating it preserves service and identity. Bootstrap rejects departed/archived accounts and identity replacement. Promotion of an existing teacher does not create another service period or identity.
+- School-admin creation and Platform initial-admin assignment create canonical person/membership linkage and joining evidence. Initial-admin provisioning rejects an existing canonical person matched by email or the exact deployment-issued auth token before deleting any presumed orphan login. Legacy initial-admin bootstrap records new joining without inventing canonical metadata; repeating it preserves service and identity. Bootstrap rejects departed/archived accounts and identity replacement. Promotion of an existing teacher does not create another service period or identity.
 - New joining and rehire open a dated period. Departure closes the current period. The first departure of a legacy active staff record creates a period with unknown start, without inventing a joining event or historical role.
 - Departure rejects self, resolved lead-admin, proprietor, active direct-report and teaching/form links. Teaching blockers apply to every staff role, including promoted teachers. Existing attribution is not deleted.
 - An active canonical branch membership is suspended under the departure event and an exact membership revision. Other branches and global person status are unchanged. A previously restricted membership is not claimed by lifecycle.
@@ -64,4 +64,4 @@ Registered-function tests cover joining, repeated periods, rehire review, retrie
 
 B3 adds component tests for teacher/admin/generic-staff reviewed rehire, retention/replacement, capability and assignment blockers, reviewed revision/event submission, cancel, corrected context, stale conflicts and unchanged uncertain review/rehire retries. Actual page tests cover generic onboarding through a prepared draft and mobile departed-staff discovery. A narrow Archive Audit integration test covers generic-staff discovery before restore without rehire.
 
-These are local checks, not browser evidence or a live Better Auth provisioning trial. The reviewed student-only synthetic lifecycle module has not run and does not claim staff browser proof. The existing QA inspector rejects additional canonical accounts and requires original actor memberships to remain active, so staff/browser targets require a separately verified fixture protocol; do not use the original cohort actors or weaken inspection. The existing QA profile is present but doctor stops at Windows executable resolution before isolated backend, actor/cohort and origin proof. Protected targets remain untouched. No deployment, remote write, credential copying, maintenance execution, commit or push occurred. Payroll, contracts, global account recovery and RBAC redesign remain out of scope.
+These are local checks, not browser evidence or a live Better Auth provisioning trial. A registered-action regression reproduces the canonical-person orphan risk and verifies that provisioning leaves the retained login untouched, including when the person email has changed. Staff browser targets need a separately verified fixture protocol. QA tooling, runtime acceptance and deployment are not included here. Payroll, contracts, global account recovery and RBAC redesign remain out of scope.

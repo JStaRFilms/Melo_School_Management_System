@@ -4,8 +4,8 @@ import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { assertMigrationAccess } from "./migrationAuth";
+import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import {
-  parseHumanName,
   normalizePhoneNumber,
   evaluateClash,
   generateFamilyClusterKey,
@@ -15,6 +15,7 @@ const stagedRecordInputValidator = v.object({
   rowNumber: v.number(),
   rawPayload: v.record(v.string(), v.any()),
   parsedData: v.object({
+    name: v.optional(v.string()),
     firstName: v.string(),
     lastName: v.string(),
     middleName: v.optional(v.string()),
@@ -117,13 +118,14 @@ export const stageRecordsBatch = mutation({
     const studentUserIds = liveStudents.map((s) => s.userId);
     const userMap = new Map<
       string,
-      { firstName?: string; lastName?: string; name: string }
+      { firstName?: string; middleName?: string; lastName?: string; name: string }
     >();
     for (const uId of studentUserIds) {
       const uDoc = await ctx.db.get(uId);
       if (uDoc) {
         userMap.set(String(uId), {
           firstName: uDoc.firstName,
+          middleName: uDoc.middleName,
           lastName: uDoc.lastName,
           name: uDoc.name,
         });
@@ -186,21 +188,11 @@ export const stageRecordsBatch = mutation({
       const data = { ...rec.parsedData };
       const validationErrors: string[] = [];
 
-      // Normalize name & phone
-      const parsedName = parseHumanName(
-        data.middleName
-          ? `${data.firstName} ${data.middleName} ${data.lastName}`
-          : `${data.firstName} ${data.lastName}`,
-      );
-      if (!data.firstName || data.firstName === "Unknown") {
-        data.firstName = parsedName.firstName;
-      }
-      if (!data.lastName) {
-        data.lastName = parsedName.lastName;
-      }
-      if (!data.middleName && parsedName.middleName) {
-        data.middleName = parsedName.middleName;
-      }
+      // Explicit reviewed columns keep their boundaries. Do not reparse a full name.
+      const nameParts = normalizeStructuredPersonName(data);
+      data.firstName = nameParts.firstName ?? "";
+      data.middleName = nameParts.middleName;
+      data.lastName = nameParts.lastName ?? "";
 
       if (data.guardianPhone) {
         data.guardianPhone =
@@ -226,8 +218,9 @@ export const stageRecordsBatch = mutation({
       }
 
       // Validation Checks
-      if (!data.firstName.trim()) {
-        validationErrors.push("First name is required");
+      if (!data.name?.trim() || data.firstName.trim() || data.lastName.trim()) {
+        if (!data.firstName.trim()) validationErrors.push("First name is required");
+        if (!data.lastName.trim()) validationErrors.push("Last name is required");
       }
 
       if (rec.entityType === "grade_record") {
@@ -251,6 +244,7 @@ export const stageRecordsBatch = mutation({
       let clashReason: string | undefined = undefined;
 
       const candidate = {
+        name: data.name,
         firstName: data.firstName,
         lastName: data.lastName,
         middleName: data.middleName,
@@ -292,8 +286,10 @@ export const stageRecordsBatch = mutation({
       for (const live of liveStudents) {
         const u = userMap.get(String(live.userId));
         const evalResult = evaluateClash(candidate, {
-          firstName: u?.firstName || u?.name.split(" ")[0] || "",
-          lastName: u?.lastName || u?.name.split(" ")[1] || "",
+          name: u?.name,
+          firstName: u?.firstName ?? "",
+          middleName: u?.middleName,
+          lastName: u?.lastName ?? "",
           className: liveClasses.find((c) => c._id === live.classId)?.name,
           guardianPhone: live.guardianPhone,
           gender: live.gender,
@@ -313,6 +309,7 @@ export const stageRecordsBatch = mutation({
 
       for (const prev of [...existingStaged, ...newlyStaged]) {
         const evalResult = evaluateClash(candidate, {
+          name: prev.parsedData.name,
           firstName: prev.parsedData.firstName,
           lastName: prev.parsedData.lastName,
           middleName: prev.parsedData.middleName,

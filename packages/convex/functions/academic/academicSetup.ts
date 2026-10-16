@@ -28,7 +28,7 @@ import {
   assertTeacherCanBeArchived,
   getTeacherArchiveBlockers as readTeacherArchiveBlockers,
 } from "./archiveGuardrails";
-import { resolveStoredUserNameFields } from "./studentNameCompat";
+import { getReadableUserName, resolveStoredUserNameFields } from "./studentNameCompat";
 import { finishFormDraft, recordFormDraftProvisionedAuth, releaseFormDraftReservation, reserveFormDraft } from "./drafts";
 import { resolveDomainSetting } from "./groupSettings";
 import { assertSessionScoringAvailable } from "./sessionScoring";
@@ -173,6 +173,9 @@ export const createTeacherRecordInternal = internalMutation({
   args: {
     schoolId: v.id("schools"),
     name: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     email: v.string(),
     authId: v.string(),
     role: v.optional(v.union(v.literal("teacher"), v.literal("staff"))),
@@ -188,7 +191,7 @@ export const createTeacherRecordInternal = internalMutation({
     }
     const normalizedEmail = normalizeTeacherEmail(args.email);
     const teacherName = resolveStoredUserNameFields({
-      name: args.name,
+      name: args.name, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName,
       requiredMessage: "Teacher name is required",
     });
     const existingUsers = await findTeacherByEmailRecords(
@@ -234,7 +237,7 @@ export const createTeacherRecordInternal = internalMutation({
       authTokenIdentifier,
       identityReconciliationState: "resolved",
       email: normalizedEmail,
-      name: teacherName.name,
+      ...teacherName,
       status: "active",
       primarySchoolId: args.schoolId,
       createdAt: now,
@@ -245,11 +248,10 @@ export const createTeacherRecordInternal = internalMutation({
       authId: args.authId,
       authTokenIdentifier,
       personId,
-      name: teacherName.name,
-      ...(teacherName.firstName ? { firstName: teacherName.firstName } : {}),
-      ...(teacherName.lastName ? { lastName: teacherName.lastName } : {}),
+      ...teacherName,
       email: normalizedEmail,
       role: args.role ?? "teacher",
+      lastCredentialOperation: { operationId: `teacher-ready:${args.draftId ?? args.authId}`, kind: "ready", committedAt: now },
       createdAt: now,
       updatedAt: now,
     });
@@ -346,6 +348,9 @@ export const releaseTeacherProvisioningInternal = internalMutation({
 
 const staffProvisioningArgs = v.object({
     name: v.string(),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     email: v.string(),
     temporaryPassword: v.string(),
     origin: v.string(),
@@ -369,6 +374,7 @@ async function provisionStaffAccount(
 
     effectiveStaffDay(args.joiningDay);
     const schoolId = viewer.schoolId;
+    const teacherName = resolveStoredUserNameFields(args);
     const reservation = await ctx.runMutation(
       internal.functions.academic.academicSetup.reserveTeacherProvisioningInternal,
       {
@@ -395,7 +401,7 @@ async function provisionStaffAccount(
         if (existingAuth?.user?.id)
           throw new ConvexError("An authentication account with this email already exists");
         const created = await authContext.internalAdapter.createUser({
-          name: normalizePersonName(args.name),
+          name: teacherName.name,
           email: normalizedEmail,
           emailVerified: false,
         });
@@ -411,7 +417,7 @@ async function provisionStaffAccount(
       }
 
       const password = await authContext.password.hash(args.temporaryPassword);
-      await authContext.internalAdapter.updateUser(authId, { name: normalizePersonName(args.name), email: normalizedEmail });
+      await authContext.internalAdapter.updateUser(authId, { name: teacherName.name, email: normalizedEmail });
       if (existingAuth?.accounts?.length)
         await authContext.internalAdapter.updatePassword(authId, password);
       else
@@ -421,7 +427,7 @@ async function provisionStaffAccount(
         internal.functions.academic.academicSetup.createTeacherRecordInternal,
         {
           schoolId,
-          name: normalizeHumanName(args.name),
+          ...teacherName,
           email: normalizedEmail,
           authId,
           role: staffRole,
@@ -431,6 +437,7 @@ async function provisionStaffAccount(
           expectedDraftRevision: args.expectedDraftRevision,
         },
       );
+      await ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: teacherId, operationId: `teacher-ready:${args.draftId}` }).catch(() => null);
       return { teacherId, email: normalizedEmail, temporaryPassword: args.temporaryPassword };
     } catch (error) {
       let cleanupVerified = !createdThisRun;
@@ -474,6 +481,9 @@ export const listTeachers = query({
     v.object({
       _id: v.id("users"),
       name: v.string(),
+      firstName: v.union(v.string(), v.null()),
+      middleName: v.union(v.string(), v.null()),
+      lastName: v.union(v.string(), v.null()),
       email: v.string(),
       createdAt: v.number(),
     })
@@ -499,7 +509,10 @@ export const listTeachers = query({
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((t) => ({
         _id: t._id,
-        name: normalizePersonName(t.name),
+        name: getReadableUserName(t).displayName,
+        firstName: getReadableUserName(t).firstName,
+        middleName: getReadableUserName(t).middleName,
+        lastName: getReadableUserName(t).lastName,
         email: t.email,
         createdAt: t.createdAt,
       }));
@@ -541,6 +554,10 @@ export const getTeacherRecordInternal = internalQuery({
     authId: v.string(),
     email: v.string(),
     name: v.string(),
+    firstName: v.union(v.string(), v.null()),
+    middleName: v.union(v.string(), v.null()),
+    lastName: v.union(v.string(), v.null()),
+    sharedIdentity: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const teacher = await ctx.db.get(args.teacherId);
@@ -554,11 +571,14 @@ export const getTeacherRecordInternal = internalQuery({
     }
 
     assertStaffActive(teacher);
+    const personId = teacher.personId;
     return {
       _id: teacher._id,
       authId: teacher.authId,
       email: teacher.email,
-      name: teacher.name,
+      name: getReadableUserName(teacher).displayName,
+      firstName: teacher.firstName ?? null, middleName: teacher.middleName ?? null, lastName: teacher.lastName ?? null,
+      sharedIdentity: personId ? (await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", personId)).take(101)).some(row => row.schoolId !== teacher.schoolId) : false,
     };
   },
 });
@@ -607,7 +627,10 @@ export const updateTeacherRecordInternal = internalMutation({
   args: {
     teacherId: v.id("users"),
     schoolId: v.id("schools"),
-    name: v.string(),
+    name: v.optional(v.string()),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.union(v.string(), v.null())),
+    lastName: v.optional(v.string()),
     email: v.string(),
   },
   returns: v.null(),
@@ -622,14 +645,15 @@ export const updateTeacherRecordInternal = internalMutation({
       throw new ConvexError("Teacher not found");
     }
 
-    const name = normalizeHumanName(args.name);
+    const nameFields = resolveStoredUserNameFields({ ...args, fallbackName: teacher.name, fallbackFirstName: teacher.firstName, fallbackMiddleName: teacher.middleName, fallbackLastName: teacher.lastName });
     const email = normalizeTeacherEmail(args.email);
     const canonical = await getCanonicalTeacherLink(ctx, teacher);
+    const memberships = canonical ? await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", canonical.person._id)).take(101) : [];
+    const shared = memberships.length > 100 || memberships.some(row => row.schoolId !== teacher.schoolId);
+    if (shared && email !== teacher.email) throw new ConvexError("Shared login email requires reviewed identity management");
     const updatedAt = Date.now();
-    await ctx.db.patch(args.teacherId, { name, email, updatedAt });
-    if (canonical) {
-      await ctx.db.patch(canonical.person._id, { name, email, updatedAt });
-    }
+    await ctx.db.patch(args.teacherId, { ...nameFields, email, updatedAt });
+    if (canonical && !shared) await ctx.db.patch(canonical.person._id, { ...nameFields, email, updatedAt });
 
     return null;
   },
@@ -638,7 +662,10 @@ export const updateTeacherRecordInternal = internalMutation({
 export const updateTeacherProfile = action({
   args: {
     teacherId: v.id("users"),
-    name: v.string(),
+    name: v.optional(v.string()),
+    firstName: v.optional(v.string()),
+    middleName: v.optional(v.union(v.string(), v.null())),
+    lastName: v.optional(v.string()),
     email: v.string(),
   },
   returns: v.object({
@@ -646,7 +673,7 @@ export const updateTeacherProfile = action({
     name: v.string(),
     email: v.string(),
   }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ teacherId: Id<"users">; name: string; email: string }> => {
     const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capability: "staff.profiles.edit" });
     if (!viewer) {
       throw new ConvexError("Unauthorized");
@@ -656,14 +683,12 @@ export const updateTeacherProfile = action({
     }
 
     const teacher = await ctx.runQuery(
-      (internal as any).functions.academic.academicSetup.getTeacherRecordInternal,
-      {
-        teacherId: args.teacherId,
-        schoolId: viewer.schoolId,
-      }
+      internal.functions.academic.academicSetup.getTeacherRecordInternal,
+      { teacherId: args.teacherId, schoolId: viewer.schoolId }
     );
 
-    const normalizedName = normalizeHumanName(args.name);
+    const nameFields = resolveStoredUserNameFields({ ...args, fallbackName: teacher.name, fallbackFirstName: teacher.firstName, fallbackMiddleName: teacher.middleName, fallbackLastName: teacher.lastName });
+    const normalizedName = nameFields.name;
     const normalizedEmail = normalizeTeacherEmail(args.email);
 
     const duplicateTeacher = await ctx.runQuery(
@@ -685,7 +710,8 @@ export const updateTeacherProfile = action({
     const auth = createAuth(ctx);
     const authContext = await auth.$context;
 
-    await authContext.internalAdapter.updateUser(teacher.authId, {
+    if (teacher.sharedIdentity && normalizedEmail !== teacher.email) throw new ConvexError("Shared login email requires reviewed identity management");
+    if (!teacher.sharedIdentity) await authContext.internalAdapter.updateUser(teacher.authId, {
       name: normalizedName,
       email: normalizedEmail,
     });
@@ -695,7 +721,8 @@ export const updateTeacherProfile = action({
       {
         teacherId: args.teacherId,
         schoolId: viewer.schoolId,
-        name: normalizedName,
+        ...nameFields,
+        middleName: args.middleName === null ? null : nameFields.middleName,
         email: normalizedEmail,
       }
     );
@@ -705,6 +732,18 @@ export const updateTeacherProfile = action({
       name: normalizedName,
       email: normalizedEmail,
     };
+  },
+});
+
+export const recordTeacherPasswordResetInternal = internalMutation({
+  args: { teacherId: v.id("users"), operationId: v.string(), expectedAuthId: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "staff.password.reset" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const teacher = await ctx.db.get(args.teacherId);
+    if (!teacher || teacher.schoolId !== actor.schoolId || teacher.role !== "teacher" || teacher.isArchived || teacher.authId !== args.expectedAuthId) throw new ConvexError("Teacher changed during reset");
+    await ctx.db.patch(teacher._id, { lastCredentialOperation: { operationId: args.operationId, kind: "reset", committedAt: Date.now() } });
+    return null;
   },
 });
 
@@ -749,6 +788,10 @@ export const resetTeacherPassword = action({
     const hashedPassword = await authContext.password.hash(args.temporaryPassword);
     await authContext.internalAdapter.updatePassword(teacher.authId, hashedPassword);
     await authContext.internalAdapter.deleteSessions(teacher.authId);
+    const operationId = crypto.randomUUID();
+    // The password has committed; separate notice bookkeeping must not hide the handoff.
+    await ctx.runMutation(internal.functions.academic.academicSetup.recordTeacherPasswordResetInternal, { teacherId: args.teacherId, operationId, expectedAuthId: teacher.authId })
+      .then(() => ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: args.teacherId, operationId })).catch(() => null);
 
     return {
       teacherId: args.teacherId,

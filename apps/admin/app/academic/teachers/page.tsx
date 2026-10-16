@@ -15,6 +15,7 @@ import { TeacherCreationForm } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { TeacherRecord } from "@/types";
+import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { useAuth } from "@/AuthProvider";
 import { useDraftConnection } from "@/useDraftConnection";
@@ -70,8 +71,8 @@ export default function TeachersPage() {
     "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
   
-  const createTeacher = useAction("functions/academic/academicSetup:createTeacher" as never);
-  const updateTeacherProfile = useAction("functions/academic/academicSetup:updateTeacherProfile" as never);
+  const createTeacher = useAction(api.functions.academic.academicSetup.createTeacher);
+  const updateTeacherProfile = useAction(api.functions.academic.academicSetup.updateTeacherProfile);
   const resetTeacherPassword = useAction("functions/academic/academicSetup:resetTeacherPassword" as never);
   const archiveTeacher = useMutation("functions/academic/academicSetup:archiveTeacher" as never);
 
@@ -125,18 +126,19 @@ export default function TeachersPage() {
     }
   }, [selectedTeacherId, isMobile]);
 
-  const handleProvision = async (name: string, email: string, password: string, draft?: DraftClosure, joiningDay?: string): Promise<ProvisionResult> => {
+  const handleProvision = async (name: string, email: string, password: string, draft?: DraftClosure, parts?: { firstName: string; middleName?: string; lastName: string }, joiningDay?: string): Promise<ProvisionResult> => {
     setIsSubmitting(true);
     try {
       const response = await createTeacher({
         name: name.trim(),
+        ...parts,
         email: email.trim().toLowerCase(),
         temporaryPassword: password.trim(),
         origin: window.location.origin,
         draftId: draft?.draftId,
         expectedDraftRevision: draft?.expectedRevision,
         joiningDay,
-      } as never) as ProvisionResult;
+      });
       
       showNotice({ tone: "success", title: "Teacher Provisioned", message: `Account active for ${email}` });
       return response;
@@ -155,10 +157,10 @@ export default function TeachersPage() {
     }
   };
 
-  const handleUpdate = async (id: string, name: string, email: string) => {
+  const handleUpdate = async (id: string, name: string, email: string, parts?: { firstName: string; middleName: string | null; lastName: string }) => {
     setIsSaving(true);
     try {
-      await updateTeacherProfile({ teacherId: id, name, email } as never);
+      await updateTeacherProfile({ teacherId: id as Id<"users">, name, email, ...parts });
       showNotice({ tone: "success", title: "Record Updated", message: "Teacher information saved." });
     } catch (err) {
       showNotice({

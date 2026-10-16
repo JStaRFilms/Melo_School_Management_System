@@ -5,6 +5,8 @@ import { Info } from "lucide-react";
 import { cleanPhoneInput } from "@school/shared";
 
 interface StudentCreationOptionalFieldsProps {
+  emergencyContactMode: "primary" | "override" | "legacy";
+  onEmergencyContactModeChange: (mode: "primary" | "override" | "legacy") => void;
   houseName: string;
   dateOfBirth: string;
   guardianName: string;
@@ -18,6 +20,8 @@ interface StudentCreationOptionalFieldsProps {
 }
 
 export function StudentCreationOptionalFields({
+  emergencyContactMode,
+  onEmergencyContactModeChange,
   houseName,
   dateOfBirth,
   guardianName,
@@ -62,7 +66,12 @@ export function StudentCreationOptionalFields({
             className={fieldInputClassName}
           />
         </Field>
-        <Field label="Guardian">
+        <div className="col-span-2 space-y-2 text-xs text-slate-600">
+          <p>The household\'s primary contact is used by default. Add separate details only if the emergency contact is someone else.</p>
+          {emergencyContactMode === "legacy" && <p>Previously recorded guardian details. These are separate from the linked contact and will be retained unless you change the source.</p>}
+          <label className="flex gap-2"><input type="checkbox" checked={emergencyContactMode !== "primary"} onChange={event => onEmergencyContactModeChange(event.target.checked ? "override" : "primary")} />Use a different emergency contact</label>
+        </div>
+        {emergencyContactMode !== "primary" && <><Field label="Emergency contact name">
           <input
             type="text"
             value={guardianName}
@@ -71,7 +80,7 @@ export function StudentCreationOptionalFields({
             placeholder="Name"
           />
         </Field>
-        <Field label="Phone">
+        <Field label="Emergency contact phone">
           <input
             type="tel"
             inputMode="tel"
@@ -81,7 +90,8 @@ export function StudentCreationOptionalFields({
             placeholder="+234..."
           />
         </Field>
-        <Field label="Home Address" className="col-span-2">
+        </>}
+        <Field label="Residential address" className="col-span-2">
           <input
             type="text"
             value={address}
@@ -105,12 +115,12 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <div className={className}>
-      <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
+    <label className={className}>
+      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">
         {label}
-      </label>
+      </span>
       {children}
-    </div>
+    </label>
   );
 }
 
