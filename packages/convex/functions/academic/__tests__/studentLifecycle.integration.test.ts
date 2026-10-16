@@ -180,6 +180,25 @@ describe("student lifecycle and registered headcounts", () => {
     await expect(f.admin.mutation(enrollment.transitionStudentEnrollment, { studentId: f.ids.studentId, action: "re_enrol", expectedRevision: 0, operationKey: "bypass", reason: "Return", placement: f.placement })).rejects.toThrow("not allowed");
   });
 
+  it.each(["active", "withdrawn", "suspended", "graduated"] as const)("keeps ordinary archived-account %s profiles unavailable", async enrollmentStatus => {
+    const f = await fixture();
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.studentId, { enrollmentStatus });
+      await ctx.db.patch(f.ids.userId, { isArchived: true });
+    });
+    await expect(f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).rejects.toThrow("Student account not found");
+  });
+
+  it.each(["foreign-account", "wrong-role", "missing-account", "archived-student"] as const)("denies transferred-out profile access for %s", async mismatch => {
+    const f = await fixture();
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.studentId, { enrollmentStatus: "transferred_out", ...(mismatch === "archived-student" ? { isArchived: true } : {}) });
+      if (mismatch === "missing-account") await ctx.db.delete(f.ids.userId);
+      else await ctx.db.patch(f.ids.userId, { isArchived: mismatch !== "wrong-role", ...(mismatch === "foreign-account" ? { schoolId: f.ids.otherSchoolId } : mismatch === "wrong-role" ? { role: "admin" as const } : {}) });
+    });
+    await expect(f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).rejects.toThrow(mismatch === "archived-student" ? "Student not found" : "Student account not found");
+  });
+
   it("keeps inactive archive/restore inactive and active archive/restore count exact", async () => {
     const f = await fixture();
     await f.admin.mutation(enrollment.archiveStudent, { studentId: f.ids.studentId });
@@ -235,6 +254,7 @@ describe("student lifecycle and registered headcounts", () => {
     const denied = f.t.withIdentity(deniedIdentity);
     await expect(denied.mutation(enrollment.transitionStudentEnrollment, { studentId: f.ids.studentId, action: "withdraw", expectedRevision: 0, operationKey: "forbidden", reason: "Leave" })).rejects.toThrow();
     await expect(denied.query(enrollment.getStudentEnrollmentHistory, { studentId: f.ids.studentId, paginationOpts: { cursor: null, numItems: 20 } })).rejects.toThrow();
+    await expect(denied.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).rejects.toThrow();
     const foreignIdentity = { subject: "foreign", tokenIdentifier: "test|foreign" };
     await f.t.run(ctx => ctx.db.insert("users", { schoolId: f.ids.otherSchoolId, authId: foreignIdentity.subject, authTokenIdentifier: foreignIdentity.tokenIdentifier, name: "Foreign", email: "foreign@test.invalid", role: "admin", isSchoolAdmin: true, createdAt: 1, updatedAt: 1 }));
     await expect(f.t.withIdentity(foreignIdentity).mutation(enrollment.transitionStudentEnrollment, { studentId: f.ids.studentId, action: "withdraw", expectedRevision: 0, operationKey: "foreign", reason: "Leave" })).rejects.toThrow("not found");

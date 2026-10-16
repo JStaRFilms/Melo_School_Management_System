@@ -3,8 +3,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { DepartureGuardProvider } from "@school/shared/drafts";
 import { StudentProfileEditor } from "../app/academic/students/components/StudentProfileEditor";
+import { StudentUnifiedEditorSheet } from "../app/academic/students/components/StudentUnifiedEditorSheet";
 
-const mocks = vi.hoisted(() => ({ update: vi.fn(), profile: {
+const mocks = vi.hoisted(() => ({ update: vi.fn(), query: vi.fn(), capabilities: [] as string[], profile: {
   _id: "student", userId: "user", email: "persisted@school.local", name: "Mary Jane De La Cruz", displayName: "Mary Jane De La Cruz",
   firstName: "Mary" as string | null, middleName: "Jane" as string | null, lastName: "De La Cruz" as string | null,
   enrollmentStatus: "active", enrollmentRevision: 0,
@@ -14,11 +15,12 @@ const mocks = vi.hoisted(() => ({ update: vi.fn(), profile: {
   emergencyContactMode: null, emergencyContact: { source: "legacy", name: "Recorded Guardian", phone: "legacy phone" },
   photoUrl: "https://example.test/photo.jpg", photoFileName: "photo.jpg", photoContentType: "image/jpeg",
 } }));
-vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: { state: "ready", branch: { schoolId: "school" }, effectiveCapabilities: [] } }) }));
+vi.mock("@/AuthProvider", () => ({ useAuth: () => ({ workspaceAccess: { state: "ready", branch: { schoolId: "school" }, effectiveCapabilities: mocks.capabilities } }) }));
 vi.mock("convex/react", () => ({
   useQuery: (reference: string | FunctionReference<"query">, args: unknown) => {
     if (args === "skip") return undefined;
     const name = typeof reference === "string" ? reference : getFunctionName(reference);
+    mocks.query(name, args);
     if (name.endsWith(":getStudentProfile")) return mocks.profile;
     return undefined;
   },
@@ -28,9 +30,31 @@ vi.mock("convex/react", () => ({
 }));
 vi.mock("../app/academic/students/components/StudentPhotoPanel", () => ({ StudentPhotoPanel: ({ previewUrl }: { previewUrl: string }) => <img alt="Retained photo" src={previewUrl} /> }));
 const classes = [{ _id: "promoted", name: "Promoted class", level: "P2" }, { _id: "other", name: "Other class", level: "P3" }];
-beforeEach(() => { mocks.profile.activeSessionId = "session-new"; mocks.profile.firstName = "Mary"; mocks.profile.middleName = "Jane"; mocks.profile.lastName = "De La Cruz"; });
+beforeEach(() => { mocks.query.mockClear(); mocks.capabilities = []; mocks.profile.enrollmentStatus = "active"; mocks.profile.activeSessionId = "session-new"; mocks.profile.firstName = "Mary"; mocks.profile.middleName = "Jane"; mocks.profile.lastName = "De La Cruz"; });
 afterEach(() => { cleanup(); mocks.update.mockReset(); });
 function mount(onNotice = vi.fn()) { return render(<DepartureGuardProvider><StudentProfileEditor studentId="student" classes={classes} onNotice={onNotice} /></DepartureGuardProvider>); }
+
+it.each(["profile", "family", "subjects"] as const)("opens a transferred-out source sheet's %s section as read-only history", async initialTab => {
+  mocks.profile.enrollmentStatus = "transferred_out";
+  mocks.capabilities = ["enrollment.intakes.manage"];
+  const toggle = vi.fn(), setSubjects = vi.fn();
+  render(<DepartureGuardProvider><StudentUnifiedEditorSheet
+    activeStudent={{ _id: "student", studentName: mocks.profile.displayName, admissionNumber: "ADM-1", photoUrl: null, selectedSubjectIds: [] }}
+    subjects={[]} totalSubjects={0} isOpen onClose={vi.fn()} onToggle={toggle} onSetStudentSubjects={setSubjects}
+    classes={classes} onNotice={vi.fn()} initialTab={initialTab}
+  /></DepartureGuardProvider>);
+  expect(await screen.findByText(/read-only source-school record/i)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /governed transfer or reversal workflow/i })).toHaveAttribute("href", "/academic/students/transfers");
+  expect(screen.getByText("Enrollment periods and history")).toBeInTheDocument();
+  expect(screen.getByText("Recorded Guardian")).toBeInTheDocument();
+  for (const role of ["textbox", "combobox", "checkbox"] as const) expect(screen.queryByRole(role)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /save identity|archive record|re-enroll|reinstate|provision|refresh|select all|clear selection/i })).not.toBeInTheDocument();
+  expect(screen.queryByText(/contacts remain editable/i)).not.toBeInTheDocument();
+  expect(mocks.query.mock.calls.map(call => call[0])).not.toContain("functions/academic/studentEnrollment:getStudentFamilyProfile");
+  expect(mocks.update).not.toHaveBeenCalled();
+  expect(toggle).not.toHaveBeenCalled();
+  expect(setSubjects).not.toHaveBeenCalled();
+});
 
 it("reopens captured names, demographics, effective class, legacy emergency details and photo", async () => {
   mount();

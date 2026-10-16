@@ -1436,10 +1436,13 @@ export const getStudentProfile = query({
           : null,
       ]);
 
+    // A completed transfer archives the source login, not its local history.
+    // This read exception does not change mutation or current-participation guards.
     if (
       !studentUser ||
       studentUser.schoolId !== schoolId ||
-      studentUser.isArchived
+      studentUser.role !== "student" ||
+      (studentUser.isArchived && student.enrollmentStatus !== "transferred_out")
     ) {
       throw new ConvexError("Student account not found");
     }

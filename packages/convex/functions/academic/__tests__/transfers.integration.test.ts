@@ -480,6 +480,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         createdAt: now,
         updatedAt: now,
       });
+      await ctx.db.insert("gradingBands", { schoolId: harness.schoolA, minScore: 0, maxScore: 100, gradeLetter: "A", remark: "Pass", isActive: true, version: 1, createdAt: now, updatedAt: now, updatedBy: harness.adminAUserId });
       const context = {
         schoolId: harness.schoolA,
         studentId: harness.studentId,
@@ -501,6 +502,7 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
         source: "manual_backfill",
       });
       return {
+        subjectId,
         attendanceId,
         scoreId,
         attendance: await ctx.db.get(attendanceId),
@@ -630,6 +632,47 @@ describe("Task B-09 / M8: Within-Group Transfer Foundation & Verification (F4/MX
     ]);
     expect(sourceStudentUser?.isArchived).toBe(true);
     expect(destinationStudentUser?.authId).toBe(sourceStudentUser?.authId);
+
+    // The actual source directory selection must open history without restoring participation.
+    if (!sourceStudentUser?.personId) throw new Error("Missing source person fixture");
+    const sourcePersonId = sourceStudentUser.personId;
+    const sourceMembership = await t.run(ctx => ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", sourcePersonId).eq("schoolId", harness.schoolA)).unique());
+    const enrollment = api.functions.academic.studentEnrollment;
+    const paginationOpts = { numItems: 25, cursor: null };
+    const directory = await adminA.query(enrollment.listStudentEnrollmentDirectory, { status: "transferred_out", paginationOpts });
+    expect(directory.page).toHaveLength(1);
+    const selectedId = directory.page[0].studentId;
+    expect(selectedId).toBe(harness.studentId);
+    const profile = await adminA.query(enrollment.getStudentProfile, { studentId: selectedId });
+    expect(profile).toMatchObject({ userId: harness.studentUserId, displayName: "Oluwaseun Adeyemi", enrollmentStatus: "transferred_out", classId: harness.classAId, guardianName: "Engr. Dapo Adeyemi" });
+    expect(profile.userId).not.toBe(destinationStudent?.userId);
+    const history = await adminA.query(enrollment.getStudentEnrollmentHistory, { studentId: selectedId, paginationOpts });
+    expect(history.page).toContainEqual(expect.objectContaining({ schoolId: harness.schoolA, type: "transfer_out", transferId }));
+    const periods = await adminA.query(enrollment.getStudentEnrollmentPeriods, { studentId: selectedId, paginationOpts });
+    expect(periods.page).toHaveLength(1);
+    expect(periods.page[0].endDay).toBeDefined();
+    expect(periods.page[0].closedByEventId).toBe(history.page[0]._id);
+    expect(await adminA.query(getStudentTransferHistoryRef, { studentId: selectedId })).toContainEqual(expect.objectContaining({ _id: transferId, status: "completed" }));
+
+    await expect(adminA.mutation(enrollment.transitionStudentEnrollment, { studentId: selectedId, action: "re_enrol", expectedRevision: profile.enrollmentRevision, operationKey: "no-transfer-bypass", reason: "Attempted local return", placement: { confirmed: true, classId: harness.classAId, subjectIds: [] } })).rejects.toThrow("account is unavailable");
+    await expect(adminA.mutation(enrollment.updateStudent, { studentId: selectedId, name: "Do not mutate archived identity" })).rejects.toThrow("Student account not found");
+    await expect(adminA.mutation(enrollment.updateStudent, { studentId: selectedId, classId: harness.classAId })).rejects.toThrow("Student account not found");
+    await expect(adminA.mutation(enrollment.setStudentSubjectSelections, { studentId: selectedId, classId: harness.classAId, sessionId: sourceHistory.invoice.sessionId, subjectIds: [] })).rejects.toThrow("inactive");
+    const scoring = await adminA.mutation(api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk, {
+      classId: harness.classAId, sessionId: sourceHistory.invoice.sessionId, termId: sourceHistory.invoice.termId,
+      subjectId: sourceHistory.subjectId, records: [{ studentId: selectedId, ca1: 10, ca2: 10, ca3: 10, examRawScore: 40 }],
+    });
+    expect(scoring).toMatchObject({ created: 0, updated: 0 });
+    expect(scoring.errors[0]?.message).toContain("Student does not belong to the selected class");
+    for (const reader of [adminB, t.withIdentity(harness.unauthorizedIdentity), t]) {
+      await expect(reader.query(enrollment.getStudentProfile, { studentId: selectedId })).rejects.toThrow();
+      await expect(reader.query(enrollment.getStudentEnrollmentHistory, { studentId: selectedId, paginationOpts })).rejects.toThrow();
+      await expect(reader.query(enrollment.getStudentEnrollmentPeriods, { studentId: selectedId, paginationOpts })).rejects.toThrow();
+    }
+    await expect(adminA.query(enrollment.getStudentProfile, { studentId: acceptResult.destinationStudentId })).rejects.toThrow("Student not found");
+    expect(await t.run(ctx => ctx.db.get(harness.studentId))).toEqual(sourceStudent);
+    expect(await t.run(ctx => ctx.db.get(harness.studentUserId))).toEqual(sourceStudentUser);
+    expect(await t.run(ctx => ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", sourcePersonId).eq("schoolId", harness.schoolA)).unique())).toEqual(sourceMembership);
 
     // Immutability Check (MX-15 §4): Source branch historical records retain sourceSchoolId
     const historicalInvoice = await t.run(async (ctx) => {

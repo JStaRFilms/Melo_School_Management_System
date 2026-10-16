@@ -235,6 +235,28 @@ export function StudentProfileEditor({
     );
   }
 
+  if (studentProfile.enrollmentStatus === "transferred_out") {
+    return <div className="space-y-6">
+      <StudentLifecyclePanel key={studentProfile._id} profile={studentProfile} />
+      <dl className="space-y-2" aria-label="Source-school student profile">
+        {[
+          ["Name", studentProfile.displayName],
+          ["Admission number", studentProfile.admissionNumber],
+          ["Source class", studentProfile.className],
+          ["House", studentProfile.houseName],
+          ["Gender", studentProfile.gender],
+          ["Birth date", toDateInput(studentProfile.dateOfBirth)],
+          ["Address", studentProfile.address],
+          ["Emergency contact", studentProfile.emergencyContact?.name ?? studentProfile.guardianName],
+          ["Contact phone", studentProfile.emergencyContact?.phone ?? studentProfile.guardianPhone],
+        ].map(([label, value]) => <div key={label} className="border-b border-slate-100 py-2">
+          <dt className="text-xs text-slate-500">{label}</dt>
+          <dd className="text-sm text-slate-900">{value || "Not recorded"}</dd>
+        </div>)}
+      </dl>
+    </div>;
+  }
+
   const handleSave = async (review?: NonNullable<typeof classReview>) => {
     if (isSaving) return;
     if (classId !== studentProfile.classId && !review) {

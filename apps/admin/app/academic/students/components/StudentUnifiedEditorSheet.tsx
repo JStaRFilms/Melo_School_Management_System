@@ -32,7 +32,7 @@ export function StudentUnifiedEditorSheet({ activeStudent, subjects, totalSubjec
         <div className="flex gap-2"><button type="button" className="min-h-11 rounded-lg border px-3" onClick={() => onSetStudentSubjects(activeStudent._id, subjects.map(s => s._id))}>Select all</button><button type="button" className="min-h-11 rounded-lg border px-3" onClick={() => onSetStudentSubjects(activeStudent._id, [])}>Clear selection</button></div>
         {subjects.map(subject => <label key={subject._id} className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={activeStudent.selectedSubjectIds.includes(subject._id)} onChange={() => onToggle(activeStudent._id, subject._id)} />{subject.name}</label>)}
       </div> : <>
-        {tab === "subjects" && <p className="text-sm">Subject editing requires the selected student&apos;s active class/session roster. Inactive students review placement and subjects through Reinstate or Re-enroll below.</p>}
+        {tab === "subjects" && <p className="text-sm">Subject editing requires the selected student&apos;s active class/session roster. Inactive students review placement and permitted actions below.</p>}
         <StudentProfileEditor studentId={activeStudent._id} classes={classes} onNotice={onNotice} onStudentArchived={onStudentArchived} onViewAttestation={onViewAttestation} variant="sheet" activeTab={tab === "family" ? "family" : "profile"} onTabChange={setTab} />
       </>}
     </div>}

@@ -35,9 +35,9 @@ export function StudentLifecyclePanel({ profile }: { profile: StudentLifecyclePr
   const cancelGraduation = useMutation(enrollment.cancelStudentGraduation);
   return <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="Student enrollment">
     <h2 className="font-semibold">Enrollment: {profile.enrollmentStatus.replaceAll("_", " ")}</h2>
-    {allowed && <StudentTransitionControls profile={profile} onAction={setAction} />}
+    {allowed && profile.enrollmentStatus !== "transferred_out" && <StudentTransitionControls profile={profile} onAction={setAction} />}
     {saved && <p role="status">{saved} The selected profile stays open even when it leaves this directory filter.</p>}
-    {profile.enrollmentStatus !== "active" && <p className="text-sm">Profile and family contacts remain editable. Current placement and subjects can only change through a reviewed return. Released reports and existing bills remain accessible.</p>}
+    {profile.enrollmentStatus === "transferred_out" ? <p className="text-sm">Read-only source-school record. The source account remains archived. Use the governed transfer workflow for any reversal.</p> : profile.enrollmentStatus !== "active" && <p className="text-sm">Profile and family contacts remain editable. Current placement and subjects can only change through a reviewed return. Released reports and existing bills remain accessible.</p>}
     {profile.enrollmentStatus === "graduated" && <div className="space-y-2"><p className="text-sm">Ordinary re-enrollment is unavailable. Correct only a mistaken current graduation through the existing guarded correction.</p>{allowed && profile.graduatingSessionId && <button type="button" className={lifecycleButton} onClick={() => { setCorrectionError(""); setCorrecting(true); }}>Correct recorded graduation</button>}</div>}
     {profile.enrollmentStatus === "transferred_out" && <Link className="underline" href="/academic/students/transfers">Use the governed transfer or reversal workflow</Link>}
     {allowed && <StudentEnrollmentHistory studentId={profile._id} inactive={profile.enrollmentStatus !== "active"} />}
