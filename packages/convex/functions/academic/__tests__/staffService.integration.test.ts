@@ -44,9 +44,146 @@ async function fixture(role: "teacher" | "admin" | "staff" = "staff", canonical 
   return { t, ids, actor, depart, review, rehire };
 }
 
+async function duplicatedFixture(role: "teacher" | "admin" | "staff", canonical = true, returned = false) {
+  const f = await fixture(role, canonical);
+  await f.t.run(async ctx => {
+    await ctx.db.patch(f.ids.schoolId, { slug: "obhis-fedrah" });
+    const sessionId = await ctx.db.insert("academicSessions", { schoolId: f.ids.schoolId, name: "Current year", startDate: 1, endDate: 2, isActive: true, createdAt: 1, updatedAt: 1 });
+    await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId, name: "Current term", startDate: 1, endDate: 2, isActive: true, createdAt: 1, updatedAt: 1 });
+  });
+  await f.depart();
+  if (returned) await f.rehire((await f.review()).eventId);
+  const membershipId = f.ids.membershipId;
+  const sourceFacts = () => f.t.run(async ctx => ({
+    user: await ctx.db.get(f.ids.userId),
+    person: f.ids.personId ? await ctx.db.get(f.ids.personId) : null,
+    membership: f.ids.membershipId ? await ctx.db.get(f.ids.membershipId) : null,
+    events: await ctx.db.query("staffServiceEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect(),
+    periods: await ctx.db.query("staffServicePeriods").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect(),
+    grants: membershipId ? await ctx.db.query("membershipDirectGrants").withIndex("by_membership", q => q.eq("membershipId", membershipId)).collect() : [],
+  }));
+  const before = await sourceFacts();
+  const split = internal.functions.academic.branchSplitV2;
+  const state = await f.t.mutation(split.initBranchSplit, {});
+  expect((await f.t.mutation(split.initBranchSplit, {})).stateId).toBe(state.stateId);
+  let done = false;
+  for (let batch = 0; batch < 100 && !done; batch++) {
+    done = (await f.t.mutation(split.duplicateBatch, { stateId: state.stateId })).done;
+  }
+  expect(done).toBe(true);
+  const rows = await f.t.run(async ctx => ({
+    users: await ctx.db.query("users").withIndex("by_school", q => q.eq("schoolId", state.targetSchoolId)).collect(),
+    events: await ctx.db.query("staffServiceEvents").withIndex("by_school", q => q.eq("schoolId", state.targetSchoolId)).collect(),
+    periods: await ctx.db.query("staffServicePeriods").withIndex("by_school", q => q.eq("schoolId", state.targetSchoolId)).collect(),
+  }));
+  expect(await f.t.mutation(split.duplicateBatch, { stateId: state.stateId })).toMatchObject({ done: true });
+  expect((await f.t.mutation(split.initBranchSplit, {})).stateId).toBe(state.stateId);
+  expect(await f.t.run(ctx => ctx.db.query("staffServiceEvents").withIndex("by_school", q => q.eq("schoolId", state.targetSchoolId)).collect())).toEqual(rows.events);
+  expect(await f.t.run(ctx => ctx.db.query("staffServicePeriods").withIndex("by_school", q => q.eq("schoolId", state.targetSchoolId)).collect())).toEqual(rows.periods);
+  expect(await sourceFacts()).toEqual(before);
+  const user = rows.users.find(row => row.authId === "employee");
+  const owner = rows.users.find(row => row.authId === "owner");
+  if (!user || !owner) throw new Error("Split did not copy staff and operator");
+  const identity = internal.functions.academic.identityMigration;
+  await f.t.mutation(identity.reconcileLegacyUserIdentity, { userId: owner._id, authTokenIdentifier: ownerIdentity.tokenIdentifier });
+  // Target permission authority is provisioned independently, never copied from source evidence.
+  await f.t.run(async ctx => {
+    const membership = await ctx.db.query("branchMemberships").withIndex("by_legacy_user", q => q.eq("legacyUserId", owner._id)).unique();
+    const template = await ctx.db.query("roleTemplates").withIndex("by_code", q => q.eq("code", "proprietor")).unique();
+    if (!membership || !template) throw new Error("Missing target operator authority fixture");
+    await ctx.db.insert("membershipRoleAssignments", { membershipId: membership._id, roleTemplateId: template._id, assignedAt: 3 });
+  });
+  const target = { schoolId: state.targetSchoolId, userId: user._id };
+  async function reviewAndRehire(revision: number) {
+    const preview = await f.actor.query(service.previewStaffRehirePermissions, target);
+    const decision = { mode: "retain" as const, displayTitle: preview.previous.displayTitle,
+      roleTemplateIds: preview.previous.roleTemplateIds, grants: preview.previous.grants, restrictions: preview.previous.restrictions };
+    const reviewed = await f.actor.query(service.previewStaffRehirePermissions, { ...target, decision });
+    const review = await f.actor.mutation(service.confirmStaffRehireReview, { ...target, expectedRevision: revision,
+      operationKey: "target-review", reason: "Reviewed target branch access", decision, expectedPermissionState: reviewed.permissionState });
+    const args = { ...target, action: "rehire" as const, expectedRevision: revision + 1, operationKey: "target-rehire",
+      reason: "Returning in target branch", reviewedEventId: review.eventId };
+    const result = await f.actor.mutation(service.transitionStaffService, args);
+    expect(await f.actor.mutation(service.transitionStaffService, args)).toEqual(result);
+    return result;
+  }
+  return { ...f, target, user, rows, before, sourceFacts, reviewAndRehire };
+}
+
 afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("staff service registered functions", () => {
+  for (const role of ["teacher", "admin", "staff"] as const) {
+    it(`${role}: actual branch duplication clears source membership authority from departed canonical history`, async () => {
+      const f = await duplicatedFixture(role);
+      expect(f.before.membership).toMatchObject({ status: "suspended", lifecycleSuspendedByEventId: f.before.events[0]._id });
+      expect(f.rows.events).toHaveLength(1);
+      expect(f.rows.periods).toHaveLength(1);
+      const event = f.rows.events[0], period = f.rows.periods[0];
+      expect(event.membershipId).toBeUndefined();
+      expect(period.membershipId).toBeUndefined();
+      expect(event.suspendedMembershipRevision).toBeUndefined();
+      expect(event).toMatchObject({ ...f.target, personId: f.ids.personId, type: "departed", periodId: period._id });
+      expect(period).toMatchObject({ ...f.target, personId: f.ids.personId, closedByEventId: event._id, endDay: "2026-01-01" });
+      expect(event.actorUserId).toBe(f.rows.users.find(u => u.authId === "owner")?._id);
+      expect(event.sessionId).not.toBe(f.before.events[0].sessionId);
+      expect(event.termId).not.toBe(f.before.events[0].termId);
+      expect(period.sessionId).toBe(event.sessionId);
+      expect(period.termId).toBe(event.termId);
+      expect(f.user).toMatchObject({ personId: f.ids.personId, employmentStatus: "departed", serviceRevision: 1 });
+      expect(f.user.currentServicePeriodId).toBeUndefined();
+      await expect(f.actor.query(service.previewStaffRehirePermissions, f.target)).rejects.toThrow(/reconciliation/);
+      await f.t.mutation(internal.functions.academic.identityMigration.reconcileLegacyUserIdentity, {
+        userId: f.user._id, authTokenIdentifier: f.ids.identity.tokenIdentifier,
+      });
+      const membership = await f.t.run(ctx => ctx.db.query("branchMemberships").withIndex("by_legacy_user", q => q.eq("legacyUserId", f.user._id)).unique());
+      const personId = f.ids.personId;
+      if (!membership || !personId) throw new Error("Missing reconciled target membership");
+      expect(membership).toMatchObject({ schoolId: f.target.schoolId, status: "active" });
+      expect(membership.lifecycleSuspendedByEventId).toBeUndefined();
+      // Linking is not a target lifecycle suspension or authorization to restore access.
+      await expect(f.actor.query(service.previewStaffRehirePermissions, f.target)).rejects.toThrow(/Independent branch/);
+      await f.t.run(ctx => ctx.db.patch(membership._id, { status: "suspended", updatedAt: membership.updatedAt + 1 }));
+      const restricted = await f.t.run(ctx => ctx.db.get(membership._id));
+      await expect(f.actor.query(service.previewStaffRehirePermissions, f.target)).rejects.toThrow(/Independent branch/);
+      expect(await f.t.run(ctx => ctx.db.get(membership._id))).toEqual(restricted);
+      expect(await f.sourceFacts()).toEqual(f.before);
+      await f.t.run(ctx => ctx.db.patch(personId, { status: "suspended" }));
+      await expect(f.actor.query(service.previewStaffRehirePermissions, f.target)).rejects.toThrow(/Global identity restriction/);
+      expect(await f.t.run(ctx => ctx.db.get(membership._id))).toEqual(restricted);
+      expect(await f.t.run(ctx => ctx.db.get(f.user._id))).toMatchObject({ employmentStatus: "departed", serviceRevision: 1 });
+    }, 60000);
+  }
+
+  it("actual branch duplication preserves supported legacy target permission review and rehire", async () => {
+    const f = await duplicatedFixture("staff", false);
+    await expect(f.actor.mutation(service.transitionStaffService, { ...f.target, action: "rehire", expectedRevision: 1,
+      operationKey: "unchecked-target", reason: "Without permission review" })).rejects.toThrow(/authorized review/);
+    await f.reviewAndRehire(1);
+    expect(await f.t.run(ctx => ctx.db.get(f.user._id))).toMatchObject({ employmentStatus: "active", serviceRevision: 3 });
+    expect(await f.sourceFacts()).toEqual(f.before);
+  }, 60000);
+
+  it("actual branch duplication keeps current period links and requires a target-owned departure before canonical rehire", async () => {
+    const f = await duplicatedFixture("staff", true, true);
+    const currentPeriod = f.rows.periods.find(p => p._id === f.user.currentServicePeriodId);
+    expect(currentPeriod).toMatchObject({ ...f.target, openedByEventId: f.rows.events.find(e => e.type === "rehired")?._id });
+    for (const row of [...f.rows.periods, ...f.rows.events]) expect(row.membershipId).toBeUndefined();
+    await f.t.mutation(internal.functions.academic.identityMigration.reconcileLegacyUserIdentity, {
+      userId: f.user._id, authTokenIdentifier: f.ids.identity.tokenIdentifier,
+    });
+    const membership = await f.t.run(ctx => ctx.db.query("branchMemberships").withIndex("by_legacy_user", q => q.eq("legacyUserId", f.user._id)).unique());
+    if (!membership) throw new Error("Missing target membership");
+    expect(await f.t.run(ctx => ctx.db.query("membershipDirectGrants").withIndex("by_membership", q => q.eq("membershipId", membership._id)).collect())).toEqual([]);
+    const departure = await f.actor.mutation(service.transitionStaffService, { ...f.target, action: "depart", expectedRevision: 3,
+      operationKey: "target-departure", reason: "Target employment ended" });
+    expect(await f.t.run(ctx => ctx.db.get(departure.eventId))).toMatchObject({ ...f.target, membershipId: membership._id });
+    await f.reviewAndRehire(4);
+    expect(await f.t.run(ctx => ctx.db.get(membership._id))).toMatchObject({ status: "active" });
+    expect(await f.t.run(ctx => ctx.db.query("membershipDirectGrants").withIndex("by_membership", q => q.eq("membershipId", membership._id)).collect())).toEqual([]);
+    expect(await f.sourceFacts()).toEqual(f.before);
+  }, 60000);
+
   for (const role of ["teacher", "admin", "staff"] as const) {
     it(`${role}: branch-local departure, authorized reviewed same-identity rehire and repeated periods`, async () => {
       const f = await fixture(role);

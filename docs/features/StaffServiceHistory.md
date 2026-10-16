@@ -57,7 +57,7 @@ Optional user fields project employment status, service revision/effective day, 
 
 `staffServicePeriods` contains known or legacy-unknown starts, optional known starting role, current academic context, closing day and opening/closing events. Periods are closed in place. History and period queries paginate through school/user indexes; no history arrays grow on user documents.
 
-Tenant purge, demo seed/reset, branch-split inventory and schema coverage metadata include the new tables. No seed, purge, split or migration was run. Metadata does not authorize copying canonical ownership or permission-review evidence to another branch.
+Tenant purge, demo seed/reset, branch-split inventory and schema coverage metadata include the new tables. No live seed, purge, split or migration was run. Branch duplication retains global person identity and remaps school-local user, period, event and academic links, including the user's current period. It omits copied membership IDs and source suspension revisions because memberships and permissions are linked separately. A copied departure cannot authorize target membership restoration. Canonical linking and independent branch/global restrictions still need their existing separate authority; a target's own lifecycle departure can support its reviewed rehire.
 
 ## Verification and limits
 Registered-function tests cover joining, repeated periods, rehire review, retries/stale state, canonical and legacy denial, independent/global restrictions, branch preservation, protected staff, assignment links, archive separation, identity/role/provisioning/import bypasses and generic staff metrics/discovery. B1/student-count, staff/group/identity/authorization regressions, typecheck and changed-file lint are listed in the B2 result.

@@ -91,6 +91,7 @@ export const DUPLICATION_TIERS: string[][] = [
 export const ALL_DUPLICATION_TABLES = DUPLICATION_TIERS.flat();
 
 const USER_FK_REMAP_TABLES = [
+  "users",
   "schoolAssessmentSettings",
   "gradingBands",
   "schoolBillingSettings",
@@ -928,6 +929,13 @@ export const duplicateBatch = internalMutation({
             newDoc[def.field] = targetMap[val];
           }
         }
+      }
+
+      // Memberships and their permissions are linked separately, not duplicated.
+      // Source suspension evidence must never authorize target branch restoration.
+      if (currentTable === "staffServiceEvents" || currentTable === "staffServicePeriods") {
+        delete newDoc.membershipId;
+        if (currentTable === "staffServiceEvents") delete newDoc.suspendedMembershipRevision;
       }
 
       // Insert duplicated row
