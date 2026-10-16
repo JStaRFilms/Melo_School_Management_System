@@ -24,6 +24,8 @@ Each recipe separates the built-in verified path from other entry points needing
 - [Identity and admission](identity-admission.md): unified admission, captured-field reopening, contacts, effective class/subjects, names, persisted credential states and new-student suffix policy. Component evidence exists; all browser acceptance remains blocked by the missing private profile.
 - [Parent profile corrections](parent-profile-corrections.md): initial admin permission, parent server drafts/review, one-shot immediate apply, acknowledgement reset, restricted history and student/staff denial. Local test evidence exists; browser acceptance is blocked by the missing isolated profile.
 
+- [Managed Sites upkeep](managed-sites-upkeep.md): separate editor/reviewer/publisher controls, truthful approval duration, persistent TXT adoption, published tenant icons and explicit private Admin-logo copy. Local component/backend evidence exists; the Windows browser bridge remains blocked before provisioning. No live or Preview acceptance is claimed.
+
 ## Not covered by this cohort
 
 Student-only navigation, Platform superadmin, guardian admissions signup, public WWW/Sites published configuration, payment settlement, AI generation, new narrative issuance, large/multi-class result release, exclusions, and amendments require their own fixtures/configuration and criteria. The runner currently attests only three app origins. The new upstream narrative/result/scoring code being deployed does not mean those complete workflows have browser proof.

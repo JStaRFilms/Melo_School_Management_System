@@ -1,0 +1,8 @@
+# Keep authenticated browser evidence and operational audit records local.
+upkeep-browser-evidence/
+*-ledger.json
+
+# Raw hosting diagnostics are retained locally; release summaries are versioned.
+upkeep-*-dry-output.json
+upkeep-*-deploy-output.json
+upkeep-*-stderr.log

@@ -72,7 +72,7 @@ export function admitSite(value: unknown, routeId: string, host: string): SiteRe
     fields.add(f.fieldId);
     const def = m.fields.find(d => d.fieldId === f.fieldId);
     if (!def || !validPublicFieldValue(def,f.value)) return unavailable;
-    if (m.rendererKey === "obhis-v1" && f.value.kind === "asset_ref" && (f.value.asset.decorative || !f.value.asset.altText)) return unavailable;
+    if (m.rendererKey === "obhis-v1" && def.altFieldId && f.value.kind === "asset_ref" && (f.value.asset.decorative || !f.value.asset.altText)) return unavailable;
     if (m.rendererKey === "obhis-v1" && f.value.kind === "text") {
       if (["primary_color", "accent_color"].includes(f.fieldId) && (!normalizeThemeColor(f.value.value) || normalizeThemeColor(f.value.value) !== f.value.value.toLowerCase())) return unavailable;
       if (f.fieldId === "phone" && !/^\+[1-9]\d{6,14}$/.test(f.value.value)) return unavailable;

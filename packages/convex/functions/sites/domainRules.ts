@@ -14,16 +14,25 @@ export function normalizeHostname(input: string): string {
   return host;
 }
 
+export function ownershipProofValid(domain: Doc<"schoolDomains">, now: number): boolean {
+  return domain.ownershipProofPolicy === "persistent_authoritative_v1"
+    ? domain.verificationExpiresAt === undefined
+    : domain.verificationExpiresAt !== undefined && Number.isFinite(domain.verificationExpiresAt) && domain.verificationExpiresAt > now;
+}
+export function proofRenewalRequired(domain: Doc<"schoolDomains">, now: number): boolean {
+  return domain.ownershipProofPolicy !== "persistent_authoritative_v1" && (domain.verificationExpiresAt === undefined || !ownershipProofValid(domain, now) || domain.verificationExpiresAt <= now + 7 * 86_400_000);
+}
+
 export function ready(domain: Doc<"schoolDomains">, now: number, projectId: string): boolean {
   const {ownershipObservation: owner, providerRoutingObservation: route, tlsObservation: tls} = domain;
   const fresh = (at: number) => Number.isFinite(at) && at <= now && now - at < FRESH_MS;
   return (domain.status === "ready" || domain.status === "active") && !domain.providerOperation && !!domain.verificationGeneration &&
-    !!domain.verificationTokenHash && !!domain.verificationExpiresAt && domain.verificationExpiresAt > now &&
+    !!domain.verificationTokenHash && ownershipProofValid(domain, now) &&
     !!owner && owner.generation === domain.verificationGeneration && owner.tokenHash === domain.verificationTokenHash && fresh(owner.observedAt) &&
     !!route && route.generation === domain.verificationGeneration && route.projectId === projectId && route.projectDomainVerified && !route.misconfigured &&
     (route.configuredBy === "A" || route.configuredBy === "CNAME") && fresh(route.observedAt) &&
     !!tls && tls.generation === domain.verificationGeneration && tls.deploymentProbeMatched && /^[a-f0-9]{64}$/.test(tls.leafFingerprintSha256) &&
-    tls.leafNotAfter > now + 24 * 60 * 60_000 && fresh(tls.observedAt);
+    Number.isFinite(tls.leafNotAfter) && tls.leafNotAfter > now + 24 * 60 * 60_000 && fresh(tls.observedAt);
 }
 
 export function providerSettings(): {projectId: string; teamId: string | undefined; token: string} | null {

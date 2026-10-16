@@ -6,11 +6,18 @@ import type { PreviewSiteV1 } from "@school/shared/site-manifests";
 export const validateDraftAtTime = internalQuery({
   args: { schoolId: v.id("schools"), now: v.number() },
   handler: async (ctx, {schoolId, now}) => {
-    const actor = await schoolActor(ctx, schoolId, "site.preview", now);
+    let actor;
+    let publisher = false;
+    try { actor = await schoolActor(ctx, schoolId, "site.publish.standard", now); publisher = true; }
+    catch { actor = await schoolActor(ctx, schoolId, "site.preview", now); }
     const profile = await ownedProfile(ctx, schoolId);
     const draft = profile.draftRevisionId ? await ctx.db.get(profile.draftRevisionId) : null;
     if (!draft || draft.schoolId !== schoolId || draft.state !== "draft") return deny();
-    try { await validatePublication(ctx, profile, draft.content, actor, now); return {valid: true, draftVersion: draft.expectedDraftVersion}; }
+    try {
+      const result = await validatePublication(ctx, profile, draft.content, actor, now);
+      if (publisher && result.sensitive) await schoolActor(ctx, schoolId, "site.publish.sensitive", now);
+      return {valid: true, draftVersion: draft.expectedDraftVersion};
+    }
     catch { return {valid: false, draftVersion: draft.expectedDraftVersion}; }
   },
 });

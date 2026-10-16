@@ -27,12 +27,14 @@ export const SITE_MANIFESTS_V1: readonly SiteManifestV1[] = Object.freeze([{
     { fieldId: "school_name", kind: "text", required: true, maxLength: 120, evidence: "identity" },
     { fieldId: "intro", kind: "text", required: true, maxLength: 1000 },
     { fieldId: "hero_image", kind: "asset_ref", required: false, assetKind: "hero" },
+    { fieldId: "site_favicon", kind: "asset_ref", required: false, assetKind: "favicon" },
   ],
 }, {
   rendererKey: "obhis-v1", schemaVersion: "1",
   routes: [{ routeId: "home", path: "/" }],
   fields: [
     ...["school_name", "short_name", "motto", "intro", "album_heading", "album_intro", "album_day_label", "album_culture_label", "values_heading", "values_intro", "integrity_label", "service_label", "integrity_copy", "service_copy", "campus_heading", "campus_abuja", "campus_rugam", "admissions_heading", "admissions_intro", "visit_address", "application_notice", "contact_intro", "phone", "email", "donations_intro", "caption_friends", "caption_table", "caption_abuja", "caption_rugam", "primary_color", "accent_color"].map(fieldId => ({fieldId, kind: "text" as const, required: true, maxLength: 1000, ...(fieldId === "school_name" ? {evidence: "identity" as const} : {evidence: "sensitive_public" as const})})),
+    { fieldId: "site_favicon", kind: "asset_ref", required: false, assetKind: "favicon" },
     ...(["school_logo", "hero_cutout", "you_hero", "classroom_moment", "school_friends", "classroom_table", "cultural_day_abuja", "cultural_day_rugam", "uniform_detail"] as const).flatMap(fieldId => [
       {fieldId, kind: "asset_ref" as const, required: true, assetKind: fieldId === "school_logo" ? "logo" : fieldId === "hero_cutout" || fieldId === "you_hero" ? "hero" : "gallery", altFieldId: `${fieldId}_alt`},
       {fieldId: `${fieldId}_alt`, kind: "text" as const, required: true, maxLength: 300, evidence: "sensitive_public" as const},

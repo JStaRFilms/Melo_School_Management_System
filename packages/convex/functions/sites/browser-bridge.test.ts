@@ -57,7 +57,7 @@ test("fresh Chromium drives actual Admin and Platform pages through authenticate
     {find:"react/jsx-runtime",replacement:`${process.cwd()}/../../apps/admin/node_modules/react/jsx-runtime.js`},
     {find:"react",replacement:`${process.cwd()}/../../apps/admin/node_modules/react`},
   ]},plugins:[{name:"browser-fixture-shims",enforce:"pre",resolveId(id){if (id === "convex/react") return "\0fixture-convex"; if (id === "next/link") return "\0fixture-link"; if (id === "next/navigation") return "\0fixture-navigation"; if (id === "fixture-auth" || id === "@/AuthProvider") return "\0fixture-auth"; if (id === "fixture-config" || id === "@/convex-runtime") return "\0fixture-config";},load(id){
-    if (id === "\0fixture-convex") return `import {getFunctionName} from 'convex/server'; const callbacks = new Map(); function hook(ref,method){const name=getFunctionName(ref);const key=method+name;if(!callbacks.has(key))callbacks.set(key,async args=>{const role=location.pathname==='/platform'?'platform':location.pathname==='/reviewer'?'reviewer':'admin';const response=await fetch('/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,method,name,args})});const result=await response.json();if(!response.ok)throw Error(result.error);return result.value});return callbacks.get(key)} export const useAction=ref=>hook(ref,'action'); export const useMutation=ref=>hook(ref,'mutation');`;
+    if (id === "\0fixture-convex") return `import {getFunctionName} from 'convex/server'; const callbacks = new Map(); function hook(ref,method){const name=getFunctionName(ref);const key=method+name;if(!callbacks.has(key))callbacks.set(key,async args=>{const role=location.pathname==='/platform'?'platform':location.pathname==='/reviewer'?'reviewer':'admin';const response=await fetch('/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,method,name,args})});const result=await response.json();if(!response.ok)throw Error(result.error);return result.value});return callbacks.get(key)} export const useAction=ref=>hook(ref,'action'); export const useMutation=ref=>hook(ref,'mutation'); export const useConvex=()=>({query:(ref,args)=>hook(ref,'query')(args)});`;
     if (id === "\0fixture-link") return `import React from 'react'; export default function Link({href,children,...props}){return React.createElement('a',{href,...props},children)}`;
     if (id === "\0fixture-navigation") return `export const useParams=()=>({schoolId:${JSON.stringify(schoolId)}});export const usePathname=()=>location.pathname;`;
     if (id === "\0fixture-auth") return `export const useAuth=()=>({workspaceAccess:{state:'ready',branch:{schoolId:${JSON.stringify(schoolId)}}}});`;
@@ -112,14 +112,15 @@ test("fresh Chromium drives actual Admin and Platform pages through authenticate
     await page.goto(`${base}/public`);
     await browserExpect(page.getByText("Site unavailable")).toBeVisible();
     await page.goto(`${base}/reviewer`);
-    await page.getByRole("button",{name:"Publish saved draft"}).click();
-    await browserExpect(page.getByRole("alert")).toBeVisible();
+    await browserExpect(page.getByRole("button",{name:"Publish saved draft"})).toHaveCount(0);
+    await browserExpect(page.getByRole("button",{name:"Save draft"})).toHaveCount(0);
     await page.getByRole("button",{name:"Review school_name"}).click();
     await browserExpect(page.getByText(/SHA-256 digest/)).toBeVisible();
     await page.getByLabel("Independent source reference").fill("Fictional signed source document");
     const expiry = new Date(Date.now()+10*86_400_000).toISOString().slice(0,10);
     await page.getByLabel("Approval expires on").fill(expiry);
-    await page.getByRole("checkbox",{name:/I inspected the independent source/}).check();
+    await page.getByLabel("Authorization source").selectOption("document_review");
+    await page.getByRole("checkbox",{name:/I inspected the referenced documentation/}).check();
     await page.getByRole("button",{name:"Record independent approval"}).click();
     await page.goto(`${base}/admin`);
     await page.getByRole("button",{name:"Publish saved draft"}).click();

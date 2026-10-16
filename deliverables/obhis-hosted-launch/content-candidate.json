@@ -1,0 +1,469 @@
+{
+  "kind": "private-hosted-launch-candidate",
+  "reviewBaseline": "Production draft version 2. Preserved the saved short_name edit from Olive to OBCA; all other fields match the prepared candidate.",
+  "target": {
+    "deployment": "prod:outgoing-warbler-782",
+    "schoolId": "kd73q7dt28ph1bmqjm20tsw2ed83k6j3",
+    "schoolSlug": "obhis-fedrah",
+    "rendererKey": "obhis-v1",
+    "rendererSchemaVersion": "1"
+  },
+  "textFields": [
+    {
+      "fieldId": "school_name",
+      "value": {
+        "kind": "text",
+        "value": "Olive Blessed Crest Academy"
+      }
+    },
+    {
+      "fieldId": "short_name",
+      "value": {
+        "kind": "text",
+        "value": "OBCA"
+      }
+    },
+    {
+      "fieldId": "motto",
+      "value": {
+        "kind": "text",
+        "value": "Integrity & Service"
+      }
+    },
+    {
+      "fieldId": "intro",
+      "value": {
+        "kind": "text",
+        "value": "Olive Blessed Crest Academy is a school with roots in Nyanya, Abuja, and a belief that learning and character grow together. We want children to ask questions, take pride in their progress, and learn to care for the people around them."
+      }
+    },
+    {
+      "fieldId": "album_heading",
+      "value": {
+        "kind": "text",
+        "value": "The people make the place."
+      }
+    },
+    {
+      "fieldId": "album_intro",
+      "value": {
+        "kind": "text",
+        "value": "A shared table. A familiar face. The excitement of cultural day. Get to know Olive through the everyday moments and celebrations that bring our school together."
+      }
+    },
+    {
+      "fieldId": "album_day_label",
+      "value": {
+        "kind": "text",
+        "value": "School day"
+      }
+    },
+    {
+      "fieldId": "album_culture_label",
+      "value": {
+        "kind": "text",
+        "value": "Cultural day"
+      }
+    },
+    {
+      "fieldId": "integrity_label",
+      "value": {
+        "kind": "text",
+        "value": "Integrity"
+      }
+    },
+    {
+      "fieldId": "service_label",
+      "value": {
+        "kind": "text",
+        "value": "Service"
+      }
+    },
+    {
+      "fieldId": "values_heading",
+      "value": {
+        "kind": "text",
+        "value": "Integrity. Service."
+      }
+    },
+    {
+      "fieldId": "values_intro",
+      "value": {
+        "kind": "text",
+        "value": "Learning shapes what a child knows. It should also help shape how they treat others."
+      }
+    },
+    {
+      "fieldId": "integrity_copy",
+      "value": {
+        "kind": "text",
+        "value": "Being honest about our work, keeping our word, and taking responsibility when we get something wrong. Integrity grows through the choices we make every day."
+      }
+    },
+    {
+      "fieldId": "service_copy",
+      "value": {
+        "kind": "text",
+        "value": "Noticing when someone needs help and choosing to act. Making room for a classmate, sharing what we know, and caring for the spaces we use together."
+      }
+    },
+    {
+      "fieldId": "campus_heading",
+      "value": {
+        "kind": "text",
+        "value": "Different places. The same Olive."
+      }
+    },
+    {
+      "fieldId": "campus_abuja",
+      "value": {
+        "kind": "text",
+        "value": "Abuja"
+      }
+    },
+    {
+      "fieldId": "campus_rugam",
+      "value": {
+        "kind": "text",
+        "value": "Rugam"
+      }
+    },
+    {
+      "fieldId": "admissions_heading",
+      "value": {
+        "kind": "text",
+        "value": "Come with your questions."
+      }
+    },
+    {
+      "fieldId": "admissions_intro",
+      "value": {
+        "kind": "text",
+        "value": "Choosing a school is personal. Start with the things that matter to your family."
+      }
+    },
+    {
+      "fieldId": "visit_address",
+      "value": {
+        "kind": "text",
+        "value": "Plot 18C3, Habiscus Street, Federal Housing Estate, Karu Roundabout, Nyanya, Abuja, FCT"
+      }
+    },
+    {
+      "fieldId": "application_notice",
+      "value": {
+        "kind": "text",
+        "value": "Application links will be added shortly."
+      }
+    },
+    {
+      "fieldId": "contact_intro",
+      "value": {
+        "kind": "text",
+        "value": "Questions about visiting or applying? You can reach the school by phone or email."
+      }
+    },
+    {
+      "fieldId": "phone",
+      "value": {
+        "kind": "text",
+        "value": "+2348057755997"
+      }
+    },
+    {
+      "fieldId": "email",
+      "value": {
+        "kind": "text",
+        "value": "obhischool@gmail.com"
+      }
+    },
+    {
+      "fieldId": "donations_intro",
+      "value": {
+        "kind": "text",
+        "value": "Donation links and QR codes will be added here shortly."
+      }
+    },
+    {
+      "fieldId": "caption_friends",
+      "value": {
+        "kind": "text",
+        "value": "A smile between moments."
+      }
+    },
+    {
+      "fieldId": "caption_table",
+      "value": {
+        "kind": "text",
+        "value": "Around the classroom table."
+      }
+    },
+    {
+      "fieldId": "caption_abuja",
+      "value": {
+        "kind": "text",
+        "value": "Colour, with a little volume."
+      }
+    },
+    {
+      "fieldId": "caption_rugam",
+      "value": {
+        "kind": "text",
+        "value": "Some moments need a hand."
+      }
+    },
+    {
+      "fieldId": "primary_color",
+      "value": {
+        "kind": "text",
+        "value": "#176c49"
+      }
+    },
+    {
+      "fieldId": "accent_color",
+      "value": {
+        "kind": "text",
+        "value": "#39bcd3"
+      }
+    },
+    {
+      "fieldId": "school_logo_alt",
+      "value": {
+        "kind": "text",
+        "value": "School logo: Integrity and Service"
+      }
+    },
+    {
+      "fieldId": "hero_cutout_alt",
+      "value": {
+        "kind": "text",
+        "value": "Imagined layered paper lettering and patterned cotton on a cyan surface."
+      }
+    },
+    {
+      "fieldId": "you_hero_alt",
+      "value": {
+        "kind": "text",
+        "value": "Imagined layered paper lettering and patterned cotton with soft contact shadows."
+      }
+    },
+    {
+      "fieldId": "classroom_moment_alt",
+      "value": {
+        "kind": "text",
+        "value": "Two pupils at a classroom desk in white and cyan tops with patterned uniform details."
+      }
+    },
+    {
+      "fieldId": "school_friends_alt",
+      "value": {
+        "kind": "text",
+        "value": "Pupils in white shirts and patterned school ties, with one smiling towards the camera."
+      }
+    },
+    {
+      "fieldId": "classroom_table_alt",
+      "value": {
+        "kind": "text",
+        "value": "Children seated around colourful classroom tables in their white shirts and patterned ties."
+      }
+    },
+    {
+      "fieldId": "cultural_day_abuja_alt",
+      "value": {
+        "kind": "text",
+        "value": "Children wearing patterned cultural dress and coral-coloured beads, with their arms raised."
+      }
+    },
+    {
+      "fieldId": "cultural_day_rugam_alt",
+      "value": {
+        "kind": "text",
+        "value": "An adult in patterned dress holding a child wearing black and coral-coloured beads."
+      }
+    },
+    {
+      "fieldId": "uniform_detail_alt",
+      "value": {
+        "kind": "text",
+        "value": "A close detail of the cyan, coral and gold circles printed on the school's uniform fabric."
+      }
+    }
+  ],
+  "assetUploads": [
+    {
+      "fieldId": "school_logo",
+      "kind": "logo",
+      "file": "assets/school_logo.png",
+      "altText": "School logo: Integrity and Service",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-homepage-prototype-assets/school-logo.png",
+      "sourceSha256": "e5672dc455e1365348fa8b53c8d312473d36a69e2483c82261bcdb570231c574",
+      "preparedSha256": "202df7ca3f17f45dea329339035291005bf67e93235328a7effebd80278c38b1",
+      "byteSize": 62847,
+      "width": 260,
+      "height": 260,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "hero_cutout",
+      "kind": "hero",
+      "file": "assets/hero_cutout.png",
+      "altText": "Imagined layered paper lettering and patterned cotton on a cyan surface.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-generated-study/hero-composed.webp",
+      "sourceSha256": "6e9ef7a4aad3e3f90514a568ae6582c6dd8792d37d6200d261fd5cc327815012",
+      "preparedSha256": "32db518753bcf3e4742bcc52ad71eb5232e80a7e7dc81873fed70dbe19aefd7a",
+      "byteSize": 1444487,
+      "width": 1448,
+      "height": 706,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "you_hero",
+      "kind": "hero",
+      "file": "assets/you_hero.png",
+      "altText": "Imagined layered paper lettering and patterned cotton with soft contact shadows.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-generated-study/you-hero.webp",
+      "sourceSha256": "dd48d9e77d3108026467dfba3bff19e03fd641133763af7e87ac7813e7165ac9",
+      "preparedSha256": "32b84157738476a789f98f7c3ad421799e824605af2ef2677e495b2b92588113",
+      "byteSize": 923265,
+      "width": 1402,
+      "height": 700,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "classroom_moment",
+      "kind": "gallery",
+      "file": "assets/classroom_moment.png",
+      "altText": "Two pupils at a classroom desk in white and cyan tops with patterned uniform details.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-homepage-prototype-assets/classroom-moment.webp",
+      "sourceSha256": "cf78c1160e6fe2660af5630deab92cb54b1f54fae72838e0cd46a1b5799ded67",
+      "preparedSha256": "90239bb666c1237f9ae6370884e5dd259b0c59675d80c3d1b45435e2670acc2d",
+      "byteSize": 1722346,
+      "width": 1400,
+      "height": 935,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "school_friends",
+      "kind": "gallery",
+      "file": "assets/school_friends.png",
+      "altText": "Pupils in white shirts and patterned school ties, with one smiling towards the camera.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-homepage-review-assets/school-friends.webp",
+      "sourceSha256": "90099cccddaf12336a307573ecb29c71ed9cf8ae16b5577eddd1b9374491d540",
+      "preparedSha256": "2ea505ccfeaccbba7c8af7aef67bb9595a8ffb2035250ee38727ce5b5997e0bc",
+      "byteSize": 1593446,
+      "width": 1600,
+      "height": 1069,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "classroom_table",
+      "kind": "gallery",
+      "file": "assets/classroom_table.png",
+      "altText": "Children seated around colourful classroom tables in their white shirts and patterned ties.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-homepage-review-assets/classroom-table.webp",
+      "sourceSha256": "92cec8421f6a4e1f9a669ff54e2a4f604515cc008a2d48a41768dbf1789b3d1b",
+      "preparedSha256": "a837878264627cf33fbec6bf9cdbea1028b9f5c252d9cb9f51e8e6c7b2da4aa2",
+      "byteSize": 2162137,
+      "width": 1600,
+      "height": 1069,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "cultural_day_abuja",
+      "kind": "gallery",
+      "file": "assets/cultural_day_abuja.png",
+      "altText": "Children wearing patterned cultural dress and coral-coloured beads, with their arms raised.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-homepage-review-assets/cultural-day-abuja.webp",
+      "sourceSha256": "6a6712eb7d95763c884448e50028e2824c4a05aadbb36b31e1b548cf0e5b0393",
+      "preparedSha256": "7a347ec0c8ad12e6f07b936e846485398221f36f63653a28dea6632ee0368dfd",
+      "byteSize": 2497586,
+      "width": 1600,
+      "height": 1067,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "cultural_day_rugam",
+      "kind": "gallery",
+      "file": "assets/cultural_day_rugam.png",
+      "altText": "An adult in patterned dress holding a child wearing black and coral-coloured beads.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-homepage-review-assets/cultural-day-rugam.webp",
+      "sourceSha256": "b5d41dd648edf02647a0035cddf06c376cf3afa8fbc3da9458fbdf0d345cbd5c",
+      "preparedSha256": "4556c84a7a82026be73b09585e860b7bbeb2acc1c616ec226f5f83f7a52ba35e",
+      "byteSize": 2613265,
+      "width": 1600,
+      "height": 1067,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    },
+    {
+      "fieldId": "uniform_detail",
+      "kind": "gallery",
+      "file": "assets/uniform_detail.png",
+      "altText": "A close detail of the cyan, coral and gold circles printed on the school's uniform fabric.",
+      "decorative": false,
+      "source": "docs/mockups/sites/obhis-homepage-review-assets/uniform-detail.webp",
+      "sourceSha256": "68b9494a7c2a37decf230a73d95cf5e284a704fb2561708c7d5786779e3abc23",
+      "preparedSha256": "9fc487a893bd9409abea2da6d722a1bf74ecf43a3461dfcde769bb92db335d88",
+      "byteSize": 1102622,
+      "width": 1000,
+      "height": 1050,
+      "rightsStatus": "pending",
+      "childApplicability": "unknown",
+      "childConsentStatus": "unverified",
+      "uploaded": false,
+      "pixelsPreserved": true,
+      "metadataRemoved": true
+    }
+  ],
+  "routeSeo": [],
+  "approvalsRecorded": false,
+  "note": "Local preparation only. Upload assets through the authenticated school workflow, then build real asset references. Independent evidence review and publishing permissions remain required."
+}

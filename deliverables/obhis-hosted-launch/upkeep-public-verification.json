@@ -1,0 +1,71 @@
+{
+  "checkedAt": "2026-10-16T18:46:59.166Z",
+  "canonical": "https://www.oliveblessed.com",
+  "checks": [
+    "Canonical HTTPS homepage serves approved school content",
+    "Favicon and Apple icon use the published school logo only",
+    "Manifest icon matches published school logo",
+    "Apex redirects to canonical HTTPS www host",
+    "Exact deployment marker remains valid on www.oliveblessed.com",
+    "Exact deployment marker remains valid on oliveblessed.com",
+    "All nine original approved image byte checksums remain unchanged",
+    "Private route remains unavailable: /review/obhis",
+    "Private route remains unavailable: /review/obhis/assets/school_logo",
+    "New Admin-logo copy remains private and was not silently published",
+    "Fresh browser receives correct icon and canonical metadata",
+    "Public gallery category control works",
+    "Mobile public page has no document overflow, visible broken images or page errors"
+  ],
+  "assets": [
+    {
+      "fieldId": "school_logo",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "hero_cutout",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "you_hero",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "classroom_moment",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "school_friends",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "classroom_table",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "cultural_day_abuja",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "cultural_day_rugam",
+      "status": 200,
+      "matches": true
+    },
+    {
+      "fieldId": "uniform_detail",
+      "status": 200,
+      "matches": true
+    }
+  ],
+  "mobile": {
+    "width": 390,
+    "scrollWidth": 375,
+    "brokenVisibleImages": 0
+  }
+}

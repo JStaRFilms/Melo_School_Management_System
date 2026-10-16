@@ -35,6 +35,97 @@ async function fixture() {
   return {t,...ids,editor:t.withIdentity(ident("editor")),reviewer:t.withIdentity(ident("reviewer")),other:t.withIdentity(ident("other")),operator:t.withIdentity(ident("operator"))};
 }
 describe("managed site boundary", () => {
+  test("explicit until-revoked replacements keep old publications immutable and never revive older evidence", async () => {
+    const f = await fixture();
+    await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
+    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content,expectedDraftVersion:0});
+    const candidate = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId:"school_name"});
+    const base = {schoolId:f.schoolA,candidate:{kind:"field" as const,fieldId:"school_name",expectedDigest:candidate.digest},evidenceReference:"Synthetic owner authorization",confirmed:true};
+    for (const lifetime of [{}, {expiresAt:NaN}, {expiresAt:Infinity}, {expiresAt:Date.now()-1}, {expiresAt:Date.now()+367*86400_000}, {validity:"until_revoked" as const}, {validity:"until_revoked" as const,sourceKind:"owner_attestation" as const,expiresAt:Date.now()+60_000}]) {
+      await expect(f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...base,...lifetime})).rejects.toThrow();
+    }
+    const finite = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...base,expiresAt:Date.now()+60_000});
+    const old = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
+    const immutable = await f.t.run(ctx => ctx.db.get(old.publishedId));
+    const originalEvidence = await f.t.run(ctx => ctx.db.get(finite.evidenceId));
+    const indefinite = {...base,validity:"until_revoked" as const,sourceKind:"owner_attestation" as const};
+    await expect(f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...indefinite,confirmed:false})).rejects.toThrow();
+    const replacement = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,indefinite);
+    const next = await f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:old.draftVersion});
+    expect(next.publishedId).not.toBe(old.publishedId);
+    const revision = await f.t.run(ctx => ctx.db.get(next.publishedId));
+    expect(revision?.approvalEvidenceIds).toEqual([replacement.evidenceId]);
+    expect(revision?.contentDigest).toBe(immutable?.contentDigest);
+    expect(await f.t.run(ctx => ctx.db.get(old.publishedId))).toEqual(immutable);
+    expect(await f.t.run(ctx => ctx.db.get(finite.evidenceId))).toEqual(originalEvidence);
+    const validateAt = (now: number) => f.t.run(async ctx => {
+      const profile = await ctx.db.query("schoolSiteProfiles").withIndex("by_school",q => q.eq("schoolId",f.schoolA)).unique();
+      return validatePublication(ctx,profile!,revision!.content,revision!.publishedByUserId!,now);
+    });
+    await expect(validateAt(Date.now()+400*86400_000)).resolves.toHaveProperty("digest",revision?.contentDigest);
+    await f.reviewer.mutation(api.functions.sites.evidence.revokeEvidence,{schoolId:f.schoolA,evidenceId:replacement.evidenceId});
+    await expect(validateAt(Date.now())).rejects.toThrow(); // Older finite approval is still current, but cannot revive.
+    const dated = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...base,expiresAt:Date.now()+1000});
+    await expect(validateAt(Date.now()+2000)).rejects.toThrow();
+    await f.t.run(async ctx => { const user = await ctx.db.query("users").withIndex("by_auth",q => q.eq("authId","editor")).unique(); if (!user) throw Error("Missing editor"); await ctx.db.insert("schoolCapabilityGrants",{schoolId:f.schoolA,userId:user._id,capability:"privacy.approve",scope:"school",grantedByUserId:user._id,reason:"synthetic independence test",isBreakGlass:false,createdAt:Date.now()}); });
+    await f.editor.mutation(api.functions.sites.evidence.approveCandidate,indefinite);
+    await expect(validateAt(Date.now())).rejects.toThrow();
+    expect((await f.t.run(ctx => ctx.db.get(dated.evidenceId)))?.validity).toBeUndefined();
+  });
+  test("until-revoked asset rights, classification and consent use exact pointers and favicon gates", async () => {
+    const f = await fixture();
+    await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
+    const upload = await f.editor.fetch("/sites/asset-upload",{method:"POST",headers:{"content-length":String(pixel.length),"content-type":"image/png","x-site-school":f.schoolA,"x-site-kind":"favicon","x-site-filename":"icon.png","x-site-decorative":"true"},body:pixel});
+    expect(upload.status).toBe(201);
+    const {assetId} = await upload.json() as {assetId:Id<"schoolSiteAssets">};
+    const asset = await f.t.run(ctx => ctx.db.get(assetId));
+    const base = {schoolId:f.schoolA,evidenceReference:"Synthetic documented image authorization",confirmed:true};
+    const rights = {kind:"asset_rights" as const,assetId,expectedChecksum:asset!.checksum};
+    const finite = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...base,candidate:rights,expiresAt:Date.now()+60_000});
+    const indefinite = {...base,validity:"until_revoked" as const,sourceKind:"document_review" as const};
+    const replacement = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...indefinite,candidate:rights});
+    expect((await f.t.run(ctx => ctx.db.get(assetId)))?.rightsExpiresAt).toBeUndefined();
+    expect((await f.t.run(ctx => ctx.db.get(finite.evidenceId)))?.expiresAt).toBeDefined();
+    const classification = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...indefinite,candidate:{kind:"asset_child_applicability",assetId,expectedChecksum:asset!.checksum,classification:"contains_children"}});
+    const draft = {...content,fields:[...content.fields,{fieldId:"site_favicon",value:{kind:"asset_ref" as const,assetId}}]};
+    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content:draft,expectedDraftVersion:0});
+    const field = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId:"school_name"});
+    await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...indefinite,candidate:{kind:"field",fieldId:"school_name",expectedDigest:field.digest}});
+    const publish = () => f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1});
+    await expect(publish()).rejects.toThrow();
+    const consent = await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{...indefinite,candidate:{kind:"asset_child_consent",assetId,expectedChecksum:asset!.checksum}});
+    await publish();
+    const validate = () => f.t.run(async ctx => {
+      const profile = await ctx.db.query("schoolSiteProfiles").withIndex("by_school",q => q.eq("schoolId",f.schoolA)).unique();
+      const revision = await ctx.db.get(profile!.publishedRevisionId!);
+      return validatePublication(ctx,profile!,revision!.content,revision!.publishedByUserId!,Date.now()+400*86400_000);
+    });
+    await expect(validate()).resolves.toHaveProperty("digest");
+    await f.t.run(ctx => ctx.db.patch(assetId,{approvalEvidenceId:finite.evidenceId}));
+    await expect(validate()).rejects.toThrow();
+    await f.t.run(ctx => ctx.db.patch(assetId,{approvalEvidenceId:replacement.evidenceId}));
+    for (const evidenceId of [replacement.evidenceId,classification.evidenceId,consent.evidenceId]) {
+      await f.reviewer.mutation(api.functions.sites.evidence.revokeEvidence,{schoolId:f.schoolA,evidenceId});
+      await expect(validate()).rejects.toThrow();
+      await f.t.run(ctx => ctx.db.patch(evidenceId,{revokedAt:undefined}));
+    }
+    await f.t.run(ctx => ctx.db.patch(assetId,{kind:"logo"}));
+    await expect(validate()).rejects.toThrow();
+  });
+  test("review and publish grants work without editing or preview grants", async () => {
+    const f = await fixture();
+    await f.operator.mutation(api.functions.sites.profiles.provisionProfile,{schoolId:f.schoolA,rendererKey:"school-core-synthetic-v1",rendererSchemaVersion:"1"});
+    await f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content,expectedDraftVersion:0});
+    const view = await f.reviewer.action(api.functions.sites.management.schoolView,{schoolId:f.schoolA});
+    expect(view).toMatchObject({canEdit:false,canReview:true,canPublish:false,canPreview:false,canRevert:false,canRequestDomain:false,draft:{version:1}});
+    const candidate = await f.reviewer.action(api.functions.sites.evidence.getFieldCandidate,{schoolId:f.schoolA,fieldId:"school_name"});
+    await f.reviewer.mutation(api.functions.sites.evidence.approveCandidate,{schoolId:f.schoolA,candidate:{kind:"field",fieldId:"school_name",expectedDigest:candidate.digest},evidenceReference:"Synthetic owner authorization",validity:"until_revoked",sourceKind:"owner_attestation",confirmed:true});
+    await f.t.run(async ctx => { const grants = await ctx.db.query("schoolCapabilityGrants").withIndex("by_school",q => q.eq("schoolId",f.schoolA)).take(20); for (const grant of grants.filter(g => g.capability === "settings.manage" || g.capability === "site.preview")) await ctx.db.patch(grant._id,{revokedAt:Date.now()}); });
+    expect(await f.editor.action(api.functions.sites.management.schoolView,{schoolId:f.schoolA})).toMatchObject({canEdit:false,canReview:false,canPublish:true,canPreview:false,canPublishSensitive:true});
+    await expect(f.editor.action(api.functions.sites.content.validateDraft,{schoolId:f.schoolA})).resolves.toMatchObject({valid:true});
+    await expect(f.editor.mutation(api.functions.sites.content.publishDraft,{schoolId:f.schoolA,expectedDraftVersion:1})).resolves.toHaveProperty("publishedId");
+    await expect(f.editor.mutation(api.functions.sites.content.saveDraft,{schoolId:f.schoolA,content,expectedDraftVersion:2})).rejects.toThrow();
+  });
   test("immutable Olive publication needs identity, sensitive facts and independent evidence for every image", async () => {
     const f = await fixture();
     const manifest = siteManifest("obhis-v1", "1")!;
