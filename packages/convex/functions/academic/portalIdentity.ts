@@ -270,8 +270,8 @@ export async function getPortalStudentAccess(
     })
     .sort((left, right) => {
       const activeDifference =
-        Number(right.student.enrollmentStatus === "active") -
-        Number(left.student.enrollmentStatus === "active");
+        Number((right.student.enrollmentStatus ?? "active") === "active") -
+        Number((left.student.enrollmentStatus ?? "active") === "active");
       if (activeDifference) return activeDifference;
       return (
         Number(right.portalMembership.isDefaultBranch) -

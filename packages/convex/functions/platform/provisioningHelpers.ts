@@ -92,12 +92,13 @@ export async function provisionSchoolAdminAuthUser(
   if (existingAuth?.user?.id) {
     const existingEmailUsage = await ctx.runQuery(
       internal.functions.platform.index.inspectProvisioningEmailInternal,
-      { email: normalizedEmail }
+      { email: normalizedEmail, authId: existingAuth.user.id }
     );
 
     if (
       existingEmailUsage.schoolUserExists ||
-      existingEmailUsage.platformAdminExists
+      existingEmailUsage.platformAdminExists ||
+      existingEmailUsage.canonicalPersonExists
     ) {
       throw new ConvexError(
         "An account with this email already exists in the system. Please use a different email."

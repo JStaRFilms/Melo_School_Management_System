@@ -1,6 +1,9 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import { assertStudentParticipating } from "./studentLifecycle";
+import { isCurrentEnrollment } from "./studentEnrollmentCounts";
+import { isStudentEnrolledInClassForSession, isStudentPromotionSupersededByDeparture, studentPeriodClasses } from "./studentClassMembership";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import { assertTeacherAssignment, teacherHasClassAccess } from "./teacherAccess";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
@@ -96,6 +99,14 @@ async function assertStaff(ctx: Context, args: Selection, options?: { allowIssue
       return { auth, classDoc, student, session, term };
     }
   }
+  if (!options?.allowIssuedHistory) assertStudentParticipating(student);
+  // Period entry classes are historical evidence, not today's reviewed placement.
+  const placementEnrolled = session.isActive
+    ? await isStudentEnrolledInClassForSession(ctx, {
+      student, schoolId: auth.schoolId, classId: args.classId,
+      sessionId: session._id, termId: term._id, currentOperation: true,
+    })
+    : (await studentPeriodClasses(ctx, { student, sessionId: session._id, termId: term._id })).includes(args.classId);
   // Promotion records are explicit enrollment history. A current class alone is
   // not evidence that the pupil belonged to it in an earlier session.
   const [to, from] = await Promise.all([
@@ -105,10 +116,16 @@ async function assertStaff(ctx: Context, args: Selection, options?: { allowIssue
       q.eq("studentId", student._id).eq("fromSessionId", session._id)).take(100),
   ]);
   if (to.length === 100 || from.length === 100) throw new ConvexError("Enrollment history requires review");
-  const enrolled = [...to, ...from].some(row => row.schoolId === auth.schoolId &&
-    (row.toSessionId === session._id && row.toClassId === args.classId ||
-     row.fromSessionId === session._id && row.fromClassId === args.classId)) ||
-    (session.isActive && to.length === 0 && student.classId === args.classId) ||
+  let promotedIntoClass = false;
+  for (const row of to) {
+    if (row.schoolId === auth.schoolId && row.toClassId === args.classId &&
+        !await isStudentPromotionSupersededByDeparture(ctx, row)) {
+      promotedIntoClass = true;
+      break;
+    }
+  }
+  const enrolled = placementEnrolled || promotedIntoClass || from.some(row => row.schoolId === auth.schoolId &&
+    row.fromSessionId === session._id && row.fromClassId === args.classId) ||
     (student.graduatingSessionId === session._id && student.graduatingClassId === args.classId);
   if (!enrolled) throw new ConvexError("Student is not enrolled in this class and session");
   return { auth, classDoc, student, session, term };
@@ -466,7 +483,7 @@ async function resolvePeriodClass(ctx: QueryCtx, args: {
   schoolId: Id<"schools">; studentId: Id<"students">; sessionId: Id<"academicSessions">;
   termId: Id<"academicTerms">; currentClassId: Id<"classes">; isActive: boolean;
   graduatingClassId?: Id<"classes">; graduatingSessionId?: Id<"academicSessions">;
-  transferredOut?: boolean;
+  student: Doc<"students">;
 }) {
   const { schoolId, studentId, sessionId, termId } = args;
   const narrativeIssue = await issuedFor(ctx, { studentId, sessionId, termId });
@@ -490,14 +507,16 @@ async function resolvePeriodClass(ctx: QueryCtx, args: {
     throw new ConvexError("Enrollment history requires review");
   if ([...arrivals, ...departures, ...graduations, ...selections].some(row => row.schoolId !== schoolId))
     throw new ConvexError("Invalid enrollment history");
+  const periodClasses = await studentPeriodClasses(ctx, { student: args.student, sessionId, termId });
   const candidates = new Set([
+    ...periodClasses,
     ...arrivals.map(row => row.toClassId), ...departures.map(row => row.fromClassId),
     ...graduations.map(row => row.classId), ...records.map(row => row.classId),
     ...selections.map(row => row.classId),
     ...(args.graduatingSessionId === sessionId && args.graduatingClassId ? [args.graduatingClassId] : []),
   ]);
   if (candidates.size > 1) throw new ConvexError("Enrollment history requires review");
-  const classId = [...candidates][0] ?? ((args.isActive || args.transferredOut) ? args.currentClassId : null);
+  const classId = [...candidates][0] ?? ((args.isActive && isCurrentEnrollment(args.student) && args.student.enrollmentRevision === undefined) || args.student.enrollmentStatus === "transferred_out" ? args.currentClassId : null);
   return { classId, narrativeIssue, gradedIssue };
 }
 
@@ -518,7 +537,7 @@ export const getStaffPeriodReportMode = query({
       schoolId: auth.schoolId, studentId: student._id, sessionId: session._id, termId: term._id,
       currentClassId: student.classId, isActive: session.isActive,
       graduatingClassId: student.graduatingClassId, graduatingSessionId: student.graduatingSessionId,
-      transferredOut: student.enrollmentStatus === "transferred_out",
+      student,
     });
     if (!classId) return null;
     const classDoc = await ctx.db.get(classId);
@@ -543,7 +562,7 @@ export async function resolveAuthorizedPortalReportSelection(ctx: QueryCtx, args
       schoolId, studentId: student._id, sessionId: session._id, termId: args.termId,
       currentClassId: student.classId, isActive: session.isActive,
       graduatingClassId: student.graduatingClassId, graduatingSessionId: student.graduatingSessionId,
-      transferredOut: student.enrollmentStatus === "transferred_out",
+      student,
     });
     if (!classId) throw new ConvexError("Student has no enrollment in this session");
     const classDoc = await ctx.db.get(classId);

@@ -16,10 +16,7 @@ import {
   commitManualAdmissionNumberHelper,
   proposeAdmissionNumberHelper,
 } from "./admissionNumbers";
-import {
-  adjustSchoolEnrollmentCount,
-  isCurrentEnrollment,
-} from "./studentEnrollmentCounts";
+import { adjustSchoolEnrollmentCount } from "./studentEnrollmentCounts";
 
 /**
  * Validates that the caller holds authority to manage student transfers
@@ -31,6 +28,8 @@ async function assertTransferAuthority(
 ): Promise<ActiveMembershipContext> {
   return requireCapability(ctx, schoolId, "enrollment.intakes.manage");
 }
+
+import { assertStudentParticipating, recordStudentEnrollmentEvent } from "./studentLifecycle";
 
 type TransferScope = "source" | "destination" | "both";
 
@@ -303,15 +302,7 @@ export const initiateStudentTransfer = mutation({
     if (student.isArchived) {
       throw new ConvexError("Cannot transfer an archived student record");
     }
-    if (
-      student.enrollmentStatus === "graduated" ||
-      student.enrollmentStatus === "transferred_out" ||
-      student.enrollmentStatus === "withdrawn"
-    ) {
-      throw new ConvexError(
-        `Cannot transfer student with enrollment status '${student.enrollmentStatus}'`,
-      );
-    }
+    assertStudentParticipating(student);
 
     // Historical attempts never block a new proposal; only active states do.
     const [initiatedTransfer, releasedTransfer] = await Promise.all([
@@ -474,6 +465,9 @@ export const authorizeSourceRelease = mutation({
       );
     }
 
+    const sourceStudent = await ctx.db.get(transfer.studentId);
+    if (!sourceStudent || sourceStudent.schoolId !== transfer.sourceSchoolId) throw new ConvexError("Source student is unavailable");
+    assertStudentParticipating(sourceStudent);
     const now = Date.now();
     await ctx.db.patch(transfer._id, {
       status: "source_released",
@@ -824,14 +818,15 @@ export const acceptDestinationTransfer = mutation({
       1,
     );
 
-    // Preserve the source row and all source-scoped records as historical evidence.
-    await ctx.db.patch(sourceStudent._id, {
-      enrollmentStatus: "transferred_out",
-      updatedAt: now,
+    const destinationStudent = await ctx.db.get(destinationStudentId);
+    if (!destinationStudent) throw new ConvexError("Destination enrollment creation failed");
+    const destinationEvidence = await recordStudentEnrollmentEvent(ctx, destinationStudent, {
+      type: "transfer_in", reason: "Governed within-group transfer accepted", actorUserId: authContext.userId, transferId: transfer._id,
     });
-    if (isCurrentEnrollment(sourceStudent)) {
-      await adjustSchoolEnrollmentCount(ctx, transfer.sourceSchoolId, -1);
-    }
+    // Preserve the source row and all source-scoped records as historical evidence.
+    const sourceEvidence = await recordStudentEnrollmentEvent(ctx, sourceStudent, {
+      type: "transfer_out", afterStatus: "transferred_out", reason: "Governed within-group transfer completed", actorUserId: authContext.userId, transferId: transfer._id,
+    });
     await ctx.db.patch(sourceStudentUser._id, {
       isArchived: true,
       archivedAt: now,
@@ -858,6 +853,8 @@ export const acceptDestinationTransfer = mutation({
       destinationMembershipPriorLegacyUserId,
       destinationAcceptedByUserId: authContext.userId,
       destinationAcceptedAt: now,
+      sourceEnrollmentRevision: sourceEvidence.revision,
+      destinationEnrollmentRevision: destinationEvidence.revision,
       updatedAt: now,
     });
 
@@ -924,7 +921,9 @@ export const reverseCompletedTransfer = mutation({
     ]);
     if (
       !sourceStudent || sourceStudent.schoolId !== transfer.sourceSchoolId ||
-      sourceStudent.enrollmentStatus !== "transferred_out" ||
+      sourceStudent.isArchived || sourceStudent.enrollmentStatus !== "transferred_out" ||
+      (transfer.sourceEnrollmentRevision !== undefined && sourceStudent.enrollmentRevision !== transfer.sourceEnrollmentRevision) ||
+      (transfer.destinationEnrollmentRevision !== undefined && destinationStudent?.enrollmentRevision !== transfer.destinationEnrollmentRevision) ||
       !destinationStudent || destinationStudent.schoolId !== transfer.destinationSchoolId ||
       destinationStudent.isArchived || destinationStudent.enrollmentStatus !== "active"
     ) throw new ConvexError("Transfer enrollment state changed; reviewed repair is required");
@@ -947,14 +946,17 @@ export const reverseCompletedTransfer = mutation({
     ]);
     if (sourceMemberships.length !== 1 || destinationMemberships.length !== 1)
       throw new ConvexError("Canonical branch membership is missing or ambiguous; reviewed repair is required");
+    const person = await ctx.db.get(sourceUser.personId);
+    if (person?.status !== "active" || sourceMemberships[0].status !== "active" || destinationMemberships[0].status !== "active" || destinationUser.isArchived) {
+      throw new ConvexError("Independent identity or branch access restriction prevents transfer reversal; reviewed repair is required");
+    }
     if (otherDestinationEnrollments.some((student) =>
       student._id !== destinationStudent._id && !student.isArchived && student.enrollmentStatus === "active"))
       throw new ConvexError("Another active destination enrollment prevents automatic reversal");
     const now = Date.now();
-    await ctx.db.patch(destinationStudent._id, {
-      isArchived: true,
-      enrollmentStatus: "transferred_out",
-      updatedAt: now,
+    await recordStudentEnrollmentEvent(ctx, destinationStudent, {
+      type: "transfer_reversed", afterStatus: "transferred_out", isArchived: true,
+      reason, actorUserId: destinationAuthority.userId, transferId: transfer._id,
     });
     await ctx.db.patch(destinationUser._id, transfer.destinationUserWasCreated !== false
       ? {
@@ -976,13 +978,10 @@ export const reverseCompletedTransfer = mutation({
           legacyUserId: transfer.destinationMembershipPriorLegacyUserId,
           updatedAt: now,
         });
-    await ctx.db.patch(sourceStudent._id, { enrollmentStatus: "active", isArchived: false, updatedAt: now });
-    if (isCurrentEnrollment(destinationStudent)) {
-      await adjustSchoolEnrollmentCount(ctx, transfer.destinationSchoolId, -1);
-    }
-    if (!isCurrentEnrollment(sourceStudent)) {
-      await adjustSchoolEnrollmentCount(ctx, transfer.sourceSchoolId, 1);
-    }
+    await recordStudentEnrollmentEvent(ctx, sourceStudent, {
+      type: "transfer_reversed", afterStatus: "active", isArchived: false,
+      reason, actorUserId: sourceAuthority.userId, transferId: transfer._id,
+    });
     await ctx.db.patch(sourceUser._id, {
       isArchived: false,
       archivedAt: undefined,

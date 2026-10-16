@@ -1,6 +1,10 @@
 "use client";
 
 import { History, CornerDownRight, X } from "lucide-react";
+import { useAuth } from "@/AuthProvider";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { StaffLifecyclePanel } from "../../../admin/components/StaffLifecyclePanel";
+import { StudentEnrollmentHistory } from "../../students/components/StudentLifecyclePanel";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import type { ArchivedRecordItem } from "./types";
 
@@ -26,11 +30,13 @@ export function ArchivedRecordDetail({
   isRestoring,
   variant = "default",
 }: ArchivedRecordDetailProps) {
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const isSheet = variant === "sheet";
   const restoreLabel = record.type === "knowledgeMaterial" ? "Restore in Knowledge Library" : "Restore Record";
   const restoreHelp = record.type === "knowledgeMaterial"
     ? "Knowledge material restore is handled from the Knowledge Library so review status and visibility can be chosen deliberately."
-    : "Restoration will return this entry to active academic setup.";
+    : "Restore removes the archive restriction. It does not re-enroll a student or rehire a staff member.";
 
   return (
     <div className={`space-y-6 ${!isSheet ? "animate-in slide-in-from-right-4 duration-300" : ""}`}>
@@ -97,6 +103,9 @@ export function ArchivedRecordDetail({
           </div>
         </div>
       </div>
+
+      {record.type === "student" && <StudentEnrollmentHistory studentId={record.recordId as Id<"students">} inactive={record.detailFields.find(field => field.label === "Enrollment status")?.value !== "active"} />}
+      {schoolId && (record.type === "teacher" || record.type === "admin" || record.type === "staff") && <StaffLifecyclePanel key={record.recordId} schoolId={schoolId} userId={record.recordId as Id<"users">} />}
 
       <div className="pt-4">
         <button

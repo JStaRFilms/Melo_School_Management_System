@@ -280,7 +280,7 @@ async function getLinkedTeacherIds(
 ): Promise<Set<string>> {
   const teacher = await ctx.db.get(teacherId);
   // Branch projections must be explicitly selected by membership, not joined by email.
-  return teacher && !teacher.isArchived && teacher.schoolId === schoolId
+  return teacher && !teacher.isArchived && teacher.employmentStatus !== "departed" && teacher.schoolId === schoolId
     ? new Set<string>([String(teacherId)])
     : new Set<string>();
 }

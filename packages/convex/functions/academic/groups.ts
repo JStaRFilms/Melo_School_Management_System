@@ -8,6 +8,7 @@ import {
 } from "../../_generated/server";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { recordAuditEventHelper } from "./audit";
+import { assertStaffActive, recordStaffServiceEvent } from "./staffService";
 import { resolveActiveMembership, resolveLegacyViewer } from "./auth";
 import {
   ensureFactoryRoleTemplateForAssignment,
@@ -227,7 +228,7 @@ export const listUserBranches = query({
   args: {},
   handler: async (ctx): Promise<UserBranchSummary[]> => {
     const person = await currentPerson(ctx);
-    let candidates: { schoolId: Id<"schools">; displayTitle?: string }[];
+    let candidates: { schoolId: Id<"schools">; displayTitle?: string; legacyUserId?: Id<"users"> }[];
     if (person) {
       candidates = await ctx.db
         .query("branchMemberships")
@@ -251,11 +252,13 @@ export const listUserBranches = query({
         throw error;
       });
       candidates = legacy
-        ? [{ schoolId: legacy.schoolId, displayTitle: legacy.role }]
+        ? [{ schoolId: legacy.schoolId, displayTitle: legacy.role, legacyUserId: legacy._id }]
         : [];
     }
     const results: UserBranchSummary[] = [];
     for (const candidate of candidates) {
+      const user = candidate.legacyUserId ? await ctx.db.get(candidate.legacyUserId) : null;
+      if (user?.isArchived || user?.employmentStatus === "departed") continue;
       const school = await ctx.db.get(candidate.schoolId);
       if (!school || school.status !== "active") continue;
       // Revalidate each candidate, including duplicate membership and legacy prelink checks.
@@ -579,13 +582,15 @@ export const listGroupStaffCandidates = query({
           )
           .unique(),
       ]);
+      const targetUser = targetMembership?.legacyUserId ? await ctx.db.get(targetMembership.legacyUserId) : null;
       if (
+        targetUser?.employmentStatus === "departed" ||
         !person ||
         person.status !== "active" ||
         !person.authTokenIdentifier ||
         person.identityReconciliationState === "reconciliation_required" ||
         !sourceUser ||
-        sourceUser.isArchived ||
+        sourceUser.isArchived || sourceUser.employmentStatus === "departed" ||
         sourceUser.personId !== person._id ||
         sourceUser.schoolId !== source.school._id ||
         sourceUser.authTokenIdentifier !== person.authTokenIdentifier ||
@@ -692,7 +697,7 @@ export const listGroupBranchStaff = query({
       if (
         !person ||
         !user ||
-        user.isArchived ||
+        user.isArchived || user.employmentStatus === "departed" ||
         user.role === "student" ||
         user.role === "parent"
       )
@@ -798,6 +803,9 @@ export const assignUserToBranch = mutation({
       throw new ConvexError("Identity projections require a bounded review");
     if (!sourceMembership || sourceMembership.status !== "active")
       throw new ConvexError("Person is not active in the selected source branch");
+    const employmentTargets = personUsers.filter(user => user.schoolId === target.school._id);
+    if (employmentTargets.some(user => user.employmentStatus === "departed"))
+      throw new ConvexError("Staff member has departed from this branch. Use reviewed rehire.");
     if (targetMembership?.status === "active")
       return { success: true, membershipId: targetMembership._id, alreadyActive: true };
 
@@ -815,6 +823,7 @@ export const assignUserToBranch = mutation({
     )
       throw new ConvexError("Source staff projection requires identity review");
 
+    assertStaffActive(sourceUser);
     const targetUsers = personUsers.filter(
       (user) => user.schoolId === target.school._id,
     );
@@ -864,9 +873,13 @@ export const assignUserToBranch = mutation({
         updatedAt: now,
       }));
     if (existingTargetUser) {
+      if (existingTargetUser.personId !== person._id || existingTargetUser.authId !== sourceUser.authId ||
+          existingTargetUser.authTokenIdentifier !== person.authTokenIdentifier)
+        throw new ConvexError("Target branch identity requires reconciliation");
       await ctx.db.patch(existingTargetUser._id, {
         authId: sourceUser.authId,
         authTokenIdentifier: person.authTokenIdentifier,
+        name: person.name,
         email: person.email,
         role: args.role,
         isSchoolAdmin: args.role === "admin",
@@ -901,6 +914,12 @@ export const assignUserToBranch = mutation({
         joinedAt: now,
         updatedAt: now,
       });
+    }
+    if (!existingTargetUser) {
+      const joinedUser = await ctx.db.get(targetUserId);
+      if (!joinedUser) throw new ConvexError("Staff projection not found after branch joining");
+      await recordStaffServiceEvent(ctx, joinedUser, { type: "joined", reason: "Reviewed joining in another group branch",
+        actorUserId: manager.kind === "user" ? manager.membership.legacyUserId : undefined });
     }
     if (roleTemplate) {
       await ctx.db.insert("membershipRoleAssignments", {
@@ -968,7 +987,7 @@ export const revokeUserBranchMembership = mutation({
       throw new ConvexError("The final branch must be removed through account archiving");
 
     const now = Date.now();
-    await ctx.db.patch(membership._id, { status: "suspended", updatedAt: now });
+    await ctx.db.patch(membership._id, { status: "suspended", lifecycleSuspendedByEventId: undefined, updatedAt: now });
     if (membership.legacyUserId) {
       const user = await ctx.db.get(membership.legacyUserId);
       if (user && user.schoolId === branch.school._id && user.personId === args.personId)
@@ -1011,7 +1030,7 @@ export const listProprietorCandidates = query({
 
     const admins = users.filter(
       (user) =>
-        !user.isArchived &&
+        !user.isArchived && user.employmentStatus !== "departed" &&
         (user.role === "admin" || user.isSchoolAdmin === true),
     );
     return await Promise.all(

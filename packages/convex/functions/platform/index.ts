@@ -36,6 +36,7 @@ import {
 } from "@school/shared/product-modules";
 import { recordAuditEventHelper } from "../academic/audit";
 import { applySchoolAdminEmailUpdate } from "./schoolAdminEmailUpdate";
+import { recordStaffServiceEvent } from "../academic/staffService";
 
 const MAX_ENROLLMENT_COUNT_RECALCULATION_ROWS = 10_000;
 
@@ -620,6 +621,9 @@ export const assignSchoolAdminInternal = internalMutation({
       adminUser,
       args.authTokenIdentifier,
     );
+    const joinedAdmin = await ctx.db.get(adminUserId);
+    if (!joinedAdmin) throw new ConvexError("School administrator joining failed");
+    await recordStaffServiceEvent(ctx, joinedAdmin, { type: "joined", reason: "Initial school admin joining" });
 
     await ctx.runMutation(
       internal.functions.academic.adminLeadershipHelpers.ensureSchoolLeadAdminInternal,
@@ -661,10 +665,12 @@ export const assignSchoolAdminInternal = internalMutation({
 export const inspectProvisioningEmailInternal = internalQuery({
   args: {
     email: v.string(),
+    authId: v.string(),
   },
   returns: v.object({
     schoolUserExists: v.boolean(),
     platformAdminExists: v.boolean(),
+    canonicalPersonExists: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const normalizedEmail = args.email.trim().toLowerCase();
@@ -679,9 +685,14 @@ export const inspectProvisioningEmailInternal = internalQuery({
       .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
       .unique();
 
+    const [personByEmail, personByToken] = await Promise.all([
+      ctx.db.query("persons").withIndex("by_email", q => q.eq("email", normalizedEmail)).first(),
+      ctx.db.query("persons").withIndex("by_token_identifier", q => q.eq("authTokenIdentifier", `${getBetterAuthIssuer()}|${args.authId}`)).first(),
+    ]);
     return {
       schoolUserExists: Boolean(existingSchoolUser),
       platformAdminExists: Boolean(existingPlatformAdmin),
+      canonicalPersonExists: Boolean(personByEmail || personByToken),
     };
   },
 });

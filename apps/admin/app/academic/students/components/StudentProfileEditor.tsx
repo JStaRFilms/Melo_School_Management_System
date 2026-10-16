@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { getUserFacingErrorMessage, isValidPhoneNumber } from "@school/shared";
 import { normalizePersonName, normalizeStructuredPersonName } from "@school/shared/name-format";
 import { useDirtyForm } from "@school/shared/drafts";
@@ -8,6 +7,10 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { CheckCircle2, Trash2, UserCog, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { api } from "@school/convex/_generated/api";
+import type { FunctionReturnType } from "convex/server";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { StudentLifecyclePanel } from "./StudentLifecyclePanel";
 import { useAuth } from "@/AuthProvider";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import {
@@ -33,40 +36,7 @@ interface StudentProfileEditorProps {
   onTabChange?: (tab: "profile" | "family") => void;
 }
 
-type StudentProfile = {
-  _id: string;
-  userId: string;
-  email: string;
-  name: string;
-  displayName: string;
-  firstName: string | null;
-  lastName: string | null;
-  middleName: string | null;
-  activeSessionId: string | null;
-  storedAddress: string | null;
-  addressMode: "residential" | "different" | null;
-  addressSource: "residential" | "different" | "legacy" | "none";
-  emergencyContactMode: "primary" | "override" | null;
-  emergencyContact: { source: string; name: string | null; phone: string | null };
-  admissionNumber: string;
-  classId: string;
-  className: string;
-  houseName: string | null;
-  gender: string | null;
-  dateOfBirth: number | null;
-  guardianName: string | null;
-  guardianPhone: string | null;
-  address: string | null;
-  photoUrl: string | null;
-  photoFileName: string | null;
-  photoContentType: string | null;
-  enrollmentStatus?: string | null;
-  graduatedAt?: number | null;
-  graduatingSessionId?: string | null;
-  graduatingSessionName?: string | null;
-  graduatingClassId?: string | null;
-  graduatingClassName?: string | null;
-};
+type StudentProfile = FunctionReturnType<typeof api.functions.academic.studentEnrollment.getStudentProfile>;
 
 function toDateInput(value: number | null) {
   if (!value) return "";
@@ -95,9 +65,9 @@ export function StudentProfileEditor({
       ),
   );
   const studentProfile = useQuery(
-    "functions/academic/studentEnrollment:getStudentProfile" as never,
-    studentId ? ({ studentId } as never) : ("skip" as never),
-  ) as StudentProfile | undefined;
+    api.functions.academic.studentEnrollment.getStudentProfile,
+    studentId ? { studentId: studentId as Id<"students"> } : "skip",
+  );
   const updateStudent = useMutation(
     "functions/academic/studentEnrollment:updateStudent" as never,
   );
@@ -265,6 +235,28 @@ export function StudentProfileEditor({
     );
   }
 
+  if (studentProfile.enrollmentStatus === "transferred_out") {
+    return <div className="space-y-6">
+      <StudentLifecyclePanel key={studentProfile._id} profile={studentProfile} />
+      <dl className="space-y-2" aria-label="Source-school student profile">
+        {[
+          ["Name", studentProfile.displayName],
+          ["Admission number", studentProfile.admissionNumber],
+          ["Source class", studentProfile.className],
+          ["House", studentProfile.houseName],
+          ["Gender", studentProfile.gender],
+          ["Birth date", toDateInput(studentProfile.dateOfBirth)],
+          ["Address", studentProfile.address],
+          ["Emergency contact", studentProfile.emergencyContact?.name ?? studentProfile.guardianName],
+          ["Contact phone", studentProfile.emergencyContact?.phone ?? studentProfile.guardianPhone],
+        ].map(([label, value]) => <div key={label} className="border-b border-slate-100 py-2">
+          <dt className="text-xs text-slate-500">{label}</dt>
+          <dd className="text-sm text-slate-900">{value || "Not recorded"}</dd>
+        </div>)}
+      </dl>
+    </div>;
+  }
+
   const handleSave = async (review?: NonNullable<typeof classReview>) => {
     if (isSaving) return;
     if (classId !== studentProfile.classId && !review) {
@@ -364,7 +356,7 @@ export function StudentProfileEditor({
           admissionNumberChanged && overrideCounterDecision === "advance"
             ? numbering?.resetPeriod ?? undefined
             : undefined,
-        ...(review ? { classId: review.classId, confirmClassAssignment: true, expectedClassId: review.expectedClassId, expectedSessionId: review.expectedSessionId } : {}),
+        ...(studentProfile.enrollmentStatus === "active" && review ? { classId: review.classId, confirmClassAssignment: true, expectedClassId: review.expectedClassId, expectedSessionId: review.expectedSessionId } : {}),
         houseName: houseName || null,
         gender: gender || null,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth).getTime() : null,
@@ -449,6 +441,8 @@ export function StudentProfileEditor({
           </div>
         </div>
       )}
+
+      <StudentLifecyclePanel key={studentProfile._id} profile={studentProfile} />
 
       {/* Profile / Family Tabs */}
       <div className="flex rounded-xl bg-slate-100 p-1">
@@ -536,6 +530,7 @@ export function StudentProfileEditor({
               guardianPhone={guardianPhone}
               address={address}
               classes={classes}
+              placementDisabled={studentProfile.enrollmentStatus !== "active"}
               onFirstNameChange={setFirstName}
               onLastNameChange={setLastName}
               onAdmissionNumberChange={setAdmissionNumber}

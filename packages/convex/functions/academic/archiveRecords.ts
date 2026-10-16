@@ -13,6 +13,7 @@ const archiveRecordTypeValidator = v.union(
   v.literal("session"),
   v.literal("class"),
   v.literal("teacher"),
+  v.literal("staff"),
   v.literal("subject"),
   v.literal("student"),
   v.literal("event"),
@@ -69,6 +70,7 @@ export const listArchivedRecords = query({
       archivedSessions: v.number(),
       archivedClasses: v.number(),
       archivedTeachers: v.number(),
+      archivedStaff: v.number(),
       archivedSubjects: v.number(),
       archivedStudents: v.number(),
       archivedEvents: v.number(),
@@ -290,6 +292,7 @@ export const listArchivedRecords = query({
           linkedHistory: `Managed under ${manager ? normalizePersonName(manager.name) : "Lead Admin"}. Historical administrative actions preserved.`,
           detailFields: [
             { label: "Email", value: admin.email },
+            { label: "Service status", value: admin.employmentStatus ?? "active" },
             ...(admin.phone ? [{ label: "Phone", value: admin.phone }] : []),
             {
               label: "Manager",
@@ -318,11 +321,22 @@ export const listArchivedRecords = query({
         linkedHistory: `${pluralize(formClassCountByTeacher.get(String(teacher._id)) ?? 0, "form class")}, ${pluralize(classOfferingCountByTeacher.get(String(teacher._id)) ?? 0, "class-subject link")}, and ${pluralize(assignmentCountByTeacher.get(String(teacher._id)) ?? 0, "assignment")} are attached to this teacher record.`,
         detailFields: [
           { label: "Email", value: teacher.email },
+          { label: "Service status", value: teacher.employmentStatus ?? "active" },
           { label: "Form classes", value: String(formClassCountByTeacher.get(String(teacher._id)) ?? 0) },
           { label: "Class-subject links", value: String(classOfferingCountByTeacher.get(String(teacher._id)) ?? 0) },
           { label: "Assignments", value: String(assignmentCountByTeacher.get(String(teacher._id)) ?? 0) },
         ],
       }));
+
+    const staffRecords = users.filter(user => user.role === "staff" && user.isArchived).map(staff => ({
+      id: `staff:${String(staff._id)}`, type: "staff" as const, typeLabel: "Other staff",
+      recordId: String(staff._id), name: normalizePersonName(staff.name), subtitle: staff.email,
+      archivedAt: staff.archivedAt ?? staff.updatedAt, createdAt: staff.createdAt,
+      archivedById: staff.archivedBy ?? null, archivedByName: archivedByName(staff.archivedBy),
+      statusNote: "Archive restricts this account. Restore does not rehire staff or override independent restrictions.",
+      linkedHistory: "Service history and the original identity are preserved.",
+      detailFields: [{ label: "Email", value: staff.email }, { label: "Service status", value: staff.employmentStatus ?? "active" }],
+    }));
 
     const subjectRecords = subjects
       .filter((subject) => subject.isArchived)
@@ -367,6 +381,7 @@ export const listArchivedRecords = query({
           linkedHistory: `${pluralize(selectionCountByStudent.get(String(student._id)) ?? 0, "subject selection")}, ${assessmentHistory(assessmentCountByStudent.get(String(student._id)) ?? 0, lockedStudentIds.has(String(student._id)))}, and the original student profile remain attached to this archived student.`,
           detailFields: [
             { label: "Admission number", value: student.admissionNumber },
+            { label: "Enrollment status", value: student.enrollmentStatus ?? "active" },
             {
               label: "Class",
               value: classDoc ? buildClassName(classDoc) : "Archived class record missing",
@@ -445,6 +460,7 @@ export const listArchivedRecords = query({
       ...sessionRecords,
       ...classRecords,
       ...teacherRecords,
+      ...staffRecords,
       ...subjectRecords,
       ...studentRecords,
       ...eventRecords,
@@ -458,6 +474,7 @@ export const listArchivedRecords = query({
         archivedSessions: sessionRecords.length,
         archivedClasses: classRecords.length,
         archivedTeachers: teacherRecords.length,
+        archivedStaff: staffRecords.length,
         archivedSubjects: subjectRecords.length,
         archivedStudents: studentRecords.length,
         archivedEvents: eventRecords.length,

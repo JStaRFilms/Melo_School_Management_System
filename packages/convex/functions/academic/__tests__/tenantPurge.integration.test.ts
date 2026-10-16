@@ -87,6 +87,47 @@ it("drains over 100 narrative drafts before deleting a wrong-branch class", asyn
   expect(await t.run(ctx => ctx.db.query("narrativeReportDrafts").withIndex("by_school", q => q.eq("schoolId", ids.ruga)).take(1))).toEqual([]);
 });
 
+it("drains duplicated lifecycle rows before deleting wrong-branch students without touching retained history", async () => {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async ctx => {
+    const ruga = await ctx.db.insert("schools", { name: "Ruga", slug: "obhis-ruga", status: "active", createdAt: 1, updatedAt: 1 });
+    const fedrah = await ctx.db.insert("schools", { name: "Fedrah", slug: "obhis-fedrah", status: "active", createdAt: 1, updatedAt: 1 });
+    const classId = await ctx.db.insert("classes", { schoolId: ruga, name: "Wrong branch", level: "Y1", createdAt: 1, updatedAt: 1 });
+    const retainedClassId = await ctx.db.insert("classes", { schoolId: fedrah, name: "Retained", level: "Y1", createdAt: 1, updatedAt: 1 });
+    const userId = await ctx.db.insert("users", { schoolId: ruga, authId: "student", email: "student@test.invalid", name: "Student", role: "student", createdAt: 1, updatedAt: 1 });
+    const studentId = await ctx.db.insert("students", { schoolId: ruga, classId, userId, admissionNumber: "001", createdAt: 1, updatedAt: 1 });
+    const retainedStudentId = await ctx.db.insert("students", { schoolId: fedrah, classId: retainedClassId, userId, admissionNumber: "002", createdAt: 1, updatedAt: 1 });
+    for (const [schoolId, childId, entryClassId, count] of [[ruga, studentId, classId, 30], [fedrah, retainedStudentId, retainedClassId, 1]] as const) {
+      for (let i = 0; i < count; i++) {
+        await ctx.db.insert("studentEnrollmentEvents", { schoolId, studentId: childId, classId: entryClassId, type: "admitted", afterStatus: "active", revision: i + 1, recordedAt: 1, reason: "Duplicated lifecycle history", operationKey: `event-${i}` });
+        await ctx.db.insert("studentEnrollmentPeriods", { schoolId, studentId: childId, classId: entryClassId, startProvenance: "legacy_unknown", recordedAt: 1 });
+      }
+    }
+    return { classId, studentId, retainedClassId, retainedStudentId };
+  });
+  await t.mutation(cascadeClass, { target: "ruga" });
+  expect(await t.run(ctx => ctx.db.get(ids.studentId))).not.toBeNull();
+  expect(await t.run(ctx => ctx.db.get(ids.classId))).not.toBeNull();
+  let done = false;
+  for (let retry = 0; retry < 5 && !done; retry++) {
+    const result = await t.mutation(cascadeClass, { target: "ruga" }) as { done: boolean };
+    done = result.done;
+  }
+  expect(done).toBe(true);
+  expect(await t.run(ctx => ctx.db.get(ids.studentId))).toBeNull();
+  expect(await t.run(ctx => ctx.db.get(ids.classId))).toBeNull();
+  for (const studentId of [ids.studentId, ids.retainedStudentId]) {
+    const history = await t.run(async ctx => ({
+      events: await ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q => q.eq("studentId", studentId)).take(31),
+      periods: await ctx.db.query("studentEnrollmentPeriods").withIndex("by_student", q => q.eq("studentId", studentId)).take(31),
+    }));
+    expect(history.events).toHaveLength(studentId === ids.studentId ? 0 : 1);
+    expect(history.periods).toHaveLength(studentId === ids.studentId ? 0 : 1);
+  }
+  expect(await t.run(ctx => ctx.db.get(ids.retainedClassId))).not.toBeNull();
+  expect(await t.run(ctx => ctx.db.get(ids.retainedStudentId))).not.toBeNull();
+});
+
 it("purges only the exact development tenant in bounded dependency order", async () => {
   const t = convexTest(schema, modules);
   const fixture = await t.run(async (ctx) => {

@@ -20,6 +20,7 @@ Users
 import { useDeferredValue,useEffect,useMemo,useState } from "react";
 
 import { AdminHeader } from "@/components/ui/AdminHeader";
+import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { AdminSheet } from "@/components/ui/AdminSheet";
 import { AdminSurface } from "@/components/ui/AdminSurface";
 import { StatGroup } from "@/components/ui/StatGroup";
@@ -59,6 +60,7 @@ export default function ArchivedRecordsPage() {
   ) as ArchivedRecordsQueryResult | undefined;
   
   const restoreSchoolAdmin = useMutation("functions/academic/adminLeadership:restoreSchoolAdmin" as never);
+  const setStaffAccountArchive = useMutation(api.functions.academic.academicSetup.setStaffAccountArchive);
   const restoreTeacher = useMutation("functions/academic/academicSetup:restoreTeacher" as never);
   const restoreSession = useMutation("functions/academic/academicSetup:restoreSession" as never);
   const restoreClass = useMutation("functions/academic/academicSetup:restoreClass" as never);
@@ -74,6 +76,8 @@ export default function ArchivedRecordsPage() {
   const [selectedRecord, setSelectedRecord] = useState<ArchivedRecordItem | null>(null);
   const [activeRecord, setActiveRecord] = useState<ArchivedRecordItem | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreError, setRestoreError] = useState("");
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -108,13 +112,15 @@ export default function ArchivedRecordsPage() {
   const normalizedSearch = deferredSearch.trim().toLowerCase();
   const hasInvalidDateRange = Boolean(dateFrom && dateTo && dateFrom > dateTo);
 
-  const handleRestoreRecord = async () => {
+  const handleRestoreRecord = () => { setRestoreError(""); setRestoreOpen(true); };
+  const executeRestoreRecord = async () => {
     if (!selectedRecord) return;
     setIsRestoring(true);
 
     try {
       switch (selectedRecord.type) {
         case "admin": await restoreSchoolAdmin({ adminId: selectedRecord.recordId as never }); break;
+        case "staff": if (!schoolId) throw new Error("Select the school first."); await setStaffAccountArchive({ schoolId, userId: selectedRecord.recordId as Id<"users">, archived: false }); break;
         case "teacher": await restoreTeacher({ teacherId: selectedRecord.recordId as never }); break;
         case "session": await restoreSession({ sessionId: selectedRecord.recordId as never }); break;
         case "class": await restoreClass({ classId: selectedRecord.recordId as never }); break;
@@ -125,9 +131,11 @@ export default function ArchivedRecordsPage() {
         default: throw new Error("Unsupported record type");
       }
       const label = selectedRecord.typeLabel;
+      setRestoreOpen(false);
       setSelectedRecord(null);
       appToast.success("Operation Successful", { description: `${label} restored successfully.` });
     } catch (err) {
+      setRestoreError(getUserFacingErrorMessage(err, "Failed to restore record"));
       appToast.error("Operation Failed", { description: getUserFacingErrorMessage(err, "Failed to restore record") });
     } finally {
       setIsRestoring(false);
@@ -165,6 +173,8 @@ export default function ArchivedRecordsPage() {
           background: rgba(15, 23, 42, 0.1);
         }
       `}</style>
+
+      <ConfirmationModal isOpen={restoreOpen} onClose={() => setRestoreOpen(false)} onConfirm={() => void executeRestoreRecord()} title={`Restore ${selectedRecord?.name ?? "record"}`} description="Restore removes the archive restriction. It does not re-enroll a student or rehire a staff member. Independent access restrictions still apply." confirmLabel="Restore record" isLoading={isRestoring}>{restoreError && <p role="alert">{restoreError}</p>}</ConfirmationModal>
 
       {/* Mobile Audit Sheet */}
       <AdminSheet

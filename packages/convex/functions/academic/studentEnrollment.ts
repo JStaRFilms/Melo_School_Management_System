@@ -23,6 +23,8 @@ import { api, internal } from "../../_generated/api";
 import type { Doc, Id, TableNames } from "../../_generated/dataModel";
 import schema from "../../schema";
 import { schemaReferenceInventory } from "../../schemaCoverage";
+import { studentEnrollmentStatus, studentTransitionAction } from "./studentLifecycleContract";
+import { assertNoOpenStudentTransfer, assertStudentParticipating, currentStudentLifecycleContext, effectiveStudentDay, recordStudentEnrollmentEvent } from "./studentLifecycle";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError } from "convex/values";
@@ -534,6 +536,7 @@ export async function createCanonicalStudentEnrollmentHelper(
     numberingSessionId?: Id<"academicSessions">;
     numberingResetPeriod?: string;
     requestedByUserId?: Id<"users">;
+    admissionDay?: string;
   },
 ) {
   const classDoc = await ctx.db.get(args.classId);
@@ -636,8 +639,135 @@ export async function createCanonicalStudentEnrollmentHelper(
   // conversion) counts the new student here. adjust is a no-op until the
   // platform backfill initializes the school's counter row.
   await adjustSchoolEnrollmentCount(ctx, args.schoolId, 1);
+  const student = await ctx.db.get(studentId);
+  if (!student) throw new ConvexError("Student creation failed");
+  await recordStudentEnrollmentEvent(ctx, student, {
+    type: "admitted", effectiveDay: args.admissionDay,
+    reason: args.sourceApplicationId ? "Accepted application converted to enrollment" : "New student admission",
+    actorUserId: args.requestedByUserId,
+  });
   return { studentId, studentUserId, admissionNumber };
 }
+
+export const transitionStudentEnrollment = mutation({
+  args: {
+    studentId: v.id("students"), action: studentTransitionAction,
+    expectedRevision: v.number(), operationKey: v.string(),
+    effectiveDay: v.optional(v.string()), reason: v.string(),
+    placement: v.optional(v.object({
+      confirmed: v.boolean(), classId: v.id("classes"), subjectIds: v.array(v.id("subjects")),
+    })),
+  },
+  returns: v.object({ eventId: v.id("studentEnrollmentEvents"), revision: v.number(), status: studentEnrollmentStatus, periodId: v.union(v.id("studentEnrollmentPeriods"), v.null()) }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
+    if (!args.operationKey.trim() || args.operationKey.length > 100 || args.operationKey.startsWith("system:")) throw new ConvexError("Invalid operation key");
+    if (!Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0) throw new ConvexError("Invalid enrollment revision");
+    const reason = args.reason.trim();
+    if (!reason || reason.length > 500) throw new ConvexError("Reason requires 1-500 characters");
+    const intentFingerprint = await enrollmentIntentFingerprint({ ...args, reason });
+    const replay = await ctx.db.query("studentEnrollmentEvents")
+      .withIndex("by_student_key", q => q.eq("studentId", student._id).eq("operationKey", args.operationKey)).unique();
+    if (replay) {
+      if (replay.intentFingerprint !== intentFingerprint) throw new ConvexError("Operation key was used for a different request");
+      return { eventId: replay._id, revision: replay.revision, status: replay.afterStatus, periodId: replay.periodId ?? null };
+    }
+    if (student.isArchived) throw new ConvexError("Restore the archived record before changing enrollment");
+    const account = await ctx.db.get(student.userId);
+    if (!account || account.schoolId !== schoolId || account.isArchived || account.role !== "student") throw new ConvexError("Student account is unavailable");
+    if ((student.enrollmentRevision ?? 0) !== args.expectedRevision) throw new ConvexError("Enrollment changed. Refresh and review again.");
+    const before = student.enrollmentStatus ?? "active";
+    const returning = args.action === "re_enrol" || args.action === "reinstate";
+    if (!((args.action === "withdraw" && (before === "active" || before === "suspended")) ||
+      (args.action === "suspend" && before === "active") ||
+      (args.action === "re_enrol" && before === "withdrawn") ||
+      (args.action === "reinstate" && before === "suspended"))) throw new ConvexError("This action is not allowed for the current enrollment state");
+    await assertNoOpenStudentTransfer(ctx, student._id);
+    const day = effectiveStudentDay(args.effectiveDay);
+    let context = await currentStudentLifecycleContext(ctx, schoolId, student.classId);
+    if (returning) {
+      if (!args.placement?.confirmed) throw new ConvexError("Review and confirm return class and subjects");
+      const classDoc = await ctx.db.get(args.placement.classId);
+      if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) throw new ConvexError("Return class is unavailable");
+      if (args.placement.subjectIds.length > 200) throw new ConvexError("Select 200 subjects or fewer");
+      context = await currentStudentLifecycleContext(ctx, schoolId, classDoc._id);
+      if (!context.sessionId) throw new ConvexError("Set up an active academic session before confirming return placement");
+      const otherEnrollments = await ctx.db.query("students")
+        .withIndex("by_school_and_user", q => q.eq("schoolId", schoolId).eq("userId", student.userId)).take(101);
+      if (otherEnrollments.length > 100 || otherEnrollments.some(row => row._id !== student._id && isCurrentEnrollment(row))) throw new ConvexError("Another active enrollment already uses this identity. Reviewed repair required.");
+      // Do not reactivate canonical memberships or permission grants here.
+      await ctx.db.patch(student._id, { classId: classDoc._id });
+    } else if (args.placement) throw new ConvexError("Placement is only accepted on return");
+    const result = await recordStudentEnrollmentEvent(ctx, student, {
+      type: args.action, afterStatus: returning ? "active" : args.action === "withdraw" ? "withdrawn" : "suspended",
+      effectiveDay: day, reason, actorUserId: userId, operationKey: args.operationKey,
+      intentFingerprint, context, subjectIds: args.placement?.subjectIds,
+    });
+    if (returning && args.placement && context.sessionId) {
+      await ctx.runMutation(api.functions.academic.studentEnrollment.setStudentSubjectSelections, {
+        studentId: student._id, classId: args.placement.classId, sessionId: context.sessionId, subjectIds: args.placement.subjectIds,
+      });
+    }
+    return result;
+  },
+});
+
+export const getStudentEnrollmentHistory = query({
+  args: { studentId: v.id("students"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
+    return ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q => q.eq("studentId", student._id))
+      .order("desc").paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(args.paginationOpts.numItems, 100)) });
+  },
+});
+
+export const getStudentEnrollmentPeriods = query({
+  args: { studentId: v.id("students"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
+    return ctx.db.query("studentEnrollmentPeriods").withIndex("by_student", q => q.eq("studentId", student._id))
+      .order("desc").paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(args.paginationOpts.numItems, 100)) });
+  },
+});
+
+export const listStudentEnrollmentDirectory = query({
+  args: { status: studentEnrollmentStatus, paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const source = ctx.db.query("students").withIndex("by_school", q => q.eq("schoolId", schoolId));
+    const page = await source.paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(args.paginationOpts.numItems, 100)) });
+    const rows = await Promise.all(page.page.filter(student => !student.isArchived && (student.enrollmentStatus ?? "active") === args.status).map(async student => {
+      const account = await ctx.db.get(student.userId);
+      return { studentId: student._id, userId: student.userId, studentName: account?.schoolId === schoolId ? account.name : "Unavailable account", admissionNumber: student.admissionNumber,
+        classId: student.classId, status: student.enrollmentStatus ?? "active", revision: student.enrollmentRevision ?? 0 };
+    }));
+    return { ...page, page: rows };
+  },
+});
+
+export const getStudentEnrollmentReturnContext = query({
+  args: { studentId: v.id("students"), classId: v.optional(v.id("classes")) },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, { capability: "enrollment.intakes.manage" });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
+    const classId = args.classId ?? student.classId;
+    const classDoc = await ctx.db.get(classId);
+    if (!classDoc || classDoc.schoolId !== schoolId || classDoc.isArchived) throw new ConvexError("Class is unavailable");
+    return { revision: student.enrollmentRevision ?? 0, status: student.enrollmentStatus ?? "active", ...await currentStudentLifecycleContext(ctx, schoolId, classId) };
+  },
+});
 
 const parentGuardianValidator = v.union(
   v.object({ kind: v.literal("none") }),
@@ -649,6 +779,7 @@ const parentGuardianValidator = v.union(
 
 export const createStudent = mutation({
   args: {
+    admissionDay: v.optional(v.string()),
     requestKey: v.optional(v.string()),
     numberingVersion: v.optional(v.number()),
     numberingFormatVersion: v.optional(v.string()),
@@ -782,6 +913,8 @@ export const createStudent = mutation({
       numberingCounterVersion: args.numberingCounterVersion,
       numberingSessionId: args.numberingSessionId,
       numberingResetPeriod: args.numberingResetPeriod,
+      requestedByUserId: userId,
+      admissionDay: args.admissionDay,
     });
     const studentId = enrollment.studentId;
     if (args.requestKey)
@@ -835,6 +968,8 @@ export const listStudentsByClass = query({
       studentName: v.string(),
       admissionNumber: v.string(),
       classId: v.id("classes"),
+      enrollmentStatus: studentEnrollmentStatus,
+      enrollmentRevision: v.number(),
       createdAt: v.number(),
     }),
   ),
@@ -858,7 +993,7 @@ export const listStudentsByClass = query({
     const results = (
       await Promise.all(
         students
-          .filter((student) => !student.isArchived)
+          .filter(isCurrentEnrollment)
           .sort((a, b) => a.admissionNumber.localeCompare(b.admissionNumber))
           .map(async (student) => {
             const studentUser = await ctx.db.get(student.userId);
@@ -871,6 +1006,8 @@ export const listStudentsByClass = query({
               studentName: studentName.displayName || "Unnamed Student",
               admissionNumber: student.admissionNumber,
               classId: student.classId,
+              enrollmentStatus: student.enrollmentStatus ?? "active",
+              enrollmentRevision: student.enrollmentRevision ?? 0,
               createdAt: student.createdAt,
             };
           }),
@@ -1032,13 +1169,17 @@ export const updateStudent = mutation({
       throw new ConvexError("Student account not found");
     }
 
+    if ((args.classId && args.classId !== student.classId) || args.confirmClassAssignment) {
+      assertStudentParticipating(student);
+      await assertNoOpenStudentTransfer(ctx, student._id);
+    }
     const assignment = await activeStudentAssignment(ctx, student);
     if (args.confirmClassAssignment && !args.classId) throw new ConvexError("Choose a class to confirm assignment");
     if (args.confirmClassAssignment && (!args.expectedClassId || args.expectedSessionId === undefined ||
         args.expectedClassId !== assignment.classId || args.expectedSessionId !== assignment.sessionId))
       throw new ConvexError("Active-session assignment changed or was not reviewed. Reload the profile and confirm again.");
     const nextClass = await ctx.db.get(args.confirmClassAssignment ? args.classId ?? assignment.classId : assignment.classId);
-    if (!nextClass || nextClass.schoolId !== schoolId || nextClass.isArchived) {
+    if (!nextClass || nextClass.schoolId !== schoolId || (nextClass.isArchived && args.confirmClassAssignment)) {
       throw new ConvexError("Selected class is not available");
     }
 
@@ -1109,6 +1250,7 @@ export const updateStudent = mutation({
       requiredMessage: "Student name is required",
     });
 
+
     const uploadedPhotoMetadata = await getValidatedPhotoMetadata(ctx, args);
     if (args.confirmClassAssignment && nextClass._id !== assignment.classId) {
       if (!args.classId) throw new ConvexError("Choose a class to confirm assignment");
@@ -1119,6 +1261,7 @@ export const updateStudent = mutation({
         schoolId, studentId: student._id, targetClassId: nextClass._id,
       });
     }
+
 
     const nextGender =
       args.gender === undefined
@@ -1184,8 +1327,19 @@ export const updateStudent = mutation({
       photoFileName: nextPhotoFileName,
       photoContentType: nextPhotoContentType,
       photoUpdatedAt: nextPhotoUpdatedAt,
+      ...(args.photoStorageId !== undefined ? {
+        photoProvenance: args.photoStorageId ? "school_upload" as const : undefined,
+        photoSourceDocumentId: undefined,
+        photoRetentionHold: undefined,
+      } : {}),
       updatedAt: Date.now(),
     });
+    if (args.confirmClassAssignment) {
+      await recordStudentEnrollmentEvent(ctx, student, {
+        type: "placement_changed", reason: "Reviewed class assignment", actorUserId: userId,
+        context: await currentStudentLifecycleContext(ctx, schoolId, nextClass._id),
+      });
+    }
     return null;
   },
 });
@@ -1245,7 +1399,8 @@ export const getStudentProfile = query({
     photoUrl: v.union(v.string(), v.null()),
     photoFileName: v.union(v.string(), v.null()),
     photoContentType: v.union(v.string(), v.null()),
-    enrollmentStatus: v.union(v.string(), v.null()),
+    enrollmentStatus: studentEnrollmentStatus,
+    enrollmentRevision: v.number(),
     graduatedAt: v.union(v.number(), v.null()),
     graduatingSessionId: v.union(v.id("academicSessions"), v.null()),
     graduatingSessionName: v.union(v.string(), v.null()),
@@ -1281,10 +1436,13 @@ export const getStudentProfile = query({
           : null,
       ]);
 
+    // A completed transfer archives the source login, not its local history.
+    // This read exception does not change mutation or current-participation guards.
     if (
       !studentUser ||
       studentUser.schoolId !== schoolId ||
-      studentUser.isArchived
+      studentUser.role !== "student" ||
+      (studentUser.isArchived && student.enrollmentStatus !== "transferred_out")
     ) {
       throw new ConvexError("Student account not found");
     }
@@ -1322,6 +1480,7 @@ export const getStudentProfile = query({
       photoFileName: student.photoFileName ?? null,
       photoContentType: student.photoContentType ?? null,
       enrollmentStatus: student.enrollmentStatus ?? "active",
+      enrollmentRevision: student.enrollmentRevision ?? 0,
       graduatedAt: student.graduatedAt ?? null,
       graduatingSessionId: student.graduatingSessionId ?? null,
       graduatingSessionName: gradSessionDoc
@@ -1536,7 +1695,7 @@ export const saveStudentPhoto = action({
 });
 
 async function archiveStudentRecord(
-  ctx: any,
+  ctx: MutationCtx,
   args: {
     studentId: Id<"students">;
     actingUserId: Id<"users">;
@@ -1566,9 +1725,9 @@ async function archiveStudentRecord(
     archivedBy: args.actingUserId,
     updatedAt: now,
   });
-  if (isCurrentEnrollment(student)) {
-    await adjustSchoolEnrollmentCount(ctx, args.schoolId, -1);
-  }
+  await recordStudentEnrollmentEvent(ctx, student, {
+    type: "archive", reason: "Student record archived", actorUserId: args.actingUserId, isArchived: true,
+  });
   await ctx.db.patch(student.userId, {
     isArchived: true,
     archivedAt: now,
@@ -1663,9 +1822,9 @@ export const restoreStudent = mutation({
       isArchived: false,
       updatedAt: now,
     });
-    if ((student.enrollmentStatus ?? "active") === "active") {
-      await adjustSchoolEnrollmentCount(ctx, schoolId, 1);
-    }
+    await recordStudentEnrollmentEvent(ctx, student, {
+      type: "restore", reason: "Student record restored without changing enrollment state", actorUserId: userId, isArchived: false,
+    });
     await ctx.db.patch(student.userId, {
       isArchived: false,
       updatedAt: now,
@@ -1741,18 +1900,9 @@ export const reconcileArchivedStudents = mutation({
             archivedBy: (studentUser.archivedBy as Id<"users">) ?? userId,
             updatedAt: now,
           });
-          if (isCurrentEnrollment(student)) {
-            await adjustSchoolEnrollmentCount(ctx, schoolId, -1);
-          }
-
-          // Clean up any pending staged outgoing promotions
-          const pendingPromotions = await ctx.db
-            .query("studentPromotions")
-            .withIndex("by_student", (q) => q.eq("studentId", student._id))
-            .collect();
-          for (const promo of pendingPromotions) {
-            await ctx.db.delete(promo._id);
-          }
+          await recordStudentEnrollmentEvent(ctx, student, {
+            type: "archive", reason: "Reconciled archived account to student record", actorUserId: userId, isArchived: true,
+          });
         }
       }
       // Case 2: Student document is archived, but user account is NOT archived
@@ -1921,6 +2071,10 @@ export const promoteStudents = mutation({
         throw new ConvexError("One selected student account is not available");
       }
 
+      assertStudentParticipating(student);
+      await assertNoOpenStudentTransfer(ctx, student._id);
+      if (!await isStudentEnrolledInClassForSession(ctx, { student, schoolId, classId: args.fromClassId, sessionId: args.fromSessionId, currentOperation: true })) throw new ConvexError("Student is not in the source promotion placement");
+
       // Check existing promotion for this student and fromSession
       const existingPromo = await ctx.db
         .query("studentPromotions")
@@ -1989,7 +2143,11 @@ export const promoteStudents = mutation({
         ...new Set(subjectIdsToEnroll.map((subjectId) => String(subjectId))),
       ] as Array<Id<"subjects">>;
 
-      await ctx.db.patch(studentId, { updatedAt: now });
+      const promotionEvidence = await recordStudentEnrollmentEvent(ctx, student, {
+        type: "promote", reason: `Promotion staged to ${toClass.name} in ${toSession.name}`, actorUserId: userId,
+        promotion: { promotionFromClassId: fromClass._id, promotionFromSessionId: fromSession._id, promotionToClassId: toClass._id, promotionToSessionId: toSession._id },
+        context: { classId: toClass._id, className: toClass.name, sessionId: toSession._id, sessionName: toSession.name },
+      });
 
       let insertedForStudent = 0;
       for (const subjectId of uniqueSubjectIdsToEnroll) {
@@ -2011,6 +2169,7 @@ export const promoteStudents = mutation({
 
       if (existingPromo) {
         await ctx.db.patch(existingPromo._id, {
+          enrollmentRevision: promotionEvidence.revision,
           fromClassId: args.fromClassId,
           toClassId: args.toClassId,
           fromSessionId: args.fromSessionId,
@@ -2023,6 +2182,7 @@ export const promoteStudents = mutation({
         });
       } else {
         await ctx.db.insert("studentPromotions", {
+          enrollmentRevision: promotionEvidence.revision,
           schoolId,
           studentId,
           fromClassId: args.fromClassId,
@@ -2060,6 +2220,10 @@ export const cancelStudentPromotion = mutation({
     );
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId) throw new ConvexError("Student not found");
+    assertStudentParticipating(student);
+    await assertNoOpenStudentTransfer(ctx, student._id);
     const promotion = await ctx.db
       .query("studentPromotions")
       .withIndex("by_student_and_from_session", (q) =>
@@ -2071,6 +2235,10 @@ export const cancelStudentPromotion = mutation({
 
     if (!promotion || promotion.schoolId !== schoolId) {
       throw new ConvexError("Promotion record not found for this session");
+    }
+
+    if ((promotion.enrollmentRevision ?? 0) !== (student.enrollmentRevision ?? 0)) {
+      throw new ConvexError("Enrollment changed after this promotion. Review placement instead of cancelling stale evidence.");
     }
 
     // Remove staged subject selections for target class & target session
@@ -2089,7 +2257,10 @@ export const cancelStudentPromotion = mutation({
     }
 
     await ctx.db.delete(promotion._id);
-    await ctx.db.patch(args.studentId, { updatedAt: Date.now() });
+    await recordStudentEnrollmentEvent(ctx, student, {
+      type: "promotion_cancelled", reason: "Staged promotion cancelled", actorUserId: userId,
+      promotion: { promotionFromClassId: promotion.fromClassId, promotionFromSessionId: promotion.fromSessionId, promotionToClassId: promotion.toClassId, promotionToSessionId: promotion.toSessionId },
+    });
 
     return { cancelled: true };
   },
@@ -2141,8 +2312,10 @@ export const graduateStudents = mutation({
     }
 
     const now = Date.now();
-    const effectiveGraduationDate =
-      args.graduationDate ?? sessionDoc.endDate ?? now;
+    if (args.graduationDate !== undefined && !Number.isFinite(args.graduationDate)) throw new ConvexError("Invalid graduation date");
+    const graduationDay = effectiveStudentDay(args.graduationDate === undefined ? undefined : new Date(args.graduationDate).toISOString().slice(0, 10), now);
+    const effectiveGraduationDate = args.graduationDate ?? Date.parse(graduationDay);
+    const graduationIntent = await enrollmentIntentFingerprint({ ...args, studentIds: undefined });
     let graduatedCount = 0;
 
     for (const studentId of uniqueStudentIds) {
@@ -2151,6 +2324,13 @@ export const graduateStudents = mutation({
         throw new ConvexError("One selected student is not available");
       }
 
+      const graduationKey = `graduation:${args.sessionId}:${graduationIntent}`;
+      const replay = await ctx.db.query("studentEnrollmentEvents")
+        .withIndex("by_student_key", q => q.eq("studentId", studentId).eq("operationKey", graduationKey)).unique();
+      if (replay) { graduatedCount += 1; continue; }
+      await assertNoOpenStudentTransfer(ctx, studentId);
+      const account = await ctx.db.get(student.userId);
+      if (!account || account.schoolId !== schoolId || account.isArchived) throw new ConvexError("Student account is unavailable");
       const existingGrad = await ctx.db
         .query("studentGraduations")
         .withIndex("by_student_and_session", (q) =>
@@ -2159,7 +2339,22 @@ export const graduateStudents = mutation({
         .first();
 
       if (existingGrad) {
+        if (student.enrollmentStatus !== "graduated" || student.graduatingSessionId !== args.sessionId) throw new ConvexError("Graduation state changed. Stale graduation details cannot change enrollment.");
+      } else {
+        assertStudentParticipating(student);
+        if (!await isStudentEnrolledInClassForSession(ctx, { student, schoolId, classId: args.classId, sessionId: args.sessionId })) throw new ConvexError("Student is not enrolled in the graduating class/session");
+      }
+      const evidence = await recordStudentEnrollmentEvent(ctx, student, {
+        type: existingGrad ? "graduation_details_corrected" : "graduate", afterStatus: "graduated",
+        effectiveDay: existingGrad ? undefined : graduationDay,
+        reason: existingGrad ? `Graduation details corrected for ${graduationDay}${args.honorsOrRemarks?.trim() ? `: ${args.honorsOrRemarks.trim()}` : ""}` : args.honorsOrRemarks?.trim() || "Student graduated",
+        actorUserId: userId, operationKey: graduationKey,
+        graduation: { graduationDate: effectiveGraduationDate, certificateNumber: args.certificateNumber?.trim() || undefined, honorsOrRemarks: args.honorsOrRemarks?.trim() || undefined },
+        context: { classId: classDoc._id, className: classDoc.name, sessionId: sessionDoc._id, sessionName: sessionDoc.name },
+      });
+      if (existingGrad) {
         await ctx.db.patch(existingGrad._id, {
+          enrollmentRevision: evidence.revision,
           classId: args.classId,
           graduationDate: effectiveGraduationDate,
           certificateNumber: args.certificateNumber?.trim() || undefined,
@@ -2167,6 +2362,7 @@ export const graduateStudents = mutation({
         });
       } else {
         await ctx.db.insert("studentGraduations", {
+          enrollmentRevision: evidence.revision,
           schoolId,
           studentId,
           classId: args.classId,
@@ -2186,11 +2382,7 @@ export const graduateStudents = mutation({
         graduatingClassId: args.classId,
         updatedAt: now,
       });
-      if (isCurrentEnrollment(student)) {
-        await adjustSchoolEnrollmentCount(ctx, schoolId, -1);
-      }
-
-      // Purge any pending outgoing promotions or staged future selections
+      // Purge only pending outgoing promotions or staged future selections
       const pendingPromotions = await ctx.db
         .query("studentPromotions")
         .withIndex("by_student_and_from_session", (q) =>
@@ -2240,17 +2432,20 @@ export const cancelStudentGraduation = mutation({
       throw new ConvexError("Student not found");
     }
 
-    const graduations = await ctx.db
-      .query("studentGraduations")
-      .withIndex("by_student_and_session", (q) =>
-        q.eq("studentId", args.studentId).eq("sessionId", args.sessionId),
-      )
-      .collect();
-
-    for (const grad of graduations) {
-      await ctx.db.delete(grad._id);
+    if (student.enrollmentStatus !== "graduated" || student.graduatingSessionId !== args.sessionId) {
+      throw new ConvexError("Only the student's current matching graduation can be corrected");
     }
-
+    await assertNoOpenStudentTransfer(ctx, student._id);
+    const graduation = await ctx.db.query("studentGraduations")
+      .withIndex("by_student_and_session", q => q.eq("studentId", student._id).eq("sessionId", args.sessionId)).unique();
+    if (!graduation) {
+      throw new ConvexError("Graduation evidence is missing or stale. Reviewed repair required.");
+    }
+    await recordStudentEnrollmentEvent(ctx, student, {
+      type: "graduation_corrected", afterStatus: "active", reason: "Explicit current graduation correction", actorUserId: userId,
+      graduation: { graduationDate: graduation.graduationDate, certificateNumber: graduation.certificateNumber, honorsOrRemarks: graduation.honorsOrRemarks },
+    });
+    await ctx.db.delete(graduation._id);
     await ctx.db.patch(args.studentId, {
       enrollmentStatus: "active",
       graduatedAt: undefined,
@@ -2258,10 +2453,6 @@ export const cancelStudentGraduation = mutation({
       graduatingClassId: undefined,
       updatedAt: Date.now(),
     });
-    if (!isCurrentEnrollment(student)) {
-      await adjustSchoolEnrollmentCount(ctx, schoolId, 1);
-    }
-
     return { cancelled: true };
   },
 });
@@ -2303,12 +2494,13 @@ export const setStudentSubjectSelections = mutation({
     // Verify school boundary
     const student = await ctx.db.get(args.studentId);
     assertBranchDoc(student, schoolId, { excludeArchived: true });
+    assertStudentParticipating(student);
     const classDoc = await ctx.db.get(args.classId);
     assertBranchDoc(classDoc, schoolId, { excludeArchived: true });
 
     const session = await ctx.db.get(args.sessionId);
     assertBranchDoc(session, schoolId, { excludeArchived: true });
-    if (!(await isStudentEnrolledInClassForSession(ctx, { student, schoolId, classId: args.classId, sessionId: args.sessionId }))) {
+    if (!(await isStudentEnrolledInClassForSession(ctx, { student, schoolId, classId: args.classId, sessionId: args.sessionId, currentOperation: session.isActive }))) {
       throw new ConvexError("Student is not enrolled in this class");
     }
 
@@ -2527,6 +2719,8 @@ export const getClassStudentSubjectMatrix = query({
         studentName: v.string(),
         admissionNumber: v.string(),
         photoUrl: v.union(v.string(), v.null()),
+        enrollmentStatus: studentEnrollmentStatus,
+        enrollmentRevision: v.number(),
         selectedSubjectIds: v.array(v.id("subjects")),
         promotionStatus: v.union(
           v.object({
@@ -2619,24 +2813,14 @@ export const getClassStudentSubjectMatrix = query({
         )
         .collect();
       for (const student of baselineStudents) {
-        if (!student.isArchived) {
-          // If student is graduated in a prior session, exclude them from subsequent sessions
-          if (
-            student.enrollmentStatus === "graduated" &&
-            student.graduatingSessionId
-          ) {
-            const gradSession = await ctx.db.get(student.graduatingSessionId);
-            if (gradSession && sessionDoc.startDate > gradSession.startDate) {
-              continue;
-            }
-          }
-
+        if (isCurrentEnrollment(student)) {
           if (
             !(await isStudentEnrolledInClassForSession(ctx, {
               student,
               schoolId,
               classId: args.classId,
               sessionId: args.sessionId,
+              currentOperation: sessionDoc.isActive,
             }))
           ) {
             continue;
@@ -2671,6 +2855,7 @@ export const getClassStudentSubjectMatrix = query({
           schoolId,
           classId: args.classId,
           sessionId: args.sessionId,
+          currentOperation: sessionDoc.isActive,
         }))
       ) {
         studentIdSet.add(String(promo.studentId));
@@ -2755,7 +2940,7 @@ export const getClassStudentSubjectMatrix = query({
         Array.from(studentIdSet).map((id) => ctx.db.get(id as Id<"students">)),
       )
     ).filter((student): student is NonNullable<typeof student> =>
-      Boolean(student && student.schoolId === schoolId && !student.isArchived),
+      Boolean(student && student.schoolId === schoolId && !student.isArchived && (!sessionDoc.isActive || isCurrentEnrollment(student))),
     );
 
     // Build selection map
@@ -2841,6 +3026,8 @@ export const getClassStudentSubjectMatrix = query({
           studentName: studentName.displayName || "Unnamed Student",
           admissionNumber: student.admissionNumber,
           photoUrl,
+          enrollmentStatus: student.enrollmentStatus ?? "active",
+          enrollmentRevision: student.enrollmentRevision ?? 0,
           selectedSubjectIds: Array.from(effectiveSubjectIds)
             .filter((id) => visibleSubjectIds.has(id))
             .map((id) => id as any),

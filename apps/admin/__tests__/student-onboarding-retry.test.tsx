@@ -24,6 +24,7 @@ vi.mock("@/usePersistentFormDraft", () => ({ usePersistentFormDraft: (options: {
     resumeMemoryDraft: vi.fn(), discardMemoryDraft: vi.fn() };
 } }));
 vi.mock("convex/react", () => ({
+  usePaginatedQuery: () => ({ results: [], status: "Exhausted", loadMore: vi.fn() }),
   useQuery: (reference: FunctionReference<"query"> | string, args: unknown) => {
     if (args === "skip") return undefined;
     const name = typeof reference === "string" ? reference : getFunctionName(reference);

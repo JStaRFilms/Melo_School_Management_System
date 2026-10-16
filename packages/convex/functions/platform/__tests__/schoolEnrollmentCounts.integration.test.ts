@@ -56,6 +56,9 @@ describe("platform school enrollment visibility", () => {
         {},
         { enrollmentStatus: "active" as const },
         { enrollmentStatus: "graduated" as const },
+        { enrollmentStatus: "withdrawn" as const },
+        { enrollmentStatus: "suspended" as const },
+        { enrollmentStatus: "transferred_out" as const },
         { isArchived: true },
       ].entries()) {
         const userId = await ctx.db.insert("users", {
@@ -64,6 +67,7 @@ describe("platform school enrollment visibility", () => {
           name: `Student ${index}`,
           email: `student-${index}@school.test`,
           role: "student",
+          isArchived: index === 0,
           createdAt: now,
           updatedAt: now,
         });
@@ -101,6 +105,24 @@ describe("platform school enrollment visibility", () => {
       .withIdentity(platformIdentity)
       .query(api.functions.platform.index.listSchools, {});
     expect(after[0].currentStudentCount).toBe(2);
+  });
+
+  it("denies inactive Platform identities and rejects overflow without publishing a partial count", async () => {
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async ctx => {
+      const platformId = await ctx.db.insert("platformAdmins", { authId: platformIdentity.subject, authTokenIdentifier: platformIdentity.tokenIdentifier, email: "owner@platform.test", name: "Platform Owner", isActive: false, createdAt: 1, updatedAt: 1 });
+      const schoolId = await ctx.db.insert("schools", { name: "Overflow", slug: "overflow-count", status: "active", createdAt: 1, updatedAt: 1 });
+      const classId = await ctx.db.insert("classes", { schoolId, name: "Primary", level: "Primary", createdAt: 1, updatedAt: 1 });
+      const userId = await ctx.db.insert("users", { schoolId, authId: "overflow-student", name: "Student", email: "student@overflow.test", role: "student", createdAt: 1, updatedAt: 1 });
+      const countId = await ctx.db.insert("schoolEnrollmentCounts", { schoolId, currentStudentCount: 7, updatedAt: 1 });
+      for (let index = 0; index <= 10_000; index++) await ctx.db.insert("students", { schoolId, classId, userId, admissionNumber: `OVER-${index}`, createdAt: 1, updatedAt: 1 });
+      return { platformId, schoolId, countId };
+    });
+    const actor = t.withIdentity(platformIdentity);
+    await expect(actor.mutation(api.functions.platform.index.recalculateSchoolEnrollmentCount, { schoolId: ids.schoolId })).rejects.toThrow();
+    await t.run(ctx => ctx.db.patch(ids.platformId, { isActive: true }));
+    await expect(actor.mutation(api.functions.platform.index.recalculateSchoolEnrollmentCount, { schoolId: ids.schoolId })).rejects.toThrow("recalculation limit");
+    expect(await t.run(ctx => ctx.db.get(ids.countId))).toMatchObject({ currentStudentCount: 7, updatedAt: 1 });
   });
 
   it("initializes newly provisioned schools at zero", async () => {

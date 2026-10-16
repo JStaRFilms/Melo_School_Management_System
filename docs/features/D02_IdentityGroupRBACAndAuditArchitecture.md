@@ -15,6 +15,18 @@
 - **Authors**: Security Architect & Data Systems Modeler
 - **Dependencies**: `docs/features/D01_ComplianceControlDossier.md` (Data Classifications & Statutory Controls)
 
+### Lifecycle access integration, 2026-10-11
+
+The student/staff lifecycle worktree implements the following behavior. This does not mark the rest of this target architecture complete.
+
+- Student lifecycle controls use `enrollment.intakes.manage` and the existing school Admin boundary. Inactive discovery, profiles and paginated history remain available. Suspension and withdrawal close participation, not the Portal identity. Released reports and issued bills remain accessible; current learning, scoring and routine fee issuance do not.
+- Teachers, administrators and generic staff use `staff.list.view` for service discovery/history. Departure requires `staff.account.suspend`; rehire requires `staff.onboard` and the existing permission-management authority. The UI uses the service profile's capability flags and named blockers, not display titles.
+- Rehire previews previous and proposed configuration on the departed target. Retention or replacement requires an explicit acknowledgment and a server-recorded review event. The same operator submits rehire using that event and revision. The active-only permission selector is not a rehire bypass.
+- Departure owns only its recorded school membership suspension. Other-school access, independent revocations, global person suspension and archive restrictions remain separate. Account Restore never rehires or re-enrolls a person.
+- Unchanged uncertain retries retain their key, original revision and payload. UI subscriptions supply current status; an old replay result never overwrites the current projection.
+
+Entry points are `/academic/students`, `/academic/teachers`, `/admin` and `/academic/archived-records`. Details and local checks are in [student lifecycle](StudentLifecycleAndEnrollmentHistory.md) and [staff service](StaffServiceHistory.md). Local component tests do not establish browser acceptance. Runtime verification remains deferred until the required role, origin and backend source proofs are available.
+
 ---
 
 ### 1.2 Architectural Problem Statement

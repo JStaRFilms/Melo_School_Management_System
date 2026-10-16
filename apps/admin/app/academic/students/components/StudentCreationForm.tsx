@@ -10,6 +10,7 @@ import {
   type AdmissionCounterDecision,
 } from "./AdmissionNumberGovernanceFields";
 import { StudentCreationOptionalFields } from "./StudentCreationOptionalFields";
+import { JoiningDayField } from "@/components/lifecycle/JoiningDayField";
 import { StudentPhotoPanel } from "./StudentPhotoPanel";
 import type { ClassSummary } from "./types";
 import { AdmissionContactFields } from "./AdmissionContactFields";
@@ -17,6 +18,8 @@ import type { AdmissionContact } from "./admissionContact";
 
 interface StudentCreationFormProps {
   selectedClassName: string;
+  admissionDay?: string;
+  onAdmissionDayChange?: (day: string) => void;
   studentFirstName: string;
   studentMiddleName: string;
   onStudentMiddleNameChange: (value: string) => void;
@@ -78,6 +81,8 @@ interface StudentCreationFormProps {
 
 export function StudentCreationForm({
   selectedClassName,
+  admissionDay = "",
+  onAdmissionDayChange,
   studentFirstName,
   studentMiddleName,
   onStudentMiddleNameChange,
@@ -180,6 +185,7 @@ export function StudentCreationForm({
       ]} />
       <form onSubmit={(event) => void onSubmit(event)} className="space-y-5">
         <fieldset disabled={locked || isSubmitting} className="space-y-5">
+        {onAdmissionDayChange && <JoiningDayField label="Admission day" value={admissionDay} onChange={onAdmissionDayChange} disabled={isSubmitting} />}
         {classes && onClassIdChange && (
           <div className="animate-in fade-in slide-in-from-top-1">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">

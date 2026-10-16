@@ -331,6 +331,9 @@ it("records admin credential operations but queues only canonical linked account
     schoolId: f.schoolId, adminName: "New Admin", adminEmail: "newadmin@example.test", adminAuthId: "new-admin-auth",
     credentialOperationId: "admin-ready", managerUserId: f.adminId, makeLead: false, createdBy: f.adminId,
   });
+  expect(await f.staff.query(notices.getAccountNoticeState, { userId: unlinked.adminUserId })).toMatchObject({ operationId: "admin-ready", linked: true, notice: null });
+  // New admins are canonical. A separately broken linkage must still block delivery.
+  await f.t.run(ctx => ctx.db.patch(unlinked.adminUserId, { authTokenIdentifier: undefined }));
   const state = await f.staff.query(notices.getAccountNoticeState, { userId: unlinked.adminUserId });
   expect(state).toMatchObject({ operationId: "admin-ready", linked: false, notice: null });
   await expect(f.staff.mutation(workers.enqueueAccountNoticeInternal, { userId: unlinked.adminUserId, operationId: "admin-ready" })).rejects.toThrow("Committed linked-account");

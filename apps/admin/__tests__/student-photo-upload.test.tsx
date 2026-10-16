@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
     admissionNumber: "ADM-100",
     classId: "class-1",
     className: "Grade 1",
+    enrollmentStatus: "active",
+    enrollmentRevision: 0,
     houseName: "Blue",
     gender: "Male",
     dateOfBirth: Date.UTC(2015, 4, 15),
@@ -44,15 +46,17 @@ vi.mock("@/AuthProvider", () => ({
 }));
 
 vi.mock("convex/react", () => ({
-  useQuery: (reference: unknown) => {
-    if (typeof reference === "string" && reference.endsWith(":getStudentProfile")) {
+  useQuery: (reference: string | FunctionReference<"query">) => {
+    const name = typeof reference === "string" ? reference : getFunctionName(reference);
+    if (name.endsWith(":getStudentProfile")) {
       return mocks.getStudentProfile;
     }
     return undefined;
   },
-  useMutation: (reference: string) => {
-    if (reference.endsWith(":updateStudent")) return mocks.updateStudent;
-    if (reference.endsWith(":archiveStudent")) return mocks.archiveStudent;
+  useMutation: (reference: string | FunctionReference<"mutation">) => {
+    const name = typeof reference === "string" ? reference : getFunctionName(reference);
+    if (name.endsWith(":updateStudent")) return mocks.updateStudent;
+    if (name.endsWith(":archiveStudent")) return mocks.archiveStudent;
     return vi.fn();
   },
   useAction: (reference: string | FunctionReference<"action">) => {

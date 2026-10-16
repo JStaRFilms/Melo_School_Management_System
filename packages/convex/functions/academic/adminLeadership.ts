@@ -1,4 +1,5 @@
 import { api, internal } from "../../_generated/api";
+import { assertStaffActive, recordStaffServiceEvent, effectiveStaffDay } from "./staffService";
 import type { Id } from "../../_generated/dataModel";
 import { action, mutation, query, type MutationCtx } from "../../_generated/server";
 import { ConvexError, v } from "convex/values";
@@ -63,6 +64,8 @@ export const listSchoolAdmins = query({
         name: v.string(),
         email: v.string(),
         isArchived: v.boolean(),
+        employmentStatus: v.union(v.literal("active"), v.literal("departed")),
+        serviceRevision: v.number(),
         isLeadAdmin: v.boolean(),
         managerUserId: v.union(v.id("users"), v.null()),
         managerName: v.union(v.string(), v.null()),
@@ -100,6 +103,8 @@ export const listSchoolAdmins = query({
         name: getReadableUserName(admin).displayName,
         email: admin.email,
         isArchived: Boolean(admin.isArchived),
+        employmentStatus: admin.employmentStatus ?? "active",
+        serviceRevision: admin.serviceRevision ?? 0,
         isLeadAdmin:
           String(leadership?.leadAdminUserId ?? resolvedLeadAdminUserId ?? "") ===
           String(admin._id),
@@ -173,6 +178,7 @@ export const createSchoolAdmin = action({
     email: v.string(),
     temporaryPassword: v.string(),
     origin: v.string(),
+    joiningDay: v.optional(v.string()),
   },
   returns: v.object({
     adminId: v.id("users"),
@@ -192,6 +198,7 @@ export const createSchoolAdmin = action({
       {},
     );
 
+    effectiveStaffDay(args.joiningDay);
     const nameFields = resolveStoredUserNameFields(args);
     const normalizedName = nameFields.name;
     const normalizedEmail = args.email.trim().toLowerCase();
@@ -213,6 +220,10 @@ export const createSchoolAdmin = action({
     );
 
     if (existingTeacher) {
+      if (existingTeacher.employmentStatus === "departed")
+        throw new ConvexError("Staff member has departed. Use reviewed rehire on the existing identity.");
+      if (existingTeacher.isArchived) throw new ConvexError("Restore the archived account separately");
+      if (existingTeacher.role !== "teacher") throw new ConvexError("A user with this email already exists. Edit the existing account.");
       const teacher = await ctx.runQuery(
         (internal as any).functions.academic.academicSetup.getTeacherRecordInternal,
         {
@@ -277,6 +288,7 @@ export const createSchoolAdmin = action({
         managerUserId: viewer.appUserId,
         makeLead: false,
         createdBy: viewer.appUserId,
+        joiningDay: args.joiningDay,
       }
     );
 
@@ -311,6 +323,7 @@ export const promoteTeacherToAdmin = mutation({
       throw new ConvexError("Teacher not found");
     }
 
+    assertStaffActive(target);
     if (target.isArchived) {
       throw new ConvexError("Archived teachers cannot be promoted");
     }
@@ -358,6 +371,7 @@ export const promoteSchoolAdmin = mutation({
       throw new ConvexError("Admin not found");
     }
 
+    assertStaffActive(target);
     if (target.isArchived) {
       throw new ConvexError("Archived admins cannot be promoted");
     }
@@ -409,6 +423,8 @@ export const demoteAdminToTeacher = mutation({
       throw new ConvexError("Admin not found");
     }
 
+    assertStaffActive(target);
+    if (target.isArchived) throw new ConvexError("Restore the archived account separately");
     if (String(target._id) === String(userId)) {
       throw new ConvexError("You cannot downgrade your own administrator account.");
     }
@@ -464,9 +480,6 @@ export const demoteAdminToTeacher = mutation({
       role: "teacher",
       isSchoolAdmin: false,
       managerUserId: undefined,
-      isArchived: false,
-      archivedAt: undefined,
-      archivedBy: undefined,
       updatedAt: now,
     });
     await ctx.db.insert("adminLeadershipAuditEvents", {
@@ -520,6 +533,7 @@ export const archiveSchoolAdmin = mutation({
     }
     await assertTargetIsNotProprietor(ctx, schoolId, target._id);
 
+    await recordStaffServiceEvent(ctx, target, { type: "archive", reason: "Account archived", actorUserId: userId });
     await ctx.db.patch(target._id, {
       isArchived: true,
       archivedAt: Date.now(),
@@ -572,6 +586,7 @@ export const transferSchoolAdminLeadership = mutation({
       throw new ConvexError("Admin not found");
     }
 
+    assertStaffActive(target);
     if (target.isArchived) {
       throw new ConvexError("Archived admins cannot receive leadership");
     }
@@ -639,6 +654,7 @@ export const restoreSchoolAdmin = mutation({
       throw new ConvexError("An active administrator with this email already exists");
     }
 
+    await recordStaffServiceEvent(ctx, target, { type: "restore", reason: "Account restored; service status unchanged", actorUserId: userId });
     await ctx.db.patch(target._id, {
       isArchived: false,
       archivedAt: undefined,

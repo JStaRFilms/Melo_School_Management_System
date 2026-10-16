@@ -40,6 +40,7 @@ export const upsertAssessmentRecordsBulkSchema = z.object({
 
 // Get Exam Entry Sheet
 export const getExamEntrySheetSchema = z.object({
+  refreshKey: z.number().optional(),
   sessionId: z.string(),
   termId: z.string(),
   classId: z.string(),

@@ -23,7 +23,7 @@ it("provisions teacher names with exact structured parts", async () => {
   fill();
   fireEvent.change(screen.getByPlaceholderText("teacher@school.edu"), { target: { value: "teacher@example.test" } });
   fireEvent.click(screen.getByRole("button", { name: "Create Teacher Account" }));
-  await waitFor(() => expect(provision).toHaveBeenCalledWith("Mary Jane De La Cruz", "teacher@example.test", "Teacher123!Pass", undefined, { firstName: "Mary", middleName: "Jane", lastName: "De La Cruz" }));
+  await waitFor(() => expect(provision).toHaveBeenCalledWith("Mary Jane De La Cruz", "teacher@example.test", "Teacher123!Pass", undefined, { firstName: "Mary", middleName: "Jane", lastName: "De La Cruz" }, undefined));
 });
 
 it("preserves a teacher's explicit middle and compound surname during a first-name edit", async () => {

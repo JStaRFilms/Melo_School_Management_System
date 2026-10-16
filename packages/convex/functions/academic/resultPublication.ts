@@ -168,7 +168,7 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
       ownSelections.some(s => s.schoolId !== tuple.schoolId) || termReports.some(r => r.schoolId !== tuple.schoolId)) reason = "Conflicting within-term class history";
     else if (!promotionProof && !currentProof) reason = "Historical enrollment needs review";
     else if (!termProof || !enrollmentProof) reason = "Missing term or subject enrollment evidence";
-    else if (student.isArchived || student.enrollmentStatus === "withdrawn" ||
+    else if (student.isArchived || student.enrollmentStatus === "withdrawn" || student.enrollmentStatus === "suspended" ||
       student.enrollmentStatus === "transferred_out" || student.enrollmentStatus === "graduated") reason = "Enrollment status needs review";
     const matching = termReports.filter(r => r.classId === tuple.classId);
     if (!reason && matching.length !== 1) reason = matching.length ? "Conflicting report records" : "Report not certified";

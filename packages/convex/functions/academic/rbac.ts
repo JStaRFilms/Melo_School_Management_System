@@ -9,6 +9,8 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import { resolveActiveMembership, type ActiveMembershipContext } from "./auth";
 import { recordAuditEventHelper } from "./audit";
 import { resolveEffectiveGroupSetting } from "./groupDefaultsResolver";
+import type { Infer } from "convex/values";
+import { staffPermissionDecision } from "./staffServiceContract";
 
 /**
  * Closed, typed canonical catalog of permissions across 8 domains (D-02 §3.3).
@@ -330,9 +332,15 @@ export async function evaluateEffectiveCapabilities(
   ctx: Context,
   membershipId: Id<"branchMemberships">,
   candidate: Candidate = {},
+  lifecycleReview = false,
 ): Promise<string[]> {
   const membership = await ctx.db.get(membershipId);
-  if (!membership || membership.status !== "active") return [];
+  if (!membership) return [];
+  const user = membership.legacyUserId ? await ctx.db.get(membership.legacyUserId) : null;
+  const reviewingDeparture = lifecycleReview && membership.status === "suspended" &&
+    Boolean(membership.lifecycleSuspendedByEventId) && user?.employmentStatus === "departed";
+  if ((membership.status !== "active" || user?.employmentStatus === "departed") && !reviewingDeparture) return [];
+  if (user?.isArchived) return [];
   const [person, school] = await Promise.all([
     ctx.db.get(membership.personId),
     ctx.db.get(membership.schoolId),
@@ -409,7 +417,7 @@ export async function getContextCapabilities(
   if (context.membershipId)
     return evaluateEffectiveCapabilities(ctx, context.membershipId);
   const legacy = context.userId ? await ctx.db.get(context.userId) : null;
-  if (legacy && (legacy.role === "admin" || legacy.isSchoolAdmin === true))
+  if (legacy && !legacy.isArchived && legacy.employmentStatus !== "departed" && (legacy.role === "admin" || legacy.isSchoolAdmin === true))
     return [...CAPABILITY_CATALOG];
   return [];
 }
@@ -496,10 +504,15 @@ async function editableTarget(
   ctx: Context,
   schoolId: Id<"schools">,
   id: Id<"branchMemberships">,
+  lifecycleReview = false,
 ) {
   const auth = await managementAuthority(ctx, schoolId);
   const target = await ctx.db.get(id);
-  if (!target || target.schoolId !== schoolId || target.status !== "active")
+  const targetUser = target?.legacyUserId ? await ctx.db.get(target.legacyUserId) : null;
+  const reviewingDeparture = lifecycleReview && target?.status === "suspended" &&
+    Boolean(target.lifecycleSuspendedByEventId) && targetUser?.employmentStatus === "departed" && !targetUser.isArchived;
+  if (!target || target.schoolId !== schoolId ||
+      ((target.status !== "active" || targetUser?.employmentStatus === "departed") && !reviewingDeparture))
     throw new ConvexError("Target membership not found in this branch");
   if (auth.membershipId === id || auth.personId === target.personId)
     throw new ConvexError(
@@ -527,7 +540,7 @@ async function editableTarget(
   if (platform.length)
     throw new ConvexError("Forbidden: Platform identity is protected");
   const caps = canonicalCapabilities(
-    await evaluateEffectiveCapabilities(ctx, id),
+    await evaluateEffectiveCapabilities(ctx, id, {}, lifecycleReview),
   );
   if (!auth.owner) {
     if (!auth.ceiling)
@@ -730,8 +743,93 @@ export const getMemberPermissionConfiguration = query({
   },
 });
 
-export const saveMemberPermissions = mutation({
-  args: {
+export async function reviewStaffPermissions(
+  ctx: Context, user: Doc<"users">, membership: Doc<"branchMemberships"> | null,
+  decision?: Infer<typeof staffPermissionDecision>,
+) {
+  const auth = await managementAuthority(ctx, user.schoolId);
+  if (auth.userId === user._id || (auth.personId && auth.personId === user.personId))
+    throw new ConvexError("You cannot review your own returning access");
+  const compatibilityRows = await ctx.db.query("schoolCapabilityGrants").withIndex("by_school_and_user", q => q.eq("schoolId", user.schoolId).eq("userId", user._id)).take(101);
+  if (compatibilityRows.length > 100) throw new ConvexError("Compatibility permission history requires bounded review");
+  const compatibilityGrants = compatibilityRows.map(row => ({
+    grantId: row._id, capability: row.capability, scope: row.scope,
+    programmeId: row.programmeId, intakeId: row.intakeId, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
+  }));
+  const now = Date.now();
+  const hasActiveCompatibilityGrants = compatibilityRows.some(row => !row.revokedAt && (!row.expiresAt || row.expiresAt > now));
+  if (hasActiveCompatibilityGrants && !auth.owner && auth.membershipId)
+    throw new ConvexError("Compatibility grants require proprietor review");
+  if (decision?.mode === "replace" && hasActiveCompatibilityGrants)
+    throw new ConvexError("Replace or revoke compatibility grants through their existing authority before reviewing rehire");
+  if (!membership) {
+    // Preserve the existing unmigrated permission-management authority, without creating grants.
+    if (!auth.owner && await isPermissionManaged(ctx, auth))
+      throw new ConvexError("Legacy target requires proprietor permission review");
+    const previous = {
+      compatibilityGrants,
+      displayTitle: user.role, roleTemplateIds: [], grants: [], restrictions: [], ceiling: [],
+      effective: user.role === "admin" || user.isSchoolAdmin ? [...CAPABILITY_CATALOG] : [],
+      legacyBaseline: true,
+    };
+    if (decision && (decision.mode !== "retain" || decision.displayTitle !== previous.displayTitle ||
+        decision.roleTemplateIds.length || decision.grants.length || decision.restrictions.length))
+      throw new ConvexError("Legacy access can only be retained; canonical mapping is required to replace it");
+    return { previous, proposed: previous, permissionState: JSON.stringify({ userId: user._id, role: user.role, isSchoolAdmin: user.isSchoolAdmin, authId: user.authId, authTokenIdentifier: user.authTokenIdentifier, compatibilityRows, previous }) };
+  }
+  const { auth: targetAuth } = await editableTarget(ctx, user.schoolId, membership._id, true);
+  const rows = await permissionRows(ctx, membership._id);
+  const previous = {
+    compatibilityGrants,
+    displayTitle: membership.displayTitle ?? "", roleTemplateIds: rows.roles.map(r => r.roleTemplateId),
+    grants: canonicalCapabilities(rows.grants.map(r => r.capability)),
+    restrictions: canonicalCapabilities(rows.restrictions.map(r => r.capability)),
+    ceiling: rows.ceiling ? canonicalCapabilities(rows.ceiling.allowedCapabilities) : [],
+    effective: await evaluateEffectiveCapabilities(ctx, membership._id, {}, true),
+    legacyBaseline: membership.permissionsManagedAt === undefined && !rows.roles.length &&
+      !rows.grants.length && !rows.restrictions.length && !rows.ceiling,
+  };
+  let proposed = previous;
+  if (decision) {
+    if (decision.displayTitle.length > 100 || decision.roleTemplateIds.length > 30)
+      throw new ConvexError("Provide a title and at most 30 templates");
+    const grants = canonicalCapabilities(decision.grants), restrictions = canonicalCapabilities(decision.restrictions);
+    if (grants.some(c => restrictions.includes(c))) throw new ConvexError("A capability cannot be both granted and restricted");
+    const ids = [...new Set(decision.roleTemplateIds)].sort();
+    if (decision.mode === "retain") {
+      const retainedTemplates = await Promise.all(ids.map(id => templateForSchool(ctx, id, user.schoolId)));
+      await assertTemplatesAvailableForAssignment(ctx, user.schoolId, retainedTemplates);
+      if (decision.displayTitle !== previous.displayTitle || JSON.stringify(ids) !== JSON.stringify([...previous.roleTemplateIds].sort()) ||
+          JSON.stringify(grants) !== JSON.stringify(previous.grants) || JSON.stringify(restrictions) !== JSON.stringify(previous.restrictions))
+        throw new ConvexError("CONFLICT: Retained access no longer matches the reviewed previous configuration. Review again.");
+    } else {
+      const templates = await Promise.all(ids.map(id => templateForSchool(ctx, id, user.schoolId)));
+      await assertTemplatesAvailableForAssignment(ctx, user.schoolId, templates);
+      if (templates.some(t => t.code === "proprietor")) throw new ConvexError("Ownership requires separate recovery");
+      const effective = await evaluateEffectiveCapabilities(ctx, membership._id, {
+        candidateRoleTemplateIds: ids, candidateDirectGrants: grants, candidateDirectRestrictions: restrictions,
+      }, true);
+      assertDelegable(targetAuth, [...previous.grants, ...previous.restrictions, ...grants, ...restrictions,
+        ...templates.flatMap(t => t.capabilities), ...effective]);
+      proposed = { ...previous, displayTitle: decision.displayTitle.trim(), roleTemplateIds: ids, grants, restrictions, effective, legacyBaseline: false };
+    }
+    // Retention is an access decision too; it cannot delegate authority the actor does not hold.
+    assertDelegable(targetAuth, proposed.effective);
+  }
+  const templates = await Promise.all([...new Set([...previous.roleTemplateIds, ...proposed.roleTemplateIds])].map(id => ctx.db.get(id)));
+  const local = await ctx.db.query("roleTemplates").withIndex("by_scope_and_school", q => q.eq("scope", "branch").eq("schoolId", user.schoolId)).take(101);
+  if (local.length > 100) throw new ConvexError("Role template directory requires review");
+  const governance = await resolveEffectiveGroupSetting(ctx, user.schoolId, "role_templates", {
+    domain: "role_templates", value: { templateIds: local.map(t => t._id) },
+  });
+  return { previous, proposed, permissionState: JSON.stringify({
+    userId: user._id, personId: user.personId, authId: user.authId, authTokenIdentifier: user.authTokenIdentifier,
+    role: user.role, isSchoolAdmin: user.isSchoolAdmin,
+    membership, rows, templates, governance, compatibilityRows, previous, proposed,
+  }) };
+}
+
+const saveMemberPermissionArgs = {
     schoolId: v.id("schools"),
     targetMembershipId: v.id("branchMemberships"),
     expectedRevision: v.number(),
@@ -740,12 +838,16 @@ export const saveMemberPermissions = mutation({
     grants: v.array(v.string()),
     restrictions: v.array(v.string()),
     reason: v.string(),
-  },
-  handler: async (ctx, args) => {
+};
+export async function saveMemberPermissionsHelper(
+  ctx: MutationCtx, args: { [K in keyof typeof saveMemberPermissionArgs]: Infer<typeof saveMemberPermissionArgs[K]> },
+  lifecycleReview = false,
+) {
     const { auth, target } = await editableTarget(
       ctx,
       args.schoolId,
       args.targetMembershipId,
+      lifecycleReview,
     );
     if (target.updatedAt !== args.expectedRevision)
       throw new ConvexError(
@@ -790,7 +892,7 @@ export const saveMemberPermissions = mutation({
         candidateRoleTemplateIds: args.roleTemplateIds,
         candidateDirectGrants: grants,
         candidateDirectRestrictions: restrictions,
-      })),
+      }, lifecycleReview)),
     ]);
     for (const row of [
       ...previous.roles,
@@ -849,7 +951,10 @@ export const saveMemberPermissions = mutation({
       },
     );
     return { success: true };
-  },
+}
+export const saveMemberPermissions = mutation({
+  args: saveMemberPermissionArgs,
+  handler: (ctx, args) => saveMemberPermissionsHelper(ctx, args),
 });
 
 /** Template revisions are new branch-scoped records, never an implicit bulk access change. */

@@ -25,9 +25,15 @@ import {
 } from "./assessmentEditingPolicyHelpers";
 import { resolveSessionScoringPolicy } from "./sessionScoring";
 import { isStudentEnrolledInClassForSession } from "./studentClassMembership";
+import { isCurrentEnrollment } from "./studentEnrollmentCounts";
 import { pickMostRecentDoc } from "./docSelection";
 import { matchesScoreRowBaseline, scoreRowBaseline } from "@school/shared/drafts/scoreRowBaseline";
 import { assertBranchDoc } from "../foundation/tenantScope";
+
+function isCompletedAssessmentTerm(term: Doc<"academicTerms">, sessionId: Id<"academicSessions">, now: number) {
+  // Inactive terms may still be ongoing or future, or belong to another session.
+  return term.sessionId === sessionId && !term.isActive && term.endDate < now;
+}
 
 function entrySheetRecord(record: Doc<"assessmentRecords">) {
   const { assessmentPolicySnapshot, gradingPolicySnapshot: _gradingPolicySnapshot, ...result } = record;
@@ -53,6 +59,8 @@ function entrySheetRecord(record: Doc<"assessmentRecords">) {
  */
 export const getExamEntrySheet = query({
   args: {
+    // Cache invalidation only. Completion and editing authority use server time below.
+    refreshKey: v.optional(v.number()),
     schoolId: v.optional(v.id("schools")),
     sessionId: v.id("academicSessions"),
     termId: v.id("academicTerms"),
@@ -184,6 +192,7 @@ export const getExamEntrySheet = query({
       }),
     ]);
     const editingState = getAssessmentEditingState(editingPolicy, Date.now());
+    const isCompletedTerm = isCompletedAssessmentTerm(termDoc, args.sessionId, editingState.evaluatedAt);
 
     // Use the same effective local/inherited policy as previews and issued reports.
     const gradingBandsResult = await resolveEffectiveGradingBands(ctx, schoolId);
@@ -208,6 +217,7 @@ export const getExamEntrySheet = query({
             schoolId,
             classId: args.classId,
             sessionId: args.sessionId,
+            currentOperation: true,
           })
         ) {
           studentIdSet.add(String(student._id));
@@ -230,6 +240,7 @@ export const getExamEntrySheet = query({
           schoolId,
           classId: args.classId,
           sessionId: args.sessionId,
+          currentOperation: sessionDoc.isActive,
         }))
       ) {
         studentIdSet.add(String(promo.studentId));
@@ -261,9 +272,20 @@ export const getExamEntrySheet = query({
       )
       .collect();
 
+    const correctionStudentIds = new Set<string>();
     for (const record of existingRecords) {
-      if (!sessionDoc.isActive || studentIdSet.has(String(record.studentId))) {
-        studentIdSet.add(String(record.studentId));
+      const studentId = String(record.studentId);
+      if (isCompletedTerm && !correctionStudentIds.has(studentId)) {
+        const student = await ctx.db.get(record.studentId);
+        if (student && await isStudentEnrolledInClassForSession(ctx, {
+          student, schoolId, classId: args.classId, sessionId: args.sessionId, termId: args.termId,
+        })) {
+          correctionStudentIds.add(studentId);
+        }
+      }
+      // Historical corrections come only from this exact sheet, never an unscored roster.
+      if (!sessionDoc.isActive || studentIdSet.has(studentId) || correctionStudentIds.has(studentId)) {
+        studentIdSet.add(studentId);
       }
     }
 
@@ -273,7 +295,8 @@ export const getExamEntrySheet = query({
       )
     ).filter(
       (student): student is NonNullable<typeof student> =>
-        Boolean(student && student.schoolId === schoolId && !student.isArchived)
+        Boolean(student && student.schoolId === schoolId && !student.isArchived &&
+          (isCurrentEnrollment(student) || correctionStudentIds.has(String(student._id))))
     );
 
     // Create a map of studentId -> assessmentRecord for efficient lookup
@@ -454,6 +477,8 @@ export const upsertAssessmentRecordsBulk = mutation({
       message: string;
     }> = [];
 
+    const isCompletedTerm = isCompletedAssessmentTerm(termDoc, args.sessionId, editingState.evaluatedAt);
+
     // Process each record
     for (const record of args.records) {
       const studentDoc = await ctx.db.get(record.studentId);
@@ -464,6 +489,8 @@ export const upsertAssessmentRecordsBulk = mutation({
           schoolId,
           classId: args.classId,
           sessionId: args.sessionId,
+          termId: args.termId,
+          currentOperation: sessionDoc.isActive && !isCompletedTerm,
         }))
       ) {
         errors.push({
@@ -485,6 +512,10 @@ export const upsertAssessmentRecordsBulk = mutation({
         )
         .collect()
         .then((docs: any[]) => pickMostRecentDoc(docs));
+      if (!isCurrentEnrollment(studentDoc) && (!existingRecord || !isCompletedTerm)) {
+        errors.push({ studentId: record.studentId, field: "record", message: "Inactive students can only correct existing assessment records in completed terms" });
+        continue;
+      }
       if (record.expectedRow !== undefined &&
         !matchesScoreRowBaseline(scoreRowBaseline(existingRecord), record.expectedRow)) {
         errors.push({ studentId: record.studentId, field: "record",

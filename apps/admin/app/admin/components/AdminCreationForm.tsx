@@ -7,6 +7,7 @@ import { getUserFacingErrorMessage, PersonNameFields, emptyPersonName } from "@s
 import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import { api } from "@school/convex/_generated/api";
 import { AdminSurface } from "@/components/ui/AdminSurface";
+import { JoiningDayField } from "@/components/lifecycle/JoiningDayField";
 import type { Id } from "@school/convex/_generated/dataModel";
 import { AccountNoticePanel } from "../../academic/students/components/AccountNoticePanel";
 
@@ -20,6 +21,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
     api.functions.academic.adminLeadership.createSchoolAdmin
   );
 
+  const [joiningDay, setJoiningDay] = useState("");
   const [person, setPerson] = useState(emptyPersonName);
   const parts = normalizeStructuredPersonName(person);
   const name = [parts.firstName, parts.middleName, parts.lastName].filter(Boolean).join(" ");
@@ -48,8 +50,10 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
         email: normalizedEmail,
         temporaryPassword: password,
         origin: window.location.origin,
+        joiningDay: joiningDay || undefined,
       });
 
+      setJoiningDay("");
       setCompletedAdminId(created.adminId);
       setPerson(emptyPersonName);
       setEmail("");
@@ -76,6 +80,7 @@ export function AdminCreationForm({ onSuccess, onError }: AdminCreationFormProps
       </div>
 
       <form onSubmit={submitCreateAdmin} className="space-y-4">
+        <JoiningDayField value={joiningDay} onChange={setJoiningDay} disabled={isBusy} />
         <div className="space-y-3">
           <PersonNameFields value={person} onChange={setPerson} />
           <div className="space-y-1">

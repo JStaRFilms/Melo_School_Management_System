@@ -44,13 +44,16 @@ export function StudentCountValue({ school }: { school: CountedSchool }) {
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleCalculate}
-      disabled={isCalculating}
-      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:text-slate-400"
-    >
-      {isCalculating ? "Calculating..." : "Calculate"}
-    </button>
+    <span className="inline-flex items-center gap-2">
+      <span className="text-xs text-slate-500">Not calculated</span>
+      <button
+        type="button"
+        onClick={handleCalculate}
+        disabled={isCalculating}
+        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:text-slate-400"
+      >
+        {isCalculating ? "Calculating..." : "Calculate"}
+      </button>
+    </span>
   );
 }

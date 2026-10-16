@@ -12,6 +12,7 @@ import {
 } from "./admissionNumbers";
 import { recordAuditEventHelper } from "./audit";
 import { adjustSchoolEnrollmentCount } from "./studentEnrollmentCounts";
+import { recordStudentEnrollmentEvent } from "./studentLifecycle";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 import { allocateStudentLogin } from "./studentEnrollment";
 import {
@@ -656,6 +657,11 @@ export const commitImportWorkspace = mutation({
             args.schoolId,
             record,
           ));
+        const existingIdentityEnrollments = await ctx.db.query("students")
+          .withIndex("by_school_and_user", q => q.eq("schoolId", args.schoolId).eq("userId", userId)).take(1);
+        const existingNumbers = await ctx.db.query("students")
+          .withIndex("by_school_and_admission_number", q => q.eq("schoolId", args.schoolId).eq("admissionNumber", admissionNumber)).take(1);
+        if (existingIdentityEnrollments.length || existingNumbers.length) throw new ConvexError("Student identity or admission number already exists. Reconcile the existing record or use enrollment return controls.");
         const studentId = await ctx.db.insert("students", {
           schoolId: args.schoolId,
           classId: record.selectedClassId,
@@ -675,6 +681,11 @@ export const commitImportWorkspace = mutation({
           updatedAt: now,
         });
         await adjustSchoolEnrollmentCount(ctx, args.schoolId, 1);
+        const importedStudent = await ctx.db.get(studentId);
+        if (!importedStudent) throw new ConvexError("Import enrollment creation failed");
+        await recordStudentEnrollmentEvent(ctx, importedStudent, {
+          type: "imported", unknownStart: "import_unknown", reason: "Reviewed import; historical joining date unknown", actorUserId: auth.userId,
+        });
         outcomes.push({
           recordId: record._id,
           rowNumber: record.rowNumber,

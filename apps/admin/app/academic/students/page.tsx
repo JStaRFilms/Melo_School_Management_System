@@ -3,6 +3,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
+import { StudentEnrollmentDirectory } from "./components/StudentEnrollmentDirectory";
 import { isValidEmailAddress } from "@school/auth";
 import {
   cleanEmailInput,
@@ -36,7 +38,6 @@ import { AttestationLetterModal } from "./components/AttestationLetterModal";
 import type { AdmissionCounterDecision } from "./components/AdmissionNumberGovernanceFields";
 import { EnrollmentFilters } from "./components/EnrollmentFilters";
 import type { FunctionArgs } from "convex/server";
-import { api } from "@school/convex/_generated/api";
 import { normalizeStructuredPersonName } from "@school/shared/name-format";
 import { admissionParentGuardian, emptyAdmissionContact, restoreAdmissionContact } from "./components/admissionContact";
 import { useDirtyForm, type DraftPayload } from "@school/shared/drafts";
@@ -142,6 +143,7 @@ function StudentsPageContent() {
   const [emergencyContactMode, setEmergencyContactMode] = useState<"primary" | "override" | "legacy">("primary");
   const [studentLastName, setStudentLastName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
+  const [admissionDay, setAdmissionDay] = useState("");
   const [admissionNumberMode, setAdmissionNumberMode] = useState<
     "automatic" | "manual"
   >("automatic");
@@ -160,6 +162,8 @@ function StudentsPageContent() {
   const [studentPhotoFile, setStudentPhotoFile] = useState<File | null>(null);
   const [studentPhotoResetKey, setStudentPhotoResetKey] = useState(0);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(urlStudentId);
+  const [directoryStatus, setDirectoryStatus] = useState<"active" | "suspended" | "withdrawn" | "graduated" | "transferred_out">("active");
+  const selectedProfile = useQuery(api.functions.academic.studentEnrollment.getStudentProfile, selectedStudentId ? { studentId: selectedStudentId as Id<"students"> } : "skip");
   const [isMobile, setIsMobile] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
@@ -286,7 +290,7 @@ function StudentsPageContent() {
 
   const matrix = useQuery(
     "functions/academic/studentEnrollment:getClassStudentSubjectMatrix" as never,
-    selectedClassId && selectedSessionId
+    directoryStatus === "active" && selectedClassId && selectedSessionId
       ? ({ classId: selectedClassId, sessionId: selectedSessionId } as never)
       : ("skip" as never)
   ) as EnrollmentMatrix | undefined;
@@ -353,42 +357,18 @@ function StudentsPageContent() {
     }
   }, [promotionTargetSessionId, sessions]);
 
-  // Synchronize selected student with matrix data
+  // Matrix filters do not own the selected identity. Departures and filter changes keep its profile open.
   useEffect(() => {
-    // Keep a deep-link intact while its selected matrix is still loading.
-    if (matrix === undefined) {
-      return;
-    }
+    const visibleStudentIds = new Set(matrix?.students.map(student => student._id) ?? []);
+    setPromotionStudentIds(current => current.filter(studentId => visibleStudentIds.has(studentId)));
+  }, [matrix]);
 
-    if (!matrix.students.length) {
-      if (selectedStudentId) {
-        setSelectedStudentId(null);
-        updateUrlParams({ studentId: null, tab: null });
-      }
-      setPromotionStudentIds([]);
-      return;
+  useEffect(() => {
+    if (urlStudentId && (urlTab === "profile" || urlTab === "subjects")) {
+      setUnifiedInitialTab(urlTab);
+      setIsUnifiedSheetOpen(true);
     }
-
-    const visibleStudentIds = new Set(matrix.students.map((student) => student._id));
-    if (urlStudentId && visibleStudentIds.has(urlStudentId)) {
-      setSelectedStudentId(urlStudentId);
-      if (urlTab === "profile" || urlTab === "subjects") {
-        setUnifiedInitialTab(urlTab);
-        setIsUnifiedSheetOpen(true);
-      }
-    } else {
-      setSelectedStudentId((current) => {
-        if (current && visibleStudentIds.has(current)) {
-          return current;
-        }
-        return null;
-      });
-    }
-
-    setPromotionStudentIds((current) =>
-      current.filter((studentId) => visibleStudentIds.has(studentId))
-    );
-  }, [matrix, selectedStudentId, urlStudentId, urlTab, updateUrlParams]);
+  }, [urlStudentId, urlTab]);
 
   const cancelStudentPromotion = useMutation(
     "functions/academic/studentEnrollment:cancelStudentPromotion" as never
@@ -547,9 +527,17 @@ function StudentsPageContent() {
   };
 
   const activeStudentForSheet = useMemo(() => {
-    if (!matrix || !selectedStudentId) return null;
-    return matrix.students.find(s => s._id === selectedStudentId) ?? null;
-  }, [matrix, selectedStudentId]);
+    if (!selectedProfile) return null;
+    const matrixStudent = matrix?.students.find(s => s._id === selectedProfile._id);
+    return {
+      _id: selectedProfile._id,
+      studentName: selectedProfile.displayName,
+      admissionNumber: selectedProfile.admissionNumber,
+      selectedSubjectIds: matrixStudent?.selectedSubjectIds ?? [],
+      photoUrl: selectedProfile.photoUrl,
+      enrollmentStatus: selectedProfile.enrollmentStatus,
+    };
+  }, [matrix, selectedProfile]);
 
   const selectedClassName =
     classes?.find((classDoc) => classDoc._id === selectedClassId)?.name ??
@@ -601,6 +589,7 @@ function StudentsPageContent() {
     setStudentFirstName("");
     setStudentLastName("");
     setAdmissionNumber("");
+    setAdmissionDay("");
     setAdmissionNumberMode("automatic");
     setOverrideReason("");
     setOverrideConfirmed(false);
@@ -787,6 +776,7 @@ function StudentsPageContent() {
     try {
       submittedAdmission.current ??= {
         requestKey: enrollmentRequestKey,
+        admissionDay: admissionDay || undefined,
         firstName: normalizedName.firstName,
         middleName: normalizedName.middleName || undefined,
         lastName: normalizedName.lastName,
@@ -1093,8 +1083,7 @@ function StudentsPageContent() {
   const handleClassChange = useCallback(
     (nextClassId: string | null) => {
       setSelectedClassId(nextClassId);
-      setSelectedStudentId(null);
-      updateUrlParams({ classId: nextClassId, studentId: null, tab: null });
+      updateUrlParams({ classId: nextClassId });
     },
     [updateUrlParams]
   );
@@ -1212,6 +1201,7 @@ function StudentsPageContent() {
         onNotice={showNotice}
         onViewAttestation={handleOpenAttestation}
         initialTab={unifiedInitialTab}
+        canEditSubjects={selectedProfile?.enrollmentStatus === "active" && Boolean(matrix?.students.some(s => s._id === selectedStudentId))}
         onStudentArchived={() => handleSelectStudent(null)}
       />
 
@@ -1266,18 +1256,28 @@ function StudentsPageContent() {
                 }
               />
 
-              <EnrollmentFilters
+              <StudentEnrollmentDirectory
+                status={directoryStatus}
+                onStatusChange={setDirectoryStatus}
+                selectedStudentId={selectedStudentId}
+                onSelect={studentId => {
+                  handleSelectStudent(studentId);
+                  if (isMobile) openUnifiedEditor(studentId, "profile");
+                }}
+              />
+
+              {directoryStatus === "active" && <EnrollmentFilters
                 classes={classes}
                 sessions={sessions}
                 selectedClassId={selectedClassId}
                 selectedSessionId={selectedSessionId}
                 onClassChange={handleClassChange}
                 onSessionChange={handleSessionChange}
-              />
+              />}
             </div>
 
             <div className="space-y-8">
-              {selectedClassId && selectedSessionId ? (
+              {directoryStatus !== "active" ? null : selectedClassId && selectedSessionId ? (
                 <>
                   {shouldShowPromotionPanel ? (
                     <StudentPromotionPanel
@@ -1374,6 +1374,8 @@ function StudentsPageContent() {
               <div className="space-y-6">
 <StudentCreationForm
                     selectedClassName={selectedClassName}
+                    admissionDay={admissionDay}
+                    onAdmissionDayChange={setAdmissionDay}
                     studentFirstName={studentFirstName}
                     studentMiddleName={studentMiddleName}
                     locked={submittedAdmission.current !== null}
@@ -1478,6 +1480,8 @@ function StudentsPageContent() {
             <div className="flex-1 overflow-y-auto p-6 pb-12 custom-scrollbar">
 <StudentCreationForm
                   selectedClassName={selectedClassName}
+                  admissionDay={admissionDay}
+                  onAdmissionDayChange={setAdmissionDay}
                   studentFirstName={studentFirstName}
                   studentMiddleName={studentMiddleName}
                   locked={submittedAdmission.current !== null}

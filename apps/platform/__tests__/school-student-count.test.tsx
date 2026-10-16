@@ -42,6 +42,25 @@ it("renders a calculated current enrollment", () => {
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
 
+it("renders zero as a known aggregate instead of offering calculation", () => {
+  render(<StudentCountValue school={{ _id: "school-1", name: "Empty school", currentStudentCount: 0 }} />);
+  expect(screen.getByText("0")).toBeInTheDocument();
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+});
+
+it("keeps null during a busy calculation and reports failure without fabricating a zero", async () => {
+  let reject: (error: Error) => void = () => undefined;
+  mocks.recalculate.mockReturnValue(new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
+  render(<StudentCountValue school={{ _id: "school-1", name: "Unknown school", currentStudentCount: null }} />);
+  expect(screen.getByText("Not calculated")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Calculate" }));
+  expect(screen.getByRole("button", { name: "Calculating..." })).toBeDisabled();
+  reject(new Error("Not authorized"));
+  await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("Could not calculate student count", expect.any(Object)));
+  expect(screen.queryByText("0")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Calculate" })).toBeEnabled();
+});
+
 it("lets a platform admin calculate a missing count", async () => {
   mocks.recalculate.mockResolvedValue({ currentStudentCount: 42 });
   render(

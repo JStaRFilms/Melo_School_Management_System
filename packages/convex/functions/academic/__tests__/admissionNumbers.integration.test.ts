@@ -233,12 +233,16 @@ it("creates atomically, replays the same intent, preserves manual identifiers an
   );
 });
 
-it("rejects admission numbers that synthesize an existing student email", async () => {
+it("keeps normalized admission-number prefixes on distinct immutable student logins", async () => {
   const { t, classId } = await fixture();
   const viewer = t.withIdentity({ subject: "owner", issuer: "test", tokenIdentifier: "test|owner" });
   const base = { firstName: "Collision", lastName: "Student", gender: "male", classId, overrideConfirmed: true, overrideReason: "Reviewed manual identifier", overrideCounterDecision: "keep" as const };
-  await viewer.mutation(api.functions.academic.studentEnrollment.createStudent, { ...base, admissionNumber: "AB-12", requestKey: "punctuated-admission" });
-  await expect(viewer.mutation(api.functions.academic.studentEnrollment.createStudent, { ...base, admissionNumber: "AB12", requestKey: "normalized-admission" })).rejects.toThrow("already exists");
+  const first = await viewer.mutation(api.functions.academic.studentEnrollment.createStudent, { ...base, admissionNumber: "AB-12", requestKey: "punctuated-admission" });
+  const second = await viewer.mutation(api.functions.academic.studentEnrollment.createStudent, { ...base, admissionNumber: "AB12", requestKey: "normalized-admission" });
+  const profiles = await Promise.all([first, second].map(studentId => viewer.query(api.functions.academic.studentEnrollment.getStudentProfile, { studentId })));
+  expect(first).not.toBe(second);
+  expect(profiles[0].userId).not.toBe(profiles[1].userId);
+  expect(profiles[0].email).not.toBe(profiles[1].email);
 });
 
 it("rejects an automatic allocation when the active session changes after preview", async () => {
@@ -283,6 +287,7 @@ it("corrects an existing student only with reason and explicit version-pinned ad
     const userId = await ctx.db.insert("users", {
       schoolId,
       authId: "existing",
+      authTokenIdentifier: "test|existing",
       name: "Existing Student",
       email: "existing@example.test",
       role: "student",
@@ -318,6 +323,12 @@ it("corrects an existing student only with reason and explicit version-pinned ad
   expect(await t.run((ctx) => ctx.db.get(studentId))).toMatchObject({
     admissionNumber: "CORRECT-001",
   });
+  const account = await t.run(async ctx => {
+    const student = await ctx.db.get(studentId);
+    if (!student) throw new Error("Missing corrected student");
+    return ctx.db.get(student.userId);
+  });
+  expect(account).toMatchObject({ authId: "existing", authTokenIdentifier: "test|existing", email: "existing@example.test" });
   const claims = await t.run((ctx) =>
     ctx.db
       .query("admissionNumberClaims")

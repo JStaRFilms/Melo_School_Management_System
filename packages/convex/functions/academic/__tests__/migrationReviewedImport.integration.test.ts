@@ -716,6 +716,11 @@ describe("R1 reviewed import remediation", () => {
       { schoolId: f.schoolId, workspaceId },
     );
     expect(replay.alreadyCommitted).toBe(true);
+    const importedPeriods = await f.t.run(ctx => ctx.db.query("studentEnrollmentPeriods").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).collect());
+    expect(importedPeriods).toHaveLength(2);
+    expect(importedPeriods.every(period => period.startProvenance === "import_unknown" && period.startDay === undefined)).toBe(true);
+    const importEvents = await f.t.run(ctx => ctx.db.query("studentEnrollmentEvents").withIndex("by_school", q => q.eq("schoolId", f.schoolId)).collect());
+    expect(importEvents.map(event => event.type)).toEqual(["imported", "imported"]);
     expect(
       await f.t.run((ctx) =>
         ctx.db

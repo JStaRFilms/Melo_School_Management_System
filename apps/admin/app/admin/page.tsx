@@ -1,6 +1,9 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { api } from "@school/convex/_generated/api";
+import type { Id } from "@school/convex/_generated/dataModel";
+import { StaffDirectorySection } from "./components/StaffDirectorySection";
 import Link from "next/link";
 import { useAuth } from "@/AuthProvider";
 import { getUserFacingErrorMessage, hasEffectiveCapability } from "@school/shared";
@@ -16,27 +19,6 @@ import { AdminCreationForm } from "./components/AdminCreationForm";
 import { LeadProtectionSection } from "./components/LeadProtectionSection";
 import { TeacherPromotionSection } from "./components/TeacherPromotionSection";
 import { AdminDirectorySection } from "./components/AdminDirectorySection";
-
-type AdminRecord = {
-  _id: string;
-  name: string;
-  email: string;
-  isArchived: boolean;
-  isLeadAdmin: boolean;
-  managerUserId: string | null;
-  managerName: string | null;
-  createdAt: number;
-};
-
-type AdminDashboardData = {
-  viewerUserId: string;
-  leadAdmin: {
-    _id: string;
-    name: string;
-    email: string;
-  } | null;
-  admins: AdminRecord[];
-};
 
 type TeacherRecord = {
   _id: string;
@@ -58,8 +40,8 @@ export default function AdminManagementPage() {
       : true);
   const canSuspendAdmins = hasEffectiveCapability(workspaceAccess, "staff.account.suspend");
   const data = useQuery(
-    "functions/academic/adminLeadership:listSchoolAdmins" as never
-  ) as AdminDashboardData | undefined;
+    api.functions.academic.adminLeadership.listSchoolAdmins
+  );
   const teachers = useQuery(
     "functions/academic/academicSetup:listTeachers" as never
   ) as TeacherRecord[] | undefined;
@@ -76,7 +58,8 @@ export default function AdminManagementPage() {
     appToast.error(title, { description: notice.message });
   };
 
-  const activeAdmins = data?.admins.filter((admin) => !admin.isArchived) ?? [];
+  const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
+  const activeAdmins = data?.admins.filter((admin) => !admin.isArchived && admin.employmentStatus !== "departed") ?? [];
   const leadAdmin = data?.leadAdmin ?? null;
   const viewerUserId = data?.viewerUserId ?? null;
   const viewerIsLead = Boolean(viewerUserId && leadAdmin && viewerUserId === leadAdmin._id);
@@ -222,6 +205,7 @@ export default function AdminManagementPage() {
 
             <AdminDirectorySection
               admins={data.admins}
+              schoolId={schoolId}
               viewerUserId={viewerUserId}
               viewerIsLead={viewerIsLead}
               leadAdminId={leadAdmin?._id ?? null}
@@ -229,6 +213,7 @@ export default function AdminManagementPage() {
               canSuspendAdmins={canSuspendAdmins}
               onRunAction={runAdminAction}
             />
+            {schoolId && <StaffDirectorySection schoolId={schoolId} />}
           </div>
         </main>
       </div>

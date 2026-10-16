@@ -68,7 +68,7 @@ it("follows a non-default branch invalid-score link and saves the corrected row 
   expect(state.calls).toContainEqual({ name: "functions/academic/adminSelectors:getSubjectsByClass", args: { schoolId: "branch-school", classId: "branch-class" } });
   expect(state.calls).toContainEqual({ name: "functions/academic/narrativeReports:getEntryClassMode", args: { schoolId: "branch-school", sessionId: "branch-session", classId: "branch-class" } });
   expect(state.calls).toContainEqual({ name: "functions/academic/assessmentRecords:getExamEntrySheet", args: {
-    schoolId: "branch-school", sessionId: "branch-session", termId: "branch-term", classId: "branch-class", subjectId: "branch-subject",
+    schoolId: "branch-school", sessionId: "branch-session", termId: "branch-term", classId: "branch-class", subjectId: "branch-subject", refreshKey: expect.any(Number),
   } });
   fireEvent.click(screen.getByRole("button", { name: "Correct Ada's score" }));
   fireEvent.click(screen.getByRole("button", { name: "Save scores" }));

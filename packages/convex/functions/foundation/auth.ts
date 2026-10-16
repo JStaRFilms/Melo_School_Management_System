@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { query } from "../../_generated/server";
 import type { AdmissionsPermissionV1 } from "@school/shared";
 import {
@@ -52,6 +52,21 @@ function ambiguousMembership(message: string) {
   return new ConvexError({ code: "RECONCILIATION_REQUIRED", message });
 }
 
+async function hasStaffBranchAccess(ctx: FoundationReadCtx, user: Doc<"users">, tokenIdentifier: string): Promise<boolean> {
+  if (user.isArchived || user.employmentStatus === "departed") return false;
+  if (user.role !== "teacher" && user.role !== "admin" && user.role !== "staff") return true;
+  const people = user.personId ? [await ctx.db.get(user.personId)] :
+    await ctx.db.query("persons").withIndex("by_token_identifier", q => q.eq("authTokenIdentifier", tokenIdentifier)).take(2);
+  if (!people.length) return true;
+  const person = people[0];
+  if (people.length !== 1 || !person || user.personId !== person._id || person.status !== "active" ||
+      person.identityReconciliationState === "reconciliation_required" ||
+      (person.authTokenIdentifier && person.authTokenIdentifier !== tokenIdentifier) ||
+      (person.authTokenIdentifier && user.authTokenIdentifier && user.authTokenIdentifier !== person.authTokenIdentifier)) return false;
+  const memberships = await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", person._id).eq("schoolId", user.schoolId)).take(2);
+  return memberships.length === 1 && memberships[0].status === "active" && memberships[0].legacyUserId === user._id;
+}
+
 export async function resolveActiveSchoolMembershipsV1(
   ctx: FoundationReadCtx,
   identity: AuthIdentityV1
@@ -78,9 +93,9 @@ export async function resolveActiveSchoolMembershipsV1(
     );
   }
 
-  return rows
-    .filter((row) => !row.isArchived)
-    .map((row) => ({
+  const active = [];
+  for (const row of rows) if (await hasStaffBranchAccess(ctx, row, identity.tokenIdentifier)) active.push(row);
+  return active.map((row) => ({
       userId: row._id,
       schoolId: row.schoolId,
       role: row.role,
@@ -120,6 +135,9 @@ export async function resolveSchoolCapabilitiesV1(
   membership: ActiveSchoolMembershipV1,
   now = Date.now()
 ): Promise<CapabilityGrantProjectionV1[]> {
+  const user = await ctx.db.get(membership.userId);
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity || !user || user.schoolId !== membership.schoolId || !await hasStaffBranchAccess(ctx, user, identity.tokenIdentifier)) return [];
   const grants = await ctx.db
     .query("schoolCapabilityGrants")
     .withIndex("by_school_and_user", (q) =>

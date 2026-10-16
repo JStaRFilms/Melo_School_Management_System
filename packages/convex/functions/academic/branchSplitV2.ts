@@ -58,7 +58,10 @@ export const DUPLICATION_TIERS: string[][] = [
     "studentSubjectSelections",
     "studentPromotions",
     "studentGraduations",
-    "studentSubjectAggregationOptOuts",
+    "studentEnrollmentPeriods",
+    "studentEnrollmentEvents",
+    "staffServiceEvents",
+    "staffServicePeriods",    "studentSubjectAggregationOptOuts",
     "classSubjectAggregationComponents",
     "assessmentRecords",
     "historicalTermTotals",
@@ -88,12 +91,18 @@ export const DUPLICATION_TIERS: string[][] = [
 export const ALL_DUPLICATION_TABLES = DUPLICATION_TIERS.flat();
 
 const USER_FK_REMAP_TABLES = [
+  "users",
   "schoolAssessmentSettings",
   "gradingBands",
   "schoolBillingSettings",
   "classes",
   "subjects",
   "schoolApprovalEvidence",
+  "students",
+  "studentEnrollmentPeriods",
+  "studentEnrollmentEvents",
+  "staffServiceEvents",
+  "staffServicePeriods",
 ] as const;
 
 const userRemapStage = (table: string) => `__user_fk_remap__:${table}`;
@@ -213,6 +222,10 @@ export const SCHOOL_PURGE_TABLES = [
   "studentSubjectSelections",
   "studentPromotions",
   "studentGraduations",
+  "studentEnrollmentEvents",
+  "studentEnrollmentPeriods",
+  "staffServiceEvents",
+  "staffServicePeriods",
   "schoolEnrollmentCounts",
   "classSubjectAggregationComponents",
   "classSubjectAggregations",
@@ -339,6 +352,23 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
   users: [
     { field: "managerUserId", targetTable: "users" },
     { field: "archivedBy", targetTable: "users" },
+    { field: "currentServicePeriodId", targetTable: "staffServicePeriods" },
+    { field: "reviewedRehireEventId", targetTable: "staffServiceEvents" },
+  ],
+  staffServiceEvents: [
+    { field: "userId", targetTable: "users" },
+    { field: "actorUserId", targetTable: "users" },
+    { field: "periodId", targetTable: "staffServicePeriods" },
+    { field: "reviewedEventId", targetTable: "staffServiceEvents" },
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "termId", targetTable: "academicTerms" },
+  ],
+  staffServicePeriods: [
+    { field: "userId", targetTable: "users" },
+    { field: "openedByEventId", targetTable: "staffServiceEvents" },
+    { field: "closedByEventId", targetTable: "staffServiceEvents" },
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "termId", targetTable: "academicTerms" },
   ],
   families: [
     { field: "createdBy", targetTable: "users" },
@@ -353,6 +383,29 @@ const FK_DEFINITIONS: Record<string, Array<{ field: string; targetTable: string;
     { field: "userId", targetTable: "users" },
     { field: "familyId", targetTable: "families" },
     { field: "archivedBy", targetTable: "users" },
+    { field: "currentEnrollmentPeriodId", targetTable: "studentEnrollmentPeriods" },
+  ],
+  studentEnrollmentEvents: [
+    { field: "studentId", targetTable: "students" },
+    { field: "actorUserId", targetTable: "users" },
+    { field: "classId", targetTable: "classes" },
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "termId", targetTable: "academicTerms" },
+    { field: "periodId", targetTable: "studentEnrollmentPeriods" },
+    { field: "promotionFromClassId", targetTable: "classes" },
+    { field: "promotionFromSessionId", targetTable: "academicSessions" },
+    { field: "promotionToClassId", targetTable: "classes" },
+    { field: "promotionToSessionId", targetTable: "academicSessions" },
+    { field: "subjectIds", targetTable: "subjects", isArray: true },
+  ],
+  studentEnrollmentPeriods: [
+    { field: "studentId", targetTable: "students" },
+    { field: "classId", targetTable: "classes" },
+    { field: "sessionId", targetTable: "academicSessions" },
+    { field: "termId", targetTable: "academicTerms" },
+    { field: "openedByEventId", targetTable: "studentEnrollmentEvents" },
+    { field: "closedByEventId", targetTable: "studentEnrollmentEvents" },
+    { field: "subjectIds", targetTable: "subjects", isArray: true },
   ],
   classSubjects: [
     { field: "classId", targetTable: "classes" },
@@ -756,10 +809,8 @@ export const duplicateBatch = internalMutation({
 
     if (currentTable.startsWith("__user_fk_remap__:")) {
       const table = currentTable.slice("__user_fk_remap__:".length);
-      const userMap = idMaps.users || {};
-      const userDefs = (FK_DEFINITIONS[table] || []).filter(
-        (definition) => definition.targetTable === "users"
-      );
+      // The lifecycle student/period/event pointers are cyclic and need this late pass too.
+      const userDefs = (FK_DEFINITIONS[table] || []).filter(definition => !definition.isArray);
 
       let remapQuery = ctx.db.query(table as any);
       if (TABLES_WITHOUT_BY_SCHOOL_INDEX.has(table)) {
@@ -780,8 +831,9 @@ export const duplicateBatch = internalMutation({
         const patch: Record<string, string> = {};
         for (const definition of userDefs) {
           const value = row[definition.field];
-          if (typeof value === "string" && userMap[value]) {
-            patch[definition.field] = userMap[value];
+          const targetMap = idMaps[definition.targetTable] || {};
+          if (typeof value === "string" && targetMap[value]) {
+            patch[definition.field] = targetMap[value];
           }
         }
         if (Object.keys(patch).length > 0) {
@@ -877,6 +929,13 @@ export const duplicateBatch = internalMutation({
             newDoc[def.field] = targetMap[val];
           }
         }
+      }
+
+      // Memberships and their permissions are linked separately, not duplicated.
+      // Source suspension evidence must never authorize target branch restoration.
+      if (currentTable === "staffServiceEvents" || currentTable === "staffServicePeriods") {
+        delete newDoc.membershipId;
+        if (currentTable === "staffServiceEvents") delete newDoc.suspendedMembershipRevision;
       }
 
       // Insert duplicated row
@@ -1120,6 +1179,16 @@ export const cascadeDeleteWrongBranchData = internalMutation({
 
     for (const student of students) {
       const studentId = student._id;
+
+      // Drain duplicated lifecycle history before removing its student and class.
+      const [enrollmentEvents, enrollmentPeriods] = await Promise.all([
+        ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q => q.eq("studentId", studentId)).take(25),
+        ctx.db.query("studentEnrollmentPeriods").withIndex("by_student", q => q.eq("studentId", studentId)).take(25),
+      ]);
+      if (enrollmentEvents.length || enrollmentPeriods.length) {
+        for (const row of [...enrollmentEvents, ...enrollmentPeriods]) await ctx.db.delete(row._id);
+        return { done: false, target, remainingClasses: classesToDelete.length };
+      }
 
       // Comments
       const comments = await ctx.db

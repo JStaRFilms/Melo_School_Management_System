@@ -1,41 +1,32 @@
-import { internalMutation } from "../../_generated/server";
+import { internalMutation, type QueryCtx, type MutationCtx } from "../../_generated/server";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
+import { assertStaffActive, recordStaffServiceEvent } from "./staffService";
 import { resolveStoredUserNameFields } from "./studentNameCompat";
 
-type SchoolAdminRow = {
-  _id: Id<"users">;
-  name: string;
-  firstName?: string;
-  middleName?: string;
-  lastName?: string;
-  email: string;
-  role: "teacher" | "admin";
-  isSchoolAdmin?: boolean;
-  managerUserId?: Id<"users"> | null;
-  isArchived?: boolean;
-  createdAt: number;
-};
+type Context = QueryCtx | MutationCtx;
 
-export async function getSchoolLeadAdmin(ctx: any, schoolId: Id<"schools">) {
+export async function getSchoolLeadAdmin(ctx: Context, schoolId: Id<"schools">) {
   return await ctx.db
     .query("schoolAdminLeadership")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
     .unique();
 }
 
-export async function getSchoolAdminRows(ctx: any, schoolId: Id<"schools">) {
-  return (await ctx.db
+export async function getSchoolAdminRows(ctx: Context, schoolId: Id<"schools">) {
+  const rows = await ctx.db
     .query("users")
-    .withIndex("by_school", (q: any) => q.eq("schoolId", schoolId))
-    .filter((q: any) =>
+    .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+    .filter((q) =>
       q.or(q.eq(q.field("role"), "admin"), q.eq(q.field("isSchoolAdmin"), true))
     )
-    .collect()) as SchoolAdminRow[];
+    .take(1001);
+  if (rows.length > 1000) throw new ConvexError("School leadership directory requires bounded review");
+  return rows;
 }
 
 export async function ensureSchoolLeadAdminRecord(
-  ctx: any,
+  ctx: MutationCtx,
   args: {
     schoolId: Id<"schools">;
     leadAdminUserId: Id<"users">;
@@ -65,17 +56,17 @@ export async function ensureSchoolLeadAdminRecord(
 }
 
 export async function getResolvedSchoolLeadAdminUserId(
-  ctx: any,
+  ctx: Context,
   schoolId: Id<"schools">
 ) {
   const existing = await getSchoolLeadAdmin(ctx, schoolId);
   if (existing) {
-    return existing.leadAdminUserId;
+    const lead = await ctx.db.get(existing.leadAdminUserId);
+    return lead && !lead.isArchived && lead.employmentStatus !== "departed" ? existing.leadAdminUserId : null;
   }
 
   const admins = await getSchoolAdminRows(ctx, schoolId);
-  const activeAdmins = admins.filter((admin) => !admin.isArchived);
-  const candidates = activeAdmins.length > 0 ? activeAdmins : admins;
+  const candidates = admins.filter((admin) => !admin.isArchived && admin.employmentStatus !== "departed");
 
   if (candidates.length === 0) {
     return null;
@@ -93,7 +84,7 @@ export async function getResolvedSchoolLeadAdminUserId(
 }
 
 export async function ensureResolvedSchoolLeadAdminRecord(
-  ctx: any,
+  ctx: MutationCtx,
   args: {
     schoolId: Id<"schools">;
     updatedBy: Id<"users">;
@@ -151,6 +142,7 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
     managerUserId: v.union(v.id("users"), v.null()),
     makeLead: v.boolean(),
     createdBy: v.id("users"),
+    joiningDay: v.optional(v.string()),
   },
   returns: v.object({
     adminUserId: v.id("users"),
@@ -161,10 +153,7 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
     const normalizedEmail = args.adminEmail.trim().toLowerCase();
     const existingAdmin = await ctx.db
       .query("users")
-      .withIndex("by_school", (q: any) => q.eq("schoolId", args.schoolId))
-      .filter((q: any) =>
-        q.and(q.eq(q.field("role"), "admin"), q.eq(q.field("email"), normalizedEmail))
-      )
+      .withIndex("by_school_and_email", (q) => q.eq("schoolId", args.schoolId).eq("email", normalizedEmail))
       .unique();
 
     const nameFields = resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName,
@@ -176,8 +165,11 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
       String(leadership.leadAdminUserId) === String(existingAdmin._id);
 
     if (existingAdmin) {
+      assertStaffActive(existingAdmin);
+      if (existingAdmin.isArchived) throw new ConvexError("Restore the archived account separately");
+      if (existingAdmin.role !== "admin" || existingAdmin.authId !== args.adminAuthId)
+        throw new ConvexError("Existing identity cannot be replaced through admin creation");
       await ctx.db.patch(existingAdmin._id, {
-        authId: args.adminAuthId,
         ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "reset" as const, committedAt: now } } : {}),
         ...nameFields,
         email: normalizedEmail,
@@ -199,9 +191,22 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
       return { adminUserId: existingAdmin._id };
     }
 
+    const issuer = process.env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
+    if (!issuer) throw new ConvexError("Authentication issuer is not configured");
+    const authTokenIdentifier = `${issuer}|${args.adminAuthId}`;
+    const [people, tokenUsers] = await Promise.all([
+      ctx.db.query("persons").withIndex("by_token_identifier", q => q.eq("authTokenIdentifier", authTokenIdentifier)).take(2),
+      ctx.db.query("users").withIndex("by_auth_token_identifier", q => q.eq("authTokenIdentifier", authTokenIdentifier)).take(2),
+    ]);
+    if (people.length || tokenUsers.length) throw new ConvexError("Authentication identity is already linked; use the existing branch assignment path");
+    const personId = await ctx.db.insert("persons", {
+      authTokenIdentifier, identityReconciliationState: "resolved", ...nameFields, email: normalizedEmail,
+      status: "active", primarySchoolId: args.schoolId, createdAt: now, updatedAt: now,
+    });
     const adminUserId = await ctx.db.insert("users", {
       schoolId: args.schoolId,
       authId: args.adminAuthId,
+      authTokenIdentifier, personId,
       ...(args.credentialOperationId ? { lastCredentialOperation: { operationId: args.credentialOperationId, kind: "ready" as const, committedAt: now } } : {}),
       ...nameFields,
       email: normalizedEmail,
@@ -213,6 +218,13 @@ export const upsertSchoolAdminRecordInternal = internalMutation({
       updatedAt: now,
     });
 
+    await ctx.db.insert("branchMemberships", {
+      personId, schoolId: args.schoolId, status: "active", displayTitle: "School Admin",
+      isDefaultBranch: true, legacyUserId: adminUserId, joinedAt: now, updatedAt: now,
+    });
+    const joinedAdmin = await ctx.db.get(adminUserId);
+    if (!joinedAdmin) throw new ConvexError("Admin record not found after joining");
+    await recordStaffServiceEvent(ctx, joinedAdmin, { type: "joined", reason: "New school admin joining", actorUserId: args.createdBy, effectiveDay: args.joiningDay });
     if (args.makeLead) {
       await ensureSchoolLeadAdminRecord(ctx, {
         schoolId: args.schoolId,
@@ -245,6 +257,7 @@ export const promoteTeacherToAdminInternal = internalMutation({
       throw new ConvexError("Teacher not found");
     }
 
+    assertStaffActive(teacher);
     if (teacher.isArchived) {
       throw new ConvexError("Archived teachers cannot be promoted");
     }

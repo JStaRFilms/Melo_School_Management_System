@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import AdminScoreEntryPage from "../app/assessments/results/entry/page";
 
@@ -32,6 +32,46 @@ vi.mock("@/components/ui/AdminHeader", () => ({ AdminHeader: () => null }));
 vi.mock("../app/assessments/results/entry/components/AdminSelectionBar", () => ({ AdminSelectionBar: () => <p>Graded selector</p> }));
 vi.mock("../app/assessments/results/entry/components/AdminRosterGrid", () => ({ AdminRosterGrid: () => null }));
 afterEach(() => { cleanup(); state.calls.length = 0; state.options = [{ id: "art", name: "Art" }]; state.gradedOptions = [{ id: "art", name: "Art" }]; });
+
+it("refreshes the actual score-sheet query key each minute without writes and cleans up its timer", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-11T12:30:00Z"));
+  const clearInterval = vi.spyOn(window, "clearInterval");
+  state.entry = { mode: "graded", canEnterNarrative: false };
+  const view = render(<AdminScoreEntryPage />);
+  const sheetArgs = () => state.calls.filter(call => call.name.endsWith("getExamEntrySheet")).at(-1)?.args;
+  try {
+    const initial = sheetArgs();
+    expect(initial).toEqual(expect.objectContaining({ schoolId: "branch-school", sessionId: "session", termId: "term", classId: "class", subjectId: "art" }));
+    act(() => { vi.advanceTimersByTime(59_999); });
+    view.rerender(<AdminScoreEntryPage />);
+    expect(sheetArgs()).toEqual(initial);
+    act(() => { vi.advanceTimersByTime(1); });
+    const refreshed = sheetArgs();
+    expect(JSON.stringify(refreshed)).not.toBe(JSON.stringify(initial));
+    expect(refreshed).toEqual(expect.objectContaining({ refreshKey: Math.floor(Date.now() / 60_000) }));
+    expect(refreshed).toEqual(expect.objectContaining({ sessionId: "session", termId: "term", classId: "class", subjectId: "art" }));
+    act(() => { vi.advanceTimersByTime(1); });
+    view.rerender(<AdminScoreEntryPage />);
+    expect(sheetArgs()).toEqual(refreshed);
+    // Leaving graded mode stops the timer as well as skipping the query.
+    state.entry = { mode: "narrative", canEnterNarrative: false };
+    view.rerender(<AdminScoreEntryPage />);
+    expect(sheetArgs()).toBe("skip");
+    expect(clearInterval).toHaveBeenCalledTimes(1);
+    state.entry = { mode: "graded", canEnterNarrative: false };
+    view.rerender(<AdminScoreEntryPage />);
+    view.unmount();
+    expect(clearInterval).toHaveBeenCalledTimes(2);
+    const calls = state.calls.length;
+    act(() => { vi.advanceTimersByTime(120_000); });
+    expect(state.calls).toHaveLength(calls);
+  } finally {
+    view.unmount();
+    clearInterval.mockRestore();
+    vi.useRealTimers();
+  }
+});
 
 it("keeps the existing graded entry available to an exam officer", () => {
   state.entry = { mode: "graded", canEnterNarrative: false };

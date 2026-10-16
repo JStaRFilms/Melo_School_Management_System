@@ -48,11 +48,11 @@ export async function listTeacherArchiveBlockers(
     ? ctx.db
         .query("teacherAssignments")
         .withIndex("by_teacher", (q) => q.eq("teacherId", args.teacherId!))
-        .collect()
+        .take(1001)
     : ctx.db
         .query("teacherAssignments")
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-        .collect();
+        .take(1001);
 
   const [activeSession, classes, classSubjects, teacherAssignments, subjects] =
     await Promise.all([
@@ -60,17 +60,19 @@ export async function listTeacherArchiveBlockers(
       ctx.db
         .query("classes")
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-        .collect(),
+        .take(1001),
       ctx.db
         .query("classSubjects")
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-        .collect(),
+        .take(1001),
       teacherAssignmentsPromise,
       ctx.db
         .query("subjects")
         .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId))
-        .collect(),
+        .take(1001),
     ]);
+  if ([classes, classSubjects, teacherAssignments, subjects].some(rows => rows.length > 1000))
+    throw new ConvexError("Staff teaching links require bounded review before departure or archive");
 
   const activeClasses: Map<string, any> = new Map(
     classes
@@ -89,8 +91,10 @@ export async function listTeacherArchiveBlockers(
         .withIndex("by_school_and_session", (q) =>
           q.eq("schoolId", args.schoolId).eq("sessionId", activeSession._id)
         )
-        .collect()
+        .take(1001)
     : [];
+  if (activeSessionFormAssignments.length > 1000)
+    throw new ConvexError("Staff form-teacher links require bounded review before departure or archive");
 
   const blockersByTeacherId = new Map<string, string[]>();
   const targetTeacherId = args.teacherId ? String(args.teacherId) : null;

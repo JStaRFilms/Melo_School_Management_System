@@ -14,6 +14,7 @@ import { resolveAuthorizedPortalReportSelection } from "./academic/narrativeRepo
 import schema from "../schema";
 import { getReadableUserName } from "./academic/studentNameCompat";
 import { resolveDomainSetting } from "./academic/groupSettings";
+import { isCurrentEnrollment } from "./academic/studentEnrollmentCounts";
 
 const portalStudentValidator = v.object({
   studentId: v.id("students"),
@@ -563,7 +564,7 @@ export const getWorkspaceData = query({
         if (
           !studentUserRecord ||
           studentUserRecord.schoolId !== student.schoolId ||
-          (studentUserRecord.isArchived && student.enrollmentStatus === "active")
+          (studentUserRecord.isArchived && (student.enrollmentStatus ?? "active") === "active")
         ) {
           return null;
         }
@@ -584,7 +585,7 @@ export const getWorkspaceData = query({
           isActive: selectedStudentId
             ? String(selectedStudentId) === String(student._id)
             : false,
-          enrollmentState: student.enrollmentStatus === "active" ? "active" as const : "historical" as const,
+          enrollmentState: isCurrentEnrollment(student) ? "active" as const : "historical" as const,
         };
       })
     );
@@ -717,7 +718,7 @@ export const getWorkspaceData = query({
     // Without a client clock, legacy bundles omit time-based notices. Iterate
     // in start-date order so archived rows cannot consume the three live slots.
     // Stop after 512 indexed rows to bound the workspace read transaction.
-    if (notificationPreferences.showUpcomingEvents && eventTime !== undefined) {
+    if (selectedStudent && isCurrentEnrollment(selectedStudent) && notificationPreferences.showUpcomingEvents && eventTime !== undefined) {
       let scanned = 0;
       const futureEvents = ctx.db.query("schoolEvents")
         .withIndex("by_school_and_start", q => q.eq("schoolId", schoolId).gte("startDate", eventTime))

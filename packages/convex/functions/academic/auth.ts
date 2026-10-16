@@ -174,6 +174,7 @@ export async function resolveActiveMembership(
       return reconcile("Not authorized: mismatched legacy identity link");
     }
     if (user?.isArchived) return deny("Your account has been archived");
+    if (user?.employmentStatus === "departed") return deny("Staff member has departed from this school");
     return { personId: person._id, membershipId: membership._id, schoolId,
       userId: user?._id, role: user?.role ?? "member", isPlatformAdmin: false };
   }
@@ -184,7 +185,7 @@ export async function resolveActiveMembership(
     if (!(error instanceof ConvexError)) throw error;
     return reconcile(`Not authorized: ${String(error.data)}`);
   }
-  if (!user || user.schoolId !== schoolId || user.isArchived) {
+  if (!user || user.schoolId !== schoolId || user.isArchived || user.employmentStatus === "departed") {
     return deny("Not authorized: User does not have an active membership in this branch");
   }
   if (user.personId) {
