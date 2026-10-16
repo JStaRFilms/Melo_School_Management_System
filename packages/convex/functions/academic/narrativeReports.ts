@@ -3,7 +3,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "../../_generat
 import type { Doc, Id } from "../../_generated/dataModel";
 import { assertStudentParticipating } from "./studentLifecycle";
 import { isCurrentEnrollment } from "./studentEnrollmentCounts";
-import { isStudentEnrolledInClassForSession, studentPeriodClasses } from "./studentClassMembership";
+import { isStudentEnrolledInClassForSession, isStudentPromotionSupersededByDeparture, studentPeriodClasses } from "./studentClassMembership";
 import { getAuthenticatedSchoolMembership } from "./auth";
 import { assertTeacherAssignment, teacherHasClassAccess } from "./teacherAccess";
 import { listActiveClassSubjectAggregations } from "./subjectAggregationHelpers";
@@ -116,9 +116,16 @@ async function assertStaff(ctx: Context, args: Selection, options?: { allowIssue
       q.eq("studentId", student._id).eq("fromSessionId", session._id)).take(100),
   ]);
   if (to.length === 100 || from.length === 100) throw new ConvexError("Enrollment history requires review");
-  const enrolled = placementEnrolled || [...to, ...from].some(row => row.schoolId === auth.schoolId &&
-    (row.toSessionId === session._id && row.toClassId === args.classId ||
-     row.fromSessionId === session._id && row.fromClassId === args.classId)) ||
+  let promotedIntoClass = false;
+  for (const row of to) {
+    if (row.schoolId === auth.schoolId && row.toClassId === args.classId &&
+        !await isStudentPromotionSupersededByDeparture(ctx, row)) {
+      promotedIntoClass = true;
+      break;
+    }
+  }
+  const enrolled = placementEnrolled || promotedIntoClass || from.some(row => row.schoolId === auth.schoolId &&
+    row.fromSessionId === session._id && row.fromClassId === args.classId) ||
     (student.graduatingSessionId === session._id && student.graduatingClassId === args.classId);
   if (!enrolled) throw new ConvexError("Student is not enrolled in this class and session");
   return { auth, classDoc, student, session, term };

@@ -23,6 +23,46 @@ export async function studentPeriodClasses(
   ).map(period => period.classId))];
 }
 
+export async function isStudentPromotionSupersededByDeparture(
+  ctx: QueryCtx | MutationCtx, promotion: Doc<"studentPromotions">,
+): Promise<boolean> {
+  const revision = promotion.enrollmentRevision;
+  if (revision === undefined) return false;
+  const staged = await ctx.db.query("studentEnrollmentEvents").withIndex("by_student_revision", q =>
+    q.eq("studentId", promotion.studentId).eq("revision", revision)).unique();
+  const period = staged?.periodId ? await ctx.db.get(staged.periodId) : null;
+  const departure = period?.closedByEventId ? await ctx.db.get(period.closedByEventId) : null;
+  if (!departure || departure.schoolId !== promotion.schoolId || departure.studentId !== promotion.studentId ||
+      departure.revision <= revision || departure.afterStatus === "active") return false;
+  const [departureSession, targetSession] = await Promise.all([
+    departure.sessionId ? ctx.db.get(departure.sessionId) : null, ctx.db.get(promotion.toSessionId),
+  ]);
+  // Compare recorded academic contexts, not today's revision or wall clock.
+  // A later activation cannot fulfil a promotion after its participation period closed.
+  return !departureSession || departureSession.schoolId !== promotion.schoolId ||
+    !!(targetSession?.schoolId === promotion.schoolId && targetSession.startDate > departureSession.startDate);
+}
+
+async function studentPromotionContext(
+  ctx: QueryCtx | MutationCtx,
+  args: { student: Doc<"students">; schoolId: Id<"schools">; sessionId: Id<"academicSessions"> },
+) {
+  const promotions = await ctx.db.query("studentPromotions")
+    .withIndex("by_student_and_to_session", q => q.eq("studentId", args.student._id).eq("toSessionId", args.sessionId)).take(101);
+  if (promotions.length > 100) throw new ConvexError("Enrollment history requires review");
+  const promotion = promotions.filter(entry => entry.schoolId === args.schoolId)
+    .sort((left, right) => right.createdAt - left.createdAt || right._creationTime - left._creationTime)[0];
+  // Departure clears the current pointer, but not the latest reviewed opening.
+  const period = args.student.currentEnrollmentPeriodId ? await ctx.db.get(args.student.currentEnrollmentPeriodId) :
+    !isCurrentEnrollment(args.student) ? await ctx.db.query("studentEnrollmentPeriods")
+      .withIndex("by_student", q => q.eq("studentId", args.student._id)).order("desc").first() : null;
+  const openingEvent = period?.openedByEventId ? await ctx.db.get(period.openedByEventId) : null;
+  const supersededByDeparture = promotion ? await isStudentPromotionSupersededByDeparture(ctx, promotion) : false;
+  const promotionStillCurrent = !supersededByDeparture && (!openingEvent || openingEvent.type === "admitted" ||
+    openingEvent.type === "imported" || (promotion?.enrollmentRevision ?? 0) >= openingEvent.revision);
+  return { promotion, period, promotionStillCurrent, supersededByDeparture };
+}
+
 export async function isStudentEnrolledInClassForSession(
   ctx: QueryCtx | MutationCtx,
   args: {
@@ -37,15 +77,7 @@ export async function isStudentEnrolledInClassForSession(
   if (args.student.schoolId !== args.schoolId || args.student.isArchived ||
       (args.currentOperation && !isCurrentEnrollment(args.student))) return false;
 
-  const promotions = await ctx.db.query("studentPromotions")
-    .withIndex("by_student_and_to_session", q => q.eq("studentId", args.student._id).eq("toSessionId", args.sessionId)).take(101);
-  if (promotions.length > 100) throw new ConvexError("Enrollment history requires review");
-  const promotion = promotions.filter(entry => entry.schoolId === args.schoolId)
-    .sort((left, right) => right.createdAt - left.createdAt || right._creationTime - left._creationTime)[0];
-  // A return has its own reviewed placement. An old staged promotion must not override it.
-  const latestReturn = args.student.currentEnrollmentPeriodId ? await ctx.db.get(args.student.currentEnrollmentPeriodId) : null;
-  const openingEvent = latestReturn?.openedByEventId ? await ctx.db.get(latestReturn.openedByEventId) : null;
-  const promotionStillCurrent = !openingEvent || openingEvent.type === "admitted" || openingEvent.type === "imported" || (promotion?.enrollmentRevision ?? 0) >= openingEvent.revision;
+  const { promotion, period: latestReturn, promotionStillCurrent, supersededByDeparture } = await studentPromotionContext(ctx, args);
   if (args.currentOperation) {
     if (promotion && promotionStillCurrent) return promotion.toClassId === args.classId;
     return args.student.classId === args.classId;
@@ -54,7 +86,7 @@ export async function isStudentEnrolledInClassForSession(
   if (classes.includes(args.classId)) return true;
   const requestedPeriod = args.termId ? await ctx.db.get(args.termId) : await ctx.db.get(args.sessionId);
   const startsAfterReturn = latestReturn?.startDay && requestedPeriod && new Date(requestedPeriod.startDate).toISOString().slice(0, 10) >= latestReturn.startDay;
-  if (promotion && (!startsAfterReturn || promotionStillCurrent)) return promotion.toClassId === args.classId;
+  if (promotion && !supersededByDeparture && (!startsAfterReturn || promotionStillCurrent)) return promotion.toClassId === args.classId;
   if (args.student.enrollmentRevision !== undefined) {
     // New history cannot borrow a returning student's present class for older dates.
     const [records, selections] = await Promise.all([
@@ -63,7 +95,8 @@ export async function isStudentEnrolledInClassForSession(
     ]);
     if (records.length > 200 || selections.length > 200) throw new ConvexError("Enrollment history requires review");
     return records.some(record => record.classId === args.classId && (!args.termId || record.termId === args.termId)) ||
-      selections.some(selection => selection.schoolId === args.schoolId && selection.classId === args.classId);
+      (!(supersededByDeparture && promotion?.toClassId === args.classId) &&
+        selections.some(selection => selection.schoolId === args.schoolId && selection.classId === args.classId));
   }
   return args.student.classId === args.classId;
 }
@@ -72,23 +105,8 @@ export async function getStudentClassForSession(
   ctx: QueryCtx | MutationCtx,
   args: { student: Doc<"students">; schoolId: Id<"schools">; sessionId: Id<"academicSessions"> },
 ): Promise<Id<"classes">> {
-  const promotions = await ctx.db
-    .query("studentPromotions")
-    .withIndex("by_student_and_to_session", (q) =>
-      q.eq("studentId", args.student._id).eq("toSessionId", args.sessionId),
-    )
-    .collect();
-  const promotion = promotions
-    .filter((entry) => entry.schoolId === args.schoolId)
-    .sort(
-      (left, right) =>
-        right.createdAt - left.createdAt ||
-        right._creationTime - left._creationTime,
-    )[0];
-
-  const period = args.student.currentEnrollmentPeriodId ? await ctx.db.get(args.student.currentEnrollmentPeriodId) : null;
-  const openingEvent = period?.openedByEventId ? await ctx.db.get(period.openedByEventId) : null;
-  if (promotion && (!openingEvent || openingEvent.type === "admitted" || openingEvent.type === "imported" || (promotion.enrollmentRevision ?? 0) >= openingEvent.revision)) {
+  const { promotion, promotionStillCurrent } = await studentPromotionContext(ctx, args);
+  if (promotion && promotionStillCurrent) {
     return promotion.toClassId;
   }
 

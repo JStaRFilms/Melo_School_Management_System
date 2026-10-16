@@ -4,6 +4,7 @@ import { api } from "../../../_generated/api";
 import schema from "../../../schema";
 import { scoreRowBaseline } from "@school/shared/drafts/scoreRowBaseline";
 import { seedReviewedTenantOperatorWithCapabilities } from "./securityFixtures";
+import { getStudentClassForSession, isStudentEnrolledInClassForSession } from "../studentClassMembership";
 
 const root = new URL("../../../", import.meta.url).pathname;
 const modules = Object.fromEntries(Object.entries(import.meta.glob("../../../**/*.ts")).map(([path, module]) =>
@@ -61,6 +62,21 @@ async function assessmentFixture() {
   const tuple = { classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.termId, subjectId: f.ids.subjectId };
   const scores = { studentId: f.ids.studentId, ca1: 11, ca2: 10, ca3: 10, examRawScore: 40 };
   return { ...f, recordId, tuple, scores };
+}
+
+async function promotionFixture() {
+  const f = await fixture();
+  await f.admin.mutation(enrollment.promoteStudents, {
+    studentIds: [f.ids.studentId], fromClassId: f.ids.classId, fromSessionId: f.ids.sessionId,
+    toClassId: f.ids.nextClassId, toSessionId: f.ids.futureSessionId, subjectEnrollmentMode: "all_target_class_subjects",
+  });
+  const activate = () => f.admin.mutation(api.functions.academic.academicSetup.updateSession, { sessionId: f.ids.futureSessionId, isActive: true });
+  const membership = (sessionId = f.ids.futureSessionId, classId = f.ids.nextClassId) => f.t.run(async ctx => {
+    const student = await ctx.db.get(f.ids.studentId);
+    if (!student) throw new Error("Missing student");
+    return isStudentEnrolledInClassForSession(ctx, { student, schoolId: f.ids.schoolId, classId, sessionId });
+  });
+  return { ...f, activate, membership };
 }
 
 beforeEach(() => { vi.spyOn(Date, "now").mockReturnValue(NOW); });
@@ -143,6 +159,124 @@ describe("student lifecycle and registered headcounts", () => {
     const state = await f.read();
     await expect(f.admin.mutation(enrollment.cancelStudentPromotion, { studentId: f.ids.studentId, fromSessionId: f.ids.sessionId })).rejects.toThrow("changed after");
     expect(await f.read()).toEqual(state);
+  });
+
+  it.each(["withdraw", "suspend"] as const)("keeps the real placement after staged promotion, %s and registered session activation", async action => {
+    const f = await promotionFixture();
+    const departure = await f.depart(action, 1);
+    const before = await f.read();
+    expect(before.student?.currentEnrollmentPeriodId).toBeUndefined();
+    expect(before.events[0]).toMatchObject({ type: "promote", revision: 1, sessionId: f.ids.futureSessionId });
+    expect(before.events[1]).toMatchObject({ type: action, revision: departure.revision, sessionId: f.ids.sessionId });
+    const promotion = await f.t.run(ctx => ctx.db.query("studentPromotions").withIndex("by_student", q => q.eq("studentId", f.ids.studentId)).unique());
+    await f.activate();
+    const profile = await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId });
+    expect(profile).toMatchObject({ classId: f.ids.classId, activeSessionId: f.ids.futureSessionId });
+    // The dialog passes the profile's suggested class to the actual return-context query.
+    expect(await f.admin.query(enrollment.getStudentEnrollmentReturnContext, { studentId: f.ids.studentId, classId: profile.classId })).toMatchObject({ classId: f.ids.classId, sessionId: f.ids.futureSessionId, revision: departure.revision });
+    expect(await f.membership()).toBe(false);
+    expect(await f.membership(f.ids.sessionId, f.ids.classId)).toBe(true);
+    const futureTermId = await f.t.run(ctx => ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.futureSessionId, name: "Future first", startDate: Date.parse("2027-09-01"), endDate: Date.parse("2027-12-31"), isActive: false, createdAt: 1, updatedAt: 1 }));
+    const target = { studentId: f.ids.studentId, classId: f.ids.nextClassId, sessionId: f.ids.futureSessionId, termId: futureTermId };
+    await expect(f.admin.query(api.functions.academic.reportCards.getStudentReportCard, target)).rejects.toThrow("no report-card history");
+    await expect(f.admin.query(api.functions.academic.reportCards.getStudentReportCard, { studentId: target.studentId, sessionId: target.sessionId, termId: target.termId })).rejects.toThrow("no report-card history");
+    // Independent exact assessment evidence remains readable without reviving the staged placement.
+    const recordId = await f.t.run(ctx => ctx.db.insert("assessmentRecords", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.nextClassId, sessionId: f.ids.futureSessionId, termId: futureTermId, subjectId: f.ids.subjectId, ca1: 10, ca2: 10, ca3: 10, examRawScore: 40, examScaledScore: 40, total: 70, gradeLetter: "A", remark: "Pass", examInputModeSnapshot: "raw40", examRawMaxSnapshot: 40, status: "draft", enteredBy: f.ids.adminId, updatedBy: f.ids.adminId, createdAt: 1, updatedAt: 1 }));
+    const record = await f.t.run(ctx => ctx.db.get(recordId));
+    expect((await f.admin.query(api.functions.academic.reportCards.getStudentReportCard, target)).results).toContainEqual(expect.objectContaining({ subjectId: f.ids.subjectId, total: 70 }));
+    expect(await f.t.run(ctx => ctx.db.get(recordId))).toEqual(record);
+    expect((await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).classId).toBe(f.ids.classId);
+    await f.admin.mutation(api.functions.academic.narrativeReports.setClassModes, { sessionId: f.ids.futureSessionId, classIds: [f.ids.nextClassId], mode: "narrative" });
+    await expect(f.admin.query(api.functions.academic.narrativeReports.getStaffPreview, target)).rejects.toThrow("not enrolled");
+    expect(await f.read()).toEqual(before);
+    if (!promotion) throw new Error("Missing promotion");
+    expect(await f.t.run(ctx => ctx.db.get(promotion._id))).toEqual(promotion);
+    expect(before.count?.currentStudentCount).toBe(0);
+  });
+
+  it("does not turn unfulfilled staged subjects into narrative history after departure", async () => {
+    const f = await promotionFixture();
+    await f.depart("withdraw", 1);
+    await f.activate();
+    const termId = await f.t.run(ctx => ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.futureSessionId, name: "First", startDate: Date.parse("2027-09-01"), endDate: Date.parse("2027-12-31"), isActive: false, createdAt: 1, updatedAt: 1 }));
+    await f.admin.mutation(api.functions.academic.academicSetup.updateSession, { sessionId: f.ids.sessionId, isActive: true });
+    await f.admin.mutation(api.functions.academic.narrativeReports.setClassModes, { sessionId: f.ids.futureSessionId, classIds: [f.ids.nextClassId], mode: "narrative" });
+    await expect(f.admin.query(api.functions.academic.narrativeReports.getStaffPreview, { studentId: f.ids.studentId, classId: f.ids.nextClassId, sessionId: f.ids.futureSessionId, termId })).rejects.toThrow("not enrolled");
+  });
+
+  it.each(["withdraw", "suspend"] as const)("opens source history after %s even when the unfulfilled target is deleted", async action => {
+    const f = await promotionFixture();
+    const departure = await f.depart(action, 1);
+    await f.activate();
+    await f.t.run(ctx => ctx.db.delete(f.ids.nextClassId));
+    const before = await f.read();
+    const profile = await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId });
+    expect(profile.classId).toBe(f.ids.classId);
+    expect((await f.admin.query(enrollment.getStudentEnrollmentHistory, { studentId: f.ids.studentId, paginationOpts: { cursor: null, numItems: 20 } })).page.map(event => event.type)).toEqual([action, "promote"]);
+    const request = { studentId: f.ids.studentId, action: action === "withdraw" ? "re_enrol" as const : "reinstate" as const, expectedRevision: departure.revision, operationKey: "valid-return", reason: "Reviewed return" };
+    await expect(f.admin.mutation(enrollment.transitionStudentEnrollment, request)).rejects.toThrow("confirm");
+    await expect(f.admin.mutation(enrollment.transitionStudentEnrollment, { ...request, placement: f.placement })).rejects.toThrow("unavailable");
+    await f.t.run(ctx => ctx.db.patch(f.ids.classId, { isArchived: true }));
+    expect((await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).classId).toBe(f.ids.classId);
+    await expect(f.admin.query(enrollment.getStudentEnrollmentReturnContext, { studentId: f.ids.studentId, classId: profile.classId })).rejects.toThrow("unavailable");
+    await expect(f.admin.mutation(enrollment.transitionStudentEnrollment, { ...request, placement: { ...f.placement, classId: profile.classId } })).rejects.toThrow("unavailable");
+    expect(await f.read()).toEqual(before);
+    await f.t.run(ctx => ctx.db.patch(f.ids.classId, { isArchived: false }));
+    await f.admin.mutation(enrollment.transitionStudentEnrollment, { ...request, placement: { ...f.placement, classId: profile.classId } });
+    expect((await f.read()).student).toMatchObject({ enrollmentStatus: "active", classId: f.ids.classId });
+  });
+
+  it.each(["withdraw", "suspend"] as const)("retains a promotion effective before %s, including historical membership", async action => {
+    const f = await promotionFixture();
+    await f.activate();
+    expect((await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).classId).toBe(f.ids.nextClassId);
+    await f.depart(action, 1);
+    const before = await f.read();
+    expect(before.events[1].sessionId).toBe(f.ids.futureSessionId);
+    expect((await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).classId).toBe(f.ids.nextClassId);
+    expect(await f.membership()).toBe(true);
+    expect(await f.membership(f.ids.sessionId, f.ids.classId)).toBe(true);
+    expect(await f.read()).toEqual(before);
+  });
+
+  it("retains legacy unversioned promotion placement without fabricating lifecycle evidence", async () => {
+    const f = await fixture();
+    await f.t.run(ctx => ctx.db.insert("studentPromotions", { schoolId: f.ids.schoolId, studentId: f.ids.studentId, fromClassId: f.ids.classId, fromSessionId: f.ids.sessionId, toClassId: f.ids.nextClassId, toSessionId: f.ids.futureSessionId, subjectEnrollmentMode: "none", subjectEnrollmentCount: 0, batchKey: "legacy", createdAt: 1, createdBy: f.ids.adminId }));
+    await f.admin.mutation(api.functions.academic.academicSetup.updateSession, { sessionId: f.ids.futureSessionId, isActive: true });
+    const before = await f.read();
+    expect((await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).classId).toBe(f.ids.nextClassId);
+    expect(await f.t.run(async ctx => {
+      const student = await ctx.db.get(f.ids.studentId);
+      if (!student) throw new Error("Missing student");
+      return isStudentEnrolledInClassForSession(ctx, { student, schoolId: f.ids.schoolId, classId: f.ids.nextClassId, sessionId: f.ids.futureSessionId, currentOperation: true });
+    })).toBe(true);
+    expect(await f.read()).toEqual(before);
+    expect(before.events).toEqual([]);
+  });
+
+  it.each([true, false])("keeps reviewed return placement after a second departure, promotion effective before departure %s", async effective => {
+    const f = await promotionFixture();
+    if (effective) await f.activate();
+    await f.depart("suspend", 1);
+    if (!effective) await f.activate();
+    vi.mocked(Date.now).mockReturnValue(Date.parse("2027-10-11T12:30:00Z"));
+    await f.admin.mutation(enrollment.transitionStudentEnrollment, { studentId: f.ids.studentId, action: "reinstate", expectedRevision: 2, operationKey: "reviewed-return-source", reason: "Reviewed source placement", placement: { ...f.placement, classId: f.ids.classId } });
+    expect((await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).classId).toBe(f.ids.classId);
+    await f.admin.mutation(enrollment.transitionStudentEnrollment, { studentId: f.ids.studentId, action: "withdraw", expectedRevision: 3, operationKey: "second-departure", reason: "Second departure" });
+    const before = await f.read();
+    expect((await f.admin.query(enrollment.getStudentProfile, { studentId: f.ids.studentId })).classId).toBe(f.ids.classId);
+    expect(await f.t.run(async ctx => {
+      const student = await ctx.db.get(f.ids.studentId);
+      if (!student) throw new Error("Missing student");
+      return getStudentClassForSession(ctx, { student, schoolId: f.ids.schoolId, sessionId: f.ids.futureSessionId });
+    })).toBe(f.ids.classId);
+    const historicalTermId = await f.t.run(ctx => ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.futureSessionId, name: "Before return", startDate: Date.parse("2027-09-01"), endDate: Date.parse("2027-09-30"), isActive: false, createdAt: 1, updatedAt: 1 }));
+    expect(await f.t.run(async ctx => {
+      const student = await ctx.db.get(f.ids.studentId);
+      if (!student) throw new Error("Missing student");
+      return isStudentEnrolledInClassForSession(ctx, { student, schoolId: f.ids.schoolId, classId: f.ids.nextClassId, sessionId: f.ids.futureSessionId, termId: historicalTermId });
+    })).toBe(effective);
+    expect(await f.read()).toEqual(before);
   });
 
   it("withdraws a suspended student without a second count decrement or invented period", async () => {

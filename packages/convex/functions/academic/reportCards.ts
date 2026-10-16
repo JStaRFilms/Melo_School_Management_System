@@ -46,7 +46,7 @@ import {
   deriveEffectiveSubjectSelectionIds,
   listStudentAggregationOptOuts,
 } from "./subjectAggregationSelectionHelpers";
-import { isStudentEnrolledInClassForSession, studentPeriodClasses } from "./studentClassMembership";
+import { isStudentEnrolledInClassForSession, isStudentPromotionSupersededByDeparture, studentPeriodClasses } from "./studentClassMembership";
 import { isCurrentEnrollment } from "./studentEnrollmentCounts";
 import { assertStudentParticipating } from "./studentLifecycle";
 import { pickMostRecentDoc } from "./docSelection";
@@ -520,18 +520,18 @@ export async function buildStudentReportCard(
         currentOperation: session.isActive && term.isActive,
       })
     : false;
-  const preferredClassPromotions = preferredClassId
-    ? await ctx.db
-        .query("studentPromotions")
-        .withIndex("by_student_and_to_session", (q: any) =>
-          q.eq("studentId", args.studentId).eq("toSessionId", args.sessionId)
-        )
-        .collect()
-    : [];
+  const db: QueryCtx["db"] = ctx.db;
+  const preferredClassPromotions = await db
+    .query("studentPromotions")
+    .withIndex("by_student_and_to_session", q =>
+      q.eq("studentId", args.studentId).eq("toSessionId", args.sessionId)
+    )
+    .take(101);
+  if (preferredClassPromotions.length > 100) throw new ConvexError("Enrollment history requires review");
   const preferredClassPromotion = preferredClassPromotions
-    .filter((promotion: any) => promotion.schoolId === args.schoolId)
+    .filter(promotion => promotion.schoolId === args.schoolId)
     .sort(
-      (left: any, right: any) =>
+      (left, right) =>
         right.createdAt - left.createdAt ||
         right._creationTime - left._creationTime
     )[0];
@@ -583,6 +583,15 @@ export async function buildStudentReportCard(
   const records = preferredClassId ? recordsForPreferredClass : termRecords.filter(
     (record: any) => String(record.classId) === String(reportCardClassId)
   );
+
+  // Staged subjects are not history when departure superseded their promotion.
+  // Exact issued/assessment evidence and independently recorded periods still count.
+  if (!issued && records.length === 0 && preferredClassPromotion?.toClassId === reportCardClassId &&
+      await isStudentPromotionSupersededByDeparture(ctx, preferredClassPromotion) &&
+      !(await isStudentEnrolledInClassForSession(ctx, {
+        student, schoolId: args.schoolId, classId: reportCardClassId,
+        sessionId: args.sessionId, termId: args.termId,
+      }))) throw new ConvexError("Student has no report-card history in this class");
 
   if (!args.skipRoleCheck) {
     if (args.role === "teacher" && !args.isSchoolAdmin) {
