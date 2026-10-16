@@ -420,7 +420,12 @@ describe("student lifecycle and registered headcounts", () => {
       .toEqual({ updated: 1, created: 0, errors: [] });
     await f.depart(action);
     const history = await f.read();
-    const baseline = scoreRowBaseline(await f.t.run(ctx => ctx.db.get(f.recordId)));
+    const original = await f.t.run(ctx => ctx.db.get(f.recordId));
+    const sheet = await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, f.tuple);
+    expect(sheet.roster).toEqual([{ studentId: f.ids.studentId, studentName: "Student", assessmentRecord: original }]);
+    expect(sheet.editingState.canEdit).toBe(true);
+    const baseline = scoreRowBaseline(sheet.roster[0].assessmentRecord);
+    expect(baseline).toEqual(scoreRowBaseline(original));
     expect(await f.admin.mutation(upsert, { ...f.tuple, records: [{ ...f.scores, ca1: 12, expectedRow: baseline }] }))
       .toEqual({ updated: 1, created: 0, errors: [] });
     const corrected = await f.t.run(ctx => ctx.db.get(f.recordId));
@@ -431,12 +436,18 @@ describe("student lifecycle and registered headcounts", () => {
     expect(await f.admin.mutation(upsert, { ...f.tuple, records: [{ ...f.scores, expectedRow: baseline }] }))
       .toMatchObject({ updated: 0, created: 0, errors: [{ message: expect.stringContaining("changed since") }] });
     const missingSubjectId = await f.t.run(ctx => ctx.db.insert("subjects", { schoolId: f.ids.schoolId, name: "English", code: "ENG", createdAt: 1, updatedAt: 1 }));
+    expect((await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, { ...f.tuple, subjectId: missingSubjectId })).roster).toEqual([]);
+    expect((await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, { ...f.tuple, classId: f.ids.nextClassId })).roster).toEqual([]);
+    await expect(f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, { ...f.tuple, classId: f.ids.foreignClassId })).rejects.toThrow();
     expect(await f.admin.mutation(upsert, { ...f.tuple, subjectId: missingSubjectId, records: [f.scores] }))
       .toMatchObject({ updated: 0, created: 0, errors: [{ field: "record", message: expect.stringContaining("Inactive") }] });
     expect(await f.admin.mutation(upsert, { ...f.tuple, classId: f.ids.nextClassId, records: [f.scores] }))
       .toMatchObject({ updated: 0, created: 0, errors: [{ message: expect.stringContaining("selected class") }] });
     await expect(f.admin.mutation(upsert, { ...f.tuple, classId: f.ids.foreignClassId, records: [f.scores] })).rejects.toThrow();
     await f.t.run(ctx => ctx.db.insert("assessmentEditingPolicies", { schoolId: f.ids.schoolId, sessionId: f.ids.sessionId, termId: f.ids.termId, editingWindowEnabled: false, finalizationEnabled: true, finalizeAt: NOW - 1, createdAt: 1, updatedAt: 1, updatedBy: f.ids.adminId }));
+    const locked = await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, f.tuple);
+    expect(locked.editingState.canEdit).toBe(false);
+    expect(locked.roster[0].assessmentRecord).toEqual(corrected);
     await expect(f.admin.mutation(upsert, { ...f.tuple, records: [f.scores] })).rejects.toThrow("Editing closed");
     expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toEqual(corrected);
     expect(await f.t.run(ctx => ctx.db.query("assessmentRecords").collect())).toHaveLength(1);
@@ -455,9 +466,71 @@ describe("student lifecycle and registered headcounts", () => {
       if (kind === "inactive-session-future") await ctx.db.patch(f.ids.sessionId, { isActive: false });
     });
     const before = await f.t.run(ctx => ctx.db.get(f.recordId));
+    expect((await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, f.tuple)).roster).toEqual([]);
     expect(await f.admin.mutation(api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] }))
       .toMatchObject({ updated: 0, created: 0, errors: [{ field: "record" }] });
     expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toEqual(before);
+  });
+
+  it.each(["withdraw", "suspend"] as const)("lets an assigned teacher load and correct the completed-term row after %s", async action => {
+    const f = await assessmentFixture();
+    const teacherIdentity = { subject: "correction-teacher", tokenIdentifier: "test|correction-teacher" };
+    const assignmentId = await f.t.run(async ctx => {
+      const teacherId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: teacherIdentity.subject, authTokenIdentifier: teacherIdentity.tokenIdentifier, name: "Teacher", email: "teacher@test.invalid", role: "teacher", createdAt: 1, updatedAt: 1 });
+      return ctx.db.insert("teacherAssignments", { schoolId: f.ids.schoolId, teacherId, classId: f.ids.classId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+    });
+    const teacher = f.t.withIdentity(teacherIdentity);
+    const assessments = api.functions.academic.assessmentRecords;
+    expect((await teacher.query(assessments.getExamEntrySheet, f.tuple)).roster).toHaveLength(1);
+    await f.depart(action);
+    const history = await f.read();
+    const sheet = await teacher.query(assessments.getExamEntrySheet, f.tuple);
+    expect(sheet.roster).toHaveLength(1);
+    expect(sheet.roster[0]).toMatchObject({ studentId: f.ids.studentId, assessmentRecord: { _id: f.recordId, ca1: 10, total: 70 } });
+    expect(await teacher.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [{ ...f.scores, expectedRow: scoreRowBaseline(sheet.roster[0].assessmentRecord) }] }))
+      .toEqual({ updated: 1, created: 0, errors: [] });
+    expect((await teacher.query(assessments.getExamEntrySheet, f.tuple)).roster[0].assessmentRecord).toMatchObject({ _id: f.recordId, ca1: 11, total: 71 });
+    expect(await f.read()).toEqual(history);
+    await f.t.run(ctx => ctx.db.delete(assignmentId));
+    await expect(teacher.query(assessments.getExamEntrySheet, f.tuple)).rejects.toThrow("Not assigned");
+    await expect(teacher.mutation(assessments.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] })).rejects.toThrow("Not assigned");
+  });
+
+  it.each(["unscored", "unscored-inactive-session", "wrong-class", "wrong-subject", "foreign-record", "foreign-student", "archived-student", "missing-student"] as const)("excludes ineligible inactive correction rows: %s", async kind => {
+    const f = await assessmentFixture();
+    await f.admin.mutation(enrollment.setStudentSubjectSelections, { studentId: f.ids.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, subjectIds: [f.ids.subjectId] });
+    await f.depart();
+    await f.t.run(async ctx => {
+      if (kind === "unscored" || kind === "unscored-inactive-session") await ctx.db.delete(f.recordId);
+      if (kind === "unscored-inactive-session") await ctx.db.patch(f.ids.sessionId, { isActive: false });
+      if (kind === "wrong-class") await ctx.db.patch(f.recordId, { classId: f.ids.nextClassId });
+      if (kind === "wrong-subject") {
+        const subjectId = await ctx.db.insert("subjects", { schoolId: f.ids.schoolId, name: "English", code: "ENG", createdAt: 1, updatedAt: 1 });
+        await ctx.db.patch(f.recordId, { subjectId });
+      }
+      if (kind === "foreign-record") await ctx.db.patch(f.recordId, { schoolId: f.ids.otherSchoolId });
+      if (kind === "foreign-student") await ctx.db.patch(f.ids.studentId, { schoolId: f.ids.otherSchoolId });
+      if (kind === "archived-student") await ctx.db.patch(f.ids.studentId, { isArchived: true });
+      if (kind === "missing-student") await ctx.db.delete(f.ids.studentId);
+    });
+    const before = await f.read();
+    const record = await f.t.run(ctx => ctx.db.get(f.recordId));
+    expect((await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, f.tuple)).roster).toEqual([]);
+    expect(await f.admin.mutation(api.functions.academic.assessmentRecords.upsertAssessmentRecordsBulk, { ...f.tuple, records: [f.scores] }))
+      .toMatchObject({ updated: 0, created: 0, errors: [{ field: "record" }] });
+    expect(await f.t.run(ctx => ctx.db.get(f.recordId))).toEqual(record);
+    expect(await f.read()).toEqual(before);
+  });
+
+  it.each([false, true])("excludes superseded staged participation without an exact score, target session active=%s", async active => {
+    const f = await promotionFixture();
+    await f.depart("withdraw", 1);
+    if (active) await f.activate();
+    const termId = await f.t.run(ctx => ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: f.ids.futureSessionId, name: "Ended first", startDate: Date.parse("2027-09-01"), endDate: Date.parse("2027-12-31"), isActive: false, createdAt: 1, updatedAt: 1 }));
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2028-01-01"));
+    const before = await f.read();
+    expect((await f.admin.query(api.functions.academic.assessmentRecords.getExamEntrySheet, { classId: f.ids.nextClassId, sessionId: f.ids.futureSessionId, termId, subjectId: f.ids.subjectId })).roster).toEqual([]);
+    expect(await f.read()).toEqual(before);
   });
 
   it("denies current scoring, attendance and narrative drafts while retaining the existing grade", async () => {
