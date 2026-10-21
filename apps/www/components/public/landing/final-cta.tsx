@@ -66,8 +66,8 @@ export function FinalCta() {
                   <p className="text-sm text-stone-400 font-light leading-relaxed">On-site and remote training sessions for every admin, teacher, and bursar.</p>
                </div>
                <div className="space-y-4">
-                  <div className="text-stone-500 text-[10px] uppercase tracking-[0.2em] font-bold">The Guarantee</div>
-                  <p className="text-sm text-stone-400 font-light leading-relaxed">99.9% uptime with dedicated support lines based in Abuja.</p>
+                  <div className="text-stone-500 text-[10px] uppercase tracking-[0.2em] font-bold">The Support</div>
+                  <p className="text-sm text-stone-400 font-light leading-relaxed">Dedicated support lines based in Abuja.</p>
                </div>
             </div>
           </motion.div>

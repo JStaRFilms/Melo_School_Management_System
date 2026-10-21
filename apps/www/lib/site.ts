@@ -13,7 +13,7 @@ export const siteBrand = {
   description:
     "Melo brings academics, billing, and parent communication into one place, built for how Nigerian schools actually run.",
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://meloschool.com",
-  phone: "+234 815 265 7887", // Keep placeholder or update if you have the studio line
+  phone: "+234 815 265 7887",
   email: "melo@jstarstudios.com",
   address: "Abuja, Nigeria",
   hours: "Monday – Friday, 9 am – 5 pm",
