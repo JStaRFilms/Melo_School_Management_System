@@ -72,8 +72,11 @@ export function parseApps(value = 'admin') {
 }
 
 export function readJson(filename) { return JSON.parse(fs.readFileSync(filename, 'utf8')); }
+// A supervisor records `failed` after it has already released its leases and exited, so both
+// terminal states mean the same thing to `qa:stop`: nothing of ours is still running.
+const CLEAN_STOP_STATUSES = new Set(['stopped', 'failed']);
 export function isCleanStoppedState(state, root = ROOT) {
-  return state?.root === root && state.status === 'stopped' && Array.isArray(state.leases) && state.leases.every(filename => !fs.existsSync(filename));
+  return state?.root === root && CLEAN_STOP_STATUSES.has(state.status) && Array.isArray(state.leases) && state.leases.every(filename => !fs.existsSync(filename));
 }
 export function writeJson(filename, value) {
   fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
