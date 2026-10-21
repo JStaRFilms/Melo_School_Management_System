@@ -223,7 +223,11 @@ export function LessonPlanWorkspaceScreen({
   const saveInFlightRef = useRef<Promise<void> | null>(null);
   const retrySaveRef = useRef(false);
   const editorRef = useRef({ title, documentState, plainText });
-  editorRef.current = { title, documentState, plainText };
+  // Latest committed editor values for async save/generate callbacks. Writing refs during render is
+  // not allowed, and effects run after every commit, so handlers still read fresh values.
+  useEffect(() => {
+    editorRef.current = { title, documentState, plainText };
+  }, [title, documentState, plainText]);
   const editorSignature = useCallback(() => JSON.stringify({ title: editorRef.current.title,
     documentState: editorRef.current.documentState }), []);
 
