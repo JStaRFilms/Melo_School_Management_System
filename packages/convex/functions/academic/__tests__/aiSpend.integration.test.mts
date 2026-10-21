@@ -182,6 +182,44 @@ it("reviews two overages after 125 normal attempts without clearing another cycl
   expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ aiOutstandingOverageCount: 0, aiOverageRequiresReview: false });
   expect((await f.quote("overage-review-04")).estimate).toBe(10);
 });
+it("reports distinct AI overage counter defects and keeps the teacher block actionable", async () => {
+  const f = await setup();
+  await f.t.run(ctx => ctx.db.insert("platformAdmins", { authId: "operator", authTokenIdentifier: "test|operator", email: "operator@test.invalid", name: "Operator", isActive: true, createdAt: 1, updatedAt: 1 }));
+  const operator = f.t.withIdentity({ subject: "operator", tokenIdentifier: "test|operator" });
+  const row = await f.quote("counter-defect-1");
+  await f.one.mutation(fn.confirm, { attemptId: row.attemptId, expectedUnits: 10, confirmation: "CONFIRM" });
+  await f.one.mutation(fn.claim, { attemptId: row.attemptId, digest: "a".repeat(64), modelId: "reviewed-model" });
+  const measurement = { attemptId: row.attemptId, inputTokens: 7, outputTokens: 8, outcome: "succeeded", evidence: "provider:counter-defect" };
+  for (const [counter, message] of [[1.5, "not a safe integer"], [-1, "negative"], [Number.MAX_SAFE_INTEGER, "overflow"]] as const) {
+    await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: counter, aiOverageRequiresReview: false }));
+    await expect(f.one.mutation(fn.settle, measurement)).rejects.toThrow(message);
+  }
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: undefined, aiOverageRequiresReview: true }));
+  await expect(f.one.mutation(fn.settle, measurement)).rejects.toThrow("legacy state");
+  // Every rejected settlement is fail-closed: no usage was charged and the hold stayed.
+  expect(await f.t.run(ctx => ctx.db.get(f.meterId))).toMatchObject({ consumedUnits: 0, reservedUnits: 10 });
+  expect((await f.t.run(ctx => ctx.db.get(row.attemptId)))?.status).toBe("dispatch_started");
+  const overageId = await f.t.run(ctx => ctx.db.insert("usageOperationAttempts", { schoolId: f.schoolId, cycleId: f.cycleId, task: "teacher_lesson_plan", meterType: "ai_tokens", itemCount: 1, estimatedUnits: 10, modelProfile: "reviewed-model", status: "settled", actorTokenIdentifier: "test|one", createdAt: 1, updatedAt: 1, idempotencyKey: "counter-overage-1", overage: true, actualUnits: 15, inputTokens: 7, outputTokens: 8, outcome: "succeeded", evidence: "provider:counter-defect" }));
+  const review = (attemptId: Id<"usageOperationAttempts">) => operator.mutation(api.functions.academic.aiSpend.reviewOverage,
+    { attemptId, evidence: "provider:response-123", reason: "Checked provider evidence", confirmation: "REVIEW" });
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: undefined, aiOverageRequiresReview: true }));
+  await expect(review(overageId)).rejects.toThrow("no recorded overage counter");
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: 1.5 }));
+  await expect(review(overageId)).rejects.toThrow("not a safe integer");
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: -1 }));
+  await expect(review(overageId)).rejects.toThrow("negative");
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: 0 }));
+  await expect(review(overageId)).rejects.toThrow("zero for a recorded overage");
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: 1, aiOverageRequiresReview: false }));
+  await expect(review(overageId)).rejects.toThrow("not blocked");
+  expect(await f.t.run(ctx => ctx.db.get(overageId))).toMatchObject({ overage: true });
+  expect((await f.t.run(ctx => ctx.db.get(overageId)))?.overageReviewedAt).toBeUndefined();
+  // Teachers keep the single actionable message, including the legacy blocked-meter rule.
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: 1, aiOverageRequiresReview: true }));
+  await expect(f.quote("counter-defect-2")).rejects.toThrow("AI overage requires Platform review");
+  await f.t.run(ctx => ctx.db.patch(f.meterId, { aiOutstandingOverageCount: undefined, aiOverageRequiresReview: true }));
+  await expect(f.quote("counter-defect-3")).rejects.toThrow("AI overage requires Platform review");
+});
 it("expires only unclaimed work and denies changes in capability", async () => {
   const f = await setup();
   const row = await f.quote("attempt-0020");

@@ -1,12 +1,10 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { isValidEmailAddress } from "@school/auth";
 import {
-  cleanEmailInput,
-  cleanPhoneInput,
   getUserFacingErrorMessage,
   isValidPhoneNumber,
   MeloLoader,
@@ -61,8 +59,6 @@ import type {
   SessionSummary,
   TermSummary,
 } from "./components/types";
-
-const MAX_PROMOTION_BATCH = 100;
 
 function newEnrollmentRequestKey() {
   return globalThis.crypto.randomUUID();
@@ -125,7 +121,6 @@ function StudentsPageContent() {
   const cancelStudentGraduation = useMutation(
     "functions/academic/studentEnrollment:cancelStudentGraduation" as never
   );
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 

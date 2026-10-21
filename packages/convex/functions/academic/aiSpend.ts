@@ -198,9 +198,15 @@ export const settle = internalMutation({
     const meter = await meterFor(ctx, attempt);
     if (meter.reservedUnits < attempt.estimatedUnits || !Number.isSafeInteger(meter.consumedUnits + args.inputTokens + args.outputTokens)) throw new ConvexError("Meter requires reconciliation");
     const actual = args.inputTokens + args.outputTokens;
+    // Operators get the specific counter defect; teachers see only the generic
+    // "AI overage requires Platform review" block in quote/confirm.
     const outstanding = meter.aiOutstandingOverageCount ?? 0;
-    if (!Number.isSafeInteger(outstanding) || outstanding < 0 || (meter.aiOverageRequiresReview && outstanding === 0) || !Number.isSafeInteger(outstanding + (actual > attempt.estimatedUnits ? 1 : 0))) throw new ConvexError("AI overage count requires reconciliation");
-    const nextOutstanding = outstanding + (actual > attempt.estimatedUnits ? 1 : 0);
+    if (!Number.isSafeInteger(outstanding)) throw new ConvexError("AI overage counter is not a safe integer; Platform reconciliation required");
+    if (outstanding < 0) throw new ConvexError("AI overage counter is negative; Platform reconciliation required");
+    if (meter.aiOverageRequiresReview && outstanding === 0) throw new ConvexError("AI meter is blocked without an outstanding overage count (legacy state); Platform must reconcile it from provider evidence");
+    const overageIncrement = actual > attempt.estimatedUnits ? 1 : 0;
+    if (!Number.isSafeInteger(outstanding + overageIncrement)) throw new ConvexError("AI overage counter would overflow; Platform reconciliation required");
+    const nextOutstanding = outstanding + overageIncrement;
     await ctx.db.patch(meter._id, { consumedUnits: meter.consumedUnits + actual, reservedUnits: meter.reservedUnits - attempt.estimatedUnits, aiOutstandingOverageCount: nextOutstanding, aiOverageRequiresReview: nextOutstanding > 0, updatedAt: Date.now() });
     await ctx.db.patch(attempt._id, { status: "settled", actualUnits: actual, inputTokens: args.inputTokens, outputTokens: args.outputTokens, outcome: args.outcome, evidence: args.evidence, overage: actual > attempt.estimatedUnits, updatedAt: Date.now() });
     await ctx.db.insert("usageEvents", { schoolId: attempt.schoolId, meterType: "ai_tokens", unitsDelta: actual, reservationId: String(attempt._id), measurementMetadata: { source: "provider_reported_tokens", measuredAt: Date.now(), reference: String(attempt._id) }, operationName: attempt.task, description: "Measured AI generation token use", timestamp: Date.now() });
@@ -350,7 +356,11 @@ export const reviewOverage = mutation({
     const meter = await meterFor(ctx, row);
     // meterFor requires the original cycle. Other pending overages keep this cycle blocked.
     const outstanding = meter.aiOutstandingOverageCount;
-    if (!Number.isSafeInteger(outstanding) || outstanding === undefined || outstanding < 1 || !meter.aiOverageRequiresReview) throw new ConvexError("AI overage count requires reconciliation");
+    if (outstanding === undefined) throw new ConvexError("AI meter has no recorded overage counter (legacy state); Platform must reconcile it from provider evidence");
+    if (!Number.isSafeInteger(outstanding)) throw new ConvexError("AI overage counter is not a safe integer; Platform reconciliation required");
+    if (outstanding < 0) throw new ConvexError("AI overage counter is negative; Platform reconciliation required");
+    if (outstanding === 0) throw new ConvexError("AI overage counter is zero for a recorded overage; Platform reconciliation required");
+    if (!meter.aiOverageRequiresReview) throw new ConvexError("AI overage counter is set while the meter is not blocked; Platform reconciliation required");
     const remaining = outstanding - 1;
     await ctx.db.patch(row._id, { overageReviewedAt: Date.now(), updatedAt: Date.now() });
     await ctx.db.patch(meter._id, { aiOutstandingOverageCount: remaining, aiOverageRequiresReview: remaining > 0, updatedAt: Date.now() });

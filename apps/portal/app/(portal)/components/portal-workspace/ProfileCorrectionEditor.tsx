@@ -46,9 +46,13 @@ export function CorrectionEditor({ schoolId, request, workspace }: { schoolId: I
     {request.stale && <div className="space-y-2"><p role="alert">The profile changed since permission was granted. Your draft has not been applied. Save or recover it, then refresh the baseline and review the new before/after values.</p><button className={buttonClass} disabled={pending || dirty || !matchingRevision} onClick={() => void operation(async () => { setAcknowledged(false); setReviewed(undefined); await refresh(version); })}>Refresh baseline for review</button></div>}
     <fieldset disabled={pending || recoveryRequired} className="space-y-4">
       <legend className="mb-2 font-semibold">Your granted fields</legend>
-      {scope.parentFields.filter(f => f !== "address").map(field => <label key={field} className="block text-sm">Your {CORRECTION_FIELD_LABELS[field].toLowerCase()}<input className={inputClass} maxLength={field === "phone" ? 40 : 100} value={payload.parent?.[field] ?? (payload.parent?.[field] === null ? "" : workspace.parent[field] ?? "")} onChange={e => {
-        const value = e.target.value; edit({ ...payload, parent: { ...payload.parent, [field]: (field === "middleName" || field === "phone") && !value ? null : value } });
-      }} /></label>)}
+      {scope.parentFields.filter(f => f !== "address").map(field => {
+        const draft = payload.parent?.[field];
+        const value = draft === undefined ? workspace.parent[field] : draft;
+        return <label key={field} className="block text-sm">Your {CORRECTION_FIELD_LABELS[field].toLowerCase()}<input className={inputClass} maxLength={field === "phone" ? 40 : 100} value={value ?? ""} onChange={e => {
+          const next = e.target.value; edit({ ...payload, parent: { ...payload.parent, [field]: (field === "middleName" || field === "phone") && !next ? null : next } });
+        }} /></label>;
+      })}
       {scope.parentFields.includes("address") && <AddressInput label="Your personal address" address={payload.parentAddress} current={member?.mode === "residential" ? member.residential : member?.value} residential={member?.residential} onChange={address => edit({ ...payload, parentAddress: address })} />}
       {scope.childFields.length > 0 && <h3 className="font-semibold">Granted child: {workspace.child?.name}</h3>}
       {scope.childFields.filter(f => f !== "address").map(field => {
