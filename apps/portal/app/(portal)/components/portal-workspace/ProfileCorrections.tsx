@@ -36,7 +36,7 @@ function CorrectionWorkspacePanel({ schoolId, studentId }: { schoolId: Id<"schoo
   return <section aria-label="Profile corrections" className="mt-8 space-y-4 border-t border-slate-200 pt-6">
     <h2 className="text-lg font-bold">Your details and child profile</h2>
     <p className="text-sm text-slate-600">Your recorded name: {workspace.parent.name}. Child: {workspace.child?.name ?? "None selected"}.</p>
-    <p className="text-sm text-slate-600">A school admin must first approve the fields you can change. Saving a draft does not change your profile. Submitting the request applies the changes immediately.</p>
+    <p className="text-sm text-slate-600">A school admin must first approve the fields you can change. Saving a draft does not change your profile; applying an approved correction does.</p>
     {requestId ? detail ? <>
       <p role="status">Correction request: {detail.state}</p>
       {detail.state === "requested" && <p>The school is reviewing your permission request. No profile changes have been submitted.</p>}
