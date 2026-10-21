@@ -195,12 +195,12 @@ export function MaterialPreviewInspector({
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="text-[10px] font-black uppercase tracking-wider text-amber-900">
-                  {material.processingStatus === "ocr_needed" ? "OCR Extraction Required" : "Extraction Failed"}
+                  {material.processingStatus === "ocr_needed" ? "Text Reading Required" : "Extraction Failed"}
                 </p>
                 <p id="ocr-unavailable" className="text-[12px] font-medium leading-relaxed text-amber-900/80">
                   {material.ingestionErrorMessage || (material.processingStatus === "ocr_needed"
-                    ? "Native text extraction could not read this document. Provider OCR is currently unavailable."
-                    : "Text extraction encountered an issue. Provider OCR retry is currently unavailable.")}
+                    ? "This document has no readable text. Automatic text reading is currently unavailable."
+                    : "Text reading failed, and automatic retry is currently unavailable.")}
                 </p>
               </div>
             </div>

@@ -94,7 +94,7 @@ export function CapabilityComposition() {
             
             <h3 className="font-serif text-3xl text-melo-ink mb-6">{capabilities[2].title}</h3>
              <p className="text-melo-muted text-lg leading-relaxed mb-10 font-light">
-               Automate invoices, track payments via Paystack, and generate digital receipts that reconcile instantly with your bursary records.
+               Generate invoices, collect payments through Paystack, and keep receipts matched to your bursary records.
              </p>
             
             <div className="mt-auto pt-8 border-t border-stone-100 flex items-center justify-between gap-4">
@@ -122,9 +122,6 @@ export function CapabilityComposition() {
                {[1,2,3,4].map(i => (
                  <div key={i} className="h-10 w-10 rounded-full border-2 border-stone-50 bg-stone-200" />
                ))}
-               <div className="h-10 px-3 rounded-full border-2 border-stone-50 bg-stone-100 flex items-center justify-center text-[10px] font-bold text-stone-500 uppercase">
-                  +1.2k Parents
-               </div>
             </div>
           </div>
 

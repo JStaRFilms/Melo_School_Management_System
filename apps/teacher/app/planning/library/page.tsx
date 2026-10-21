@@ -373,8 +373,8 @@ export default function TeacherLibraryPage() {
         await requestProviderOcr({ materialId: material._id as never } as never);
         appToast.success(
           material.selectedPageNumbers?.length
-            ? "Provider OCR queued for the stored selected-page PDF."
-            : "Provider OCR queued for the stored PDF."
+            ? "Text reading queued for the saved pages."
+            : "Text reading queued for the saved PDF."
         );
         return;
       }
@@ -511,7 +511,7 @@ export default function TeacherLibraryPage() {
                 <h1 className="font-display text-2xl lg:text-3xl font-black tracking-tighter text-slate-950 uppercase">
                   Planning Library
                 </h1>
-                <p role="status" className="text-sm">Provider OCR dispatch remains unavailable. Upload limits are enforced separately. No OCR charge is initiated.</p>
+                <p role="status" className="text-sm">Automatic text reading for scanned files is unavailable. Upload limits still apply, and you are not charged for text reading.</p>
                 {schoolId && activeMaterial && (activeMaterial.processingStatus === "ocr_needed" || activeMaterial.processingStatus === "failed") && <UsagePreflight schoolId={schoolId} task="provider_ocr" label="provider OCR" itemCount={activeMaterial.selectedPageNumbers?.length || 1} />}
               </div>
 

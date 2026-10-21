@@ -59,7 +59,7 @@ it("applied receipt is read-only; further editing starts a fresh permission requ
   mocks.workspace = { ...workspace(), requests: [{ requestId, requesterUserId: "parent" as Id<"users">, state: "applied", requestedScope: mocks.detail.requestedScope, allowedScope: mocks.detail.allowedScope, revision: 2, createdAt: 1, appliedAt: 100, currentAccess: true }] };
   render(<ProfileCorrections schoolId={schoolId} />);
   fireEvent.click(screen.getByText(/^applied ·/));
-  expect(screen.getByText("Applied receipt")).toBeInTheDocument(); expect(screen.getByText("New phone")).toBeInTheDocument();
+  expect(screen.getByText("Changes applied")).toBeInTheDocument(); expect(screen.getByText("New phone")).toBeInTheDocument();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Start a new permission request" }));
   expect(screen.getByRole("button", { name: "Request edit permission" })).toBeInTheDocument();
@@ -78,14 +78,14 @@ it("keeps an auto-selected grant visible as an applied receipt until a new reque
   mocks.detail = { ...granted, state: "applied", revision: 2, applied: { key: "submit-key", reviewToken: "token", appliedAt: 100, grantRevision: 1, draftRevision: 1, changes: [{ target: "parent", targetId: "parent", field: "phone", before: "Old phone", after: "07012345678" }] } };
   mocks.workspace = { ...grantedWorkspace, requests: grantedWorkspace.requests.map(request => ({ ...request, state: "applied", revision: 2, appliedAt: 100 })) };
   view.rerender(<ProfileCorrections schoolId={schoolId} />);
-  expect(screen.getByText("Applied receipt")).toBeInTheDocument();
+  expect(screen.getByText("Changes applied")).toBeInTheDocument();
   expect(screen.getByText("07012345678")).toBeInTheDocument();
   expect(screen.queryByText("Granted editor")).not.toBeInTheDocument();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Start a new permission request" }));
   expect(screen.getByRole("button", { name: "Request edit permission" })).toBeInTheDocument();
-  expect(screen.queryByText("Applied receipt")).not.toBeInTheDocument();
+  expect(screen.queryByText("Changes applied")).not.toBeInTheDocument();
   expect(mocks.request).not.toHaveBeenCalled();
 });
 it("request failures retain scope and reason and do not claim the school granted access", async () => {

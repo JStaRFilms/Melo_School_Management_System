@@ -494,12 +494,12 @@ function ExamSettingsContent({
               <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
                 <span>Assessments</span>
                 <ChevronRight size={10} />
-                <span className="text-slate-900">Command Center</span>
+                <span className="text-slate-900">Exam recording</span>
               </div>
               
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="space-y-4">
-                  <AdminHeader title="Protocol Dashboard" />
+                  <AdminHeader title="Exam recording" />
                   <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-100/50 rounded-full w-fit">
                     <ShieldCheck size={10} className="text-blue-500" />
                     <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Protocol Verified</span>

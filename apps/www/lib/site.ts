@@ -11,7 +11,7 @@ export const siteBrand = {
   name: "Melo",
   tagline: "School management, simplified.",
   description:
-    "Melo is the unified operating system for Nigerian schools — from academics and billing to parent visibility, built for how your institution actually runs.",
+    "Melo brings academics, billing, and parent communication into one place, built for how Nigerian schools actually run.",
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://meloschool.com",
   phone: "+234 815 265 7887", // Keep placeholder or update if you have the studio line
   email: "melo@jstarstudios.com",
@@ -161,7 +161,7 @@ export const pricingTiers = [
       "Branded report cards",
       "Priority support",
     ],
-    cta: "Start free trial",
+    cta: "Book a demo",
     highlighted: true,
   },
   {

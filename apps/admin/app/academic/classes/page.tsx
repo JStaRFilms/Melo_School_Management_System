@@ -378,7 +378,7 @@ export default function ClassesPage() {
         onClose={() => setClassToArchive(null)}
         onConfirm={executeArchive}
         title={`Archive ${classToArchive?.name || "Class"}?`}
-        description="Historical academic performance, past grades, and existing student enrollment records will remain safely preserved in the database. The class blueprint will be removed from active academic sessions."
+        description="Past grades, historical performance, and existing student enrollment records are kept in the archive. The class will be removed from active academic sessions."
         confirmLabel="Archive Class"
         confirmVariant="danger"
         isLoading={isArchiving}

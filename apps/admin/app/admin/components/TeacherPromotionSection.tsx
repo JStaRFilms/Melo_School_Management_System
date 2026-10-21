@@ -40,9 +40,9 @@ export function TeacherPromotionSection({
     try {
       await promoteTeacherToAdmin({ teacherId: selectedTeacherId } as never);
       setSelectedTeacherId("");
-      onSuccess("Identity elevated. Teaching credentials preserved.");
+      onSuccess("Teacher access granted. Teaching credentials preserved.");
     } catch (error) {
-      onError("Elevation failed", getUserFacingErrorMessage(error, "We could not promote that teacher right now."));
+      onError("Could not grant access", getUserFacingErrorMessage(error, "We could not promote that teacher right now."));
     } finally {
       setIsBusy(false);
     }

@@ -39,7 +39,7 @@ export function FinalCta() {
             </h2>
             
             <p className="text-stone-400 text-xl sm:text-2xl leading-relaxed mb-16 font-light max-w-2xl mx-auto">
-              Transition from fragmented workflows to a unified command center. We handle the migration, the training, and the engineering—so you can focus on leadership.
+              Replace fragmented tools with one system for the whole school. We handle migration, training, and setup, so you can focus on running the school.
             </p>
             
             <div className="flex flex-col sm:flex-row justify-center items-center gap-8 mb-24">

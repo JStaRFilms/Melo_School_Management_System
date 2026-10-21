@@ -21,7 +21,7 @@ class CorrectionQueryBoundary extends Component<{ children: ReactNode }, { faile
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   render() {
-    return this.state.failed ? <p role="alert">Profile correction access could not be verified. No successful apply has been confirmed. Reload to check your current school and family links.</p> : this.props.children;
+    return this.state.failed ? <p role="alert">Profile corrections are unavailable right now. No changes were submitted. Reload to check your school and family links.</p> : this.props.children;
   }
 }
 function CorrectionWorkspacePanel({ schoolId, studentId }: { schoolId: Id<"schools">; studentId?: Id<"students"> }) {
@@ -36,12 +36,12 @@ function CorrectionWorkspacePanel({ schoolId, studentId }: { schoolId: Id<"schoo
   return <section aria-label="Profile corrections" className="mt-8 space-y-4 border-t border-slate-200 pt-6">
     <h2 className="text-lg font-bold">Your details and child profile</h2>
     <p className="text-sm text-slate-600">Your recorded name: {workspace.parent.name}. Child: {workspace.child?.name ?? "None selected"}.</p>
-    <p className="text-sm text-slate-600">An admin must first grant specific fields. Saving a draft does not change your profile. Final submission applies changes immediately.</p>
+    <p className="text-sm text-slate-600">A school admin must first approve the fields you can change. Saving a draft does not change your profile. Submitting the request applies the changes immediately.</p>
     {requestId ? detail ? <>
       <p role="status">Correction request: {detail.state}</p>
       {detail.state === "requested" && <p>The school is reviewing your permission request. No profile changes have been submitted.</p>}
-      {detail.state === "granted" && (targetWorkspace ? <CorrectionEditor key={`${schoolId}:${requestId}:${detail.revision}`} schoolId={schoolId} request={detail} workspace={targetWorkspace} /> : <p role="status">Loading granted targets...</p>)}
-      {detail.applied && <div className="space-y-3"><h3 className="font-semibold">Applied receipt</h3><p className="text-sm">Applied {new Date(detail.applied.appliedAt).toLocaleString()}. This request is read-only.</p><ProfileCorrectionChanges changes={detail.applied.changes} /></div>}
+      {detail.state === "granted" && (targetWorkspace ? <CorrectionEditor key={`${schoolId}:${requestId}:${detail.revision}`} schoolId={schoolId} request={detail} workspace={targetWorkspace} /> : <p role="status">Loading the fields you can change…</p>)}
+      {detail.applied && <div className="space-y-3"><h3 className="font-semibold">Changes applied</h3><p className="text-sm">Applied on {new Date(detail.applied.appliedAt).toLocaleString()}. This request is now read-only.</p><ProfileCorrectionChanges changes={detail.applied.changes} /></div>}
       {detail.decisionReason && <p>School decision: {detail.decisionReason}</p>}
       {!["requested", "granted"].includes(detail.state) && <button className={buttonClass} onClick={() => setSelected(undefined)}>Start a new permission request</button>}
     </> : <p role="status">Loading correction request...</p> : <RequestCorrection key={`${schoolId}:${studentId ?? "own"}`} schoolId={schoolId} workspace={workspace} onRequested={setSelected} />}

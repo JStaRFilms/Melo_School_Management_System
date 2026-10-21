@@ -15,7 +15,7 @@ export function UsageCosts({ schoolId }: { schoolId: Id<"schools"> }) {
     <h2 className="text-base font-bold text-slate-900">Internal provider usage economics</h2>
     <p className="text-sm text-slate-600 break-words">This school only. The latest 100 usage records — not termly, group or all-time totals. Amounts are shown as-is with no currency conversion. These are our costs, not customer charges.</p>
     <p className="text-xs text-slate-500 break-words">Automatic usage tracking is off. A failed or unknown task may still have cost us money; the school&apos;s allowance is tracked separately.</p>
-    {data.truncated && <p role="status" className="text-xs font-semibold text-amber-700 break-words">More records exist; this view is cut off at 100.</p>}
+    {data.truncated && <p role="status" className="text-xs font-semibold text-amber-700 break-words">Showing the first 100 records.</p>}
     {!data.rows.length && <p className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600 break-words">No usage cost recorded yet. Spend is unknown, not zero.</p>}
     <ul className="space-y-2 min-w-0">{data.rows.map(r => <li className="break-words min-w-0 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-xs text-slate-700" key={r._id}>
       <p className="font-bold text-slate-900 break-words">{r.provider} / {r.model} · {r.outcome} · {r.currency} {r.costMinor.toLocaleString()} minor units</p>
