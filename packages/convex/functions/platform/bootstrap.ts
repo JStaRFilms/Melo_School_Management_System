@@ -2,6 +2,7 @@ import { action, internalMutation, internalQuery } from "../../_generated/server
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
+import { createAuth } from "../../betterAuth";
 import { resolveStoredUserNameFields } from "../academic/studentNameCompat";
 
 type BootstrapPlatformAdminIds = {
@@ -79,6 +80,32 @@ async function ensurePlatformAuthUser(args: {
       signUpPayload?.message ?? signUpResponse.statusText
     }`
   );
+}
+
+type AuthActionCtx = Parameters<typeof createAuth>[0];
+
+/**
+ * A reused auth subject must still resolve to the provider's current user for
+ * this email. Binding a stale subject would report a successful bootstrap while
+ * sign-in keeps failing, and the canonical token identity would then block the
+ * reviewed reconciliation path.
+ */
+async function verifyExistingAuthSubject(
+  ctx: AuthActionCtx,
+  email: string,
+  expectedAuthId: string
+) {
+  const auth = createAuth(ctx);
+  const authContext = await auth.$context;
+  const existingAuth = (await authContext.internalAdapter.findUserByEmail(email, {
+    includeAccounts: false,
+  })) as { user: { id: string } } | null;
+  if (!existingAuth?.user || existingAuth.user.id !== expectedAuthId) {
+    throw new ConvexError(
+      "Existing platform admin authentication account requires manual review"
+    );
+  }
+  return existingAuth.user.id;
 }
 
 export const bootstrapPlatformAdminInternal = internalMutation({
@@ -251,15 +278,15 @@ export const bootstrapPlatformAdmin = action({
       { adminEmail: normalizedEmail }
     );
 
-    const adminAuthId =
-      existingAuthId ??
-      (await ensurePlatformAuthUser({
-        authBaseUrl,
-        origin: args.origin,
-        name: normalizedName,
-        email: normalizedEmail,
-        password: args.adminPassword,
-      }));
+    const adminAuthId = existingAuthId
+      ? await verifyExistingAuthSubject(ctx, normalizedEmail, existingAuthId)
+      : await ensurePlatformAuthUser({
+          authBaseUrl,
+          origin: args.origin,
+          name: normalizedName,
+          email: normalizedEmail,
+          password: args.adminPassword,
+        });
 
     const bootstrapped = await ctx.runMutation(
       internal.functions.platform.bootstrap.bootstrapPlatformAdminInternal,

@@ -30,8 +30,8 @@ This exists so production access can be recovered cleanly after a dev database b
 1. A platform operator opens the hidden bootstrap screen in the platform app.
 2. The operator enters the bootstrap token, admin name, admin email, and temporary password.
 3. The client submits the request to the existing `bootstrapPlatformAdmin` Convex action.
-4. The action validates `PLATFORM_BOOTSTRAP_TOKEN`, reuses or creates the Better Auth account, and passes the provider-issued auth subject to the internal upsert.
-5. The upsert derives the canonical token identity (deployment issuer plus subject) server-side and stores it on the new or newly linked `platformAdmins` row. Ambiguous, mismatched, or already-linked identities are rejected for reviewed reconciliation instead of rewritten.
+4. The action validates `PLATFORM_BOOTSTRAP_TOKEN`, provisions the Better Auth account or verifies that an existing recorded subject still resolves to the provider's user for that email, and passes the provider-confirmed auth subject to the internal upsert.
+5. The upsert derives the canonical token identity (deployment issuer plus subject) server-side and stores it on the new or newly linked `platformAdmins` row. Ambiguous, mismatched, or already-linked identities are rejected for reviewed reconciliation instead of rewritten. A reused subject the provider no longer recognizes is refused before anything is written, so the row stays available to the reviewed reconciliation path.
 6. The screen shows success and sends the operator to the normal platform sign-in page.
 
 ---
