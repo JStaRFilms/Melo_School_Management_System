@@ -21,3 +21,10 @@ Archive history reads are now conditional, class dropdowns use the compact addit
 
 ## Deliverables and completion
 A reviewed implementation, focused regression coverage, reproducible synthetic evidence, deployment/configuration map, confirmed causes versus hypotheses, ranked remaining work and an exact proposed rollout/rollback procedure requiring later approval. No UI redesign or new persistent data flow is intended, so Design is not needed.
+
+## Later authorization and release handoff
+The initial no-deploy scope above applied to local investigation and implementation. The owner later authorized the exact Production Convex deployment and reserved the GitHub merge for themselves. That backend deployment completed at `2026-10-23T14:27:26.222Z` on `outgoing-warbler-782`.
+
+A dry run from `94ef195` matched all 348 existing function modules. The reviewed optimizations were then deployed from `c030476` on that matching baseline, not from the older master backport. Existing function contracts and HTTP routes remain unchanged; only `listClassOptions` was added. Convex also materialized six pre-existing staged indexes. A strict post-check flagged that difference, and read-only audit/index queries confirmed all six are backfilled but still staged. None were enabled or removed. No frontend deployment, provider write, environment-variable update, application-record migration or GitHub merge was performed.
+
+The checkout is back on `perf/convex-egress-master`. PR #139 remains draft because the manually deployed Sites frontend has not been reconciled with master-triggered automatic deployments. Backend deployment is complete; frontend merge readiness is not. See `docs/tasks/ConvexOptimizationMasterBackport-20261023.md` for the exact deployment source, checks, staged-index findings and remaining hold.

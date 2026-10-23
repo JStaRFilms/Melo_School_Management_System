@@ -38,7 +38,7 @@ The first backend run had 57 passes and one existing Olive publication test exce
 
 Representative backport measurements retain class response bytes 6,367 to 1,303 and document-read occurrences 703 to 31. The compatible three-asset Sites fixture returns 1,338 response bytes unchanged, with legacy-equivalent page read occurrences 38 to 23 and requested-asset occurrences 27 to 22. They remain synthetic returned-document/JSON proxies, not production billing or measured production savings.
 
-## Release hold
+## Initial release hold
 
 This PR is prepared as a draft under the owner's optimization-only selection. It is not merged or deployed as part of preparing the backport.
 
@@ -47,3 +47,44 @@ Convex deployment replaces an application bundle; it is not an isolated upload o
 Before merging to master, also check automatic frontend deployment effects against the actual production baseline. The new `listClassOptions` function must be registered on exact Production `outgoing-warbler-782` before the updated Admin frontend is released. Do not change main-site frontend deployment settings or trigger a rollback of unrelated live pages to force this through.
 
 There is no production savings claim, final Vercel preview pass or live/browser acceptance for this backport. The owner's later conditional permission to include safe prior work was not used because the narrow PR was feasible, and it did not override the exclusion of main landing-page work.
+
+## Authorized Production backend deployment
+
+The owner subsequently authorized deploying the Convex backend and reserved the GitHub merge for themselves. The backend deployment completed on `outgoing-warbler-782` at `2026-10-23T14:27:26.222Z`. No frontend deployment, GitHub merge, provider write or environment-variable update was performed.
+
+The deployment did not use this older master backport as its full backend source:
+
+- Exact deployment identity, project `1860901`, team `428903` and canonical URL `https://outgoing-warbler-782.eu-west-1.convex.cloud` were verified before access.
+- A dry run from `94ef19516927abbfdf5a7b17f540022b1af66ee7` matched all 348 existing function modules. This established the actual live function baseline rather than inferring it from remote master.
+- The deployment source was `c03047629d09e206113ecb6a2ffd01ca3384a784`, the reviewed optimization branch on that matching baseline. Relative to the baseline, it changes four production source files and adds focused tests. It does not deploy the frontend files present in that branch.
+- Baseline and candidate schema bundle hashes were identical. Static app/component definitions, auth configuration, HTTP routes and cron definitions also matched. Analysis preserved all 811 existing query, mutation and action signatures and added only `functions/academic/academicSetup.js:listClassOptions`.
+- The native Convex CLI completed successfully. Its start, schema-wait and finish requests returned HTTP 200. The actual push was guarded against a different code request, changed auth configuration, changed HTTP/cron definitions or changed function contracts after preflight. Native backend typechecking ran during preflight and deployment. The earlier full test suites were not rerun in this deployment step.
+
+Post-deployment metadata confirms 812 registered queries, mutations and actions, with no removed or changed existing signatures. All 11 HTTP route entries remain unchanged. An anonymous request to the new query returns structured `ConvexError` data `Unauthorized`. The server redacts its error message, so the initial message-only probe was inconclusive; checking the structured error confirmed the expected denial. No authenticated school workflow or browser acceptance is claimed.
+
+### Six staged indexes materialized during deployment
+
+The dry run returned an empty finish diff and did not reveal six index additions. The strict post-deploy check stopped after the successful server commit when the actual finish response reported them. There was no deployment retry or automatic rollback.
+
+A read-only deployment-audit query confirmed that these were existing `staged: true` declarations in the matching baseline schema, not new declarations in the optimization diff:
+
+- `admissionsApplications.by_school_and_guardian_and_updated_at`
+- `admissionsEntitlements.by_school_and_guardian_and_created_at`
+- `admissionsPaymentEvents.by_school_and_provider_mode_and_provider_event_id`
+- `admissionsRetentionJobs.by_state_and_scheduled_at`
+- `issuedReportCards.by_classId_and_sessionId`
+- `knowledgeOcrJobs.by_storage`
+
+All six are backfilled and remain staged, not enabled. No index was removed, enabled or disabled. Document-schema validation, auth, cron definitions and function-server versions are unchanged in the deployment audit, including the Better Auth and rate-limiter components. No application records were rewritten or deleted, and no data-migration script ran. Do not describe this deployment as having zero index changes or treat an empty dry-run finish diff as proof of that.
+
+The checkout was restored to `perf/convex-egress-master` after deployment. Local sanitized metadata and guard reports are under ignored `tmp/convex-optimization-deploy-20261023/`. Credentials stayed in process memory. The unrelated launch deliverables remain untracked and unpushed.
+
+## Remaining frontend merge hold
+
+PR #139 remains unmerged. The backend prerequisite for the new Admin query is satisfied, but merging master can still deploy frontend code automatically.
+
+Read-only Vercel metadata confirms that `melo-sites`, rooted at `apps/sites`, is linked to this repository's `master` branch with automatic deployments enabled and no project ignore command. Its current Production deployment is `dpl_74xn9cnbjVdL5YDXnKhgE7vjMfK6`, a manual CLI upkeep build. Metadata records `baseCommit` as `d2ba632a09776e43684a99b4739885974790e094` and `upkeepSourceDigest` as `c8def46bf536203c411984b52a90ab4f09161d0b6b5cef73557eb721c0a8d956`. That digest matches the retained launch receipt in `94ef195`, which explicitly describes the upload as master plus reviewed local changes. It was not a clean master checkout. This backport deliberately excludes those Sites upkeep changes.
+
+Keep the PR draft until the frontend release preserves those live upkeep changes or the owner separately approves an exact deployment-control change. An unchanged `apps/sites` Git diff alone does not prove that a master-triggered build preserves the manually deployed site. No frontend settings were changed to bypass this hold. Main landing-page work remains excluded.
+
+Do not run a full Convex deployment from the older backport/master snapshot after merging. The live backend deliberately preserves newer, already-deployed Sites behavior. Any later backend release or rollback must retain that behavior. Roll the Admin frontend back before removing `listClassOptions`; do not enable or remove the six staged indexes as an unapproved follow-up.
