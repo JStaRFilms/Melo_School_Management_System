@@ -71,6 +71,7 @@ export async function approvedAsset(ctx: SiteCtx, schoolId: Id<"schools">, asset
 export async function validatePublication(ctx: SiteCtx, profile: Doc<"schoolSiteProfiles">, content: SiteContentV1, publisher: Id<"users">, now: number) {
   const manifest = checkedContent(profile, content);
   const evidenceIds: Id<"schoolApprovalEvidence">[] = [];
+  const assets: Doc<"schoolSiteAssets">[] = [];
   const school = await ctx.db.get(profile.schoolId);
   if (!school || school.status !== "active") return deny();
   let sensitive = false;
@@ -89,6 +90,7 @@ export async function validatePublication(ctx: SiteCtx, profile: Doc<"schoolSite
     }
     if (value.kind === "asset_ref") {
       const asset = await approvedAsset(ctx, profile.schoolId, value.assetId as Id<"schoolSiteAssets">, def.assetKind ?? "", now, publisher);
+      assets.push(asset);
       if (def.altFieldId) {
         const reviewedAlt = content.fields.find(field => field.fieldId === def.altFieldId)?.value;
         // This text field has its own exact digest approval. Neither upload nor
@@ -98,6 +100,10 @@ export async function validatePublication(ctx: SiteCtx, profile: Doc<"schoolSite
       sensitive = true;
     }
   }
-  for (const seo of content.routeSeo) if (seo.shareAssetId) { await approvedAsset(ctx, profile.schoolId, seo.shareAssetId as Id<"schoolSiteAssets">, "social_share", now, publisher); sensitive = true; }
-  return { evidenceIds, sensitive, digest: await sha256(contentCanonical(content)) };
+  for (const seo of content.routeSeo) if (seo.shareAssetId) {
+    assets.push(await approvedAsset(ctx, profile.schoolId, seo.shareAssetId as Id<"schoolSiteAssets">, "social_share", now, publisher));
+    sensitive = true;
+  }
+  // These documents are valid only in this transaction's snapshot, never across requests.
+  return { evidenceIds, sensitive, digest: await sha256(contentCanonical(content)), assets };
 }

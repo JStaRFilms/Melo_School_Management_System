@@ -26,7 +26,7 @@ export default function StudentOnboardingPage() {
   const { workspaceAccess, session } = useAuth();
   const schoolId = workspaceAccess?.state === "ready" ? workspaceAccess.branch.schoolId as Id<"schools"> : undefined;
   const canOverrideAdmissionNumber = Boolean(workspaceAccess?.state === "ready" && workspaceAccess.effectiveCapabilities.includes("enrollment.admissions.override_number"));
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassSummary[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClassOptions" as never) as ClassSummary[] | undefined;
   const createStudent = useMutation(api.functions.academic.studentEnrollment.createStudent);
   const saveStudentPhoto = useAction("functions/academic/studentEnrollment:saveStudentPhoto" as never);
   const [firstName, setFirstName] = useState("");

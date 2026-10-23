@@ -6,7 +6,7 @@ import StudentOnboardingPage from "../app/academic/students/onboarding/page";
 import StudentsPage from "../app/academic/students/page";
 
 const mocks = vi.hoisted(() => ({
-  create: vi.fn(), link: vi.fn(), action: vi.fn(), subjects: vi.fn(), closure: vi.fn(), restore: null as null | ((payload: unknown) => void),
+  queries: vi.fn(), create: vi.fn(), link: vi.fn(), action: vi.fn(), subjects: vi.fn(), closure: vi.fn(), restore: null as null | ((payload: unknown) => void),
   classes: [{ _id: "class-one", name: "Synthetic Class", level: "P1" }],
   profile: undefined as Record<string, unknown> | undefined,
   matrix: { subjects: [{ _id: "math", name: "Math", code: "MTH" }], students: [] as Array<Record<string, unknown>> },
@@ -27,7 +27,8 @@ vi.mock("convex/react", () => ({
   useQuery: (reference: FunctionReference<"query"> | string, args: unknown) => {
     if (args === "skip") return undefined;
     const name = typeof reference === "string" ? reference : getFunctionName(reference);
-    if (name.endsWith(":listClasses")) return mocks.classes;
+    mocks.queries(name);
+    if (name.endsWith(":listClasses") || name.endsWith(":listClassOptions")) return mocks.classes;
     if (name.endsWith(":listSessions")) return [{ _id: "session-new", name: "Promoted session", isActive: true }];
     if (name.endsWith(":listTermsBySession")) return [];
     if (name.endsWith(":getClassStudentSubjectMatrix")) return mocks.matrix;
@@ -73,6 +74,10 @@ function fillStudent() {
 for (const [entry, Page] of [["standalone student-first", StudentOnboardingPage], ["unified roster Quick/Family", StudentsPage]] as const) {
   it(`${entry} submits structured names and all captured fields in one atomic request`, async () => {
     render(<DepartureGuardProvider><Page /></DepartureGuardProvider>);
+    if (entry === "standalone student-first") {
+      expect(mocks.queries).toHaveBeenCalledWith("functions/academic/academicSetup:listClassOptions");
+      expect(mocks.queries).not.toHaveBeenCalledWith("functions/academic/academicSetup:listClasses");
+    }
     fillStudent();
     fireEvent.change(screen.getByLabelText("Contact choice"), { target: { value: "existing" } });
     fireEvent.click(await screen.findByRole("button", { name: /Grace Anthony.*grace@example.test/ }));
