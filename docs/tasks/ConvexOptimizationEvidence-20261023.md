@@ -1,5 +1,7 @@
 # Melo Convex optimization evidence, 23 October 2026
 
+Release scope note: the original evidence below was recorded against local base `94ef195`. The optimization-only PR branch was later rebuilt from remote master `d2ba632`, excluding that unrelated Sites commit. See [the master backport record](ConvexOptimizationMasterBackport-20261023.md) for current scope, compatible test fixtures, fresh checks and the deployment hold. Original test totals and Sites fixture bytes below are historical, not the backport's current test results.
+
 ## Result and scope
 
 Implemented on `perf/convex-egress-evidence`, based on the clean local `master` commit `94ef195`. No deployment, production function invocation, seed/reset, migration, school data/file deletion, environment change, plan upgrade, job disabling or push was performed. Remote access was limited to authenticated GETs for management metadata and aggregate usage. Credentials and school records were not printed.

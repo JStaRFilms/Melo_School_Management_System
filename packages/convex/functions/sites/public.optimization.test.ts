@@ -13,6 +13,7 @@ const readAsset = queryHandler(assetAtTime);
 const now = 1_800_000_000_000;
 const projectId = "prj_1234567890123456";
 const hostname = "canonical.synthetic.edu";
+const expiresAt = now + 86_400_000;
 afterEach(() => { vi.unstubAllEnvs(); });
 const jsonBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
@@ -25,13 +26,13 @@ async function fixture() {
     const foreignId = await ctx.db.insert("schools", { name: "Foreign", slug: "site-read-foreign", status: "active", createdAt: now, updatedAt: now });
     const publisher = await ctx.db.insert("users", { schoolId, name: "Publisher", email: "publisher@example.test", authId: "publisher", role: "staff", createdAt: now, updatedAt: now });
     const reviewer = await ctx.db.insert("users", { schoolId, name: "Reviewer", email: "reviewer@example.test", authId: "reviewer", role: "staff", createdAt: now, updatedAt: now });
-    const evidence = { schoolId, approvedByUserId: reviewer, approvedAt: now, createdAt: now, validity: "until_revoked" as const, sourceKind: "document_review" as const };
+    const evidence = { schoolId, approvedByUserId: reviewer, approvedAt: now, createdAt: now, expiresAt };
     const bytes = new TextEncoder().encode("synthetic image bytes");
     const storageId = await ctx.storage.store(new Blob([bytes], { type: "image/png" }));
     const assets = [];
-    for (const kind of ["hero", "favicon", "social_share"] as const) {
+    for (const kind of ["hero", "social_share", "social_share"] as const) {
       const assetId = await ctx.db.insert("schoolSiteAssets", { schoolId, storageId, kind, fileName: "synthetic.png", mediaType: "image/png", byteSize: bytes.length, checksum: await sha256(bytes), decorative: true,
-        rightsStatus: "approved", childApplicability: "contains_children", uploadProvenance: "website_direct_upload_v1", status: "published", createdAt: now, updatedAt: now });
+        rightsStatus: "approved", rightsExpiresAt: expiresAt, childApplicability: "contains_children", uploadProvenance: "website_direct_upload_v1", status: "published", createdAt: now, updatedAt: now });
       const asset = await ctx.db.get(assetId);
       if (!asset) throw Error("Missing synthetic asset");
       const subjectKey = assetSubject(asset);
@@ -45,12 +46,14 @@ async function fixture() {
       { fieldId: "school_name", value: { kind: "text", value: "Synthetic School" } },
       { fieldId: "intro", value: { kind: "text", value: "Hello" } },
       { fieldId: "hero_image", value: { kind: "asset_ref", assetId: assets[0].assetId } },
-      { fieldId: "site_favicon", value: { kind: "asset_ref", assetId: assets[1].assetId } },
-    ], routeSeo: [{ routeId: "home", title: "Synthetic School", shareAssetId: assets[2].assetId }] } satisfies Doc<"schoolSiteRevisions">["content"];
+    ], routeSeo: [
+      { routeId: "home", title: "Synthetic School", shareAssetId: assets[1].assetId },
+      { routeId: "about", shareAssetId: assets[2].assetId },
+    ] } satisfies Doc<"schoolSiteRevisions">["content"];
     const digest = await sha256(fieldValueDigest(content.fields[0].value));
     const identityId = await ctx.db.insert("schoolApprovalEvidence", { ...evidence, subjectKey: `v1:school-core-synthetic-v1:1:school_name:${digest}`, subjectType: "site_content", approvalClass: "identity", evidenceReference: "Synthetic identity" });
     const revisionId = await ctx.db.insert("schoolSiteRevisions", { schoolId, revisionNumber: 1, state: "published", rendererKey: "school-core-synthetic-v1", rendererSchemaVersion: "1", content, contentDigest: await sha256(contentCanonical(content)), approvalEvidenceIds: [identityId], expectedDraftVersion: 1, publishedAt: now, publishedByUserId: publisher, createdAt: now, updatedAt: now });
-    const domainId = await ctx.db.insert("schoolDomains", { schoolId, hostname, surface: "public", kind: "custom_domain", status: "active", canonicalIntent: "canonical", ownership: "school_managed_dns", ownershipProofPolicy: "persistent_authoritative_v1", verificationGeneration: 1, verificationTokenHash: "synthetic-hash",
+    const domainId = await ctx.db.insert("schoolDomains", { schoolId, hostname, surface: "public", kind: "custom_domain", status: "active", canonicalIntent: "canonical", ownership: "school_managed_dns", verificationExpiresAt: expiresAt, verificationGeneration: 1, verificationTokenHash: "synthetic-hash",
       ownershipObservation: { generation: 1, tokenHash: "synthetic-hash", observedAt: now },
       providerRoutingObservation: { generation: 1, observedAt: now, projectId, projectDomainVerified: true, configuredBy: "CNAME", misconfigured: false },
       tlsObservation: { generation: 1, observedAt: now, leafFingerprintSha256: "a".repeat(64), leafNotAfter: now + 172_800_000, deploymentProbeMatched: true }, createdAt: now, updatedAt: now });
@@ -110,11 +113,11 @@ it("rechecks revocation, consent, expiry, tenant ownership, kind and domain fres
     expect(await check()).toEqual(denied);
     await f.t.run((ctx) => ctx.db.patch(evidenceId, { revokedAt: undefined }));
   }
-  await f.t.run((ctx) => ctx.db.patch(asset.rightsId, { validity: undefined, expiresAt: now + 1 }));
+  await f.t.run((ctx) => ctx.db.patch(asset.rightsId, { expiresAt: now + 1 }));
   await f.t.run((ctx) => ctx.db.patch(asset.assetId, { rightsExpiresAt: now + 1 }));
   expect(await check(now + 2)).toEqual(denied);
-  await f.t.run((ctx) => ctx.db.patch(asset.rightsId, { validity: "until_revoked", expiresAt: undefined }));
-  await f.t.run((ctx) => ctx.db.patch(asset.assetId, { rightsExpiresAt: undefined, schoolId: f.foreignId }));
+  await f.t.run((ctx) => ctx.db.patch(asset.rightsId, { expiresAt }));
+  await f.t.run((ctx) => ctx.db.patch(asset.assetId, { rightsExpiresAt: expiresAt, schoolId: f.foreignId }));
   expect(await check()).toEqual(denied);
   await f.t.run((ctx) => ctx.db.patch(asset.assetId, { schoolId: f.schoolId, kind: "logo" }));
   expect(await check()).toEqual(denied);
