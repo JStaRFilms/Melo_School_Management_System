@@ -100,15 +100,18 @@ test('setup or metadata failures release the backend lease', async t => {
   assert.equal(await withLease('backend-test', { id: 'qa-success' }, async () => 42, directory), 42);
   assert.deepEqual(fs.readdirSync(directory), []);
 });
-test('only a stopped same-worktree owner with no recorded leases is idempotently stopped', t => {
+test('only a terminal same-worktree owner with no recorded leases is idempotently stopped', t => {
   const directory = temporary(t);
   const lease = path.join(directory, 'port.json');
   const stopped = { root: ROOT, status: 'stopped', leases: [lease] };
   assert.equal(isCleanStoppedState(stopped), true);
+  assert.equal(isCleanStoppedState({ ...stopped, status: 'failed' }), true);
+  assert.equal(isCleanStoppedState({ ...stopped, root: '/different-worktree' }), false);
   fs.writeFileSync(lease, '{}');
   assert.equal(isCleanStoppedState(stopped), false);
   assert.equal(isCleanStoppedState({ ...stopped, status: 'failed' }), false);
-  assert.equal(isCleanStoppedState({ ...stopped, root: '/different-worktree' }), false);
+  assert.equal(isCleanStoppedState({ ...stopped, leases: undefined }), false);
+  assert.equal(isCleanStoppedState({ ...stopped, status: 'ready' }), false);
 });
 test('supervisor ownership requires exact script and run token', () => {
   const state = { id: 'qa-first', pid: 1234 };
