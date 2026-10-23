@@ -156,7 +156,6 @@ export default function TeacherLibraryPage() {
   const updateMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:updateTeacherKnowledgeMaterialDetails" as never);
   const publishMaterial = useMutation("functions/academic/lessonKnowledgeTeacher:publishTeacherKnowledgeMaterialToStaff" as never);
   const retryMaterialIngestion = useMutation("functions/academic/lessonKnowledgeIngestion:retryKnowledgeMaterialIngestion" as never);
-  const requestProviderOcr = useMutation("functions/academic/lessonKnowledgeIngestion:requestKnowledgeMaterialProviderOcr" as never);
 
   // Derived Data
   const materials = useMemo(() => activeMaterialsData?.materials ?? [], [activeMaterialsData]);
@@ -369,20 +368,10 @@ export default function TeacherLibraryPage() {
 
   const handleRetryMaterial = async (material: TeacherLibraryMaterial) => {
     try {
-      if (material.processingStatus === "ocr_needed" || material.processingStatus === "failed") {
-        await requestProviderOcr({ materialId: material._id as never } as never);
-        appToast.success(
-          material.selectedPageNumbers?.length
-            ? "Text reading queued for the saved pages."
-            : "Text reading queued for the saved PDF."
-        );
-        return;
-      }
-
       await retryMaterialIngestion({ materialId: material._id as never } as never);
-      appToast.success("Extraction retry queued.");
+      appToast.success("Text extraction retry queued.");
     } catch (err) {
-      appToast.error("OCR retry failed", { description: getUserFacingErrorMessage(err, "OCR retry failed.") });
+      appToast.error("Retry failed", { description: getUserFacingErrorMessage(err, "The retry could not be started.") });
     }
   };
 
@@ -511,7 +500,7 @@ export default function TeacherLibraryPage() {
                 <h1 className="font-display text-2xl lg:text-3xl font-black tracking-tighter text-slate-950 uppercase">
                   Planning Library
                 </h1>
-                <p role="status" className="text-sm">Automatic text reading for scanned files is unavailable. Upload limits still apply, and you are not charged for text reading.</p>
+                <p role="status" className="text-sm">Automatic text reading for scanned files is unavailable, so a scanned file needs a text-based copy. Upload limits still apply, and you are not charged for text reading.</p>
                 {schoolId && activeMaterial && (activeMaterial.processingStatus === "ocr_needed" || activeMaterial.processingStatus === "failed") && <UsagePreflight schoolId={schoolId} task="provider_ocr" label="provider OCR" itemCount={activeMaterial.selectedPageNumbers?.length || 1} />}
               </div>
 

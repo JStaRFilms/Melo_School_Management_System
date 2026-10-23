@@ -108,7 +108,7 @@ export function MaterialEditSheet({
                   className="mt-4 flex cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 opacity-70"
                 >
                   <AlertCircle className="h-3.5 w-3.5" />
-                  OCR retry unavailable
+                  Text reading unavailable
                 </button>
               )}
           </div>

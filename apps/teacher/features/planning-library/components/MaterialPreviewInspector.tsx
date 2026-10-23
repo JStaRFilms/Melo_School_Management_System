@@ -199,7 +199,7 @@ export function MaterialPreviewInspector({
                 </p>
                 <p id="ocr-unavailable" className="text-[12px] font-medium leading-relaxed text-amber-900/80">
                   {material.ingestionErrorMessage || (material.processingStatus === "ocr_needed"
-                    ? "This document has no readable text. Automatic text reading is currently unavailable."
+                    ? "This document has no readable text. Automatic text reading is currently unavailable, so upload a text-based copy."
                     : "Text reading failed, and automatic retry is currently unavailable.")}
                 </p>
               </div>
@@ -310,7 +310,7 @@ export function MaterialPreviewInspector({
               className="flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-amber-100 text-[10px] font-black uppercase tracking-[0.15em] text-amber-800"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              OCR retry unavailable
+              Text reading unavailable
             </button>
           )}
           {(material.processingStatus === "queued" || material.processingStatus === "extracting") && (
