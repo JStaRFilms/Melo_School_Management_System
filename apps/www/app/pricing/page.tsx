@@ -113,11 +113,11 @@ export default function PricingPage() {
                 },
                 {
                   q: "Can I switch plans later?",
-                  a: "Yes. You can upgrade or downgrade at any time. We'll pro-rate the difference.",
+                  a: "Yes. Contact us and we will move you to the plan that fits your school.",
                 },
                 {
                   q: "Is my school's data secure?",
-                  a: "Every school's data is fully isolated. We use 256-bit encryption, regular backups, and role-based access control.",
+                  a: "Every school's data is kept separate. We use encrypted connections, regular backups, and role-based access control.",
                 },
                 {
                   q: "Do parents need to install an app?",

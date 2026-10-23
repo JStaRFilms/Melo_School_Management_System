@@ -11,6 +11,6 @@ export function ApplyProvider({ children, initialToken }: { children: ReactNode;
     if (!url) return null;
     try { const parsed = new URL(url); return parsed.protocol === "https:" || parsed.hostname === "localhost" ? new ConvexReactClient(url) : null; } catch { return null; }
   }, [url]);
-  if (!client) return <main className="apply-shell"><section className="apply-card"><h1>Application service unavailable</h1><p>The application service is not configured for this environment.</p></section></main>;
+  if (!client) return <main className="apply-shell"><section className="apply-card"><h1>Application service unavailable</h1><p>This service is unavailable. Contact the school if this continues.</p></section></main>;
   return <BetterAuthConvexProvider client={client} authClient={authClient} initialToken={initialToken}>{children}</BetterAuthConvexProvider>;
 }

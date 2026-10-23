@@ -38,6 +38,7 @@ legend { font-size: 0.95rem; font-weight: 700; color: #1e293b; padding: 0 0.5rem
 .danger:hover:not(:disabled) { background: #9f1239; border-color: #9f1239; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 .status { border: 1px solid #bae6fd; border-radius: 0.5rem; background: #f0f9ff; color: #075985; padding: 0.75rem 1rem; font-size: 0.875rem; }
+.status-empty { margin: 0; }
 .status.warn { border-color: #fde68a; background: #fffbeb; color: #92400e; }
 .status.error { border-color: #fecdd3; background: #fff1f2; color: #991b1b; }
 .status.success { border-color: #a7f3d0; background: #ecfdf5; color: #065f46; }

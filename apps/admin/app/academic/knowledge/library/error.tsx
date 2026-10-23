@@ -27,7 +27,7 @@ export default function KnowledgeLibraryError({
           Knowledge console unavailable
         </h1>
         <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500">
-          The admin library could not load. Retry to refresh the Convex query layer, or return to the academic workspace.
+          The admin library could not load. Try again, or return to the academic workspace.
         </p>
         <button
           type="button"

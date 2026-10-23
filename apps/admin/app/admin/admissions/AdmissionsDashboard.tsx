@@ -197,7 +197,7 @@ export function AdmissionsDashboard() {
     setFeedback(asReplacement ? "Editing a replacement version. Published values remain live until this version is published." : bundle ? "Editing draft." : "Creating a paid campaign draft.");
     syncEditParam(draftId);
   }
-  function reloadOpenDraft() { if (!selected) return; setValues(editorFrom(selected)); setExpectedDraftRevision(selected.draftRevision); setFeedback("Reloaded every editable value from the latest server draft."); }
+  function reloadOpenDraft() { if (!selected) return; setValues(editorFrom(selected)); setExpectedDraftRevision(selected.draftRevision); setFeedback("Reloaded every editable value from the latest saved version."); }
   function buildInput(): CampaignInput {
     if (!schoolId) throw new Error("School context is unavailable.");
     const parsed = parseDefinitions(values);
@@ -223,7 +223,7 @@ export function AdmissionsDashboard() {
         setOpenDraftId(String(result.formVersionId)); setExpectedDraftRevision(result.draftRevision); syncEditParam(String(result.formVersionId));
       }
       setFeedback("Campaign draft saved and remains open for editing."); appToast.success("Campaign draft saved");
-    } catch (error) { const text = errorText(error); const conflict = /CAMPAIGN_DRAFT_CONFLICT/i.test(text); setFeedback(conflict ? "This campaign changed on the server. Reload all server values before retrying." : text); appToast.error("Campaign could not be saved", { description: text }); } finally { setBusy(false); }
+    } catch (error) { const text = errorText(error); const conflict = /CAMPAIGN_DRAFT_CONFLICT/i.test(text); setFeedback(conflict ? "This campaign changed. Reload the latest version before retrying." : text); appToast.error("Campaign could not be saved", { description: text }); } finally { setBusy(false); }
   }
   async function approveCurrentPrice() {
     if (!schoolId || !selected || selected.lifecycle !== "draft" || !selected.priceApprovalSubjectKey) return;
@@ -733,7 +733,7 @@ function CampaignForm({ values, update, errors, busy, replacement, isNew, campai
       {errors.length ? <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-sm text-amber-900"><p className="font-bold">Check these details:</p><ul className="mt-1 list-disc space-y-0.5 pl-5">{errors.map((error) => <li key={error}>{error}</li>)}</ul></div> : null}
 
       <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] grid grid-cols-1 items-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur min-[400px]:grid-cols-2 sm:flex sm:flex-wrap sm:rounded-xl">
-        {conflict ? <button type="button" className="col-span-2 inline-flex min-h-[44px] items-center justify-center rounded-xl border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900" onClick={onReload}>Reload all server values</button> : null}
+        {conflict ? <button type="button" className="col-span-2 inline-flex min-h-[44px] items-center justify-center rounded-xl border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900" onClick={onReload}>Reload latest version</button> : null}
         <button className={`${buttonClass} w-full sm:w-auto`} disabled={busy || conflict || errors.length > 0}>{busy ? "Saving…" : "Save draft"}</button>
         <button type="button" className={`${secondaryButtonClass} w-full sm:w-auto`} onClick={onCancel}>Cancel</button>
       </div>

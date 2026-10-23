@@ -152,9 +152,9 @@ function PlatformAdminBootstrapFormWithConvex() {
       </div>
 
       <div className="mb-6 rounded-2xl border border-amber-300/15 bg-amber-400/5 p-4 text-sm text-amber-50/90">
-        This screen is for production recovery only. It should stay unlinked and
-        be used to restore the first platform admin or recover access after a
-        bad bootstrap.
+        This screen is for production recovery only. Do not share its link. Use
+        it to restore the first platform admin or recover access after a failed
+        bootstrap.
       </div>
 
       {error ? (

@@ -338,9 +338,9 @@ export default function AdminDashboardPage() {
         
         {/* ═══ COMMAND CENTER HEADER ═══════════════════════════ */}
         <AdminHeader
-          label="School command center"
+          label="School overview"
           title="Admin Dashboard"
-          description="Operational pulse, institution setup progress, and real-time academic workflows."
+          description="Setup progress, class activity, and recent actions."
           actions={
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
               {isSetupFullyComplete && (
@@ -390,7 +390,7 @@ export default function AdminDashboardPage() {
                   </h3>
                 </div>
                 <p className="text-xs text-slate-500">
-                  Complete these 5 core foundation steps to activate full grading, attendance, and billing.
+                  Complete these five steps to enable grading, attendance, and billing.
                 </p>
               </div>
 
@@ -507,7 +507,7 @@ export default function AdminDashboardPage() {
                 <Check className="h-4 w-4 stroke-[3]" />
               </div>
               <div className="min-w-0">
-                <h4 className="text-xs font-bold text-emerald-950 truncate">All Core School Systems Operational</h4>
+                <h4 className="text-xs font-bold text-emerald-950 truncate">Setup complete</h4>
                 <p className="text-[11px] text-emerald-700 truncate">
                   Sessions, classrooms, subjects, staff roster, and student body are configured.
                 </p>
@@ -551,10 +551,10 @@ export default function AdminDashboardPage() {
                   </div>
                   <div>
                     <h3 className="font-display text-sm font-bold text-slate-950">
-                      School Foundation & Launch Readiness
+                      School setup
                     </h3>
                     <p className="text-xs text-slate-500">
-                      All 5 core foundation milestones are fully configured.
+                      All five setup steps are complete.
                     </p>
                   </div>
                 </div>
@@ -650,7 +650,7 @@ export default function AdminDashboardPage() {
         <div className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-4 shadow-2xs">
           <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Quick Administrative Triggers
+              Quick actions
             </span>
             <span className="text-[11px] font-bold text-slate-600">Daily Operations</span>
           </div>
@@ -793,7 +793,7 @@ export default function AdminDashboardPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="font-display text-sm font-bold text-slate-950">Recent Audit & Events</h3>
-                <p className="text-xs text-slate-500">Live operational timeline and school calendar events.</p>
+                <p className="text-xs text-slate-500">Recent actions and upcoming events.</p>
               </div>
               <Link
                 href="/academic/events"
@@ -853,8 +853,8 @@ export default function AdminDashboardPage() {
                   </div>
                 ) : (
                   <div className="py-6 text-center text-xs text-slate-400">
-                    <p>No recent administrative audit records logged yet.</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Actions and timeline changes stream here live.</p>
+                    <p>No recent actions yet.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Actions appear here as they happen.</p>
                   </div>
                 )}
               </div>

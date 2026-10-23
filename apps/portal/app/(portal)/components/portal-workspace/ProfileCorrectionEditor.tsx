@@ -33,7 +33,7 @@ export function CorrectionEditor({ schoolId, request, workspace }: { schoolId: I
   async function operation(action: () => Promise<void>) {
     if (busy.current) return;
     busy.current = true; setPending(true); setError("");
-    try { await action(); } catch (e) { setError(getUserFacingErrorMessage(e, "Correction could not be saved. No successful apply has been confirmed.")); }
+    try { await action(); } catch (e) { setError(getUserFacingErrorMessage(e, "The correction could not be saved. No changes were submitted.")); }
     finally { busy.current = false; setPending(false); }
   }
   const version = { schoolId, requestId: request._id, expectedRevision: request.revision, expectedDraftRevision: knownRevision };
@@ -41,11 +41,11 @@ export function CorrectionEditor({ schoolId, request, workspace }: { schoolId: I
   const member = workspace.addresses.find(a => a.memberId === scope.parentMemberId);
   return <div className="space-y-4">
     <DraftHeaderStatus><DraftStatusIndicator status={recoveryRequired ? "recovery_pending" : pending && dirty ? "saving" : error ? "save_failed" : dirty ? "recovery_pending" : request.lastSavedAt ? "saved" : "idle"} lastSavedAt={request.lastSavedAt} /></DraftHeaderStatus>
-    <p className="text-sm">Editing only the granted fields{scope.childFields.length ? ` for ${workspace.child?.name ?? "the granted child"}` : " in your own details"}. These drafts are saved on the server, not in browser storage.</p>
-    {recoveryRequired && <div className="space-y-2"><p role="status">A server draft is available or changed in another tab. Recover it explicitly before editing. Unsaved browser changes will be replaced.</p><button className={buttonClass} disabled={pending} onClick={() => { edit(request.draft ?? {}); setSavedFingerprint(JSON.stringify(request.draft ?? {})); setKnownRevision(request.draftRevision); }}>Recover server draft</button></div>}
-    {request.stale && <div className="space-y-2"><p role="alert">The profile changed since permission was granted. Your draft has not been applied. Save or recover it, then refresh the baseline and review the new before/after values.</p><button className={buttonClass} disabled={pending || dirty || !matchingRevision} onClick={() => void operation(async () => { setAcknowledged(false); setReviewed(undefined); await refresh(version); })}>Refresh baseline for review</button></div>}
+    <p className="text-sm">You can edit only the fields your school approved{scope.childFields.length ? ` for ${workspace.child?.name ?? "this child"}` : " in your own details"}. These drafts are saved to your account, not just this browser.</p>
+    {recoveryRequired && <div className="space-y-2"><p role="status">A draft saved to your account is available, or it changed in another tab. Recover it before editing. Unsaved changes in this browser will be replaced.</p><button className={buttonClass} disabled={pending} onClick={() => { edit(request.draft ?? {}); setSavedFingerprint(JSON.stringify(request.draft ?? {})); setKnownRevision(request.draftRevision); }}>Recover saved draft</button></div>}
+    {request.stale && <div className="space-y-2"><p role="alert">The profile changed since permission was granted. Your draft has not been applied. Save or recover it, then reload the current profile and review the changes.</p><button className={buttonClass} disabled={pending || dirty || !matchingRevision} onClick={() => void operation(async () => { setAcknowledged(false); setReviewed(undefined); await refresh(version); })}>Reload current profile</button></div>}
     <fieldset disabled={pending || recoveryRequired} className="space-y-4">
-      <legend className="mb-2 font-semibold">Your granted fields</legend>
+      <legend className="mb-2 font-semibold">Fields you can change</legend>
       {scope.parentFields.filter(f => f !== "address").map(field => {
         const draft = payload.parent?.[field];
         const value = draft === undefined ? workspace.parent[field] : draft;

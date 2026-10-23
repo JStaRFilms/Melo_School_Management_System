@@ -86,9 +86,9 @@ export function ExpansionStory() {
 
           <div className="space-y-5 px-5 pb-28 pt-6 text-white">
             <p className="text-[1.02rem] font-light leading-8 text-stone-300">
-              Most schools run across fragmented tools and conflicting records. Melo unifies bursary,
-              academics, approvals, and parent visibility into one live operating system, so fees,
-              results, and communication move from the same truth.
+              Most schools run on disconnected tools and conflicting records. Melo brings bursary,
+              academics, approvals, and parent visibility into one system, so fees, results, and
+              messages stay in step.
             </p>
 
             <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 shadow-2xl backdrop-blur-3xl">
@@ -182,7 +182,7 @@ export function ExpansionStory() {
                   One source of truth <br/> for the whole school.
                 </h3>
                 <p className="max-w-lg text-[1.02rem] font-light leading-8 text-stone-300 sm:text-2xl">
-                  Most schools run across fragmented tools and conflicting records. Melo unifies bursary, academics, approvals, and parent visibility into one live operating system, so fees, results, and communication move from the same truth.
+                  Most schools run on disconnected tools and conflicting records. Melo brings bursary, academics, approvals, and parent visibility into one system, so fees, results, and messages stay in step.
                 </p>
              </div>
              <div className="flex flex-col gap-5 justify-center md:gap-8">

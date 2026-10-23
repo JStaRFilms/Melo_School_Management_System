@@ -382,7 +382,7 @@ export function KnowledgeMaterialDetailPanel({
           <div className="relative w-full max-w-2xl flex flex-col max-h-[85vh] rounded-2xl border border-slate-200 bg-white shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] animate-in zoom-in-95 duration-300">
             <div className="flex items-center justify-between border-b border-slate-100 p-5">
               <div className="space-y-0.5">
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Database Record</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Stored material</p>
                 <h3 className="font-display text-base font-black tracking-tight text-slate-950 truncate max-w-[400px]">
                   {material.title}
                 </h3>

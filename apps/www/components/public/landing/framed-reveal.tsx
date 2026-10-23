@@ -63,7 +63,7 @@ const Header = ({ translate }: { translate: MotionValue<number> }) => {
         A platform as capable as <br className="hidden sm:block" /> your ambition demands.
       </h2>
       <p className="mt-4 sm:mt-6 text-melo-muted text-base sm:text-xl font-light max-w-[18rem] sm:max-w-none mx-auto">
-        The command center for every dimension of school life.
+        One place for every part of school life.
       </p>
     </motion.div>
   );

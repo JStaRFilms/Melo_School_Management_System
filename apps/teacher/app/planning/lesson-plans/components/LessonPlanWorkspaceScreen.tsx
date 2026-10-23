@@ -744,7 +744,7 @@ export function LessonPlanWorkspaceScreen({
                 </div>
               )}
 
-              <p role="status" className="text-sm">Review the AI token hold before generating. Your school needs an active allowance for the selected model. Failed output may still use provider tokens.</p>
+              <p role="status" className="text-sm">Generation uses your school&apos;s AI allowance. Check the allowance before starting: a failed run may still use part of it.</p>
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-1.5">
                   {saveState === "conflict" && (

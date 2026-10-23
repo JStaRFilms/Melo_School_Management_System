@@ -65,7 +65,7 @@ function SignInForm() {
             </div>
             <h1 className="text-xl font-bold text-slate-900">Teacher Sign In</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Sign in to access exam recording
+              Sign in to plan lessons and record results
             </p>
           </div>
 

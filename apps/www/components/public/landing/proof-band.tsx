@@ -67,7 +67,7 @@ export function ProofBand() {
             <div className="mb-6 inline-flex items-center gap-3 text-melo-gold/80 transition-colors focus-within:text-melo-gold">
               <span className="h-px w-8 bg-melo-gold/30" />
               <span className="text-[10px] font-bold uppercase tracking-[0.4em]">
-                Operational Evidence
+                What it handles
               </span>
             </div>
 
@@ -82,8 +82,7 @@ export function ProofBand() {
             <p className="max-w-xl text-lg font-light leading-relaxed text-stone-300">
               From automated broadsheet compilation and term synchronization to
               complex fee hierarchies and parent transparency, Melo handles the
-              operational messiness of real schools with audit-friendly
-              precision.
+              operational messiness of real schools and keeps an audit trail.
             </p>
           </div>
 
@@ -119,7 +118,7 @@ export function ProofBand() {
         <div className="border-t border-stone-800/50 pt-20">
           <div className="flex flex-col items-center gap-8 sm:flex-row sm:gap-14">
             <div className="flex-shrink-0 rounded-full border border-stone-700/80 bg-stone-950/70 px-6 py-3 text-[10px] font-black uppercase tracking-[0.5em] text-stone-300 shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]">
-              Platform Spectrum
+              Modules
             </div>
 
             <div className="relative flex-grow overflow-hidden rounded-full border border-stone-800/50 bg-stone-950/35 px-6 py-4">

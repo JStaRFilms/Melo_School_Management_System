@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 async function recoverAndReview() {
-  fireEvent.click(screen.getByRole("button", { name: "Recover server draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Recover saved draft" }));
   fireEvent.click(screen.getByRole("button", { name: "Review saved changes" }));
   await screen.findByText(PROFILE_CORRECTION_WARNING);
 }
@@ -67,13 +67,13 @@ it.each(["draft", "grant", "baseline", "context"])("%s changes clear acknowledge
   const workspace = kind === "context" ? { ...f.workspace, parent: { ...f.workspace.parent, phone: "Admin's newer phone" } } : f.workspace;
   view.rerender(<CorrectionEditor schoolId={schoolId} request={request} workspace={workspace} />);
   expect(screen.queryByRole("button", { name: "Apply changes now" })).toBeNull(); expect(mocks.submit).not.toHaveBeenCalled();
-  if (kind === "draft") expect(screen.getByRole("button", { name: "Recover server draft" })).toBeEnabled();
+  if (kind === "draft") expect(screen.getByRole("button", { name: "Recover saved draft" })).toBeEnabled();
 });
 it("a changed baseline preserves the draft and only refreshes after an explicit action", async () => {
   const f = fixture(); render(<CorrectionEditor schoolId={schoolId} request={{ ...f.request, stale: true }} workspace={f.workspace} />);
-  expect(mocks.refresh).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Recover server draft" }));
+  expect(mocks.refresh).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Recover saved draft" }));
   expect(screen.getByRole("button", { name: "Review saved changes" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Refresh baseline for review" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reload current profile" }));
   await waitFor(() => expect(mocks.refresh).toHaveBeenCalledWith({ schoolId, requestId, expectedRevision: 1, expectedDraftRevision: 1 }));
   expect(mocks.submit).not.toHaveBeenCalled();
 });
@@ -81,7 +81,7 @@ it("a failed final submission keeps the same key for an identical retry and neve
   mocks.submit.mockRejectedValueOnce(new Error("Audit write failed")); const f = fixture(); render(<CorrectionEditor schoolId={schoolId} {...f} />);
   await recoverAndReview(); fireEvent.click(screen.getByRole("checkbox")); fireEvent.click(screen.getByRole("button", { name: "Apply changes now" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Audit write failed");
-  expect(screen.queryByText("Applied receipt")).toBeNull();
+  expect(screen.queryByText("Changes applied")).toBeNull();
   await waitFor(() => expect(screen.getByRole("button", { name: "Apply changes now" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Apply changes now" }));
   await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(2));

@@ -39,7 +39,7 @@ export function FinalCta() {
             </h2>
             
             <p className="text-stone-400 text-xl sm:text-2xl leading-relaxed mb-16 font-light max-w-2xl mx-auto">
-              Transition from fragmented workflows to a unified command center. We handle the migration, the training, and the engineering—so you can focus on leadership.
+              Replace fragmented tools with one system for the whole school. We handle migration, training, and setup, so you can focus on running the school.
             </p>
             
             <div className="flex flex-col sm:flex-row justify-center items-center gap-8 mb-24">
@@ -66,8 +66,8 @@ export function FinalCta() {
                   <p className="text-sm text-stone-400 font-light leading-relaxed">On-site and remote training sessions for every admin, teacher, and bursar.</p>
                </div>
                <div className="space-y-4">
-                  <div className="text-stone-500 text-[10px] uppercase tracking-[0.2em] font-bold">The Guarantee</div>
-                  <p className="text-sm text-stone-400 font-light leading-relaxed">99.9% uptime with dedicated support lines based in Abuja.</p>
+                  <div className="text-stone-500 text-[10px] uppercase tracking-[0.2em] font-bold">The Support</div>
+                  <p className="text-sm text-stone-400 font-light leading-relaxed">Dedicated support lines based in Abuja.</p>
                </div>
             </div>
           </motion.div>
