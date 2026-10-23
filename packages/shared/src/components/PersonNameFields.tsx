@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { normalizeStructuredPersonName } from "../name-format";
 
 export type PersonNameValue = { firstName: string; middleName: string; lastName: string; fullName: string; structured: boolean };

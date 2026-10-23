@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { PersonNameFields, type PersonNameValue } from "../PersonNameFields";
 import { normalizeStructuredPersonName } from "../../name-format";
 import type { StagedStudentRow } from "./Tabs/RosterReviewTab";

@@ -107,10 +107,6 @@ export function StudentProfileEditor({
     "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
     schoolId ? ({ schoolId } as never) : ("skip" as never),
   ) as { policy: { pattern: string } | null } | undefined;
-  const transferAccess = useQuery(
-    "functions/academic/transfers:getTransferPilotAccess" as never,
-    schoolId ? ({ schoolId } as never) : ("skip" as never),
-  ) as { allowed: boolean } | undefined;
   const selectedLevel = classes.find((item) => item._id === classId)?.level;
   const numbering = useQuery(
     "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,

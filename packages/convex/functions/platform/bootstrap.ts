@@ -2,11 +2,19 @@ import { action, internalMutation, internalQuery } from "../../_generated/server
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
+import { createAuth } from "../../betterAuth";
 import { resolveStoredUserNameFields } from "../academic/studentNameCompat";
 
 type BootstrapPlatformAdminIds = {
   platformAdminId: Id<"platformAdmins">;
 };
+
+/** Canonical Better Auth identity: the deployment issuer plus the provider subject. */
+function canonicalTokenIdentifier(authId: string) {
+  const issuer = process.env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
+  if (!issuer) throw new ConvexError("Authentication issuer is not configured");
+  return `${issuer}|${authId}`;
+}
 
 async function readJsonSafe(response: Response) {
   try {
@@ -74,6 +82,32 @@ async function ensurePlatformAuthUser(args: {
   );
 }
 
+type AuthActionCtx = Parameters<typeof createAuth>[0];
+
+/**
+ * A reused auth subject must still resolve to the provider's current user for
+ * this email. Binding a stale subject would report a successful bootstrap while
+ * sign-in keeps failing, and the canonical token identity would then block the
+ * reviewed reconciliation path.
+ */
+async function verifyExistingAuthSubject(
+  ctx: AuthActionCtx,
+  email: string,
+  expectedAuthId: string
+) {
+  const auth = createAuth(ctx);
+  const authContext = await auth.$context;
+  const existingAuth = (await authContext.internalAdapter.findUserByEmail(email, {
+    includeAccounts: false,
+  })) as { user: { id: string } } | null;
+  if (!existingAuth?.user || existingAuth.user.id !== expectedAuthId) {
+    throw new ConvexError(
+      "Existing platform admin authentication account requires manual review"
+    );
+  }
+  return existingAuth.user.id;
+}
+
 export const bootstrapPlatformAdminInternal = internalMutation({
   args: {
     adminName: v.string(),
@@ -88,14 +122,66 @@ export const bootstrapPlatformAdminInternal = internalMutation({
   }),
   handler: async (ctx, args): Promise<BootstrapPlatformAdminIds> => {
     const now = Date.now();
-    const existing = await ctx.db
+    // The token identity is derived server-side from the deployment issuer and
+    // the auth subject the provider returned. Bootstrap never accepts a
+    // caller-supplied token identifier, and it never rewrites a conflicting one.
+    const authTokenIdentifier = canonicalTokenIdentifier(args.adminAuthId);
+    const sameEmail = await ctx.db
       .query("platformAdmins")
       .withIndex("by_email", (q) => q.eq("email", args.adminEmail))
-      .unique();
+      .take(2);
+    if (sameEmail.length > 1) {
+      throw new ConvexError(
+        "Multiple platform admins share this email; reviewed reconciliation is required"
+      );
+    }
+    const existing = sameEmail[0];
+    const sameSubject = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_auth", (q) => q.eq("authId", args.adminAuthId))
+      .take(2);
+    const linkedByToken = await ctx.db
+      .query("platformAdmins")
+      .withIndex("by_auth_token_identifier", (q) =>
+        q.eq("authTokenIdentifier", authTokenIdentifier)
+      )
+      .take(2);
+    if (linkedByToken.length > 1 || sameSubject.length > 1) {
+      throw new ConvexError(
+        "This authentication identity is ambiguous across platform admins; reviewed reconciliation is required"
+      );
+    }
+    if (linkedByToken.length === 1 && linkedByToken[0]._id !== existing?._id) {
+      throw new ConvexError(
+        "This authentication identity is already linked to another platform admin"
+      );
+    }
+    if (
+      sameSubject.length === 1 &&
+      sameSubject[0]._id !== existing?._id
+    ) {
+      throw new ConvexError(
+        "This authentication subject is already recorded for another platform admin"
+      );
+    }
 
     if (existing) {
+      if (existing.authId !== args.adminAuthId) {
+        throw new ConvexError(
+          "Existing platform admin is bound to a different authentication subject; reviewed reconciliation is required"
+        );
+      }
+      if (
+        existing.authTokenIdentifier &&
+        existing.authTokenIdentifier !== authTokenIdentifier
+      ) {
+        throw new ConvexError(
+          "Existing platform admin is bound to a different token identity; reviewed reconciliation is required"
+        );
+      }
       await ctx.db.patch(existing._id, {
         authId: args.adminAuthId,
+        authTokenIdentifier,
         ...resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName, fallbackName: existing.name, fallbackFirstName: existing.firstName, fallbackMiddleName: existing.middleName, fallbackLastName: existing.lastName }),
         isActive: true,
         updatedAt: now,
@@ -106,6 +192,7 @@ export const bootstrapPlatformAdminInternal = internalMutation({
 
     const platformAdminId = await ctx.db.insert("platformAdmins", {
       authId: args.adminAuthId,
+      authTokenIdentifier,
       email: args.adminEmail,
       ...resolveStoredUserNameFields({ name: args.adminName, firstName: args.firstName, middleName: args.middleName, lastName: args.lastName }),
       isActive: true,
@@ -191,15 +278,15 @@ export const bootstrapPlatformAdmin = action({
       { adminEmail: normalizedEmail }
     );
 
-    const adminAuthId =
-      existingAuthId ??
-      (await ensurePlatformAuthUser({
-        authBaseUrl,
-        origin: args.origin,
-        name: normalizedName,
-        email: normalizedEmail,
-        password: args.adminPassword,
-      }));
+    const adminAuthId = existingAuthId
+      ? await verifyExistingAuthSubject(ctx, normalizedEmail, existingAuthId)
+      : await ensurePlatformAuthUser({
+          authBaseUrl,
+          origin: args.origin,
+          name: normalizedName,
+          email: normalizedEmail,
+          password: args.adminPassword,
+        });
 
     const bootstrapped = await ctx.runMutation(
       internal.functions.platform.bootstrap.bootstrapPlatformAdminInternal,
