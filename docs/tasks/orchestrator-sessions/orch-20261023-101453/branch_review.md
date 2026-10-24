@@ -1,6 +1,6 @@
 # Local branch review ledger
 
-## Scope and authority
+## Original local scope and authority
 
 The owner authorized local commits and a babysit-pr review loop using an independent subagent applying branch-review. No hosted PR, push, fetch, issue creation, merge, deployment or migration is authorized.
 
@@ -42,8 +42,22 @@ No BR IDs or actionable findings have been issued. No implementation correction 
 - Archive session/teacher query fan-out: non-blocking scale consideration. Supporting query count grows with archived sessions/teachers; no demonstrated failing workload or confirmed in-scope regression was supplied. Disclose as a limitation, do not add arbitrary limits, caches or unrelated redesign. No hosted issue filed because the owner requested a local-only process.
 - Review coverage: inventory reconciled in R2; remaining archive/Sites tests and helpers inspected by the parent, with 9 tests passing on rerun. Independent final coverage attempts R2/R3 did not return verdicts and are not counted as passes. No further review launches are pending.
 
-## Readiness
+## Original local readiness
 
 Code-ready: focused checks passed as recorded in `docs/tasks/ConvexOptimizationEvidence-20261023.md`, with 9 relevant tests rerun during closure. Local review-ready: no unresolved actionable findings after R1's independent source review and the parent's complete remaining test inspection. A completed independent final coverage verdict from R2/R3 is explicitly not claimed. No source changes followed implementation commit `a2fd2f0`; the follow-up commit contains review tracking only.
 
 Preview-ready, runtime-ready and release-ready are not claimed. No PR exists for this local process, so hosted checks, comment/thread counts and final Vercel preview status are not applicable or verified. Nothing was pushed, merged or deployed. The additive backend must be deployed before the Admin caller changes under separate exact-target approval.
+
+## Later owner-approved school Sites reconciliation
+
+The owner subsequently authorized the Production backend deployment, hosted PR139 and inclusion of the school's Sites frontend with its required backend support. The owner will merge personally. Earlier local-only authority and readiness statements above describe the original review stage, not this later permission.
+
+The current release branch restores 36 maintained-source paths from `c030476` without importing the original private-photo/operator-artifact ancestry. Its entire `apps` and `packages` trees match that preserved optimized release source. Marketing files and raw launch artifacts remain excluded.
+
+OpenCode S3 was interrupted after quota exhaustion and has no final verdict. Its observation about rejecting a second live operator package was carried into the replacement review rather than dropped. The owner explicitly selected Takomi GPT models for remaining work.
+
+Takomi GPT-6.1 Sol completed an independent read-only review of all 36 restored paths, surrounding contracts and optimization integration against `eb30018`: **REVIEW CLEAR**, no findings and no restoration-path coverage gaps. The grant observation was dismissed as a confirmed defect because the documented duplicate/extension denial supports the stricter behavior. No finalized BR ID or implementation correction resulted.
+
+The reviewer independently verified source parity, academic preservation, exclusions, absent private ancestry and whitespace checks. It inspected recorded logs but ran no tests. Parent evidence records 94 passing focused tests, five typechecks and three frontend builds. The pre-existing Windows browser-bridge timeout and missing isolated QA profile remain unresolved verification limits, not passes or demonstrated restoration regressions.
+
+Exact task IDs, inspected behavior and review limits are in [S3_review_result.md](S3_review_result.md). R1's earlier scope and the incompleteness of R2/R3 remain unchanged. Scoped code review is clear; full browser acceptance and release readiness are not claimed.

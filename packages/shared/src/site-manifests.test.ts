@@ -11,11 +11,15 @@ describe("site manifest", () => {
     expect(siteManifest("nested-fixture","1")).toBeNull();
   });
   test("only exact compiled keys and versions exist", () => { expect(manifest).toBeTruthy(); expect(siteManifest("obhis-v1","1")?.routes).toEqual([{routeId:"home",path:"/"}]); expect(siteManifest("obhis-v1","2")).toBeNull(); expect(siteManifest(manifest.rendererKey,"2")).toBeNull(); });
-  test("Olive requires every published field and validates typed contacts and the two theme inputs", () => {
+  test("Olive requires its registered mandatory fields and validates typed contacts and the two theme inputs", () => {
     const olive = siteManifest("obhis-v1","1")!;
     const fields = olive.fields.map((def,i) => ({fieldId:def.fieldId,value:def.kind === "asset_ref" ? {kind:"asset_ref" as const,assetId:`asset_${String(i).padStart(8,"0")}`} : {kind:"text" as const,value:def.fieldId === "phone" ? "+2348057755997" : def.fieldId === "email" ? "test@example.test" : def.fieldId === "primary_color" ? "#176c49" : def.fieldId === "accent_color" ? "#39bcd3" : `Fictional ${def.fieldId}`}}));
     const valid = {fields,routeSeo:[]};
     expect(() => validateSiteContent(valid,olive)).not.toThrow();
+    const legacy = {...valid,fields:fields.filter(f => f.fieldId !== "site_favicon")};
+    expect(() => validateSiteContent(legacy,olive)).not.toThrow();
+    expect(olive.fields.find(f => f.fieldId === "site_favicon")).toMatchObject({required:false,kind:"asset_ref",assetKind:"favicon"});
+    expect(canonicalSiteContent(legacy)).not.toBe(canonicalSiteContent(valid));
     expect(() => validateSiteContent({...valid,routeSeo:[{routeId:"home",title:"Fictional school_name",description:"Fictional intro"}]},olive)).not.toThrow();
     expect(() => validateSiteContent({...valid,routeSeo:[{routeId:"home",title:"Unreviewed claim"}]},olive)).toThrow();
     expect(() => validateSiteContent({...valid,routeSeo:[{routeId:"home",description:"Unreviewed claim"}]},olive)).toThrow();

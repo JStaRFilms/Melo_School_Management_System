@@ -1,6 +1,24 @@
-# Optimization-only master backport
+# Master release reconciliation
 
-## Scope
+## Current scope after owner clarification
+
+The owner clarified that the school's Sites frontend and its required backend support belong in this release. Only unrelated Melo marketing-page work stays excluded. The earlier optimization-only exclusion was too broad. The sections below retain that earlier history; they do not describe the current restored source.
+
+The approved 36 maintained-source paths have now been restored from `c03047629d09e206113ecb6a2ffd01ca3384a784`, which combines the original school upkeep with the reviewed optimizations. The entire `apps` and `packages` trees now have zero diff from that preserved source. Academic optimization source and its Admin consumers remain unchanged from `eb30018`.
+
+This restores tenant favicon/manifest behavior, school image-alt handling, Admin logo-copy and approval controls, Platform domain ownership controls, shared publication contracts, and matching Convex capability/approval/domain/schema/API support. The original Sites optimization fixture has also returned because its original contracts are present again. No new application behavior was invented to make checks pass.
+
+There is still no `apps/www` or root `public` diff against master. Raw `deliverables/obhis-hosted-launch` files remain untracked and are not imported into the release history. Source was restored by an explicit literal path manifest, not by merging the original ancestor containing school photos and operator artifacts.
+
+The source mismatch that threatened to overwrite the live Sites upkeep is fixed. The restored backend matches the source used for the authorized Production deployment, so this Git reconciliation does not require another backend deployment. No new Production frontend/backend deployment, provider write or GitHub merge has occurred.
+
+Current verification includes 94 distinct passing focused tests, five direct typechecks, three affected frontend builds, source-parity/exclusion checks and the informational theme audit. The existing browser-bridge fixture still times out on Windows, including before restoration; it is not reported as passed. All six local TLS tests pass with a process-local OpenSSL configuration. Isolated-backend browser acceptance remains blocked by the missing private QA profile. Tests and timeouts were not changed to hide those limits.
+
+The interrupted OpenCode review is not a pass. After the owner switched remaining work to Takomi GPT models, GPT-6.1 Sol independently reviewed all 36 restored paths and their integration and returned REVIEW CLEAR with no findings. Exact coverage and limits are in `docs/tasks/orchestrator-sessions/orch-20261023-101453/S3_review_result.md`.
+
+The reconciliation is ready to publish as a reviewed draft PR update. The original missing-Sites-source rollback risk is resolved. The draft now retains only the documented browser verification gap, not an exclusion of the school's work. The owner still controls the eventual merge. No Production deployment or GitHub merge is part of this update. The preserved backend deployment and original review history below remain valid records of their respective stages.
+
+## Initial optimization-only scope
 
 The original review used local master `94ef195` as its base. A release preflight found remote master was still `d2ba632a09776e43684a99b4739885974790e094`. The extra local commit contained 78 unrelated Sites, schema and launch-asset files. The owner selected an optimization-only PR and a merge/deployment hold, and subsequently reiterated that main landing-page work must stay out.
 
@@ -79,7 +97,7 @@ All six are backfilled and remain staged, not enabled. No index was removed, ena
 
 The checkout was restored to `perf/convex-egress-master` after deployment. Local sanitized metadata and guard reports are under ignored `tmp/convex-optimization-deploy-20261023/`. Credentials stayed in process memory. The unrelated launch deliverables remain untracked and unpushed.
 
-## Remaining frontend merge hold
+## Earlier frontend merge hold, resolved in source
 
 PR #139 remains unmerged. The backend prerequisite for the new Admin query is satisfied, but merging master can still deploy frontend code automatically.
 

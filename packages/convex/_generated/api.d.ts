@@ -174,6 +174,8 @@ import type * as functions_platform_bootstrap from "../functions/platform/bootst
 import type * as functions_platform_index from "../functions/platform/index.js";
 import type * as functions_platform_provisioningHelpers from "../functions/platform/provisioningHelpers.js";
 import type * as functions_platform_schoolAdminEmailUpdate from "../functions/platform/schoolAdminEmailUpdate.js";
+import type * as functions_sites_access from "../functions/sites/access.js";
+import type * as functions_sites_accessContract from "../functions/sites/accessContract.js";
 import type * as functions_sites_assets from "../functions/sites/assets.js";
 import type * as functions_sites_content from "../functions/sites/content.js";
 import type * as functions_sites_domains from "../functions/sites/domains.js";
@@ -361,6 +363,8 @@ declare const fullApi: ApiFromModules<{
   "functions/platform/index": typeof functions_platform_index;
   "functions/platform/provisioningHelpers": typeof functions_platform_provisioningHelpers;
   "functions/platform/schoolAdminEmailUpdate": typeof functions_platform_schoolAdminEmailUpdate;
+  "functions/sites/access": typeof functions_sites_access;
+  "functions/sites/accessContract": typeof functions_sites_accessContract;
   "functions/sites/assets": typeof functions_sites_assets;
   "functions/sites/content": typeof functions_sites_content;
   "functions/sites/domains": typeof functions_sites_domains;

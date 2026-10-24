@@ -16,11 +16,14 @@ export const approveCandidate = mutation({
     v.object({kind: v.literal("asset_rights"), assetId: v.id("schoolSiteAssets"), expectedChecksum: v.string()}),
     v.object({kind: v.literal("asset_child_applicability"), assetId: v.id("schoolSiteAssets"), expectedChecksum: v.string(), classification: v.union(v.literal("no_children"), v.literal("contains_children"))}),
     v.object({kind: v.literal("asset_child_consent"), assetId: v.id("schoolSiteAssets"), expectedChecksum: v.string()}),
-  ), evidenceReference: v.string(), expiresAt: v.number(), confirmed: v.boolean() },
-  handler: async (ctx, {schoolId, candidate, evidenceReference, expiresAt, confirmed}) => {
+  ), evidenceReference: v.string(), expiresAt: v.optional(v.number()), validity: v.optional(v.literal("until_revoked")), sourceKind: v.optional(v.union(v.literal("owner_attestation"), v.literal("document_review"))), confirmed: v.boolean() },
+  handler: async (ctx, {schoolId, candidate, evidenceReference, expiresAt, validity, sourceKind, confirmed}) => {
     const now = Date.now();
     const actor = await schoolActor(ctx, schoolId, "privacy.approve", now);
-    if (!confirmed || expiresAt <= now || expiresAt > now + 366 * 86400_000 || evidenceReference.length < 8 || evidenceReference.length > 500 || /[<>\u0000-\u001f]/.test(evidenceReference)) return deny();
+    const lifetimeValid = validity === "until_revoked"
+      ? expiresAt === undefined && sourceKind !== undefined
+      : expiresAt !== undefined && Number.isFinite(expiresAt) && expiresAt > now && expiresAt <= now + 366 * 86400_000;
+    if (!confirmed || !lifetimeValid || evidenceReference.trim().length < 8 || evidenceReference.length > 500 || /[<>\u0000-\u001f]/.test(evidenceReference)) return deny();
     let subjectType: string, subjectKey: string, approvalClass: "identity" | "sensitive_public" | "privacy";
     let storedReference = evidenceReference;
     if (candidate.kind === "field") {
@@ -52,7 +55,7 @@ export const approveCandidate = mutation({
       }
       if (candidate.kind === "asset_child_consent" && asset.childApplicability !== "contains_children") return deny();
     }
-    const id = await ctx.db.insert("schoolApprovalEvidence", {schoolId, subjectType, subjectKey, approvalClass, evidenceReference: storedReference, approvedByUserId: actor, approvedAt: now, expiresAt, createdAt: now});
+    const id = await ctx.db.insert("schoolApprovalEvidence", {schoolId, subjectType, subjectKey, approvalClass, evidenceReference: storedReference, approvedByUserId: actor, approvedAt: now, expiresAt, validity, sourceKind, createdAt: now});
     if (candidate.kind === "asset_rights") await ctx.db.patch(candidate.assetId, {approvalEvidenceId: id, rightsStatus: "approved", rightsExpiresAt: expiresAt, updatedAt: now});
     if (candidate.kind === "asset_child_consent") await ctx.db.patch(candidate.assetId, {childConsentEvidenceId: id, updatedAt: now});
     await ctx.db.insert("schoolSiteAuditEvents", {schoolId, actorUserId: actor, eventType: "evidence_recorded", outcome: "success", summary: `Approved ${candidate.kind}`, createdAt: now});
@@ -66,7 +69,7 @@ export const revokeEvidence = mutation({
     const now = Date.now();
     const actor = await schoolActor(ctx, schoolId, "privacy.approve", now);
     const evidence = await ctx.db.get(evidenceId);
-    if (!evidence || evidence.schoolId !== schoolId || !evidence.subjectType.startsWith("site_") || evidence.revokedAt) return deny();
+    if (!evidence || evidence.schoolId !== schoolId || !evidence.subjectType.startsWith("site_") || evidence.revokedAt !== undefined) return deny();
     await ctx.db.patch(evidenceId, {revokedAt: now});
     await ctx.db.insert("schoolSiteAuditEvents", {schoolId, actorUserId: actor, eventType: "evidence_recorded", outcome: "success", summary: "Revoked site evidence", createdAt: now});
     return null;
