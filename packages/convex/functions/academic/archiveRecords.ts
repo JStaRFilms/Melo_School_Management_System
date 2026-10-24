@@ -1,5 +1,7 @@
 import { query } from "../../_generated/server";
 import { v } from "convex/values";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { QueryCtx } from "../../_generated/server";
 import { assertAdminForSchool, getAuthenticatedSchoolMembership } from "./auth";
 import { isSessionScoringLocked } from "./sessionScoring";
 import {
@@ -60,6 +62,55 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+/** Skip the read entirely when no archived row of that kind is being listed. */
+async function loadIf<T>(needed: boolean, load: () => Promise<T[]>): Promise<T[]> {
+  return needed ? load() : [];
+}
+
+async function loadTermsForSessions(
+  ctx: QueryCtx,
+  schoolId: Id<"schools">,
+  archivedSessions: Doc<"academicSessions">[]
+): Promise<Doc<"academicTerms">[]> {
+  const rows = await Promise.all(
+    archivedSessions.map((session) =>
+      ctx.db
+        .query("academicTerms")
+        .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+        .filter((row) => row.eq(row.field("schoolId"), schoolId))
+        .collect()
+    )
+  );
+  return rows.flat();
+}
+
+async function loadTeacherAssignments(
+  ctx: QueryCtx,
+  schoolId: Id<"schools">,
+  archivedTeachers: Doc<"users">[]
+): Promise<Doc<"teacherAssignments">[]> {
+  const rows = await Promise.all(
+    archivedTeachers.map((teacher) =>
+      ctx.db
+        .query("teacherAssignments")
+        .withIndex("by_teacher", (q) => q.eq("teacherId", teacher._id))
+        .filter((row) => row.eq(row.field("schoolId"), schoolId))
+        .collect()
+    )
+  );
+  return rows.flat();
+}
+
+/** Only the distinct topics referenced by listed archived materials are read; cross-school ids are ignored. */
+async function loadTopicsForMaterials(
+  ctx: QueryCtx,
+  topicIds: Id<"knowledgeTopics">[],
+  schoolId: Id<"schools">
+): Promise<Doc<"knowledgeTopics">[]> {
+  const topics = await Promise.all(topicIds.map((topicId) => ctx.db.get("knowledgeTopics", topicId)));
+  return topics.filter((topic): topic is Doc<"knowledgeTopics"> => topic !== null && topic.schoolId === schoolId);
+}
+
 export const listArchivedRecords = query({
   args: {},
   returns: v.object({
@@ -80,34 +131,49 @@ export const listArchivedRecords = query({
     const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx);
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
-    const [
-      users,
-      sessions,
-      classes,
-      subjects,
-      events,
-      terms,
-      classSubjects,
-      teacherAssignments,
-      students,
-      selections,
-      assessments,
-      knowledgeMaterials,
-      knowledgeTopics,
-    ] = await Promise.all([
+    // Authorization already happened; these base datasets feed displayed rows
+    // and their actor/class lookups. History collections are read just-in-time
+    // below so event- or material-only archives never scan unrelated tables.
+    const [users, sessions, classes, subjects, events, students, knowledgeMaterials] = await Promise.all([
       ctx.db.query("users").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("academicSessions").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("classes").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("subjects").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("schoolEvents").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
-      ctx.db.query("academicTerms").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
-      ctx.db.query("classSubjects").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
-      ctx.db.query("teacherAssignments").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
       ctx.db.query("students").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
-      ctx.db.query("studentSubjectSelections").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
-      ctx.db.query("assessmentRecords").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
-      ctx.db.query("knowledgeMaterials").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
-      ctx.db.query("knowledgeTopics").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect(),
+      ctx.db.query("knowledgeMaterials").withIndex("by_school_and_review_status", (q) => q.eq("schoolId", schoolId).eq("reviewStatus", "archived")).collect(),
+    ]);
+
+    const archivedSessions = sessions.filter((session) => session.isArchived);
+    const archivedClasses = classes.filter((classDoc) => classDoc.isArchived);
+    const archivedTeachers = users.filter((user) => user.role === "teacher" && user.isArchived);
+    const archivedSubjects = subjects.filter((subject) => subject.isArchived);
+    const archivedStudents = students.filter((student) => student.isArchived);
+
+    const topicIds = [
+      ...new Set(
+        knowledgeMaterials
+          .map((material) => material.topicId)
+          .filter((topicId): topicId is Id<"knowledgeTopics"> => topicId !== undefined)
+      ),
+    ];
+
+    const [terms, classSubjects, teacherAssignments, selections, assessments, knowledgeTopics] = await Promise.all([
+      loadIf(archivedSessions.length > 0, () => loadTermsForSessions(ctx, schoolId, archivedSessions)),
+      loadIf(
+        archivedClasses.length > 0 || archivedSubjects.length > 0 || archivedTeachers.length > 0,
+        () => ctx.db.query("classSubjects").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect()
+      ),
+      loadIf(archivedTeachers.length > 0, () => loadTeacherAssignments(ctx, schoolId, archivedTeachers)),
+      loadIf(
+        archivedSessions.length > 0 || archivedSubjects.length > 0 || archivedStudents.length > 0,
+        () => ctx.db.query("studentSubjectSelections").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect()
+      ),
+      loadIf(
+        archivedSessions.length > 0 || archivedClasses.length > 0 || archivedSubjects.length > 0 || archivedStudents.length > 0,
+        () => ctx.db.query("assessmentRecords").withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect()
+      ),
+      loadIf(topicIds.length > 0, () => loadTopicsForMaterials(ctx, topicIds, schoolId)),
     ]);
 
     // Archive metadata remains available while another session is regrading.

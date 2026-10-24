@@ -70,7 +70,7 @@ function parseWholeNumber(value: string, label: string, minimum: number) {
 
 export default function InstructionTemplateStudioPage() {
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClassOptions" as never) as ClassOptionRecord[] | undefined;
   const [outputType, setOutputType] = useState<InstructionTemplateOutputType>("lesson_plan");
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);

@@ -1,3 +1,4 @@
+import { schoolCapabilityGrantValidator } from "./functions/sites/accessContract";
 import { correctionRequestFields } from "./functions/academic/profileCorrectionContract";
 import { commercialRate } from "./functions/foundation/commercialContract";
 import { heavyUsageTask, usageEntitlement, usageMeterType } from "./functions/foundation/usageContract";
@@ -15,11 +16,9 @@ import {
   admissionsDecisionStateValidator,
   admissionsDocumentStateValidator,
   admissionsEntitlementStateValidator,
-  admissionsPermissionValidator,
   admissionsProviderValidator,
   admissionsPurchaseStateValidator,
   applicationStateValidator,
-  capabilityScopeValidator,
   paymentProviderModeValidator,
   siteRevisionContentValidator,
 } from "./functions/foundation/contracts";
@@ -1026,21 +1025,7 @@ export default defineSchema({
     .index("by_state_and_scheduled_at", { fields: ["state", "scheduledAt"], staged: true })
     .index("by_school", ["schoolId"]),
 
-  schoolCapabilityGrants: defineTable({
-    schoolId: v.id("schools"),
-    userId: v.id("users"),
-    capability: admissionsPermissionValidator,
-    scope: capabilityScopeValidator,
-    programmeId: v.optional(v.id("admissionsProgrammes")),
-    intakeId: v.optional(v.id("admissionsIntakes")),
-    grantedByUserId: v.id("users"),
-    reason: v.string(),
-    expiresAt: v.optional(v.number()),
-    revokedAt: v.optional(v.number()),
-    revokedByUserId: v.optional(v.id("users")),
-    isBreakGlass: v.boolean(),
-    createdAt: v.number(),
-  })
+  schoolCapabilityGrants: defineTable(schoolCapabilityGrantValidator)
     .index("by_school_and_user", ["schoolId", "userId"])
     .index("by_school_and_capability", ["schoolId", "capability"])
     .index("by_user_and_capability", ["userId", "capability"])
@@ -1055,6 +1040,8 @@ export default defineSchema({
     approvedByUserId: v.optional(v.id("users")),
     approvedAt: v.number(),
     expiresAt: v.optional(v.number()),
+    validity: v.optional(v.literal("until_revoked")),
+    sourceKind: v.optional(v.union(v.literal("owner_attestation"), v.literal("document_review"))),
     revokedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
@@ -1088,6 +1075,7 @@ export default defineSchema({
     canonicalIntent: v.union(v.literal("canonical"), v.literal("redirect")),
     canonicalDomainId: v.optional(v.id("schoolDomains")),
     ownership: v.union(v.literal("school_managed_dns"), v.literal("platform_managed_dns")),
+    ownershipProofPolicy: v.optional(v.literal("persistent_authoritative_v1")),
     verificationTokenHash: v.optional(v.string()),
     nextVerificationCheckAt: v.optional(v.number()),
     verificationRecordName: v.optional(v.string()),

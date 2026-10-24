@@ -27,7 +27,7 @@ function uniqueLevels(classes: ClassRecord[] | undefined): SelectOption[] {
 
 export default function CurriculumReadinessPage() {
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as Subject[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassRecord[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClassOptions" as never) as ClassRecord[] | undefined;
   const sessions = useQuery("functions/academic/academicSetup:listSessions" as never) as Session[] | undefined;
   const activeSession = sessions?.find((session) => session.isActive);
   const terms = useQuery(

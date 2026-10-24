@@ -25,6 +25,18 @@ describe("site hostname gates", () => {
     expect(ready({...d,providerRoutingObservation:{...d.providerRoutingObservation!,configuredBy:"http"}},now,PROJECT)).toBe(false);
     expect(gatewayAuthorized("bad")).toBe(false);
   });
+  test("persistent proof survives thirty days only with fresh generation-bound observations", () => {
+    const issued = Date.now(), now = issued + 40 * 86400_000;
+    const fresh = domain(now);
+    const d = {...fresh,verificationIssuedAt:issued,verificationExpiresAt:undefined,ownershipProofPolicy:"persistent_authoritative_v1" as const};
+    expect(ready(d,now,PROJECT)).toBe(true);
+    expect(ready(d,now+FRESH_MS,PROJECT)).toBe(false);
+    expect(ready({...d,ownershipProofPolicy:undefined},now,PROJECT)).toBe(false);
+    expect(ready({...d,verificationExpiresAt:issued+CHALLENGE_MS},now,PROJECT)).toBe(false);
+    expect(ready({...d,verificationGeneration:2},now,PROJECT)).toBe(false);
+    expect(ready({...d,tlsObservation:{...d.tlsObservation!,deploymentProbeMatched:false}},now,PROJECT)).toBe(false);
+    expect(ready({...d,tlsObservation:{...d.tlsObservation!,leafNotAfter:Infinity}},now,PROJECT)).toBe(false);
+  });
   test("rejects local, metadata, documentation and special-purpose DNS addresses", () => {
     for (const ip of ["127.0.0.1","10.1.1.1","169.254.169.254","192.168.0.1","100.100.100.100","192.0.0.9","192.0.2.5","198.51.100.4","203.0.113.5","::1","fc00::1","2001:db8::1","::ffff:127.0.0.1"]) expect(publicAddress(ip)).toBe(false);
     expect(publicAddress("8.8.8.8")).toBe(true);

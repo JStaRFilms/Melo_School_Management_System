@@ -43,24 +43,34 @@ export function storageDigest(value: string): string | null {
   return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 }
 export function assetSubject(asset: Doc<"schoolSiteAssets">) { return `v1:${asset._id}:${asset.checksum}`; }
-export async function currentEvidence(ctx: SiteCtx, schoolId: Id<"schools">, subjectType: string, subjectKey: string, approvalClass: Doc<"schoolApprovalEvidence">["approvalClass"], now: number, publisher?: Id<"users">, evidenceId?: Id<"schoolApprovalEvidence">, referencePrefix?: string) {
-  const rows = await ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_subject_type_and_subject_key", q => q.eq("schoolId", schoolId).eq("subjectType", subjectType).eq("subjectKey", subjectKey)).take(101);
+export function evidenceValid(row: Doc<"schoolApprovalEvidence">, now: number): boolean {
+  if (row.revokedAt !== undefined || !row.approvedByUserId || !Number.isFinite(row.approvedAt) || row.approvedAt > now) return false;
+  if (row.validity === "until_revoked") return row.expiresAt === undefined && (row.sourceKind === "owner_attestation" || row.sourceKind === "document_review");
+  return row.expiresAt !== undefined && Number.isFinite(row.expiresAt) && row.expiresAt > now;
+}
+export async function currentEvidence(ctx: SiteCtx, schoolId: Id<"schools">, subjectType: string, subjectKey: string, approvalClass: Doc<"schoolApprovalEvidence">["approvalClass"], now: number, publisher?: Id<"users">, evidenceId?: Id<"schoolApprovalEvidence">) {
+  const rows = await ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_subject_type_and_subject_key", q => q.eq("schoolId", schoolId).eq("subjectType", subjectType).eq("subjectKey", subjectKey)).order("desc").take(101);
   if (rows.length > 100) return null;
-  return rows.find(row => row.approvalClass === approvalClass && row.approvedByUserId && row.approvedByUserId !== publisher && (!evidenceId || row._id === evidenceId) && (!referencePrefix || row.evidenceReference.startsWith(referencePrefix)) && !row.revokedAt && row.expiresAt !== undefined && row.expiresAt > now) ?? null;
+  // Select before checking validity or publisher independence. A later withdrawal,
+  // expiry or self-approval must not revive an older approval for the same value.
+  const row = rows.find(row => row.approvalClass === approvalClass);
+  return row && (!evidenceId || row._id === evidenceId) && row.approvedByUserId !== publisher && evidenceValid(row, now) ? row : null;
 }
 export async function approvedAsset(ctx: SiteCtx, schoolId: Id<"schools">, assetId: Id<"schoolSiteAssets">, kind: string, now: number, publisher: Id<"users">) {
   const asset = await ctx.db.get(assetId);
-  if (!asset || asset.schoolId !== schoolId || asset.kind !== kind || asset.uploadProvenance !== "website_direct_upload_v1" || asset.rightsStatus !== "approved" || !asset.rightsExpiresAt || asset.rightsExpiresAt <= now || asset.status === "retired" || !asset.approvalEvidenceId || asset.childApplicability === "unknown" || !asset.childApplicability) return deny();
+  if (!asset || asset.schoolId !== schoolId || asset.kind !== kind || asset.uploadProvenance !== "website_direct_upload_v1" || asset.rightsStatus !== "approved" || asset.status === "retired" || !asset.approvalEvidenceId || asset.childApplicability === "unknown" || !asset.childApplicability) return deny();
   const metadata = await ctx.db.system.get("_storage", asset.storageId);
   if (!metadata || storageDigest(metadata.sha256) !== asset.checksum || metadata.size !== asset.byteSize || (metadata.contentType !== undefined && metadata.contentType !== asset.mediaType)) return deny();
   const rights = await currentEvidence(ctx, schoolId, "site_asset_rights", assetSubject(asset), "privacy", now, publisher, asset.approvalEvidenceId);
-  if (!rights) return deny();
+  if (!rights || (rights.validity === "until_revoked"
+    ? asset.rightsExpiresAt !== undefined
+    : asset.rightsExpiresAt === undefined || !Number.isFinite(asset.rightsExpiresAt) || asset.rightsExpiresAt <= now)) return deny();
   const assertions = await ctx.db.query("schoolApprovalEvidence").withIndex("by_school_and_subject_type_and_subject_key", q => q.eq("schoolId", schoolId).eq("subjectType", "site_asset_child_applicability").eq("subjectKey", assetSubject(asset))).order("desc").take(101);
   if (assertions.length > 100) return deny();
   // Latest explicit assertion for this classification wins. An older assertion
   // cannot silently revive after a changed classification or a revocation.
-  const assertion = assertions.find(row => row.approvalClass === "privacy" && row.evidenceReference.startsWith(`${asset.childApplicability}: `));
-  if (!assertion || assertion.approvedByUserId === publisher || assertion.revokedAt || !assertion.expiresAt || assertion.expiresAt <= now) return deny();
+  const assertion = assertions.find(row => row.approvalClass === "privacy");
+  if (!assertion || !assertion.evidenceReference.startsWith(`${asset.childApplicability}: `) || assertion.approvedByUserId === publisher || !evidenceValid(assertion, now)) return deny();
   if (asset.childApplicability === "contains_children") {
     if (!asset.childConsentEvidenceId) return deny();
     const consent = await currentEvidence(ctx, schoolId, "site_asset_child_consent", assetSubject(asset), "privacy", now, publisher, asset.childConsentEvidenceId);
@@ -71,6 +81,7 @@ export async function approvedAsset(ctx: SiteCtx, schoolId: Id<"schools">, asset
 export async function validatePublication(ctx: SiteCtx, profile: Doc<"schoolSiteProfiles">, content: SiteContentV1, publisher: Id<"users">, now: number) {
   const manifest = checkedContent(profile, content);
   const evidenceIds: Id<"schoolApprovalEvidence">[] = [];
+  const assets: Doc<"schoolSiteAssets">[] = [];
   const school = await ctx.db.get(profile.schoolId);
   if (!school || school.status !== "active") return deny();
   let sensitive = false;
@@ -89,6 +100,7 @@ export async function validatePublication(ctx: SiteCtx, profile: Doc<"schoolSite
     }
     if (value.kind === "asset_ref") {
       const asset = await approvedAsset(ctx, profile.schoolId, value.assetId as Id<"schoolSiteAssets">, def.assetKind ?? "", now, publisher);
+      assets.push(asset);
       if (def.altFieldId) {
         const reviewedAlt = content.fields.find(field => field.fieldId === def.altFieldId)?.value;
         // This text field has its own exact digest approval. Neither upload nor
@@ -98,6 +110,10 @@ export async function validatePublication(ctx: SiteCtx, profile: Doc<"schoolSite
       sensitive = true;
     }
   }
-  for (const seo of content.routeSeo) if (seo.shareAssetId) { await approvedAsset(ctx, profile.schoolId, seo.shareAssetId as Id<"schoolSiteAssets">, "social_share", now, publisher); sensitive = true; }
-  return { evidenceIds, sensitive, digest: await sha256(contentCanonical(content)) };
+  for (const seo of content.routeSeo) if (seo.shareAssetId) {
+    assets.push(await approvedAsset(ctx, profile.schoolId, seo.shareAssetId as Id<"schoolSiteAssets">, "social_share", now, publisher));
+    sensitive = true;
+  }
+  // These documents are valid only in this transaction's snapshot, never across requests.
+  return { evidenceIds, sensitive, digest: await sha256(contentCanonical(content)), assets };
 }

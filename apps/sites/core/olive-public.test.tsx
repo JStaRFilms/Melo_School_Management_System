@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { publishedSiteIcon, seo } from "./seo";
+import manifest from "../app/manifest";
+const gateway = vi.hoisted(() => vi.fn());
+vi.mock("./gateway", () => ({resolvePath:gateway}));
+vi.mock("next/headers", () => ({headers:async () => new Headers({host:"fictional.example.edu"})}));
 import { renderToStaticMarkup } from "react-dom/server";
 import { siteManifest, type PublicSiteV1 } from "@school/shared/site-manifests";
 import { admitSite } from "./public";
@@ -8,7 +13,7 @@ const descriptor = siteManifest("obhis-v1", "1")!;
 const base: PublicSiteV1 = {
   version:"1",schoolSlug:"fictional-school",rendererKey:"obhis-v1",rendererSchemaVersion:"1",revisionId:"revision-1",publishedAt:1700000000000,
   canonicalOrigin:"https://fictional.example.edu",activeHostname:"fictional.example.edu",redirectToCanonical:false,routeIds:["home"],routeSeo:[],
-  fields: descriptor.fields.map((def,i) => ({fieldId:def.fieldId,value:def.kind === "asset_ref" ? {kind:"asset_ref" as const,asset:{id:`asset_${String(i).padStart(8,"0")}`,src:`/api/site-assets/asset_${String(i).padStart(8,"0")}`,kind:def.assetKind as "logo" | "hero" | "gallery",decorative:false,altText:`Published ${def.fieldId} alt`}} : {kind:"text" as const,value:def.fieldId === "phone" ? "+2348057755997" : def.fieldId === "email" ? "fictional@example.edu" : def.fieldId === "primary_color" ? "#176c49" : def.fieldId === "accent_color" ? "#39bcd3" : def.fieldId.endsWith("_alt") ? `Published ${def.fieldId.slice(0, -4)} alt` : `Published ${def.fieldId}`}})),
+  fields: descriptor.fields.filter(def => def.required).map((def,i) => ({fieldId:def.fieldId,value:def.kind === "asset_ref" ? {kind:"asset_ref" as const,asset:{id:`asset_${String(i).padStart(8,"0")}`,src:`/api/site-assets/asset_${String(i).padStart(8,"0")}`,kind:def.assetKind as "logo" | "hero" | "gallery",decorative:false,altText:`Published ${def.fieldId} alt`}} : {kind:"text" as const,value:def.fieldId === "phone" ? "+2348057755997" : def.fieldId === "email" ? "fictional@example.edu" : def.fieldId === "primary_color" ? "#176c49" : def.fieldId === "accent_color" ? "#39bcd3" : def.fieldId.endsWith("_alt") ? `Published ${def.fieldId.slice(0, -4)} alt` : `Published ${def.fieldId}`}})),
   applicationLink:{version:"1",schoolSlug:"fictional-school",href:"",availability:"unavailable",intakeSlug:null,opensAt:null,closesAt:null},portal:{availability:"unavailable"},
 };
 function output(site: PublicSiteV1) {
@@ -19,6 +24,33 @@ function output(site: PublicSiteV1) {
   return page ? renderToStaticMarkup(page) : null;
 }
 describe("Olive public renderer", () => {
+  it("uses the published logo by default, supports a host-bound favicon override and keeps old configs valid", async () => {
+    const admitted = admitSite({status:"available",site:base},"home",base.activeHostname);
+    expect(admitted.status).toBe("available");
+    if (admitted.status !== "available") throw Error("Old config rejected");
+    const logo = base.fields.find(f => f.fieldId === "school_logo")?.value;
+    if (logo?.kind !== "asset_ref") throw Error("Missing logo");
+    expect(publishedSiteIcon(admitted.site)).toBe(logo.asset.src);
+    expect(seo(admitted.site,"home").icons).toEqual({icon:logo.asset.src,apple:logo.asset.src});
+    gateway.mockResolvedValue(admitted);
+    expect((await manifest()).icons).toEqual([{src:logo.asset.src,purpose:"any"}]);
+    const override = {fieldId:"site_favicon",value:{kind:"asset_ref" as const,asset:{id:"favicon_00000001",src:"/api/site-assets/favicon_00000001",kind:"favicon" as const,decorative:true}}};
+    const newer = {...base,fields:[...base.fields,override]};
+    const withIcon = admitSite({status:"available",site:newer},"home",base.activeHostname);
+    expect(withIcon.status).toBe("available");
+    if (withIcon.status !== "available") throw Error("Favicon rejected");
+    expect(seo(withIcon.site,"home").icons).toEqual({icon:override.value.asset.src,apple:override.value.asset.src});
+    gateway.mockResolvedValue(withIcon);
+    expect((await manifest()).icons).toEqual([{src:override.value.asset.src,purpose:"any"}]);
+    expect(publishedSiteIcon(admitted.site)).toBe(logo.asset.src); // No live draft/Admin mutation.
+    expect(admitSite({status:"available",site:newer},"home","other.example.edu").status).toBe("unavailable");
+    const bad = {...override,value:{...override.value,asset:{...override.value.asset,src:"https://private-storage.test/logo"}}};
+    expect(admitSite({status:"available",site:{...base,fields:[...base.fields,bad]}},"home",base.activeHostname).status).toBe("unavailable");
+    gateway.mockResolvedValue({status:"unavailable"});
+    expect((await manifest()).icons).toBeUndefined();
+    gateway.mockResolvedValue({status:"available",site:{...withIcon.site,redirectToCanonical:true}});
+    expect((await manifest()).icons).toBeUndefined();
+  });
   it("renders published copy, contact, captions and first-party assets, never private routes", () => {
     const html = output(base)!;
     expect(html).toContain("Published intro");

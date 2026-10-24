@@ -1992,6 +1992,31 @@ export const createClass = mutation({
   },
 });
 
+// Option-only views must not subscribe to pupil counts or staff/subject details.
+export const listClassOptions = query({
+  args: {},
+  returns: v.array(v.object({
+    _id: v.id("classes"),
+    name: v.string(),
+    level: v.string(),
+    gradeName: v.string(),
+  })),
+  handler: async (ctx) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      capability: ACADEMIC_CONTEXT_CAPABILITIES,
+    });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const classes = await ctx.db.query("classes")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId)).collect();
+    return classes.filter((row) => !row.isArchived).map((row) => ({
+      _id: row._id,
+      name: buildClassName({ gradeName: row.gradeName ?? row.name, classLabel: row.classLabel, legacyName: row.name }),
+      level: normalizeClassLevel(row.level),
+      gradeName: getStoredGradeName(row),
+    })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  },
+});
+
 export const listClasses = query({
   args: {
     sessionId: v.optional(v.id("academicSessions")),

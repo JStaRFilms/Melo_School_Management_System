@@ -3938,7 +3938,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "930:3c57a7e0:42226e6a"
+    "shape": "1176:e943628c:1ee419c4"
   },
   "schoolAssessmentSettings": {
     "ownership": "direct-indexed",
@@ -4054,6 +4054,11 @@
     "reason": "schoolId with by_school; indexed tenant purge candidate, demo reset needs separate review",
     "references": [
       {
+        "path": "grantedByPlatformAdminId",
+        "target": "platformAdmins",
+        "optional": false
+      },
+      {
         "path": "grantedByUserId",
         "target": "users",
         "optional": false
@@ -4066,6 +4071,11 @@
       {
         "path": "programmeId",
         "target": "admissionsProgrammes",
+        "optional": true
+      },
+      {
+        "path": "revokedByPlatformAdminId",
+        "target": "platformAdmins",
         "optional": true
       },
       {
@@ -4086,7 +4096,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "2172:6613b391:5faf3e9d"
+    "shape": "4668:c3dcc81b:2a35dc2d"
   },
   "schoolDomains": {
     "ownership": "direct-indexed",
@@ -4105,7 +4115,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "3851:2c2918af:95989293"
+    "shape": "3961:aaed02e5:5cb1ed3d"
   },
   "schoolEmailDomains": {
     "ownership": "direct-indexed",

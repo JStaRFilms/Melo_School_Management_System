@@ -169,7 +169,7 @@ export default function KnowledgeLibraryPage() {
     ? workspaceAccess.branch.schoolId as Id<"schools">
     : undefined;
   const subjects = useQuery("functions/academic/academicSetup:listSubjects" as never) as SubjectRecord[] | undefined;
-  const classes = useQuery("functions/academic/academicSetup:listClasses" as never) as ClassOptionRecord[] | undefined;
+  const classes = useQuery("functions/academic/academicSetup:listClassOptions" as never) as ClassOptionRecord[] | undefined;
   const topics = useQuery("functions/academic/lessonKnowledgeAdmin:listAdminKnowledgeTopics" as never) as Array<{ _id: string; title: string; subjectId: string; subjectName: string; level: string; termId: string; status: string; }> | undefined;
 
   const [filters, setFilters] = useState<KnowledgeLibraryFilterState>(DEFAULT_FILTERS);
