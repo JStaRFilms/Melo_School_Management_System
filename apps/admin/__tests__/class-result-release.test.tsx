@@ -102,6 +102,38 @@ describe("class result release", () => {
     expect(screen.getByRole("heading", { name: "Released to families" })).toBeInTheDocument();
     expect(screen.getByText(/Original release:/)).toHaveTextContent("Staff member");
   });
+  it("lets an admin review and exclude the archived missing-evidence row without a contact-admin instruction", async () => {
+    mocks.exclude.mockResolvedValue(1000);
+    const { rerender } = view({ rows: [{ ...roster.rows[1], reason: "Missing term or subject enrollment evidence",
+      reasonCode: "evidence_missing", canExclude: true }] }, { ...context, canExclude: true });
+    expect(screen.queryByText("Contact your school administrator for review")).not.toBeInTheDocument();
+    expect(screen.getByText("Review this student before excluding them from this release.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review release" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Exclude student" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Bola (002) from Example School / Year 1 / 2026 / First");
+    expect(screen.getByRole("dialog")).toHaveTextContent("This student will not receive this class release");
+    expect(screen.getByRole("button", { name: "Confirm exclusion" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mocks.exclude).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Exclude student" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Reason" }), { target: { value: "Archived pupil has no marks for this term" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm exclusion" }));
+    await waitFor(() => expect(mocks.exclude).toHaveBeenCalledWith({ schoolId, ...selection,
+      studentId: "b", reason: "Archived pupil has no marks for this term" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByText("Exclusion recorded. Review the updated roster.")).toBeInTheDocument();
+    mocks.query.mockReturnValue({ ...roster, ready: true, eligibleCount: 1, excludedCount: 1,
+      rows: [roster.rows[0], { ...roster.rows[1], status: "excluded", reason: "Archived pupil has no marks for this term",
+        reasonCode: "excluded", canExclude: false, approvedByName: "Admin" }] });
+    rerender(<ClassReleasePanel schoolId={schoolId} selection={selection} context={{ ...context, canExclude: true }} />);
+    expect(screen.getByText("Approved by Admin")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review release" })).toBeEnabled();
+  });
+  it("directs non-admin staff to an administrator for the same missing-evidence row", () => {
+    view({ rows: [{ ...roster.rows[1], reason: "Missing term or subject enrollment evidence", reasonCode: "evidence_missing", canExclude: true }] });
+    expect(screen.getByText("Contact your school administrator for review")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Exclude student" })).not.toBeInTheDocument();
+  });
   it("lets only school admins submit a specific reason", async () => {
     mocks.exclude.mockResolvedValue(1000);
     view({}, { ...context, canRelease: false, canExclude: true });

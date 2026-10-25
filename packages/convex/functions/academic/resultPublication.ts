@@ -162,11 +162,15 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     const termProof = ownRecords.some(r => r.classId === tuple.classId);
     const currentProof = student?.classId === tuple.classId &&
       student.createdAt <= term.endDate && enrollmentProof;
+    // Current class membership can support an archived student's exclusion without
+    // invented subjects or marks. It cannot certify a report or override class evidence.
+    const archivedCurrentProof = student?.isArchived && student.classId === tuple.classId &&
+      student.createdAt <= term.endDate && [...classEvidence].every(id => id === tuple.classId);
     let reason: string | null = null;
     if (!student || student.schoolId !== tuple.schoolId) reason = "Student enrollment needs review";
     else if (classEvidence.size > 1 || ownPromotions.some(p => p.schoolId !== tuple.schoolId) ||
       ownSelections.some(s => s.schoolId !== tuple.schoolId) || termReports.some(r => r.schoolId !== tuple.schoolId)) reason = "Conflicting within-term class history";
-    else if (!promotionProof && !currentProof) reason = "Historical enrollment needs review";
+    else if (!promotionProof && !currentProof && !archivedCurrentProof) reason = "Historical enrollment needs review";
     else if (!termProof || !enrollmentProof) reason = "Missing term or subject enrollment evidence";
     else if (student.isArchived || student.enrollmentStatus === "withdrawn" ||
       student.enrollmentStatus === "transferred_out" || student.enrollmentStatus === "graduated") reason = "Enrollment status needs review";
@@ -174,12 +178,12 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     if (!reason && matching.length !== 1) reason = matching.length ? "Conflicting report records" : "Report not certified";
     if (!reason && !validIssued(matching[0], tuple, studentId)) reason = "Certified report or historical grading policy needs review";
     if (ownExclusions.length > 1) reason = "Conflicting exclusions require review";
-    // Exclusions can resolve a known missing certification or status, but never
-    // a disputed class, tenant or absent enrollment proof.
+    // Only the archived current-class case may resolve absent academic proof.
+    // Class/tenant conflicts and duplicate reports or exclusions still block it.
     const unexcludable = !student || student.schoolId !== tuple.schoolId || classEvidence.size > 1 ||
       ownPromotions.some(p => p.schoolId !== tuple.schoolId) || ownSelections.some(s => s.schoolId !== tuple.schoolId) ||
       termReports.some(r => r.schoolId !== tuple.schoolId) || matching.length > 1 ||
-      (!promotionProof && !currentProof) || !enrollmentProof || ownExclusions.length > 1;
+      ((!promotionProof && !currentProof || !enrollmentProof) && !archivedCurrentProof) || ownExclusions.length > 1;
     const exclusion = ownExclusions.length === 1 ? ownExclusions[0] : null;
     if (exclusion && unexcludable) reason = "Enrollment or exclusion needs review";
     const status: Row["status"] = exclusion && !unexcludable ? "excluded" : reason ? "blocked" : "certified";
