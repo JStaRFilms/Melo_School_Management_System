@@ -503,6 +503,114 @@ describe("graded result release", () => {
     expect(await f.t.run(ctx => getReleasedGradedReport(ctx, { ...f.tuple, schoolId: f.ids.schoolId, studentId: second }))).toBeNull();
   });
 
+  it.each([false, true])("requires an audited exclusion after archiving a student with subjects=%s and no marks", async (withSubject) => {
+    const f = await fixture();
+    await f.certify();
+    const studentId = await f.t.run(async ctx => {
+      const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: "archive-candidate",
+        name: "Archived pupil", email: "archive-candidate@test.invalid", role: "student", createdAt: 1, updatedAt: 1 });
+      const id = await ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId,
+        userId, admissionNumber: "ARCHIVED", createdAt: 1, updatedAt: 1 });
+      if (withSubject) await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId: id,
+        classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+      return id;
+    });
+    const beforeArchive = await f.readiness();
+    if (!withSubject) {
+      expect(beforeArchive.rows.find(r => r.studentId === studentId)?.canExclude).toBe(false);
+      await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent,
+        { ...f.tuple, studentId, reason: "Active pupil without enrollment evidence" })).rejects.toThrow("enrollment needs review");
+    }
+    await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { studentId });
+    expect((await f.t.run(ctx => ctx.db.get(studentId)))?.isArchived).toBe(true);
+    const blocked = await f.readiness();
+    expect(blocked).toMatchObject({ ready: false, eligibleCount: 2, certifiedCount: 1, excludedCount: 0 });
+    expect(blocked.rows.find(r => r.studentId === studentId))
+      .toMatchObject({ status: "blocked", canExclude: true, reasonCode: "evidence_missing" });
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: blocked.reviewKey!, confirmation })).rejects.toThrow("not ready");
+    const exclusionArgs = { ...f.tuple, studentId, reason: "Archived pupil has no marks for this term" };
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.excludeStudent, exclusionArgs)).rejects.toThrow();
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent,
+      { ...exclusionArgs, schoolId: f.ids.otherSchoolId })).rejects.toThrow();
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent,
+      { ...exclusionArgs, reason: " " })).rejects.toThrow("specific reason");
+    await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, exclusionArgs);
+    const ready = await f.readiness();
+    expect(ready).toMatchObject({ ready: true, eligibleCount: 1, certifiedCount: 1, excludedCount: 1 });
+    expect(ready.rows.find(r => r.studentId === studentId)).toMatchObject({ status: "excluded",
+      canExclude: false, reason: exclusionArgs.reason, approvedByName: "Admin" });
+    const exclusions = await f.t.run(ctx => ctx.db.query("classResultExclusions").withIndex("by_school_and_student_and_session_and_term", q =>
+      q.eq("schoolId", f.ids.schoolId).eq("studentId", studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.termId)).collect());
+    expect(exclusions).toHaveLength(1);
+    expect(exclusions[0]).toMatchObject({ approvedBy: f.ids.adminId, reason: exclusionArgs.reason });
+    const audits = await f.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect());
+    expect(audits.filter(e => e.action === "result_release.exclude"))
+      .toEqual([expect.objectContaining({ targetId: studentId, actorKind: "user", actorEmailSnapshot: "admin", outcome: "success" })]);
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, exclusionArgs)).rejects.toThrow();
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: blocked.reviewKey!, confirmation })).rejects.toThrow("Roster changed");
+    const published = await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    expect(await f.t.run(ctx => ctx.db.query("classResultPublicationStudents")
+      .withIndex("by_publication_and_student", q => q.eq("publicationId", published._id)).collect()))
+      .toEqual([expect.objectContaining({ studentId: f.ids.studentId })]);
+    expect(await f.t.run(ctx => getReleasedGradedReport(ctx, { ...f.tuple, schoolId: f.ids.schoolId, studentId }))).toBeNull();
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, exclusionArgs)).rejects.toThrow("Released roster");
+    await f.t.run(ctx => ctx.db.patch(studentId, { isArchived: false }));
+    const frozen = await f.readiness();
+    expect(frozen).toMatchObject({ eligibleCount: 1, certifiedCount: 1, excludedCount: 1 });
+    expect(frozen.rows.find(r => r.studentId === studentId)).toMatchObject({ status: "excluded", canExclude: false });
+  });
+
+  it.each(["student tenant", "selection tenant", "promotion tenant", "different class", "multiple classes", "not current class", "late enrollment", "duplicate reports", "duplicate exclusions"])(
+    "does not let archive exclusion bypass %s", async (conflict) => {
+      const f = await fixture();
+      await f.certify();
+      await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { studentId: f.ids.studentId });
+      await f.t.run(async ctx => {
+        const selections = await ctx.db.query("studentSubjectSelections").withIndex("by_student_and_session", q =>
+          q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId)).collect();
+        for (const s of selections) await ctx.db.delete(s._id);
+        const records = await ctx.db.query("assessmentRecords").withIndex("by_student_and_term", q =>
+          q.eq("schoolId", f.ids.schoolId).eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.termId)).collect();
+        for (const r of records) await ctx.db.delete(r._id);
+        const report = (await ctx.db.query("issuedReportCards").withIndex("by_student_session_term", q =>
+          q.eq("studentId", f.ids.studentId).eq("sessionId", f.ids.sessionId).eq("termId", f.ids.termId)).unique())!;
+        if (conflict !== "duplicate reports") await ctx.db.delete(report._id);
+        if (conflict === "student tenant") await ctx.db.patch(f.ids.studentId, { schoolId: f.ids.otherSchoolId });
+        if (conflict === "late enrollment") {
+          const term = (await ctx.db.get(f.ids.termId))!;
+          await ctx.db.patch(f.ids.studentId, { createdAt: term.endDate + 1 });
+        }
+        if (conflict === "not current class") await ctx.db.patch(f.ids.studentId, { classId: f.ids.otherClassId });
+        if (["selection tenant", "different class", "multiple classes", "not current class"].includes(conflict)) {
+          await ctx.db.insert("studentSubjectSelections", { schoolId: conflict === "selection tenant" ? f.ids.otherSchoolId : f.ids.schoolId,
+            studentId: f.ids.studentId, classId: ["different class", "multiple classes"].includes(conflict) ? f.ids.otherClassId : f.ids.classId,
+            sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+          if (conflict === "multiple classes") await ctx.db.insert("studentSubjectSelections", {
+            schoolId: f.ids.schoolId, studentId: f.ids.studentId, classId: f.ids.classId,
+            sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1,
+          });
+        }
+        if (conflict === "promotion tenant") await ctx.db.insert("studentPromotions", { schoolId: f.ids.otherSchoolId,
+          studentId: f.ids.studentId, fromClassId: f.ids.classId, toClassId: f.ids.classId,
+          fromSessionId: f.ids.sessionId, toSessionId: f.ids.sessionId, subjectEnrollmentMode: "none",
+          subjectEnrollmentCount: 0, batchKey: "foreign", createdAt: 1, createdBy: f.ids.adminId });
+        if (conflict === "duplicate reports") {
+          const { _id, _creationTime, ...data } = report;
+          await ctx.db.insert("issuedReportCards", data);
+        }
+        if (conflict === "duplicate exclusions") for (let i = 0; i < 2; i++) {
+          await ctx.db.insert("classResultExclusions", { schoolId: f.ids.schoolId, ...f.tuple, studentId: f.ids.studentId,
+            reason: "Duplicate legacy exclusion", approvedBy: f.ids.adminId, approvedAt: 1 });
+        }
+      });
+      expect((await f.readiness()).rows.find(r => r.studentId === f.ids.studentId)).toMatchObject({ status: "blocked", canExclude: false });
+      await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent,
+        { ...f.tuple, studentId: f.ids.studentId, reason: "Archive must not bypass conflicting evidence" })).rejects.toThrow("enrollment needs review");
+    });
+
   it("permits a small current class at a school with more than 512 students", async () => {
     const f = await fixture();
     const otherClass = await f.t.run(ctx => ctx.db.insert("classes", { schoolId: f.ids.schoolId,

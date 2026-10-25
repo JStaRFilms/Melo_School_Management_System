@@ -76,7 +76,7 @@ export function ClassReleasePanel({ schoolId, selection, context }: { schoolId: 
         <div><span className="sm:hidden">Student: </span><strong>{row.name}</strong><span className="block text-sm text-slate-600">{row.admissionNumber}</span></div>
         <div><span className="sm:hidden">Status: </span>{row.status === "certified" ? "Certified" : row.status === "excluded" ? "Excluded" : "Needs attention"}</div>
         <div><span className="sm:hidden">Reason: </span>{row.reason ?? "None"}{row.status === "excluded" && <span className="block text-sm">Approved by {row.approvedByName || "Staff member"}</span>}</div>
-        <div className="space-y-2">{row.status === "blocked" && (needsAdmin(row.reasonCode) ? <span>Contact your school administrator for review</span> : <Link className="inline-flex min-h-11 items-center underline focus-visible:outline-2" href={reviewHref(row.studentId)}>Review report card</Link>)}
+        <div className="space-y-2">{row.status === "blocked" && (needsAdmin(row.reasonCode) ? <span>{context.canExclude && row.canExclude ? "Review this student before excluding them from this release." : "Contact your school administrator for review"}</span> : <Link className="inline-flex min-h-11 items-center underline focus-visible:outline-2" href={reviewHref(row.studentId)}>Review report card</Link>)}
           {context.canExclude && !released && row.canExclude && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setReason(""); setError(""); setDialog("exclude"); }}>Exclude student</button>}</div>
       </li>)}</ul></>}
       {released && <p className="mt-4">Not included in this release. A reviewed amendment is required for later additions or corrections.</p>}
