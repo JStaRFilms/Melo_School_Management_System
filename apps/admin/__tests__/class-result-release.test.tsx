@@ -32,11 +32,25 @@ describe("class result release", () => {
     expect(screen.getByRole("link", { name: "Review report card" })).toHaveAttribute("href", "/assessments/report-cards?sessionId=session&termId=term&classId=class&studentId=b&schoolId=school");
   });
   it("respects server-derived role flags and names exclusions", () => {
-    view({ excludedCount: 1, rows: [{ ...roster.rows[1], status: "excluded", reason: "Withdrawn after term close", reasonCode: "excluded", canExclude: false, approvedByName: "Ms Cole" }] });
+    view({ excludedCount: 1, rows: [{ ...roster.rows[1], status: "excluded", reason: "Withdrawn after term close", reasonCode: "excluded", exclusionSource: "manual", archivedAt: null, termStartDate: null, canExclude: false, approvedByName: "Ms Cole" }] });
     expect(screen.getByText("Withdrawn after term close")).toBeInTheDocument();
     expect(screen.getByText("Approved by Ms Cole")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Exclude student" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review release" })).toBeInTheDocument();
+  });
+  it.each([false, true])("shows policy dates without an approver on the frozen=%s roster", frozen => {
+    const archivedAt = Date.UTC(2026, 8, 1, 9), termStartDate = Date.UTC(2026, 8, 7, 8);
+    view({ eligibleCount: 1, certifiedCount: 1, excludedCount: 1,
+      released: frozen ? { releasedAt: Date.UTC(2026, 8, 8), releasedByName: "Ms Cole", eligibleCount: 1, certifiedCount: 1, excludedCount: 1 } : null,
+      rows: [roster.rows[0], { ...roster.rows[1], status: "excluded", reason: "Archived before this term began.", reasonCode: "archived_before_term", exclusionSource: "archived_before_term", approvedByName: null, canExclude: false, archivedAt, termStartDate }],
+    }, { ...context, canExclude: true });
+    const policyRow = screen.getByText("Archived before term").closest("li");
+    expect(policyRow).toHaveTextContent(`Archived ${new Date(archivedAt).toLocaleString()}. This term began ${new Date(termStartDate).toLocaleString()}.`);
+    expect(policyRow).not.toHaveTextContent("Approved by");
+    expect(policyRow).not.toHaveTextContent("Staff member");
+    expect(policyRow).not.toHaveTextContent("Exclude student");
+    expect(screen.getByText("Excluded").nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText("Missing certification").nextElementSibling).toHaveTextContent("0");
   });
   it("requires confirmation, traps focus and submits the reviewed key", async () => {
     mocks.release.mockResolvedValue({ releasedAt: 1000, releasedBy: "officer", eligibleCount: 1, certifiedCount: 1, excludedCount: 0 });

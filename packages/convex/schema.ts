@@ -23,6 +23,15 @@ import {
   siteRevisionContentValidator,
 } from "./functions/foundation/contracts";
 
+const classResultExclusionFields = v.object({
+  schoolId: v.id("schools"),
+  sessionId: v.id("academicSessions"),
+  termId: v.id("academicTerms"),
+  classId: v.id("classes"),
+  studentId: v.id("students"),
+  reason: v.string(),
+});
+
 const assessmentPolicySnapshotValidator = v.object({
   // Reviewed imports carry provenance; a manual edit retains only numeric row policy.
   source: v.optional(v.union(v.literal("factory"), v.literal("branch_legacy"), v.literal("group"), v.literal("branch_override"))),
@@ -2090,16 +2099,23 @@ export default defineSchema({
   }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
     .index("by_school", ["schoolId"]),
 
-  classResultExclusions: defineTable({
-    schoolId: v.id("schools"),
-    sessionId: v.id("academicSessions"),
-    termId: v.id("academicTerms"),
-    classId: v.id("classes"),
-    studentId: v.id("students"),
-    reason: v.string(),
-    approvedBy: v.id("users"),
-    approvedAt: v.number(),
-  }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
+  classResultExclusions: defineTable(v.union(
+    classResultExclusionFields.extend({
+      source: v.optional(v.literal("manual")),
+      approvedBy: v.id("users"),
+      approvedAt: v.number(),
+    }),
+    classResultExclusionFields.extend({
+      source: v.literal("archived_before_term"),
+      policyVersion: v.literal(1),
+      publicationId: v.id("classResultPublications"),
+      frozenAt: v.number(),
+      archivedAt: v.number(),
+      archivedBy: v.id("users"),
+      archivedUserId: v.id("users"),
+      termStartDate: v.number(),
+    }),
+  )).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
     .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
     .index("by_school", ["schoolId"]),
 

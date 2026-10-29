@@ -5466,7 +5466,7 @@
   },
   "classResultExclusions": {
     "ownership": "direct-indexed",
-    "reason": "School-scoped approval to exclude a student from a class term publication; indexed tenant purge and reviewed demo deletion own the row, not the referenced user or student",
+    "reason": "School-scoped manual approval or release-frozen archive policy exclusion; indexed tenant purge and reviewed demo deletion own the row, not the referenced users, student or publication",
     "references": [
       {
         "path": "approvedBy",
@@ -5474,8 +5474,23 @@
         "optional": false
       },
       {
+        "path": "archivedBy",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "archivedUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
         "path": "classId",
         "target": "classes",
+        "optional": false
+      },
+      {
+        "path": "publicationId",
+        "target": "classResultPublications",
         "optional": false
       },
       {
@@ -5501,7 +5516,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "630:9f35895e:9b4e3e06"
+    "shape": "1835:47cec60d:8c25a92d"
   },
   "classResultPublicationStudents": {
     "ownership": "direct-indexed",

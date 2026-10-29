@@ -21,6 +21,136 @@ const adminIdentity = {
   tokenIdentifier: "https://auth.school.test|academic-regression-admin",
 };
 
+async function archiveFixture() {
+  const t = convexTest(schema, modules);
+  const ids = await t.run(async ctx => {
+    const schoolId = await ctx.db.insert("schools", { name: "Selected branch", slug: "selected-archive", status: "active", createdAt: 1, updatedAt: 1 });
+    const defaultSchoolId = await ctx.db.insert("schools", { name: "Default branch", slug: "default-archive", status: "active", createdAt: 1, updatedAt: 1 });
+    const personId = await ctx.db.insert("persons", { name: "Branch admin", email: "branch-admin@test.invalid", authTokenIdentifier: adminIdentity.tokenIdentifier,
+      status: "active", primarySchoolId: defaultSchoolId, createdAt: 1, updatedAt: 1 });
+    const adminId = await ctx.db.insert("users", { schoolId, authId: "branch-admin", name: "Branch admin", email: "branch-admin@test.invalid",
+      role: "admin", personId, createdAt: 1, updatedAt: 1 });
+    const defaultUserId = await ctx.db.insert("users", { schoolId: defaultSchoolId, authId: adminIdentity.subject,
+      authTokenIdentifier: adminIdentity.tokenIdentifier, name: "Default admin", email: "default-admin@test.invalid", role: "admin",
+      personId, createdAt: 1, updatedAt: 1 });
+    for (const [branch, userId, isDefaultBranch] of [[schoolId, adminId, false], [defaultSchoolId, defaultUserId, true]] as const)
+      await ctx.db.insert("branchMemberships", { personId, schoolId: branch, legacyUserId: userId, status: "active", isDefaultBranch, joinedAt: 1, updatedAt: 1 });
+    const classId = await ctx.db.insert("classes", { schoolId, name: "Primary 1", level: "Primary", createdAt: 1, updatedAt: 1 });
+    const userId = await ctx.db.insert("users", { schoolId, authId: "archive-pupil", name: "Archive pupil", email: "archive-pupil@test.invalid",
+      role: "student", createdAt: 1, updatedAt: 1 });
+    const studentId = await ctx.db.insert("students", { schoolId, classId, userId, admissionNumber: "ARCHIVE-1", createdAt: 1, updatedAt: 1 });
+    return { schoolId, defaultSchoolId, adminId, classId, userId, studentId };
+  });
+  const admin = t.withIdentity(adminIdentity);
+  const args = { schoolId: ids.schoolId, studentId: ids.studentId };
+  const addCalendar = () => t.run(async ctx => {
+    const sessionId = await ctx.db.insert("academicSessions", { schoolId: ids.schoolId, name: "2026/27", startDate: 1, endDate: Date.now() + 100000,
+      isActive: true, createdAt: 1, updatedAt: 1 });
+    const termId = await ctx.db.insert("academicTerms", { schoolId: ids.schoolId, sessionId, name: "First", startDate: 2, endDate: Date.now() + 100000,
+      isActive: true, createdAt: 1, updatedAt: 1 });
+    return { sessionId, termId, classId: ids.classId };
+  });
+  return { t, ids, admin, args, addCalendar };
+}
+
+describe("student archive entry path", () => {
+  it("reads the selected non-default profile and commits its combined action only with that branch's admin authority", async () => {
+    const f = await archiveFixture(); const tuple = await f.addCalendar();
+    expect(await f.admin.query(api.functions.academic.studentEnrollment.getStudentProfile, f.args))
+      .toMatchObject({ _id: f.ids.studentId, classId: f.ids.classId, name: "Archive Pupil" });
+    const context = await f.admin.query(api.functions.academic.studentEnrollment.getStudentArchiveContext, f.args);
+    expect(context).toMatchObject({ schoolId: f.ids.schoolId, schoolName: "Selected branch", canArchiveAndExclude: true,
+      offer: { ...tuple, termName: "First", sessionName: "2026/27" } });
+    const outsiderIdentity = { subject: "default-only", tokenIdentifier: "https://auth.school.test|default-only" };
+    await f.t.run(ctx => ctx.db.insert("users", { schoolId: f.ids.defaultSchoolId, authId: outsiderIdentity.subject,
+      authTokenIdentifier: outsiderIdentity.tokenIdentifier, name: "Default only", email: "default-only@test.invalid", role: "admin", createdAt: 1, updatedAt: 1 }));
+    const outsider = f.t.withIdentity(outsiderIdentity);
+    await expect(outsider.query(api.functions.academic.studentEnrollment.getStudentProfile, f.args)).rejects.toThrow();
+    await expect(outsider.query(api.functions.academic.studentEnrollment.getStudentArchiveContext, f.args)).rejects.toThrow();
+    await expect(outsider.mutation(api.functions.academic.studentEnrollment.archiveStudent, f.args)).rejects.toThrow();
+    await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { ...f.args,
+      resultExclusion: { ...tuple, reviewedKey: context.offer!.reviewedKey!, reason: "Reviewed current term school departure" } });
+    const exclusion = await f.t.run(ctx => ctx.db.query("classResultExclusions").unique());
+    expect(exclusion).toMatchObject({ schoolId: f.ids.schoolId, studentId: f.ids.studentId, approvedBy: f.ids.adminId });
+    expect(await f.t.run(ctx => ctx.db.query("schoolEnrollmentCounts").collect())).toEqual([]);
+  });
+
+  it.each(["missing", "ambiguous", "archived"])("keeps archive-only independent of a %s calendar and context reads write nothing", async calendar => {
+    const f = await archiveFixture();
+    if (calendar !== "missing") {
+      const tuple = await f.addCalendar();
+      await f.t.run(async ctx => {
+        if (calendar === "archived") await ctx.db.patch(tuple.termId, { isArchived: true });
+        else await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId, sessionId: tuple.sessionId,
+          name: "Duplicate active", startDate: 2, endDate: 100, isActive: true, createdAt: 1, updatedAt: 1 });
+      });
+    }
+    const context = await f.admin.query(api.functions.academic.studentEnrollment.getStudentArchiveContext, f.args);
+    expect(context).toMatchObject({ canArchiveAndExclude: false, offer: null });
+    expect(context.unavailableReason).toBeTruthy();
+    expect(await f.t.run(ctx => ctx.db.query("auditEvents").collect())).toEqual([]);
+    expect((await f.t.run(ctx => ctx.db.get(f.ids.studentId)))?.isArchived).not.toBe(true);
+    await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, f.args);
+    expect((await f.t.run(ctx => ctx.db.get(f.ids.studentId)))?.isArchived).toBe(true);
+    expect(await f.t.run(ctx => ctx.db.query("classResultExclusions").collect())).toEqual([]);
+  });
+
+  it.each(["missing calendar", "ambiguous calendar", "archived class"] as const)("returns a recognizable unavailable-offer error for a valid review invalidated by %s", async invalidation => {
+    const f = await archiveFixture(); const tuple = await f.addCalendar();
+    const reviewed = await f.admin.query(api.functions.academic.studentEnrollment.getStudentArchiveContext, f.args);
+    await f.t.run(async ctx => {
+      if (invalidation === "missing calendar") await ctx.db.patch(tuple.sessionId, { isActive: false });
+      if (invalidation === "ambiguous calendar") await ctx.db.insert("academicTerms", { schoolId: f.ids.schoolId,
+        sessionId: tuple.sessionId, name: "Second active term", startDate: 3, endDate: Date.now() + 100000,
+        isActive: true, createdAt: 1, updatedAt: 1 });
+      if (invalidation === "archived class") await ctx.db.patch(f.ids.classId, { isArchived: true });
+    });
+    const reason = invalidation === "archived class" ? "Current class needs review" : "A unique active academic session and term are required";
+    await expect(f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { ...f.args,
+      resultExclusion: { ...tuple, reviewedKey: reviewed.offer!.reviewedKey!, reason: "Reviewed withdrawal this term" },
+    })).rejects.toThrow(`Archive offer unavailable: ${reason}`);
+    expect((await f.t.run(ctx => ctx.db.get(f.ids.studentId)))?.isArchived).not.toBe(true);
+    expect(await f.t.run(ctx => ctx.db.query("classResultExclusions").collect())).toEqual([]);
+  });
+
+  it.each(["withdrawn", "graduated"] as const)("does not decrement initialized count for %s archive", async enrollmentStatus => {
+    const f = await archiveFixture(); const tuple = await f.addCalendar();
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.studentId, { enrollmentStatus });
+      await ctx.db.insert("schoolEnrollmentCounts", { schoolId: f.ids.schoolId, currentStudentCount: 0, updatedAt: 1 });
+    });
+    const context = await f.admin.query(api.functions.academic.studentEnrollment.getStudentArchiveContext, f.args);
+    await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { ...f.args,
+      resultExclusion: { ...tuple, reviewedKey: context.offer!.reviewedKey!, reason: "Reviewed noncurrent student archive" } });
+    expect((await f.t.run(ctx => ctx.db.query("schoolEnrollmentCounts").unique()))?.currentStudentCount).toBe(0);
+  });
+
+  it.each(["foreign account", "wrong role", "archived account", "promotion disagreement"])("refuses combined %s", async conflict => {
+    const f = await archiveFixture(); const tuple = await f.addCalendar();
+    await f.t.run(async ctx => {
+      if (conflict === "foreign account") await ctx.db.patch(f.ids.userId, { schoolId: f.ids.defaultSchoolId });
+      if (conflict === "wrong role") await ctx.db.patch(f.ids.userId, { role: "parent" });
+      if (conflict === "archived account") await ctx.db.patch(f.ids.userId, { isArchived: true });
+      if (conflict === "promotion disagreement") {
+        const otherClass = await ctx.db.insert("classes", { schoolId: f.ids.schoolId, name: "Other class", level: "Primary", createdAt: 1, updatedAt: 1 });
+        await ctx.db.insert("studentPromotions", { schoolId: f.ids.schoolId, studentId: f.ids.studentId,
+          fromClassId: otherClass, toClassId: otherClass, fromSessionId: tuple.sessionId, toSessionId: tuple.sessionId,
+          subjectEnrollmentMode: "none", subjectEnrollmentCount: 0, batchKey: "disagreement", createdAt: 1, createdBy: f.ids.adminId });
+      }
+    });
+    if (conflict === "promotion disagreement") {
+      expect(await f.admin.query(api.functions.academic.studentEnrollment.getStudentArchiveContext, f.args)).toMatchObject({ canArchiveAndExclude: false });
+      await expect(f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { ...f.args,
+        resultExclusion: { ...tuple, reviewedKey: "invalid", reason: "Class disagreement requires review" } })).rejects.toThrow();
+      await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, f.args);
+    } else {
+      await expect(f.admin.query(api.functions.academic.studentEnrollment.getStudentArchiveContext, f.args)).rejects.toThrow("Student account not found");
+      await expect(f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, f.args)).rejects.toThrow("Student account not found");
+    }
+    expect(await f.t.run(ctx => ctx.db.query("classResultExclusions").collect())).toEqual([]);
+  });
+});
+
 describe("student enrollment registered functions", () => {
   it("keeps a promotion visible in its source/current roster, absent from target/current, and present in target/future", async () => {
     const t = convexTest(schema, modules);

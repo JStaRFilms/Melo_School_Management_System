@@ -17,7 +17,7 @@ Read this index before driving the app. These recipes cover the current syntheti
 - [Teacher roster](teacher-roster.md): dependent academic selectors, assigned pupils, reload context, and mobile rendering without score writes.
 - [Parent learning](parent-learning.md): linked pupil, topic filtering, empty/clear state, detail navigation, and mobile list.
 - [Workspace access](workspace-access.md): unsigned protected-route redirect and Teacher rejection from Admin editing. UI checks are not full endpoint authorization coverage.
-- [Scoring and issued results](report-lifecycle.md): complete fresh-fixture scoring/certification/class-release/freeze/history/mobile/print path.
+- [Scoring and issued results](report-lifecycle.md): fresh-fixture scoring/certification/class-release/freeze/history/mobile/print path, plus concrete profile archive-only/combined, later-term policy and restore entry points. The existing workflow script does not cover the archive extension. Local backend/component checks exist; archive browser acceptance remains pending behind Windows QA blocker148.
 
 Each recipe separates the built-in verified path from other entry points needing feature-specific checks. A command passing for one path does not verify the others. For a changed feature outside this map, author its acceptance steps using [exploration](../references/exploration.md), then extend the map.
 
@@ -28,4 +28,4 @@ Each recipe separates the built-in verified path from other entry points needing
 
 ## Not covered by this cohort
 
-Student-only navigation, Platform superadmin, guardian admissions signup, public WWW/Sites published configuration, payment settlement, AI generation, new narrative issuance, large/multi-class result release, exclusions, and amendments require their own fixtures/configuration and criteria. The runner currently attests only three app origins. The new upstream narrative/result/scoring code being deployed does not mean those complete workflows have browser proof.
+Student-only navigation, Platform superadmin, guardian admissions signup, public WWW/Sites published configuration, payment settlement, AI generation, new narrative issuance, large/multi-class result release, and amendments require their own fixtures/configuration and criteria. Archive/exclusion paths use the fresh fixtures and pending acceptance checklist in the report-lifecycle recipe, not baseline cohort proof. The runner currently attests only three app origins. The new upstream narrative/result/scoring code being deployed does not mean those complete workflows have browser proof.

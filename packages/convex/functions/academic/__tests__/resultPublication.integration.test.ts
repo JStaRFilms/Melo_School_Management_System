@@ -4,7 +4,8 @@ declare global {
   }
 }
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as auditBackend from "../audit";
 import { api } from "../../../_generated/api";
 import { reportCardReviewKey } from "@school/shared/exam-recording";
 import schema from "../../../schema";
@@ -110,6 +111,319 @@ async function multiSubjectClass() {
   });
   return { ...f, studentIds };
 }
+
+async function archiveCandidate(f: Awaited<ReturnType<typeof fixture>>, withSubject = false) {
+  return f.t.run(async ctx => {
+    const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: "policy-pupil",
+      name: "Policy pupil", email: "policy-pupil@test.invalid", role: "student", createdAt: 1, updatedAt: 1 });
+    const studentId = await ctx.db.insert("students", { schoolId: f.ids.schoolId, classId: f.ids.classId,
+      userId, admissionNumber: "POLICY", createdAt: 1, updatedAt: 1 });
+    if (withSubject) await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId,
+      classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+    return { studentId, userId };
+  });
+}
+
+async function futureCandidate(f: Awaited<ReturnType<typeof fixture>>, withSubject = false) {
+  const pupil = await archiveCandidate(f, withSubject);
+  await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { studentId: pupil.studentId });
+  const archivedAt = await f.t.run(async ctx => {
+    const student = await ctx.db.get(pupil.studentId);
+    if (student?.archivedAt === undefined) throw new Error("Missing archive event");
+    await ctx.db.patch(f.ids.termId, { startDate: student.archivedAt + 1, endDate: student.archivedAt + 100000 });
+    return student.archivedAt;
+  });
+  return { ...pupil, archivedAt };
+}
+
+const archiveContext = api.functions.academic.studentEnrollment.getStudentArchiveContext;
+const archiveStudent = api.functions.academic.studentEnrollment.archiveStudent;
+
+describe("archive and result release policy", () => {
+  it.each([false, true])("atomically archives and manually excludes with subjects=%s", async withSubject => {
+    const f = await fixture(); await f.certify();
+    const pupil = await archiveCandidate(f, withSubject);
+    await f.t.run(ctx => ctx.db.insert("schoolEnrollmentCounts", { schoolId: f.ids.schoolId, currentStudentCount: 2, updatedAt: 1 }));
+    const context = await f.admin.query(archiveContext, { schoolId: f.ids.schoolId, studentId: pupil.studentId });
+    expect(context).toMatchObject({ canArchiveAndExclude: true, offer: { ...f.tuple } });
+    expect(JSON.stringify(context)).not.toContain("totalScore");
+    await f.admin.mutation(archiveStudent, { schoolId: f.ids.schoolId, studentId: pupil.studentId,
+      resultExclusion: { ...f.tuple, reviewedKey: context.offer!.reviewedKey!, reason: "  Left school during the current term  " } });
+    const state = await f.t.run(async ctx => ({ student: await ctx.db.get(pupil.studentId), user: await ctx.db.get(pupil.userId),
+      counts: await ctx.db.query("schoolEnrollmentCounts").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).unique(),
+      exclusions: await ctx.db.query("classResultExclusions").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect(),
+      audits: await ctx.db.query("auditEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect() }));
+    expect(state.student).toMatchObject({ isArchived: true, archivedBy: f.ids.adminId });
+    expect(state.user).toMatchObject({ isArchived: true, archivedAt: state.student?.archivedAt, archivedBy: f.ids.adminId });
+    expect(state.counts?.currentStudentCount).toBe(1);
+    expect(state.exclusions).toEqual([expect.objectContaining({ source: "manual", studentId: pupil.studentId,
+      approvedBy: f.ids.adminId, reason: "Left school during the current term" })]);
+    expect(state.audits.filter(a => a.targetId === pupil.studentId).map(a => a.action).sort())
+      .toEqual(["result_release.exclude", "student.archive"]);
+    expect((await f.readiness()).rows.find(r => r.studentId === pupil.studentId))
+      .toMatchObject({ status: "excluded", exclusionSource: "manual", approvedByName: "Admin" });
+    expect(await f.readiness()).toMatchObject({ ready: true, eligibleCount: 1, excludedCount: 1 });
+  });
+
+  it.each(["short reason", "long reason", "stale account", "stale class", "stale term", "released", "already excluded", "officer", "foreign school", "counter failure", "late audit failure"])(
+    "rejects combined %s without partial archive, count, exclusion or audit writes", async failure => {
+      const f = await fixture(); await f.certify();
+      const pupil = await archiveCandidate(f, true);
+      const context = await f.admin.query(archiveContext, { studentId: pupil.studentId });
+      const reviewedKey = context.offer!.reviewedKey!;
+      await f.t.run(async ctx => {
+        await ctx.db.insert("schoolEnrollmentCounts", { schoolId: f.ids.schoolId,
+          currentStudentCount: failure === "counter failure" ? 0 : 2, updatedAt: 1 });
+        if (failure === "stale account") await ctx.db.patch(pupil.userId, { updatedAt: 99 });
+        if (failure === "stale class") await ctx.db.patch(pupil.studentId, { classId: f.ids.otherClassId });
+        if (failure === "stale term") await ctx.db.patch(f.ids.termId, { startDate: 3 });
+        if (failure === "released") await ctx.db.insert("classResultPublications", { schoolId: f.ids.schoolId,
+          ...f.tuple, releasedAt: Date.now(), releasedBy: f.ids.adminId, reviewKey: "other", eligibleCount: 1, certifiedCount: 1, excludedCount: 1 });
+        if (failure === "already excluded") await ctx.db.insert("classResultExclusions", { schoolId: f.ids.schoolId,
+          ...f.tuple, studentId: pupil.studentId, reason: "Previously reviewed exclusion", approvedBy: f.ids.adminId, approvedAt: 1 });
+      });
+      const snapshot = () => f.t.run(async ctx => ({ student: await ctx.db.get(pupil.studentId), user: await ctx.db.get(pupil.userId),
+        counts: await ctx.db.query("schoolEnrollmentCounts").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect(),
+        exclusions: await ctx.db.query("classResultExclusions").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect(),
+        audits: await ctx.db.query("auditEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect() }));
+      const before = await snapshot();
+      const originalAudit = auditBackend.recordAuditEventHelper;
+      const injectedFailure = failure === "late audit failure" ? vi.spyOn(auditBackend, "recordAuditEventHelper")
+        .mockImplementation(async (ctx, args) => {
+          const result = await originalAudit(ctx, args);
+          if (args.action === "result_release.exclude") throw new Error("Injected exclusion audit failure");
+          return result;
+        }) : null;
+      try {
+        await expect((failure === "officer" ? f.officer : f.admin).mutation(archiveStudent, {
+          schoolId: failure === "foreign school" ? f.ids.otherSchoolId : f.ids.schoolId, studentId: pupil.studentId,
+          resultExclusion: { ...f.tuple, reviewedKey,
+            reason: failure === "short reason" ? "too short" : failure === "long reason" ? "x".repeat(501) : "Reviewed departure during this term" },
+        })).rejects.toThrow(failure === "late audit failure" ? "Injected exclusion audit failure" : undefined);
+        expect(await snapshot()).toEqual(before);
+      } finally { injectedFailure?.mockRestore(); }
+    });
+
+  it.each([false, true])("computes future policy without writes with session subjects=%s and freezes truthful provenance", async withSubject => {
+    const f = await fixture(); await f.certify();
+    const pupil = await futureCandidate(f, withSubject);
+    const ready = await f.readiness();
+    expect(ready).toMatchObject({ ready: true, eligibleCount: 1, certifiedCount: 1, excludedCount: 1 });
+    expect(ready.rows.find(r => r.studentId === pupil.studentId)).toMatchObject({ status: "excluded", reasonCode: "archived_before_term",
+      exclusionSource: "archived_before_term", approvedByName: null, canExclude: false, archivedAt: pupil.archivedAt,
+      termStartDate: pupil.archivedAt + 1 });
+    expect(await f.t.run(ctx => ctx.db.query("classResultExclusions").collect())).toEqual([]);
+    const args = { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation };
+    const [publication, repeated] = await Promise.all([
+      f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults, args),
+      f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults, args),
+    ]);
+    expect(repeated._id).toBe(publication._id);
+    const exclusions = await f.t.run(ctx => ctx.db.query("classResultExclusions").collect());
+    expect(exclusions).toEqual([expect.objectContaining({ source: "archived_before_term", policyVersion: 1,
+      publicationId: publication._id, frozenAt: publication.releasedAt, archivedAt: pupil.archivedAt,
+      archivedBy: f.ids.adminId, archivedUserId: pupil.userId, termStartDate: pupil.archivedAt + 1 })]);
+    expect(exclusions[0]).not.toHaveProperty("approvedBy");
+    expect(exclusions[0]).not.toHaveProperty("approvedAt");
+    await f.admin.mutation(api.functions.academic.studentEnrollment.restoreStudent, { studentId: pupil.studentId });
+    await f.t.run(ctx => ctx.db.patch(f.ids.termId, { startDate: 2 }));
+    const frozen = await f.readiness();
+    expect(frozen.rows).toEqual(ready.rows.map(row => ({ ...row, canExclude: false })));
+    expect(frozen).toMatchObject({ eligibleCount: 1, excludedCount: 1 });
+    expect(await f.t.run(ctx => getReleasedGradedReport(ctx, { schoolId: f.ids.schoolId, ...f.tuple, studentId: pupil.studentId }))).toBeNull();
+    expect(await f.read()).not.toBeNull();
+    await f.admin.mutation(archiveStudent, { studentId: pupil.studentId });
+    expect((await f.readiness()).rows).toEqual(frozen.rows);
+  });
+
+  it("rolls back the publication, policy and inclusions if the release audit fails", async () => {
+    const f = await fixture(); await f.certify();
+    await futureCandidate(f);
+    const ready = await f.readiness();
+    const originalAudit = auditBackend.recordAuditEventHelper;
+    const injectedFailure = vi.spyOn(auditBackend, "recordAuditEventHelper").mockImplementation(async (ctx, args) => {
+      const result = await originalAudit(ctx, args);
+      if (args.action === "result_release.publish") throw new Error("Injected publication audit failure");
+      return result;
+    });
+    try {
+      await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+        { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow("Injected publication audit failure");
+      expect(await f.t.run(ctx => ctx.db.query("classResultPublications").collect())).toEqual([]);
+      expect(await f.t.run(ctx => ctx.db.query("classResultExclusions").collect())).toEqual([]);
+      expect(await f.t.run(ctx => ctx.db.query("classResultPublicationStudents").collect())).toEqual([]);
+      expect((await f.t.run(ctx => ctx.db.query("auditEvents").collect())).filter(a => a.action === "result_release.publish")).toEqual([]);
+      expect(await f.readiness()).toEqual(ready);
+    } finally { injectedFailure.mockRestore(); }
+  });
+
+  it.each(["one millisecond before", "equal", "missing student date", "missing account date", "missing actor", "mismatched date", "mismatched actor", "nonfinite archive", "nonfinite start", "inverted term", "before creation", "student restored", "account restored", "foreign account", "wrong account role", "foreign selection", "single other class", "multiple classes", "term marks", "issued card", "duplicate cards", "duplicate exclusions", "unfrozen policy"])(
+    "does not automatically omit %s", async conflict => {
+      const f = await fixture(); await f.certify();
+      const pupil = await futureCandidate(f);
+      await f.t.run(async ctx => {
+        if (conflict === "one millisecond before") await ctx.db.patch(f.ids.termId, { startDate: pupil.archivedAt - 1 });
+        if (conflict === "equal") await ctx.db.patch(f.ids.termId, { startDate: pupil.archivedAt });
+        if (conflict === "missing student date") await ctx.db.patch(pupil.studentId, { archivedAt: undefined });
+        if (conflict === "missing account date") await ctx.db.patch(pupil.userId, { archivedAt: undefined });
+        if (conflict === "missing actor") await ctx.db.patch(pupil.studentId, { archivedBy: undefined });
+        if (conflict === "mismatched date") await ctx.db.patch(pupil.userId, { archivedAt: pupil.archivedAt - 1 });
+        if (conflict === "mismatched actor") await ctx.db.patch(pupil.userId, { archivedBy: pupil.userId });
+        if (conflict === "nonfinite archive") {
+          await ctx.db.patch(pupil.studentId, { archivedAt: NaN }); await ctx.db.patch(pupil.userId, { archivedAt: NaN });
+        }
+        if (conflict === "nonfinite start") await ctx.db.patch(f.ids.termId, { startDate: Infinity });
+        if (conflict === "inverted term") await ctx.db.patch(f.ids.termId, { endDate: pupil.archivedAt });
+        if (conflict === "before creation") await ctx.db.patch(pupil.studentId, { createdAt: pupil.archivedAt + 1 });
+        if (conflict === "student restored") await ctx.db.patch(pupil.studentId, { isArchived: false });
+        if (conflict === "account restored") await ctx.db.patch(pupil.userId, { isArchived: false });
+        if (conflict === "foreign account") await ctx.db.patch(pupil.userId, { schoolId: f.ids.otherSchoolId });
+        if (conflict === "wrong account role") await ctx.db.patch(pupil.userId, { role: "parent" });
+        if (["foreign selection", "single other class", "multiple classes"].includes(conflict)) {
+          await ctx.db.insert("studentSubjectSelections", { schoolId: conflict === "foreign selection" ? f.ids.otherSchoolId : f.ids.schoolId,
+            studentId: pupil.studentId, classId: conflict === "foreign selection" ? f.ids.classId : f.ids.otherClassId,
+            sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+          if (conflict === "multiple classes") await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId,
+            studentId: pupil.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1 });
+        }
+        if (conflict === "term marks") {
+          const record = (await ctx.db.query("assessmentRecords").first())!;
+          const { _id, _creationTime, ...data } = record;
+          await ctx.db.insert("assessmentRecords", { ...data, studentId: pupil.studentId });
+        }
+        if (["issued card", "duplicate cards"].includes(conflict)) {
+          const report = (await ctx.db.query("issuedReportCards").first())!;
+          const { _id, _creationTime, ...data } = report;
+          for (let i = 0; i < (conflict === "duplicate cards" ? 2 : 1); i++)
+            await ctx.db.insert("issuedReportCards", { ...data, studentId: pupil.studentId });
+        }
+        if (conflict === "duplicate exclusions") for (let i = 0; i < 2; i++) await ctx.db.insert("classResultExclusions", {
+          schoolId: f.ids.schoolId, ...f.tuple, studentId: pupil.studentId, reason: "Conflicting legacy approvals", approvedBy: f.ids.adminId, approvedAt: 1 });
+        if (conflict === "unfrozen policy") {
+          const publicationId = await ctx.db.insert("classResultPublications", { schoolId: f.ids.schoolId, ...f.tuple,
+            classId: f.ids.otherClassId, releasedAt: 1, releasedBy: f.ids.adminId, reviewKey: "wrong", eligibleCount: 1, certifiedCount: 1, excludedCount: 1 });
+          await ctx.db.insert("classResultExclusions", { schoolId: f.ids.schoolId, ...f.tuple, studentId: pupil.studentId,
+            source: "archived_before_term", reason: "Invalid unfrozen policy", policyVersion: 1, publicationId, frozenAt: 1,
+            archivedAt: pupil.archivedAt, archivedBy: f.ids.adminId, archivedUserId: pupil.userId, termStartDate: pupil.archivedAt + 1 });
+        }
+      });
+      const ready = await f.readiness();
+      expect(ready.ready).toBe(false);
+      expect(ready.rows.find(r => r.studentId === pupil.studentId)).toMatchObject({ status: "blocked", exclusionSource: null });
+      await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+        { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow();
+    });
+
+  it("invalidates unfrozen policy on restore and uses a new archive event, with legacy manual precedence", async () => {
+    const f = await fixture(); await f.certify();
+    const pupil = await futureCandidate(f);
+    const ready = await f.readiness();
+    await f.admin.mutation(api.functions.academic.studentEnrollment.restoreStudent, { studentId: pupil.studentId });
+    const restored = await f.readiness();
+    expect(restored.rows.find(r => r.studentId === pupil.studentId)).toMatchObject({ status: "blocked", exclusionSource: null });
+    expect(restored.reviewKey).not.toBe(ready.reviewKey);
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow("Roster changed");
+    await f.admin.mutation(archiveStudent, { studentId: pupil.studentId });
+    const rearchived = (await f.t.run(ctx => ctx.db.get(pupil.studentId)))!;
+    expect(rearchived.archivedAt).toBeGreaterThanOrEqual(pupil.archivedAt);
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.termId, { startDate: rearchived.archivedAt! + 1, endDate: rearchived.archivedAt! + 100000 });
+      await ctx.db.insert("classResultExclusions", { schoolId: f.ids.schoolId, ...f.tuple, studentId: pupil.studentId,
+        reason: "Legacy explicit review takes precedence", approvedBy: f.ids.adminId, approvedAt: 1 });
+    });
+    const manual = await f.readiness();
+    expect(manual.rows.find(r => r.studentId === pupil.studentId)).toMatchObject({ exclusionSource: "manual",
+      approvedByName: "Admin", reason: "Legacy explicit review takes precedence", archivedAt: null });
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: manual.reviewKey!, confirmation });
+    await f.admin.mutation(api.functions.academic.studentEnrollment.restoreStudent, { studentId: pupil.studentId });
+    expect((await f.readiness()).rows).toEqual(manual.rows.map(row => ({ ...row, canExclude: false })));
+  });
+
+  it("checks all 512 student evidence rows before policy, rejects row 513, and invalidates combined review", async () => {
+    const f = await fixture(); await f.certify();
+    const pupil = await futureCandidate(f);
+    await f.t.run(async ctx => {
+      for (let i = 0; i < 512; i++) await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId,
+        studentId: pupil.studentId, classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId: f.ids.subjectId,
+        createdAt: i, updatedAt: i });
+    });
+    const ready = await f.readiness();
+    expect(ready.rows.find(r => r.studentId === pupil.studentId)).toMatchObject({ exclusionSource: "archived_before_term" });
+    const activePupil = await archiveCandidate(f);
+    const context = await f.admin.query(archiveContext, { studentId: activePupil.studentId });
+    expect(context.canArchiveAndExclude).toBe(true);
+    await f.t.run(ctx => ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId: pupil.studentId,
+      classId: f.ids.classId, sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 513, updatedAt: 513 }));
+    await expect(f.readiness()).rejects.toThrow("Roster exceeds atomic review limit");
+    await expect(f.admin.mutation(archiveStudent, { studentId: activePupil.studentId, resultExclusion: {
+      ...f.tuple, reviewedKey: context.offer!.reviewedKey!, reason: "Must not bypass oversized evidence" } })).rejects.toThrow("Roster exceeds atomic review limit");
+    expect((await f.t.run(ctx => ctx.db.get(activePupil.studentId)))?.isArchived).not.toBe(true);
+    expect(await f.t.run(ctx => ctx.db.query("classResultExclusions").collect())).toEqual([]);
+    await f.admin.mutation(archiveStudent, { studentId: activePupil.studentId });
+  });
+
+  it("does not discard 81 archived candidates before the roster capacity check", async () => {
+    const f = await fixture();
+    await f.t.run(async ctx => {
+      await ctx.db.patch(f.ids.termId, { startDate: 101 });
+      for (let i = 0; i < 80; i++) {
+        const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: `over-capacity-${i}`,
+          name: `Archived ${i}`, email: `over-capacity-${i}@test.invalid`, role: "student", createdAt: 1, updatedAt: 1,
+          isArchived: true, archivedAt: 100, archivedBy: f.ids.adminId });
+        await ctx.db.insert("students", { schoolId: f.ids.schoolId, userId, classId: f.ids.classId,
+          admissionNumber: `OVER-${i}`, createdAt: 1, updatedAt: 1, isArchived: true, archivedAt: 100, archivedBy: f.ids.adminId });
+      }
+    });
+    await expect(f.readiness()).rejects.toThrow("Roster exceeds atomic review limit");
+    expect(await f.admin.query(archiveContext, { studentId: f.ids.studentId }))
+      .toMatchObject({ canArchiveAndExclude: false, offer: null, unavailableReason: expect.stringContaining("Roster exceeds") });
+    await f.admin.mutation(archiveStudent, { studentId: f.ids.studentId });
+    expect(await f.t.run(ctx => ctx.db.query("classResultExclusions").collect())).toEqual([]);
+  });
+
+  it.each(["publication", "freeze timestamp", "duplicate exclusion", "inclusion overlap"])("rejects frozen policy %s conflicts", async conflict => {
+    const f = await fixture(); await f.certify();
+    const pupil = await futureCandidate(f);
+    const ready = await f.readiness();
+    const release = await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation });
+    await f.t.run(async ctx => {
+      const exclusion = (await ctx.db.query("classResultExclusions").unique())!;
+      if (exclusion.source !== "archived_before_term") throw new Error("Missing frozen policy");
+      if (conflict === "publication") {
+        const { _id, _creationTime, ...data } = release;
+        const other = await ctx.db.insert("classResultPublications", { ...data, classId: f.ids.otherClassId });
+        await ctx.db.patch(exclusion._id, { publicationId: other });
+      }
+      if (conflict === "freeze timestamp") await ctx.db.patch(exclusion._id, { frozenAt: release.releasedAt + 1 });
+      if (conflict === "duplicate exclusion") {
+        const { _id, _creationTime, ...data } = exclusion;
+        await ctx.db.insert("classResultExclusions", data);
+      }
+      if (conflict === "inclusion overlap") {
+        const included = (await ctx.db.query("classResultPublicationStudents").unique())!;
+        await ctx.db.patch(included._id, { studentId: pupil.studentId });
+      }
+    });
+    await expect(f.readiness()).rejects.toThrow("Frozen roster requires reconciliation");
+  });
+
+  it("refuses publication when every pupil is policy-excluded", async () => {
+    const f = await fixture();
+    await f.t.run(async ctx => {
+      for (const row of await ctx.db.query("assessmentRecords").collect()) await ctx.db.delete(row._id);
+      await ctx.db.patch(f.ids.studentId, { isArchived: true, archivedAt: 100, archivedBy: f.ids.adminId });
+      await ctx.db.patch(f.ids.studentUserId, { isArchived: true, archivedAt: 100, archivedBy: f.ids.adminId });
+      await ctx.db.patch(f.ids.termId, { startDate: 101 });
+    });
+    const ready = await f.readiness();
+    expect(ready).toMatchObject({ ready: false, eligibleCount: 0, certifiedCount: 0, excludedCount: 1 });
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
+      { ...f.tuple, reviewedKey: ready.reviewKey!, confirmation })).rejects.toThrow();
+  });
+});
 
 describe("graded result release", () => {
   it("reviews and releases 50 certified students with 550 rows per subject evidence source", async () => {
