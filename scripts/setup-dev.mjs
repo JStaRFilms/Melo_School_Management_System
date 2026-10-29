@@ -94,8 +94,9 @@ export async function setupDev({ root = repoRoot, from, env = process.env } = {}
     ignored('.env.local');
     writeFileSync(rootPath, Object.entries(target).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { flag: 'wx', mode: 0o600 });
   }
+  const configuredApps = apps.filter((app) => existsSync(resolve(root, 'apps', app, 'package.json')));
   const environments = {};
-  for (const app of apps) environments[app] = await loadAppEnvironment(app, { root, env: credentials, client });
+  for (const app of configuredApps) environments[app] = await loadAppEnvironment(app, { root, env: credentials, client });
   const files = archiveCandidates(root, environments);
   for (const relative of files) ignored(relative);
   const archive = `tmp/local-env-archive/${new Date().toISOString().replace(/[:.]/g, '-')}`;
@@ -109,7 +110,7 @@ export async function setupDev({ root = repoRoot, from, env = process.env } = {}
     mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
     renameSync(resolve(root, relative), destination);
   }
-  console.log(`Verified all seven Infisical dev folders. Archived ${files.length} matching legacy files${files.length ? ` under ${archive}` : ''}.`);
+  console.log(`Verified ${configuredApps.length} Infisical dev folders. Archived ${files.length} matching legacy files${files.length ? ` under ${archive}` : ''}.`);
   console.log('Ready for pnpm dev. No remote Convex or production configuration was changed.');
 }
 
