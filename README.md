@@ -93,7 +93,7 @@ Codex was used throughout the Build Week implementation to:
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 20.12+ or 22+.
 - pnpm 10+
 - A Convex account/deployment for live backend mode
 - Optional: OpenRouter API key for AI lesson-planning features
@@ -102,7 +102,9 @@ Codex was used throughout the Build Week implementation to:
 
 ```bash
 pnpm install
-pnpm convex:dev --once
+pnpm setup:dev
+# On first use, fill the generated .env.infisical.local privately, then rerun:
+pnpm setup:dev
 pnpm dev
 ```
 
@@ -110,17 +112,58 @@ Then open the app you need:
 
 | App | URL |
 | --- | --- |
-| Marketing website | <http://localhost:3000> |
-| Teacher app | <http://localhost:3001> |
-| Admin app | <http://localhost:3002> |
-| Portal app | <http://localhost:3003> |
-| Apply app | <http://localhost:3004> |
-| Public sites app | <http://localhost:3005> |
-| Platform app | <http://localhost:3006> |
+| Marketing website | <http://localhost:3100> |
+| Teacher app | <http://localhost:3101> |
+| Admin app | <http://localhost:3102> |
+| Portal app | <http://localhost:3103> |
+| Apply app | <http://localhost:3104> |
+| Public sites app | <http://localhost:3105> |
+| Platform app | <http://localhost:3106> |
 
 ## Environment setup
 
-Convex is configured from the monorepo root through `convex.json`, with backend functions in `packages/convex`.
+Local app development uses Infisical. Production hosting settings, builds, deployments, and remote Convex environment settings are unchanged. Convex functions still read their variables from Convex, not from the local launcher.
+
+### Infisical, the default local setup
+
+- Store only `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID` in ignored `.env.infisical.local`, or supply them through the shell. Never put them in `NEXT_PUBLIC_*` variables.
+- Keep root `.env.local` for the existing development Convex selector and URLs. The launcher requires `CONVEX_DEPLOYMENT=dev:...`, `CONVEX_URL`, and the matching `CONVEX_SITE_URL`. It does not run Convex sync or change backend settings.
+- `pnpm dev` and `pnpm --filter @school/admin dev` fetch only the selected app's `/vercel-<app>` folder in Infisical environment `dev`. Each app receives its own values through its process environment. The launcher removes Infisical credentials before starting Next.js. Restart to pick up secret changes.
+- Fetch failures, incomplete authenticated-app settings, and Convex URL mismatches stop startup. There is no automatic fallback to old env files. The `/shared` and `/convex` folders are not injected into apps. Sites configuration remains explicitly published data, not a live private Admin source.
+- Archive app `.env`, `.env.local`, `.env.development`, and `.env.development.local` files outside their app directories in an ignored private location before normal startup. Otherwise Next.js could load stale settings. The launcher refuses these files. `--check` validates the Infisical fetch without launching Next or checking for legacy files:
+
+  ```bash
+  node scripts/infisical-dev.mjs admin --check
+  pnpm test:infisical
+  ```
+
+The initial migration archive is under ignored `tmp/local-env-archive/`. Treat it as secret material. Keep it private and never stage it. Root `.env.local`, QA profiles, and Preview worktree profiles are not archived by this migration.
+
+The current identity has project-wide read access, including production. Fetching only `dev` is a launcher restriction, not an Infisical permission boundary. Do not distribute this credential as if it were dev-only. Startup needs Infisical connectivity, but a running app does not continually fetch secrets.
+
+### New worktrees and new PCs
+
+The integration must be committed on the branch you check out. Git carries the scripts and documentation, never the bootstrap credentials or local env archives.
+
+On a new PC, install Node and pnpm, clone the repository, check out a branch containing this integration, then follow Quick start. Supply the three bootstrap values privately on that PC. `pnpm setup:dev` fetches the development Admin folder and creates an ignored root development selector when absent. It does not authenticate the Convex CLI, run a deployment, or configure remote variables. The selector is derived from Infisical `dev` URLs; that is not independent proof of which backend an Infisical administrator intended.
+
+For another ordinary development worktree on the same PC:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm setup:dev --from /absolute/path/to/configured-development-checkout
+pnpm dev
+```
+
+`--from` reads the existing checkout's bootstrap credentials without printing them. Setup retains existing bootstrap files and refuses a different root backend selector. It checks all seven folders before archiving app dotenv files, and refuses to archive any file whose values differ from Infisical. No files in the source checkout are changed. Rerunning setup after a partial failure is safe; already-created local bootstrap or selector files are retained.
+
+Do not run this development migration over QA, Preview, or production profiles. They have separate targets and authority. Their existing manual startup remains available through `dev:local` on branches containing the integration. New worktrees inherit code only from their selected base branch; pulling a different branch does not automatically propagate this change.
+
+### Manual local fallback
+
+Infisical is the default. For deliberate offline/manual use, restore the archived app env files to their original paths or copy `.env.example` files, then run `pnpm dev:local` or `pnpm --filter @school/admin dev:local`. This bypasses Infisical. Do not restore old files and expect the normal `dev` command to accept them.
+
+For a fresh manual setup, Convex is configured from the monorepo root through `convex.json`, with backend functions in `packages/convex`. Verify the target before any Convex sync or environment changes. These manual steps are not part of the Infisical migration.
 
 1. Start or reconnect Convex and generate backend types:
 
@@ -172,7 +215,10 @@ If `NEXT_PUBLIC_CONVEX_URL` is missing, apps may run in preview/mock-data mode i
 Run from the monorepo root:
 
 ```bash
-pnpm dev                 # Start all app/backend dev tasks through Turbo
+pnpm dev                 # Start local apps with per-app Infisical injection
+pnpm dev:local           # Explicit manual env-file fallback
+pnpm setup:dev           # Validate/bootstrap local development and archive matching old envs
+pnpm test:infisical      # Test local launcher and setup safety
 pnpm build               # Build the workspace
 pnpm lint                # Lint the workspace
 pnpm typecheck           # Type-check the workspace
