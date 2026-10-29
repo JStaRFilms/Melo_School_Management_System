@@ -16,9 +16,9 @@ Date: 2026-10-29. Scope: local setup code and local development configuration on
 
 The source integration starts at commit 714d504. Worktrees carry their own follow-up commits so branch-specific ports and scripts remain intact. Detached worktree commits remain detached.
 
-The publication target is the dedicated branch chore/infisical-local-setup and the source branch perf/convex-egress-master, using normal fast-forward pushes only. This is not a merge into master or preview. Existing worktree branch commits are local unless separately pushed; do not infer that every remote branch contains the change. Publishing release branches or merging the default branch may trigger deployments and is not part of this local-only rollout.
+The initial publication used chore/infisical-local-setup and perf/convex-egress-master. The owner subsequently approved integration into master and preview. That follow-up applies only the Infisical setup diff onto each branch's current remote base, without merging unrelated feature ancestry. Publication uses normal fast-forward pushes and commit messages containing [skip vercel] to request no hosting builds. No Convex deployment or runtime-settings changes are included. Other historical worktree branch commits remain local unless separately pushed.
 
-On another PC, fetch and select the integration branch, install frozen dependencies, then run pnpm setup:dev and supply the bootstrap credentials privately. A clone of a branch without this integration will not contain it.
+On another PC, use master or preview once the approved follow-up is published, install frozen dependencies, then run pnpm setup:dev and supply bootstrap credentials privately. The dedicated integration branch also remains available. No clone receives credentials from Git.
 
 ## Per-worktree evidence
 
@@ -54,8 +54,8 @@ On another PC, fetch and select the integration branch, install frozen dependenc
 | <project>/tmp/worktrees/identity-onboarding-portal | feat/parent-profile-edit-permissions | ceec28d0 | frozen-pass | 5-tests-pass | ready |
 | <project>/tmp/worktrees/identity-onboarding-portal/tmp/deployment-master-d825229 | detached | db86d492 | frozen-pass | 5-tests-pass | protected-profile-retained |
 | <project>/tmp/worktrees/identity-onboarding-portal/tmp/deployment-pr109-949e493 | detached | c95cf18f | frozen-pass | 5-tests-pass | protected-profile-retained |
-| C:/CreativeOS/01_Projects/Code/Personal_Stuff/_worktrees/melo-educlearance-design-pr | docs/educlearance-integration-design | 145bb2c5 | frozen-pass | 5-tests-pass | ready |
-| C:/Users/johno/.local/share/opencode/worktree/fecb3f/ui-cleanup | fix/teacher-library-text-reading-unavailable | 3f446c38 | frozen-pass | 5-tests-pass | ready |
-| C:/Users/johno/.takomi-code/worktrees/2026-03-14_School_Management_System/fix-pr-103-agent-qa-review | fix/pr-103-agent-qa-review | not changed | not applicable | not applicable | invalid-or-prunable |
+| <external>/melo-educlearance-design-pr | docs/educlearance-integration-design | 145bb2c5 | frozen-pass | 5-tests-pass | ready |
+| <external>/ui-cleanup | fix/teacher-library-text-reading-unavailable | 3f446c38 | frozen-pass | 5-tests-pass | ready |
+| <external>/fix-pr-103-agent-qa-review | fix/pr-103-agent-qa-review | not changed | not applicable | not applicable | invalid-or-prunable |
 
 Private raw inventory, setup evidence, and rollback archives stay under ignored tmp/. No secrets are included in this report. Startup verification for the source checkout is documented in InfisicalLocalDevelopment.md. Full authenticated/provider workflows were not retested across historical branches.
