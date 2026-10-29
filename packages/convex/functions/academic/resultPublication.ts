@@ -21,6 +21,13 @@ type Tuple = {
   termId: Id<"academicTerms">;
   classId: Id<"classes">;
 };
+type ArchivePolicy = {
+  archivedAt: number;
+  archivedBy: Id<"users">;
+  archivedUserId: Id<"users">;
+  termStartDate: number;
+};
+const ARCHIVE_POLICY_REASON = "Archived before this term began.";
 type Row = {
   studentId: Id<"students">;
   name: string;
@@ -30,6 +37,10 @@ type Row = {
   reasonCode: string | null;
   canExclude: boolean;
   approvedBy: Id<"users"> | null;
+  exclusionSource: "manual" | "archived_before_term" | null;
+  archivedAt: number | null;
+  termStartDate: number | null;
+  policy: ArchivePolicy | null;
   issuedReportCardId: Id<"issuedReportCards"> | null;
   // Changes to any evidence, including an ambiguous second class, invalidate review.
   evidence: string;
@@ -95,7 +106,7 @@ function validIssued(report: Doc<"issuedReportCards">, tuple: Tuple, studentId: 
       (result.calculationMode !== "cumulative_annual" || result.isCumulativeComplete));
 }
 
-async function buildReadiness(ctx: Ctx, tuple: Tuple) {
+async function buildReadiness(ctx: Ctx, tuple: Tuple, proposedArchiveStudentId?: Id<"students">) {
   const { school, session, term, klass } = await assertTuple(ctx, tuple);
   // Legacy rows have no authoritative historical denominator. A zero-evidence
   // former student cannot be discovered from assessments or promotions alone.
@@ -164,7 +175,7 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
       student.createdAt <= term.endDate && enrollmentProof;
     // Current class membership can support an archived student's exclusion without
     // invented subjects or marks. It cannot certify a report or override class evidence.
-    const archivedCurrentProof = student?.isArchived && student.classId === tuple.classId &&
+    const archivedCurrentProof = (student?.isArchived || studentId === proposedArchiveStudentId) && student?.classId === tuple.classId &&
       student.createdAt <= term.endDate && [...classEvidence].every(id => id === tuple.classId);
     let reason: string | null = null;
     if (!student || student.schoolId !== tuple.schoolId) reason = "Student enrollment needs review";
@@ -180,14 +191,31 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     if (ownExclusions.length > 1) reason = "Conflicting exclusions require review";
     // Only the archived current-class case may resolve absent academic proof.
     // Class/tenant conflicts and duplicate reports or exclusions still block it.
-    const unexcludable = !student || student.schoolId !== tuple.schoolId || classEvidence.size > 1 ||
+    const unexcludable = !student || student.schoolId !== tuple.schoolId ||
+      !user || user.schoolId !== tuple.schoolId || user.role !== "student" ||
+      classEvidence.size > 1 ||
+      ((student.isArchived || studentId === proposedArchiveStudentId) && [...classEvidence].some(id => id !== tuple.classId)) ||
       ownPromotions.some(p => p.schoolId !== tuple.schoolId) || ownSelections.some(s => s.schoolId !== tuple.schoolId) ||
       termReports.some(r => r.schoolId !== tuple.schoolId) || matching.length > 1 ||
       ((!promotionProof && !currentProof || !enrollmentProof) && !archivedCurrentProof) || ownExclusions.length > 1;
     const exclusion = ownExclusions.length === 1 ? ownExclusions[0] : null;
-    if (exclusion && unexcludable) reason = "Enrollment or exclusion needs review";
-    const status: Row["status"] = exclusion && !unexcludable ? "excluded" : reason ? "blocked" : "certified";
-    const reasonCode = status === "excluded" ? "excluded" : reason ? ({
+    // A policy row belongs only to its frozen publication, never to a live roster.
+    const policyConflict = ownExclusions.some(e => e.source === "archived_before_term");
+    if (exclusion && (unexcludable || policyConflict)) reason = "Enrollment or exclusion needs review";
+    const archivedAt = student?.archivedAt;
+    const archivedBy = student?.archivedBy;
+    const policy: ArchivePolicy | null = !ownExclusions.length && !unexcludable &&
+      student?.isArchived && user?.isArchived && student.classId === tuple.classId &&
+      [...classEvidence].every(id => id === tuple.classId) &&
+      Number.isFinite(term.startDate) && Number.isFinite(term.endDate) && term.startDate <= term.endDate &&
+      Number.isFinite(student.createdAt) && student.createdAt <= term.endDate &&
+      archivedAt !== undefined && Number.isFinite(archivedAt) && archivedAt >= student.createdAt &&
+      archivedBy !== undefined && user.archivedAt === archivedAt && user.archivedBy === archivedBy &&
+      term.startDate > archivedAt && !ownRecords.length && !termReports.length
+      ? { archivedAt, archivedBy, archivedUserId: user._id, termStartDate: term.startDate } : null;
+    const manual = exclusion?.source !== "archived_before_term" && exclusion && !unexcludable ? exclusion : null;
+    const status: Row["status"] = manual || policy ? "excluded" : reason ? "blocked" : "certified";
+    const reasonCodes: Record<string, string> = {
       "Student enrollment needs review": "student_missing",
       "Conflicting within-term class history": "class_conflict",
       "Historical enrollment needs review": "enrollment_unverified",
@@ -198,13 +226,18 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
       "Certified report or historical grading policy needs review": "snapshot_invalid",
       "Conflicting exclusions require review": "exclusion_conflict",
       "Enrollment or exclusion needs review": "exclusion_unverified",
-    } as Record<string, string>)[reason] : null;
+    };
+    const reasonCode = policy ? "archived_before_term" : status === "excluded" ? "excluded" : reason ? reasonCodes[reason] : null;
     rows.push({ studentId, name: user?.name ?? student?.admissionNumber ?? "Unknown student", admissionNumber: student?.admissionNumber ?? "Unknown",
-      status, reason: status === "excluded" ? exclusion!.reason : reason, reasonCode,
-      canExclude: status !== "excluded" && !unexcludable,
-      approvedBy: status === "excluded" ? exclusion!.approvedBy : null,
+      status, reason: policy ? ARCHIVE_POLICY_REASON : manual ? manual.reason : reason, reasonCode,
+      canExclude: status !== "excluded" && !unexcludable && !policyConflict,
+      approvedBy: manual?.approvedBy ?? null,
+      exclusionSource: policy ? "archived_before_term" : manual ? "manual" : null,
+      archivedAt: policy?.archivedAt ?? null, termStartDate: policy?.termStartDate ?? null, policy,
       issuedReportCardId: status === "certified" ? matching[0]._id : null,
-      evidence: JSON.stringify([student, ownPromotions, ownSelections, ownRecords, termReports, ownExclusions]),
+      evidence: JSON.stringify([student, user && { id: user._id, schoolId: user.schoolId, role: user.role,
+        isArchived: user.isArchived, archivedAt: user.archivedAt, archivedBy: user.archivedBy, updatedAt: user.updatedAt },
+        ownPromotions, ownSelections, ownRecords, termReports, ownExclusions]),
     });
   }
   const eligibleCount = rows.filter(row => row.status !== "excluded").length;
@@ -217,6 +250,48 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
   ])));
   const reviewKey = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
   return { rows, eligibleCount, certifiedCount, excludedCount, ready, reviewKey };
+}
+
+export function exclusionFrozenFor(exclusion: Doc<"classResultExclusions">, release: Doc<"classResultPublications">) {
+  if (exclusion.schoolId !== release.schoolId || exclusion.sessionId !== release.sessionId ||
+      exclusion.termId !== release.termId || exclusion.classId !== release.classId) return false;
+  return exclusion.source === "archived_before_term"
+    ? exclusion.publicationId === release._id && exclusion.frozenAt === release.releasedAt &&
+      Number.isFinite(exclusion.archivedAt) && Number.isFinite(exclusion.termStartDate) &&
+      exclusion.termStartDate > exclusion.archivedAt
+    : Number.isFinite(exclusion.approvedAt) && exclusion.approvedAt <= release.releasedAt;
+}
+
+export function validateExclusionReason(value: string) {
+  const reason = value.trim();
+  if (reason.length < 10 || reason.length > 500) throw new ConvexError("Provide a specific reason (10-500 characters)");
+  return reason;
+}
+
+// Caller authenticates the admin and validates a fresh readiness row in this transaction.
+export async function insertManualResultExclusion(ctx: MutationCtx, tuple: Tuple,
+  studentId: Id<"students">, reason: string, approvedBy: Id<"users">, role: string) {
+  const actor = await resolveActiveMembership(ctx, tuple.schoolId);
+  const approvedAt = Date.now();
+  await ctx.db.insert("classResultExclusions", { ...tuple, studentId, reason, source: "manual", approvedBy, approvedAt });
+  await recordAuditEventHelper(ctx, { schoolId: tuple.schoolId, actorKind: "user", actorPersonId: actor.personId,
+    actorMembershipId: actor.membershipId, actorEmailSnapshot: role, module: "academic",
+    action: "result_release.exclude", targetType: "students", targetId: studentId,
+    outcome: "success", safeSummary: `Reasoned class result exclusion approved for ${tuple.sessionId} / ${tuple.termId} / ${tuple.classId} (reason stored on exclusion record)`,
+    alertTier: "tier1_critical" });
+  return approvedAt;
+}
+
+export async function reviewArchiveResultExclusion(ctx: Ctx, tuple: Tuple, studentId: Id<"students">) {
+  await assertTuple(ctx, tuple);
+  if (await publicationFor(ctx, tuple)) return {
+    canArchiveAndExclude: false, unavailableReason: "Current class results are already released", reviewedKey: null,
+  };
+  const readiness = await buildReadiness(ctx, tuple, studentId);
+  const row = readiness.rows.find(r => r.studentId === studentId);
+  const unavailableReason = row?.status === "excluded" ? "Student is already excluded from this term" :
+    row?.canExclude ? null : row?.reason ?? "Student enrollment needs review before exclusion";
+  return { canArchiveAndExclude: !!row?.canExclude, unavailableReason, reviewedKey: readiness.reviewKey };
 }
 
 // Omitted schoolId is retained for older default-branch callers. The Admin
@@ -387,12 +462,23 @@ export const getClassReadiness = query({
       ]);
       bounded(included, MAX_ROSTER);
       bounded(excluded, MAX_ROSTER);
-      const rows = await Promise.all([...included.map(i => ({ studentId: i.studentId,
-        status: "certified" as const, reason: null as string | null, reasonCode: null as string | null,
-        canExclude: false, approvedBy: null as Id<"users"> | null })),
+      const ids = [...included, ...excluded].map(row => row.studentId);
+      if (new Set(ids).size !== ids.length || included.some(i => i.schoolId !== schoolId ||
+          i.sessionId !== args.sessionId || i.termId !== args.termId || i.classId !== args.classId ||
+          i.releasedAt !== released.releasedAt) || excluded.some(e => !exclusionFrozenFor(e, released)))
+        throw new ConvexError("Frozen roster requires reconciliation");
+      const frozenRows: Array<Pick<Row, "studentId" | "status" | "reason" | "reasonCode" | "canExclude" |
+        "approvedBy" | "exclusionSource" | "archivedAt" | "termStartDate">> = [
+        ...included.map(i => ({ studentId: i.studentId, status: "certified" as const,
+          reason: null, reasonCode: null, canExclude: false, approvedBy: null,
+          exclusionSource: null, archivedAt: null, termStartDate: null })),
         ...excluded.map(e => ({ studentId: e.studentId, status: "excluded" as const,
-          reason: e.reason as string | null, reasonCode: "excluded" as string | null,
-          canExclude: false, approvedBy: e.approvedBy as Id<"users"> | null }))]
+          reason: e.reason, reasonCode: e.source === "archived_before_term" ? "archived_before_term" : "excluded",
+          canExclude: false, approvedBy: e.source === "archived_before_term" ? null : e.approvedBy,
+          exclusionSource: e.source ?? "manual", archivedAt: e.source === "archived_before_term" ? e.archivedAt : null,
+          termStartDate: e.source === "archived_before_term" ? e.termStartDate : null })),
+      ];
+      const rows = await Promise.all(frozenRows
         .map(async row => {
           const student = await ctx.db.get(row.studentId);
           const [user, approvedByName] = await Promise.all([
@@ -403,7 +489,8 @@ export const getClassReadiness = query({
           return { ...safeRow, approvedByName, name: user?.name ?? student?.admissionNumber ?? "Unknown student",
             admissionNumber: student?.admissionNumber ?? "Unknown" };
         }));
-      if (included.length !== released.eligibleCount || excluded.length !== released.excludedCount)
+      if (included.length !== released.eligibleCount || included.length !== released.certifiedCount ||
+          excluded.length !== released.excludedCount)
         throw new ConvexError("Frozen roster requires reconciliation");
       return { released: { ...released, releasedByName: await staffDisplayName(ctx, schoolId, released.releasedBy) }, rows,
         eligibleCount: released.eligibleCount,
@@ -413,7 +500,7 @@ export const getClassReadiness = query({
     const { rows, ...readiness } = await buildReadiness(ctx, tuple);
     // Evidence includes assessment and issued documents for the digest. It is
     // never part of the staff readiness payload, which contains no marks.
-    return { released, ...readiness, rows: await Promise.all(rows.map(async ({ evidence, issuedReportCardId, approvedBy, ...row }) => ({
+    return { released, ...readiness, rows: await Promise.all(rows.map(async ({ evidence, issuedReportCardId, approvedBy, policy, ...row }) => ({
       ...row, approvedByName: approvedBy ? await staffDisplayName(ctx, schoolId, approvedBy) : null,
     }))) };
   },
@@ -427,21 +514,13 @@ export const excludeStudent = mutation({
     const tuple = { schoolId, sessionId: args.sessionId, termId: args.termId, classId: args.classId };
     await assertTuple(ctx, tuple);
     if (await publicationFor(ctx, tuple)) throw new ConvexError("Released roster cannot be changed");
-    const reason = args.reason.trim();
-    if (reason.length < 10 || reason.length > 500) throw new ConvexError("Provide a specific reason (10-500 characters)");
+    const reason = validateExclusionReason(args.reason);
     const readiness = await buildReadiness(ctx, tuple);
     const row = readiness.rows.find(r => r.studentId === args.studentId);
     if (!row?.canExclude) {
       throw new ConvexError("Student enrollment needs review before exclusion");
     }
-    const actor = await resolveActiveMembership(ctx, schoolId);
-    const approvedAt = Date.now();
-    await ctx.db.insert("classResultExclusions", { ...tuple, studentId: args.studentId, reason, approvedBy: userId, approvedAt });
-    await recordAuditEventHelper(ctx, { schoolId, actorKind: "user", actorPersonId: actor.personId,
-      actorMembershipId: actor.membershipId, actorEmailSnapshot: role, module: "academic",
-      action: "result_release.exclude", targetType: "students", targetId: args.studentId,
-      outcome: "success", safeSummary: "Reasoned class result exclusion approved (reason stored on exclusion record)", alertTier: "tier1_critical" });
-    return approvedAt;
+    return insertManualResultExclusion(ctx, tuple, args.studentId, reason, userId, role);
   },
 });
 
@@ -469,6 +548,10 @@ export const releaseClassResults = mutation({
       reviewKey: readiness.reviewKey, eligibleCount: readiness.eligibleCount,
       certifiedCount: readiness.certifiedCount, excludedCount: readiness.excludedCount });
     for (const row of readiness.rows) {
+      if (row.policy) await ctx.db.insert("classResultExclusions", {
+        ...tuple, studentId: row.studentId, reason: ARCHIVE_POLICY_REASON,
+        source: "archived_before_term", policyVersion: 1, publicationId, frozenAt: releasedAt, ...row.policy,
+      });
       if (row.status === "certified" && row.issuedReportCardId) await ctx.db.insert("classResultPublicationStudents", {
         schoolId, publicationId, studentId: row.studentId, sessionId: tuple.sessionId,
         termId: tuple.termId, classId: tuple.classId, releasedAt, issuedReportCardId: row.issuedReportCardId,

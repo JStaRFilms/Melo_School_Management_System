@@ -58,10 +58,56 @@ async function fixture() {
       await ctx.db.insert("classResultPublicationStudents", { schoolId: ids.schoolId, publicationId, studentId: ids.studentId, sessionId: ids.sessionId, termId: ids.oldTermId, classId: ids.classId, releasedAt: 1, issuedReportCardId: issued._id });
     });
   };
-  return { t, ids, parent, student, workspace, certify, release };
+  return { t, ids, parent, student, admin, workspace, certify, release };
 }
 
 describe("family graded release gate", () => {
+  it("keeps an earlier issued history intact and a frozen future policy withheld after restore", async () => {
+    const f = await fixture(); await f.certify(); await f.release();
+    const earlier = await f.workspace();
+    const issuedBefore = await f.t.run(ctx => ctx.db.query("issuedReportCards").collect());
+    await f.admin.mutation(api.functions.academic.studentEnrollment.archiveStudent, { studentId: f.ids.studentId });
+    const archivedAt = await f.t.run(async ctx => {
+      const student = (await ctx.db.get(f.ids.studentId))!;
+      if (student.archivedAt === undefined) throw new Error("Missing archive event");
+      await ctx.db.patch(f.ids.oldTermId, { isActive: false });
+      await ctx.db.patch(f.ids.recentTermId, { isActive: true, startDate: student.archivedAt + 1, endDate: student.archivedAt + 100000 });
+      const issued = issuedBefore[0];
+      const record = (await ctx.db.get(f.ids.recordId))!;
+      const userId = await ctx.db.insert("users", { schoolId: f.ids.schoolId, authId: "included-peer", name: "Included peer",
+        email: "included-peer@test.invalid", role: "student", createdAt: 1, updatedAt: 1 });
+      const studentId = await ctx.db.insert("students", { schoolId: f.ids.schoolId, userId, classId: f.ids.classId,
+        admissionNumber: "PEER", createdAt: 1, updatedAt: 1 });
+      await ctx.db.insert("studentSubjectSelections", { schoolId: f.ids.schoolId, studentId, classId: f.ids.classId,
+        sessionId: f.ids.sessionId, subjectId: record.subjectId, createdAt: 1, updatedAt: 1 });
+      const { _id: _recordId, _creationTime: _recordTime, ...assessment } = record;
+      await ctx.db.insert("assessmentRecords", { ...assessment, studentId, termId: f.ids.recentTermId });
+      const { _id: _issuedId, _creationTime: _issuedTime, ...snapshot } = issued;
+      await ctx.db.insert("issuedReportCards", { ...snapshot, studentId, termId: f.ids.recentTermId,
+        report: { ...issued.report, student: { ...issued.report.student, _id: studentId, admissionNumber: "PEER" } } });
+      return student.archivedAt;
+    });
+    const tuple = { schoolId: f.ids.schoolId, classId: f.ids.classId, sessionId: f.ids.sessionId, termId: f.ids.recentTermId };
+    const ready = await f.admin.query(api.functions.academic.resultPublication.getClassReadiness, tuple);
+    expect(ready).toMatchObject({ ready: true, eligibleCount: 1, excludedCount: 1 });
+    const release = await f.admin.mutation(api.functions.academic.resultPublication.releaseClassResults, { ...tuple,
+      reviewedKey: ready.reviewKey!, confirmation: "I reviewed this roster and understand that releasing it makes these reports visible to families." });
+    await f.admin.mutation(api.functions.academic.studentEnrollment.restoreStudent, { studentId: f.ids.studentId });
+    const restoredEarlier = await f.workspace();
+    expect(restoredEarlier.selectedReportCard).toEqual(earlier.selectedReportCard);
+    expect(restoredEarlier.history).toEqual(earlier.history);
+    expect(await f.t.run(ctx => ctx.db.get(issuedBefore[0]._id))).toEqual(issuedBefore[0]);
+    const withheld = await f.workspace(f.ids.recentTermId);
+    expect(withheld).toMatchObject({ selectedResultState: "no_eligible_record", selectedReportCard: null });
+    const frozen = await f.admin.query(api.functions.academic.resultPublication.getClassReadiness, tuple);
+    expect(frozen.rows.find(r => r.studentId === f.ids.studentId)).toMatchObject({ status: "excluded",
+      exclusionSource: "archived_before_term", approvedByName: null, archivedAt, termStartDate: archivedAt + 1 });
+    // A policy cannot claim a different publication or freeze time as authoritative history.
+    const exclusion = (await f.t.run(ctx => ctx.db.query("classResultExclusions").unique()))!;
+    await f.t.run(ctx => ctx.db.patch(exclusion._id, { frozenAt: release.releasedAt + 1 }));
+    await expect(f.admin.query(api.functions.academic.resultPublication.getClassReadiness, tuple)).rejects.toThrow("Frozen roster");
+    expect(await f.workspace(f.ids.recentTermId)).toMatchObject({ selectedResultState: "withheld", selectedReportCard: null });
+  });
   it("pages sessions by descending academic date despite older-year backfills and preserves authorization", async () => {
     const f = await fixture();
     const foreign = await f.t.run(async ctx => {

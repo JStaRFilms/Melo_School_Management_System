@@ -9,7 +9,7 @@ import { query, type QueryCtx } from "../_generated/server";
 import { formatClassDisplayName, normalizeHumanName } from "@school/shared/name-format";
 import { getPortalStudentAccess, resolvePortalMemberships, resolvePortalStudentContext, type PortalAuth } from "./academic/portalIdentity";
 import { reportCardResultValidator } from "./academic/reportCards";
-import { getReleasedGradedReport } from "./academic/resultPublication";
+import { exclusionFrozenFor, getReleasedGradedReport } from "./academic/resultPublication";
 import { resolveAuthorizedPortalReportSelection } from "./academic/narrativeReports";
 import schema from "../schema";
 import { getReadableUserName } from "./academic/studentNameCompat";
@@ -385,7 +385,7 @@ async function hasReleasedTupleWithoutEligibleRecord(
   if (!klass || klass.schoolId !== schoolId || releases.length !== 1 ||
       issued.length > 1 || issued.some(row => row.schoolId !== schoolId || row.classId !== classId)) return false;
   const release = releases[0];
-  if (exclusion) return release.excludedCount > 0 && exclusion.approvedAt <= release.releasedAt;
+  if (exclusion) return release.excludedCount > 0 && exclusionFrozenFor(exclusion, release);
   return !klass.isArchived && student.createdAt > release.releasedAt;
 }
 

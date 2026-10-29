@@ -29,7 +29,10 @@ import { ConvexError } from "convex/values";
 import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
+  resolveActiveMembership,
 } from "./auth";
+import { recordAuditEventHelper } from "./audit";
+import { insertManualResultExclusion, reviewArchiveResultExclusion, validateExclusionReason } from "./resultPublication";
 import {
   teacherHasClassAccess,
 } from "./teacherAccess";
@@ -1216,7 +1219,7 @@ async function studentContactDetails(ctx: QueryCtx | MutationCtx, student: Doc<"
 }
 
 export const getStudentProfile = query({
-  args: { studentId: v.id("students") },
+  args: { studentId: v.id("students"), schoolId: v.optional(v.id("schools")) },
   returns: v.object({
     _id: v.id("students"),
     userId: v.id("users"),
@@ -1255,6 +1258,7 @@ export const getStudentProfile = query({
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
         capability: "enrollment.intakes.manage",
       });
     await assertAdminForSchool(ctx, userId, schoolId, role);
@@ -1535,8 +1539,65 @@ export const saveStudentPhoto = action({
   },
 });
 
+async function studentArchiveContext(ctx: QueryCtx | MutationCtx, schoolId: Id<"schools">, studentId: Id<"students">) {
+  const student = await ctx.db.get(studentId);
+  if (!student || student.schoolId !== schoolId || student.isArchived) throw new ConvexError("Student not found");
+  const [school, user, klass] = await Promise.all([
+    ctx.db.get(schoolId), ctx.db.get(student.userId), ctx.db.get(student.classId),
+  ]);
+  if (!school || !user || user.schoolId !== schoolId || user.role !== "student" || user.isArchived)
+    throw new ConvexError("Student account not found");
+  const base = { schoolId, schoolName: school.name, studentId, studentName: user.name,
+    admissionNumber: student.admissionNumber, classId: student.classId, className: klass?.name ?? "Unknown class" };
+  type Offer = { sessionId: Id<"academicSessions">; sessionName: string; termId: Id<"academicTerms">;
+    termName: string; classId: Id<"classes">; className: string; reviewedKey: string | null };
+  const unavailable = (unavailableReason: string): typeof base & {
+    offer: Offer | null; canArchiveAndExclude: boolean; unavailableReason: string | null;
+  } => ({ ...base, offer: null, canArchiveAndExclude: false, unavailableReason });
+  if (school.status !== "active" || !klass || klass.schoolId !== schoolId || klass.isArchived)
+    return unavailable("Current class needs review");
+  const [sessions, terms] = await Promise.all([
+    ctx.db.query("academicSessions").withIndex("by_school_active", q => q.eq("schoolId", schoolId).eq("isActive", true)).take(2),
+    ctx.db.query("academicTerms").withIndex("by_school_active", q => q.eq("schoolId", schoolId).eq("isActive", true)).take(2),
+  ]);
+  if (sessions.length !== 1 || terms.length !== 1)
+    return unavailable("A unique active academic session and term are required");
+  const [session] = sessions;
+  const [term] = terms;
+  if (session.isArchived || term.isArchived || term.sessionId !== session._id)
+    return unavailable("Active academic session or term needs review");
+  try {
+    const review = await reviewArchiveResultExclusion(ctx, { schoolId, sessionId: session._id,
+      termId: term._id, classId: student.classId }, studentId);
+    return { ...base, canArchiveAndExclude: review.canArchiveAndExclude, unavailableReason: review.unavailableReason,
+      offer: { sessionId: session._id, sessionName: session.name, termId: term._id, termName: term.name,
+        classId: student.classId, className: klass.name, reviewedKey: review.reviewedKey } };
+  } catch (error) {
+    if (error instanceof ConvexError && typeof error.data === "string") return unavailable(error.data);
+    throw error;
+  }
+}
+
+export const getStudentArchiveContext = query({
+  args: { studentId: v.id("students"), schoolId: v.optional(v.id("schools")) },
+  returns: v.object({ schoolId: v.id("schools"), schoolName: v.string(), studentId: v.id("students"),
+    studentName: v.string(), admissionNumber: v.string(), classId: v.id("classes"), className: v.string(),
+    canArchiveAndExclude: v.boolean(), unavailableReason: v.union(v.string(), v.null()),
+    offer: v.union(v.null(), v.object({ sessionId: v.id("academicSessions"), sessionName: v.string(),
+      termId: v.id("academicTerms"), termName: v.string(), classId: v.id("classes"), className: v.string(),
+      reviewedKey: v.union(v.string(), v.null()) })),
+  }),
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      schoolId: args.schoolId, capability: "enrollment.intakes.manage",
+    });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    return studentArchiveContext(ctx, schoolId, args.studentId);
+  },
+});
+
 async function archiveStudentRecord(
-  ctx: any,
+  ctx: MutationCtx,
   args: {
     studentId: Id<"students">;
     actingUserId: Id<"users">;
@@ -1550,6 +1611,7 @@ async function archiveStudentRecord(
   if (
     !studentUser ||
     studentUser.schoolId !== args.schoolId ||
+    studentUser.role !== "student" ||
     studentUser.isArchived
   ) {
     throw new ConvexError("Student account not found");
@@ -1575,23 +1637,37 @@ async function archiveStudentRecord(
     archivedBy: args.actingUserId,
     updatedAt: now,
   });
+  const actor = await resolveActiveMembership(ctx, args.schoolId);
+  await recordAuditEventHelper(ctx, { schoolId: args.schoolId, actorKind: "user",
+    actorPersonId: actor.personId, actorMembershipId: actor.membershipId, actorEmailSnapshot: actor.role,
+    module: "academic", action: "student.archive", targetType: "students", targetId: student._id,
+    outcome: "success", safeSummary: "Student enrollment and linked student account archived", alertTier: "tier2_warn" });
 }
 
 export const archiveStudent = mutation({
-  args: { studentId: v.id("students") },
+  args: { studentId: v.id("students"), schoolId: v.optional(v.id("schools")),
+    resultExclusion: v.optional(v.object({ sessionId: v.id("academicSessions"), termId: v.id("academicTerms"),
+      classId: v.id("classes"), reason: v.string(), reviewedKey: v.string() })) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx, {
-        capability: "enrollment.intakes.manage",
-      });
-    await assertAdminForSchool(ctx, userId, schoolId, role);
-
-    await archiveStudentRecord(ctx, {
-      studentId: args.studentId,
-      actingUserId: userId,
-      schoolId,
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(ctx, {
+      schoolId: args.schoolId, capability: "enrollment.intakes.manage",
     });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const request = args.resultExclusion;
+    const reason = request ? validateExclusionReason(request.reason) : null;
+    if (request) {
+      const context = await studentArchiveContext(ctx, schoolId, args.studentId);
+      const offer = context.offer;
+      if (!context.canArchiveAndExclude || !offer) {
+        throw new ConvexError(`Archive offer unavailable: ${context.unavailableReason ?? "Student enrollment needs review"}`);
+      }
+      if (offer.sessionId !== request.sessionId || offer.termId !== request.termId || offer.classId !== request.classId ||
+          offer.reviewedKey !== request.reviewedKey) throw new ConvexError("Archive context changed; review again");
+    }
+    await archiveStudentRecord(ctx, { studentId: args.studentId, actingUserId: userId, schoolId });
+    if (request && reason) await insertManualResultExclusion(ctx, { schoolId, sessionId: request.sessionId,
+      termId: request.termId, classId: request.classId }, args.studentId, reason, userId, role);
     return null;
   },
 });

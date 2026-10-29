@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/AuthProvider";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
+import { ArchiveStudentConfirmation } from "./ArchiveStudentConfirmation";
 import {
   AdmissionNumberGovernanceFields,
   hasCompleteAdmissionNumberOverride,
@@ -96,13 +97,10 @@ export function StudentProfileEditor({
   );
   const studentProfile = useQuery(
     "functions/academic/studentEnrollment:getStudentProfile" as never,
-    studentId ? ({ studentId } as never) : ("skip" as never),
+    studentId && schoolId ? ({ studentId, schoolId } as never) : ("skip" as never),
   ) as StudentProfile | undefined;
   const updateStudent = useMutation(
     "functions/academic/studentEnrollment:updateStudent" as never,
-  );
-  const archiveStudent = useMutation(
-    "functions/academic/studentEnrollment:archiveStudent" as never,
   );
   const saveStudentPhoto = useAction(
     "functions/academic/studentEnrollment:saveStudentPhoto" as never,
@@ -132,7 +130,7 @@ export function StudentProfileEditor({
   const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
-  const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ studentId: string; schoolId: string } | null>(null);
   const admissionNumbering = useQuery(
     "functions/academic/admissionNumbers:getAdmissionNumberPolicy" as never,
     schoolId ? ({ schoolId } as never) : ("skip" as never),
@@ -186,6 +184,10 @@ export function StudentProfileEditor({
   useEffect(() => {
     if (studentProfile) resetProfileFields(studentProfile);
   }, [resetProfileFields, studentProfile]);
+
+  useEffect(() => {
+    setArchiveTarget(null);
+  }, [studentId, schoolId]);
 
   const previewUrl = useMemo(() => {
     if (photoFile) return URL.createObjectURL(photoFile);
@@ -408,26 +410,7 @@ export function StudentProfileEditor({
   };
 
   const handleArchive = () => {
-    if (!studentProfile) return;
-    setIsArchiveConfirmOpen(true);
-  };
-
-  const executeArchive = async () => {
-    if (!studentProfile) return;
-    setIsArchiving(true);
-    try {
-      await archiveStudent({ studentId: studentProfile._id } as never);
-      onNotice({ tone: "success", message: `${displayName} archived.` });
-      onStudentArchived?.(studentProfile._id);
-      setIsArchiveConfirmOpen(false);
-    } catch (error) {
-      onNotice({
-        tone: "error",
-        message: getUserFacingErrorMessage(error, "Archive failed."),
-      });
-    } finally {
-      setIsArchiving(false);
-    }
+    if (schoolId) setArchiveTarget({ studentId, schoolId });
   };
 
   return (
@@ -629,17 +612,17 @@ export function StudentProfileEditor({
       )}
 
       <ConfirmationModal isOpen={classReview !== null} onClose={() => setClassReview(null)} onConfirm={() => { if (classReview) void handleSave(classReview); }} title="Are you sure?" description={`Change the effective active-session class from ${studentProfile.className} to ${classes.find(item => item._id === classReview?.classId)?.name ?? "the selected class"}? This replaces the current assignment and updates active-session subjects. Historical selections remain unchanged.`} confirmLabel="Confirm class change" isLoading={isSaving} />
-      {/* Archive Student Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={isArchiveConfirmOpen}
-        onClose={() => setIsArchiveConfirmOpen(false)}
-        onConfirm={executeArchive}
-        title="Archive Student Record"
-        description={`Are you sure you want to archive ${displayName}? The student will be removed from active class rosters and preserved in historical archives.`}
-        confirmLabel="Archive Student"
-        confirmVariant="danger"
-        isLoading={isArchiving}
-      />
+      {archiveTarget?.studentId === studentId && archiveTarget.schoolId === schoolId && schoolId && <ArchiveStudentConfirmation
+        key={`${schoolId}:${studentId}`}
+        studentId={studentId}
+        schoolId={schoolId}
+        studentName={studentProfile.displayName}
+        admissionNumber={studentProfile.admissionNumber}
+        onClose={() => setArchiveTarget(null)}
+        onArchived={id => onStudentArchived?.(id)}
+        onNotice={onNotice}
+        onPendingChange={setIsArchiving}
+      />}
     </div>
   );
 }
