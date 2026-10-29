@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env NODE_OPTIONS=\"--no-network-family-autoselection --dns-result-order=ipv4first\" next dev --webpack --port 3106 -H 0.0.0.0",
+    "dev": "cross-env NODE_OPTIONS=\"--no-network-family-autoselection --dns-result-order=ipv4first\" node ../../scripts/infisical-dev.mjs platform --webpack --port 3106 -H 0.0.0.0",
+    "dev:local": "cross-env NODE_OPTIONS=\"--no-network-family-autoselection --dns-result-order=ipv4first\" next dev --webpack --port 3106 -H 0.0.0.0",
     "build": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build --webpack",
     "start": "next start --port 3106",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
