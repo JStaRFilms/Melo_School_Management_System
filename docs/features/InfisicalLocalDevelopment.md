@@ -2,17 +2,17 @@
 
 ## Goal and scope
 
-Use Infisical as the default configuration source for local Melo apps. Leave production, build/start commands, remote Convex settings, isolated QA profiles, and Preview worktree profiles unchanged.
+Use Infisical as the default configuration source for local Melo apps (`dev`, `build:dev`, `start`, and `prod`). Leave plain `build`, production hosting, remote Convex settings, isolated QA profiles, and Preview worktree profiles unchanged.
 
 ## Components and data flow
 
-1. The root `pnpm dev` command runs app dev tasks through Turbo. Individual `pnpm --filter @school/<app> dev` commands use the same launcher.
-2. `scripts/infisical-dev.mjs` reads three bootstrap fields from ignored `.env.infisical.local` or the shell. Turbo passes these shell fields through for dev tasks only.
+1. The root `pnpm dev`, `pnpm build:dev`, `pnpm start`, and `pnpm prod` commands (and per-app equivalents) run through `scripts/infisical-dev.mjs`.
+2. `scripts/infisical-dev.mjs` reads three bootstrap fields from ignored `.env.infisical.local` or the shell. Turbo passes these shell fields through for `dev` and `build:dev` tasks only.
 3. The launcher authenticates with Universal Auth and reads Infisical cloud environment `dev`, folder `/vercel-<app>`. It does not fetch `/shared`, `/convex`, other app folders, staging, or production.
 4. Required app keys and Convex URLs are validated against the existing root development selector in `.env.local`. A failed fetch or mismatch stops startup without falling back to cached values.
-5. A separate Next.js dev process receives that app's values. Bootstrap credentials are removed before launch. Secret values are not written to disk or logged. Restart the app to refresh its snapshot.
+5. A separate Next.js `dev`, `build`, or `start` process receives that app's values. Bootstrap credentials are removed before launch. Secret values are not written to disk or logged. Restart (and re-run `build:dev` for `NEXT_PUBLIC_*` changes) to refresh the snapshot.
 
-Normal startup refuses app development dotenv files so Next cannot silently fill missing configuration from old files. The explicit `dev:local` scripts retain the previous manual startup behavior. Production `build` and `start` scripts do not use the launcher.
+Normal startup refuses conflicting app dotenv files so Next cannot silently fill missing configuration from old files. The explicit `dev:local` and `start:local` scripts retain the previous manual startup behavior. Plain `build` scripts do not use the launcher so CI and production hosting stay unchanged.
 
 ## Client and server boundaries
 

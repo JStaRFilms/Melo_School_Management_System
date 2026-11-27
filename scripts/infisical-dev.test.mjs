@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { loadAppEnvironment, prepareAppEnvironment } from './infisical-dev.mjs';
+import {
+  conflictingEnvFiles,
+  loadAppEnvironment,
+  parseInvocation,
+  prepareAppEnvironment,
+} from './infisical-dev.mjs';
 
 const rootEnv = {
   CONVEX_DEPLOYMENT: 'dev:synthetic',
@@ -79,4 +84,34 @@ test('reads only the selected app folder in dev and redacts provider failures', 
     return true;
   });
   await assert.rejects(loadAppEnvironment('../prod', { root, env: {}, client }), /Choose one/);
+});
+
+test('parses dev, build, start, and check invocations and checks mode-specific dotenv files', (t) => {
+  assert.deepEqual(parseInvocation(['admin', '--webpack', '--port', '3102']), {
+    app: 'admin',
+    command: 'dev',
+    nextArgs: ['--webpack', '--port', '3102'],
+  });
+  assert.deepEqual(parseInvocation(['admin', 'build', '--webpack']), {
+    app: 'admin',
+    command: 'build',
+    nextArgs: ['--webpack'],
+  });
+  assert.deepEqual(parseInvocation(['admin', 'start', '--port', '3102']), {
+    app: 'admin',
+    command: 'start',
+    nextArgs: ['--port', '3102'],
+  });
+  assert.deepEqual(parseInvocation(['admin', '--check']), {
+    app: 'admin',
+    command: 'check',
+    nextArgs: [],
+  });
+
+  const dir = mkdtempSync(join(tmpdir(), 'melo-env-mode-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, '.env.production.local'), 'NEXT_PUBLIC_CONVEX_URL=https://stale.convex.cloud\n');
+  assert.deepEqual(conflictingEnvFiles('dev', dir), []);
+  assert.deepEqual(conflictingEnvFiles('build', dir), ['.env.production.local']);
+  assert.deepEqual(conflictingEnvFiles('start', dir), ['.env.production.local']);
 });

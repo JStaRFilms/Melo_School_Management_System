@@ -8,7 +8,28 @@ import { InfisicalSDK } from '@infisical/sdk';
 
 export const apps = ['www', 'teacher', 'admin', 'portal', 'apply', 'sites', 'platform'];
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
-const envFiles = ['.env.development.local', '.env.local', '.env.development', '.env'];
+const nextCommands = new Set(['dev', 'build', 'start']);
+const envFilesByCommand = {
+  dev: ['.env.development.local', '.env.local', '.env.development', '.env'],
+  build: ['.env.production.local', '.env.local', '.env.production', '.env'],
+  start: ['.env.production.local', '.env.local', '.env.production', '.env'],
+};
+
+export function parseInvocation(argv) {
+  const [app, ...args] = argv;
+  if (args.length === 1 && args[0] === '--check') {
+    return { app, command: 'check', nextArgs: [] };
+  }
+  if (args[0] && nextCommands.has(args[0])) {
+    return { app, command: args[0], nextArgs: args.slice(1) };
+  }
+  return { app, command: 'dev', nextArgs: args };
+}
+
+export function conflictingEnvFiles(command, cwd) {
+  const candidates = envFilesByCommand[command] ?? envFilesByCommand.dev;
+  return candidates.filter((name) => existsSync(resolve(cwd, name)));
+}
 
 function readEnv(path) {
   return parseEnv(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
@@ -72,20 +93,20 @@ export async function loadAppEnvironment(app, { root = repoRoot, env = process.e
 }
 
 async function main() {
-  const [app, ...args] = process.argv.slice(2);
-  const check = args.length === 1 && args[0] === '--check';
+  const { app, command, nextArgs } = parseInvocation(process.argv.slice(2));
   const env = await loadAppEnvironment(app);
-  if (check) {
+  if (command === 'check') {
     console.log(`OK Infisical dev /vercel-${app}; development target matches; values not printed.`);
     return;
   }
   const cwd = resolve(repoRoot, 'apps', app);
   // Next loads absent values from dotenv files. Refuse that implicit second source.
-  if (envFiles.some((name) => existsSync(resolve(cwd, name)))) {
-    throw new Error(`Archive apps/${app}/.env* development files before using Infisical, or use dev:local. See README.md.`);
+  if (conflictingEnvFiles(command, cwd).length > 0) {
+    const fallback = command === 'dev' ? 'dev:local' : command === 'start' ? 'start:local' : 'build';
+    throw new Error(`Archive apps/${app}/.env* files before using Infisical, or use ${fallback}. See README.md.`);
   }
   const require = createRequire(resolve(cwd, 'package.json'));
-  const child = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'dev', ...args], {
+  const child = spawn(process.execPath, [require.resolve('next/dist/bin/next'), command, ...nextArgs], {
     cwd,
     env,
     stdio: 'inherit',
@@ -94,7 +115,7 @@ async function main() {
     process.on(signal, () => child.kill(signal));
   }
   child.on('error', () => {
-    console.error('Could not start the Next.js development process.');
+    console.error(`Could not run Next.js ${command}.`);
     process.exitCode = 1;
   });
   child.on('exit', (code, signal) => {

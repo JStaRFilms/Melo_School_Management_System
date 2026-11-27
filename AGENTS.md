@@ -8,7 +8,7 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 
 ## Local development configuration
 
-- Normal app `dev` commands use Infisical environment `dev`, reading only `/vercel-<app>` through `scripts/infisical-dev.mjs`. See README.md for bootstrap setup and the explicit `dev:local` fallback.
+- Normal local app `dev`, `build:dev`, `start`, and `prod` commands use Infisical environment `dev`, reading only `/vercel-<app>` through `scripts/infisical-dev.mjs`. Plain `build` stays untouched for CI/hosting; see README.md for bootstrap setup and the explicit `dev:local` / `start:local` fallbacks.
 - Keep `.env.infisical.local` and `tmp/local-env-archive/` private and ignored. Never log bootstrap credentials or fetched secret values. Do not restore archived app dotenv files into the default Infisical startup path.
 - For a new PC use `pnpm setup:dev` and supply bootstrap values privately. For an ordinary development worktree use `pnpm setup:dev --from <configured-development-checkout>` after installing dependencies. Never apply this migration over QA, Preview, or production profiles. Git carries setup code, not private files.
 - Root `.env.local` remains the development Convex target selector. App injection does not sync Convex environment variables, deploy backend code, change production configuration, or alter isolated QA/Preview profiles. Those operations need their existing target checks and authorization.

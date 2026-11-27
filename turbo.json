@@ -13,6 +13,12 @@
       "cache": false,
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
+    "build:dev": {
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_SECRET", "INFISICAL_PROJECT_ID"],
+      "cache": false,
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
     "dev": {
       "passThroughEnv": ["INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_SECRET", "INFISICAL_PROJECT_ID"],
       "cache": false,

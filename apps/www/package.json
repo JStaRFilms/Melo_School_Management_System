@@ -6,7 +6,9 @@
     "dev": "node ../../scripts/infisical-dev.mjs www --webpack --port 3100 -H 0.0.0.0",
     "dev:local": "next dev --webpack --port 3100 -H 0.0.0.0",
     "build": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build --webpack",
-    "start": "next start --port 3100",
+    "build:dev": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && node ../../scripts/infisical-dev.mjs www build --webpack",
+    "start": "node ../../scripts/infisical-dev.mjs www start --port 3100",
+    "start:local": "next start --port 3100",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit"
   },

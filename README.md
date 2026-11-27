@@ -128,7 +128,7 @@ Local app development uses Infisical. Production hosting settings, builds, deplo
 
 - Store only `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID` in ignored `.env.infisical.local`, or supply them through the shell. Never put them in `NEXT_PUBLIC_*` variables.
 - Keep root `.env.local` for the existing development Convex selector and URLs. The launcher requires `CONVEX_DEPLOYMENT=dev:...`, `CONVEX_URL`, and the matching `CONVEX_SITE_URL`. It does not run Convex sync or change backend settings.
-- `pnpm dev` and `pnpm --filter @school/admin dev` fetch only the selected app's `/vercel-<app>` folder in Infisical environment `dev`. Each app receives its own values through its process environment. The launcher removes Infisical credentials before starting Next.js. Restart to pick up secret changes.
+- `pnpm dev`, `pnpm build:dev`, `pnpm start`, `pnpm prod`, and per-app equivalents (`pnpm --filter @school/admin dev|build:dev|start`) fetch only the selected app's `/vercel-<app>` folder in Infisical environment `dev`. Each app receives its own values through its process environment. Plain `build` remains unchanged for CI and production hosting. The launcher removes Infisical credentials before starting Next.js. Restart (and rebuild with `build:dev` for `NEXT_PUBLIC_*` changes) to pick up secret changes.
 - Fetch failures, incomplete authenticated-app settings, and Convex URL mismatches stop startup. There is no automatic fallback to old env files. The `/shared` and `/convex` folders are not injected into apps. Sites configuration remains explicitly published data, not a live private Admin source.
 - Archive app `.env`, `.env.local`, `.env.development`, and `.env.development.local` files outside their app directories in an ignored private location before normal startup. Otherwise Next.js could load stale settings. The launcher refuses these files. `--check` validates the Infisical fetch without launching Next or checking for legacy files:
 
@@ -161,7 +161,7 @@ Do not run this development migration over QA, Preview, or production profiles. 
 
 ### Manual local fallback
 
-Infisical is the default. For deliberate offline/manual use, restore the archived app env files to their original paths or copy `.env.example` files, then run `pnpm dev:local` or `pnpm --filter @school/admin dev:local`. This bypasses Infisical. Do not restore old files and expect the normal `dev` command to accept them.
+Infisical is the default. For deliberate offline/manual use, restore the archived app env files to their original paths or copy `.env.example` files, then run `pnpm dev:local` / `pnpm start:local` (or `pnpm --filter @school/admin dev:local` / `start:local`). This bypasses Infisical. Do not restore old files and expect the normal `dev`, `build:dev`, or `start` commands to accept them.
 
 For a fresh manual setup, Convex is configured from the monorepo root through `convex.json`, with backend functions in `packages/convex`. Verify the target before any Convex sync or environment changes. These manual steps are not part of the Infisical migration.
 
@@ -216,10 +216,14 @@ Run from the monorepo root:
 
 ```bash
 pnpm dev                 # Start local apps with per-app Infisical injection
-pnpm dev:local           # Explicit manual env-file fallback
+pnpm dev:local           # Explicit manual env-file fallback for dev
+pnpm build:dev           # Build local apps with per-app Infisical dev injection
+pnpm start               # Start built apps with per-app Infisical dev injection
+pnpm start:local         # Explicit manual env-file fallback for start
+pnpm prod                # Local build:dev + start against Infisical dev
 pnpm setup:dev           # Validate/bootstrap local development and archive matching old envs
 pnpm test:infisical      # Test local launcher and setup safety
-pnpm build               # Build the workspace
+pnpm build               # Build the workspace (plain Next build for CI/hosting)
 pnpm lint                # Lint the workspace
 pnpm typecheck           # Type-check the workspace
 pnpm test                # Run unit tests
