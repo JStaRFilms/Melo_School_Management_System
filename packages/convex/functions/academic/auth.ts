@@ -11,6 +11,42 @@ import { getContextCapabilities, isPermissionManaged, normalizeCapability, type 
  * @throws ConvexError "Unauthorized" if not authenticated
  * @throws ConvexError "School membership not found" if user has no school
  */
+export async function resolveCanonicalDefaultSchoolId(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Id<"schools"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  const people = await ctx.db
+    .query("persons")
+    .withIndex("by_token_identifier", (q) =>
+      q.eq("authTokenIdentifier", identity.tokenIdentifier),
+    )
+    .take(2);
+  if (people.length !== 1) return null;
+  const person = people[0];
+  if (
+    person.status !== "active" ||
+    person.identityReconciliationState === "reconciliation_required"
+  ) {
+    return null;
+  }
+  const memberships = await ctx.db
+    .query("branchMemberships")
+    .withIndex("by_person_and_status", (q) =>
+      q.eq("personId", person._id).eq("status", "active"),
+    )
+    .take(101);
+  if (memberships.length === 0 || memberships.length > 100) return null;
+  const defaults = memberships.filter((membership) => membership.isDefaultBranch);
+  const chosen =
+    defaults.length === 1
+      ? defaults[0]
+      : memberships.length === 1
+        ? memberships[0]
+        : null;
+  return chosen?.schoolId ?? null;
+}
+
 export async function getAuthenticatedSchoolMembership(
   ctx: QueryCtx | MutationCtx,
   options?: { allowSuspended?: boolean; schoolId?: Id<"schools">; capability?: PermissionCapability | readonly PermissionCapability[] }
@@ -22,8 +58,15 @@ export async function getAuthenticatedSchoolMembership(
   isSuspended: boolean;
 }> {
   if (!(await ctx.auth.getUserIdentity())) throw new ConvexError("Unauthorized");
-  const defaultUser = options?.schoolId ? null : await resolveLegacyViewer(ctx);
-  const schoolId = options?.schoolId ?? defaultUser?.schoolId;
+  const canonicalDefaultSchoolId = options?.schoolId
+    ? null
+    : await resolveCanonicalDefaultSchoolId(ctx);
+  const defaultUser =
+    options?.schoolId || canonicalDefaultSchoolId
+      ? null
+      : await resolveLegacyViewer(ctx);
+  const schoolId =
+    options?.schoolId ?? canonicalDefaultSchoolId ?? defaultUser?.schoolId;
   if (!schoolId) throw new ConvexError("School membership not found");
   // allowSuspended is a legacy default-read exception, never a selected-branch bypass.
   const school = await ctx.db.get(schoolId);

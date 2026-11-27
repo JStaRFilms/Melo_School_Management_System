@@ -25,11 +25,7 @@ export default function HomePage() {
     redirect("/sign-in");
   }
 
-  if (session?.user?.role !== "teacher" && session?.user?.role !== "admin") {
-    redirect("/sign-in?error=unauthorized");
-  }
-
-  const userName = session.user.name?.trim() || "Teacher";
+  const userName = session?.user?.name?.trim() || "Teacher";
   const schoolName = workspaceAccess?.state === "ready"
     ? workspaceAccess.branch.name
     : "your school";

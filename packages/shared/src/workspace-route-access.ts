@@ -89,15 +89,20 @@ const BRANCH_SCOPED_ROUTES = {
     "/assessments/setup/exam-recording",
   ],
   teacher: [
+    "/",
     "/assessments/exams/entry",
     "/enrollment/subjects",
+    "/planning/lesson-plans",
+    "/planning/library",
   ],
   portal: [],
 } as const satisfies Record<WorkspaceKey, readonly string[]>;
 
 /** Routes in this allowlist pass the selected school to every mounted data operation. */
 export function isWorkspaceBranchScopedRoute(workspace: WorkspaceKey, path: string) {
-  return BRANCH_SCOPED_ROUTES[workspace].some((prefix) => within(path, prefix));
+  return BRANCH_SCOPED_ROUTES[workspace].some((prefix) =>
+    prefix === "/" ? path === "/" : within(path, prefix),
+  );
 }
 
 function getCapabilityRule(workspace: WorkspaceKey, path: string) {
@@ -130,6 +135,14 @@ export function getBranchScopedWorkspaceAccess(
   }
   if (!isWorkspaceBranchScopedRoute(workspace, path)) {
     return { state: "reconciliation_required", message: LEGACY_BRANCH_SWITCH_REASON };
+  }
+  if (
+    workspace === "teacher" &&
+    access.compatibility.permissionManaged === false &&
+    (access.compatibility.legacyRole === "teacher" ||
+      access.compatibility.legacyRole === "admin")
+  ) {
+    return { state: "allowed" };
   }
   return lacksRuleCapability(workspace, path, access)
     ? { state: "forbidden", message: "Your current permissions do not allow this operation. Contact your school administrator." }

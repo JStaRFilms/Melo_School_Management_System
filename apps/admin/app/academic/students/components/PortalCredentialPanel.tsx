@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useAction, useQuery } from "convex/react";
-import { BadgeCheck, Copy, KeyRound, RefreshCw } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { BadgeCheck, Copy, KeyRound, Link2, RefreshCw } from "lucide-react";
 import { getUserFacingErrorMessage } from "@school/shared";
 
 import { api } from "@school/convex/_generated/api";
@@ -45,18 +45,52 @@ function PortalCredentialPanelContent({
   const upsertPortalCredentials = useAction(
     api.functions.academic.studentEnrollment.upsertPortalCredentials
   );
+  const createParentInvitation = useMutation(
+    api.functions.academic.invitations.createParentInvitation
+  );
 
   const account = useQuery(api.functions.academic.studentEnrollment.getPortalAccountState, { userId: userId as Id<"users"> });
   const [temporaryPassword, setTemporaryPassword] = useState(defaultPassword);
   const [result, setResult] = useState<PortalCredentialResult | null>(null);
+  const [inviteLink, setInviteLink] = useState<{ url: string; deliveryState: string } | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     setTemporaryPassword(defaultPassword);
     setResult(null);
+    setInviteLink(null);
+    setInviteCopied(false);
     setCopied(false);
   }, [defaultPassword, userId]);
+
+  const effectiveEmail = account?.email ?? email;
+  const isSyntheticStudentLogin = effectiveEmail.toLowerCase().endsWith(".local");
+
+  const handleSendParentInvite = async () => {
+    if (isInviting) return;
+    setIsInviting(true);
+    try {
+      const created = await createParentInvitation({
+        userId: userId as Id<"users">,
+      });
+      setInviteLink({ url: created.inviteUrl, deliveryState: created.deliveryState });
+      setInviteCopied(false);
+      onNotice({
+        tone: "success",
+        message: `Invite link ready for ${userName}.`,
+      });
+    } catch (error) {
+      onNotice({
+        tone: "error",
+        message: getUserFacingErrorMessage(error, "Could not create portal invitation."),
+      });
+    } finally {
+      setIsInviting(false);
+    }
+  };
 
   const copyCredentials = async () => {
     if (!result || result.userId !== userId) {
@@ -189,12 +223,74 @@ function PortalCredentialPanelContent({
           {description}
         </p>
         <p className="text-[11px] font-semibold text-slate-400">
-          Login ID: <span className="break-words font-black text-slate-700">{account?.email ?? email}</span>. A login ID is not necessarily an inbox.
+          Login ID: <span className="break-words font-black text-slate-700">{effectiveEmail}</span>
+          {isSyntheticStudentLogin ? " (school login ID, not an email inbox)" : ""}
         </p>
       </div>
 
       <p className="text-xs font-semibold text-slate-600"><PortalStateLabel state={account?.state} /></p>
       {account?.state === "provisioned" && <AccountNoticePanel userId={userId as Id<"users">} />}
+
+      {!isSyntheticStudentLogin && account?.state === "not_provisioned" && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+          <p className="text-xs font-semibold text-slate-800">
+            Invite by link (recommended)
+          </p>
+          <p className="text-[11px] text-slate-500">
+            Lets the parent set their own password or link an existing Melo account from another school.
+          </p>
+          {inviteLink ? (
+            <div className="space-y-2">
+              <p className="text-[11px] font-mono break-all rounded-lg border border-slate-200 bg-white p-2 text-slate-700">
+                {inviteLink.url}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                {inviteLink.deliveryState === "not_configured"
+                  ? "Email sending is not configured — copy and share this link."
+                  : inviteLink.deliveryState === "accepted"
+                    ? "Email accepted by provider. You can also copy this link."
+                    : inviteLink.deliveryState === "suppressed"
+                      ? "Email rate-limited — copy and share this link directly."
+                      : inviteLink.deliveryState === "failed"
+                        ? "Email failed to send — copy and share this link directly."
+                        : "Email queued. You can also copy and share this link directly."}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(inviteLink.url)
+                    .then(() => {
+                      setInviteCopied(true);
+                      window.setTimeout(() => setInviteCopied(false), 2000);
+                    })
+                    .catch(() => {
+                      onNotice({
+                        tone: "error",
+                        message: "Could not copy invite link right now.",
+                      });
+                    });
+                }}
+                className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-500 transition"
+              >
+                {inviteCopied ? <BadgeCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {inviteCopied ? "Copied Invite Link" : "Copy Invite Link"}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={isInviting}
+              onClick={() => void handleSendParentInvite()}
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 transition"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              {isInviting ? "Creating invite…" : "Send / copy portal invite link"}
+            </button>
+          )}
+        </div>
+      )}
+
       <form className="space-y-3" onSubmit={handleSubmit}>
         <label className="space-y-1.5">
           <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">

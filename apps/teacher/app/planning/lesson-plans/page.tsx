@@ -13,6 +13,7 @@ import {
 import { appToast, getErrorMessage } from "@school/shared/toast";
 import { X } from "lucide-react";
 import { api } from "@school/convex/_generated/api";
+import { useAuth } from "@/lib/AuthProvider";
 
 import { LessonPlanWorkspaceScreen } from "./components/LessonPlanWorkspaceScreen";
 import { useAiSpendReview } from "../AiSpendReview";
@@ -75,6 +76,10 @@ function getLessonPlanGenerationToast(error: unknown): {
 }
 
 export default function LessonPlansPage() {
+  const { workspaceAccess } = useAuth();
+  const schoolId = workspaceAccess?.state === "ready"
+    ? (workspaceAccess.branch.schoolId as Id<"schools">)
+    : undefined;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -96,6 +101,7 @@ export default function LessonPlansPage() {
   const workspace = useQuery(
     "functions/academic/lessonKnowledgeLessonPlans:getTeacherInstructionWorkspace" as never,
     {
+      ...(schoolId ? { schoolId } : {}),
       outputType,
       sourceIds: selectedSourceIds,
       planningContext: planningContext?.kind === "topic" ? planningContext : undefined,
@@ -193,6 +199,7 @@ export default function LessonPlansPage() {
 
     try {
       const result = (await saveDraft({
+        ...(schoolId ? { schoolId } : {}),
         artifactId: workspace.draft.artifactId ?? null,
         expectedRevisionNumber: draft.expectedRevisionNumber,
         outputType,
@@ -232,7 +239,7 @@ export default function LessonPlansPage() {
             }
           : undefined;
 
-      const request = { outputType, sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
+      const request = { ...(schoolId ? { schoolId } : {}), outputType, sourceIds: effectiveSourceIds as Array<Id<"knowledgeMaterials">>,
         targetTopicLabel: effectiveTopicLabel ?? undefined, planningContext: planningContextArg };
       const attemptId = await reviewAfterQuote(
         () => quoteDraft({ ...request, idempotencyKey: crypto.randomUUID().replaceAll("-", "") }),
@@ -291,7 +298,8 @@ export default function LessonPlansPage() {
       {/* 3-Column Workspace flex container filling remaining height */}
       <div className="flex-1 min-h-0 w-full overflow-hidden">
         <LessonPlanWorkspaceScreen
-          key={`${outputType}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
+          key={`${schoolId ?? "default"}:${outputType}:${effectiveSourceIds.join(",")}:${workspace.planningContext?.planningContextKey ?? "compat"}`}
+          schoolId={schoolId}
           workspace={workspace}
           onOutputTypeChange={setOutputType}
           onRemoveSource={handleRemoveSource}

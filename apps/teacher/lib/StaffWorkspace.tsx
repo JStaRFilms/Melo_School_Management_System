@@ -75,13 +75,62 @@ export function StaffWorkspace({ children, fullBleed = false }: { children: Reac
   }
   if (configured && capabilityDecision.state !== "allowed" && capabilityDecision.state !== "loading") {
     const canReturnToDefault = Boolean(selectedSchoolId);
-    return <AuthoritativeForbiddenView
-      moduleTitle="Teacher workspace"
-      state={capabilityDecision.state}
-      message={capabilityDecision.message}
-      returnLabel={canReturnToDefault ? "Return to default branch" : "Sign out / use another account"}
-      onReturnToDashboard={() => canReturnToDefault ? clearSelectedSchool() : void handleSignOut()}
-    />;
+    const eligibleTeacherBranches = (availableBranches ?? []).filter((branch) => {
+      if (branch.schoolId === activeSchoolId) return false;
+      if (branch.legacyRole) {
+        return branch.legacyRole === "teacher" || branch.legacyRole === "admin";
+      }
+      return false;
+    });
+    const showWorkspacePicker =
+      capabilityDecision.state === "forbidden" &&
+      !selectedSchoolId &&
+      eligibleTeacherBranches.length > 0;
+
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 px-4 py-10">
+        {showWorkspacePicker && (
+          <section
+            aria-label="Switch teacher workspace"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+          >
+            <div className="space-y-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Available teacher workspaces
+              </p>
+              <p className="text-sm text-slate-600">
+                Your default school does not have teacher access. Select a school where you are a teacher to open the workspace.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {eligibleTeacherBranches.map((branch) => (
+                <button
+                  key={branch.schoolId}
+                  type="button"
+                  onClick={() => {
+                    selectSchool(branch.schoolId);
+                    router.replace(branchScopedRoute ? pathname : "/");
+                  }}
+                  className="w-full flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-left text-sm font-semibold text-slate-900 hover:bg-slate-100 transition"
+                >
+                  <span>{branch.name}</span>
+                  <span className="text-xs font-medium text-slate-500">
+                    {branch.membershipRoleTitle ?? "Teacher"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+        <AuthoritativeForbiddenView
+          moduleTitle="Teacher workspace"
+          state={capabilityDecision.state}
+          message={capabilityDecision.message}
+          returnLabel={canReturnToDefault ? "Return to default branch" : "Sign out / use another account"}
+          onReturnToDashboard={() => canReturnToDefault ? clearSelectedSchool() : void handleSignOut()}
+        />
+      </div>
+    );
   }
   if (configured && (!schoolBranding || access?.state !== "ready" || schoolBranding.schoolId !== access.branch.schoolId || schoolBranding.status !== "active")) {
     return <AuthoritativeForbiddenView moduleTitle="Teacher workspace" state="reconciliation_required" message="The active school context could not be verified. No workspace data has been opened. Retry after your school administrator reviews access." returnLabel="Retry access check" onReturnToDashboard={() => window.location.reload()} />;

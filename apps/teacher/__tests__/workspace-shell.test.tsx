@@ -84,13 +84,35 @@ describe("teacher selected-branch shell", () => {
   });
 
   it("denies a selected direct URL whose caller chain is still unscoped", () => {
-    path = "/planning/lesson-plans";
+    path = "/planning/videos";
     selectedSchoolId = "branch-two";
     access = branchAccess;
     render(<StaffWorkspace><p>Legacy planning data</p></StaffWorkspace>);
     expect(screen.queryByText("Legacy planning data")).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Branch switching is unavailable on this route");
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("offers an eligible teacher workspace switcher when the default school is parent-only", () => {
+    path = "/";
+    selectedSchoolId = null;
+    access = {
+      ...defaultAccess,
+      compatibility: {
+        ...defaultAccess.compatibility,
+        legacyRole: "parent",
+        legacyIsSchoolAdmin: false,
+      },
+    };
+    branches = [
+      { schoolId: "default", name: "Default", slug: "default", status: "active", isHeadquarters: true, legacyRole: "parent" },
+      { schoolId: "branch-two", name: "Branch Two", slug: "branch-two", status: "active", isHeadquarters: false, legacyRole: "teacher", membershipRoleTitle: "Teacher" },
+    ];
+    render(<StaffWorkspace><p>Dashboard</p></StaffWorkspace>);
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    const switchBtn = screen.getByRole("button", { name: /Branch Two/i });
+    fireEvent.click(switchBtn);
+    expect(mocks.select).toHaveBeenCalledWith("branch-two");
   });
 
   it("keeps navigation available while blocking assignment-dependent routes", () => {

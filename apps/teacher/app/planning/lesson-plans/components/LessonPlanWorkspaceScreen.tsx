@@ -41,6 +41,7 @@ import type {
 } from "../types";
 
 interface LessonPlanWorkspaceScreenProps {
+  schoolId?: string;
   workspace: LessonPlanWorkspaceData;
   onOutputTypeChange: (next: LessonPlanWorkspaceOutputType) => void;
   onRemoveSource: (sourceId: string) => void;
@@ -180,6 +181,7 @@ function getTemplateSectionLabels(template: LessonPlanWorkspaceTemplate | null) 
 }
 
 export function LessonPlanWorkspaceScreen({
+  schoolId,
   workspace,
   onOutputTypeChange,
   onRemoveSource,
@@ -236,7 +238,7 @@ export function LessonPlanWorkspaceScreen({
       setIsRestoring(true);
       const content = await convex.query(
         "functions/academic/lessonKnowledgeLessonPlans:getTeacherInstructionArtifactRevisionContent" as never,
-        { revisionId } as never
+        { ...(schoolId ? { schoolId } : {}), revisionId } as never
       ) as { title: string; documentState: string; plainText: string };
 
       if (content) {

@@ -30,6 +30,7 @@ import {
   getAuthenticatedSchoolMembership,
   assertAdminForSchool,
 } from "./auth";
+import { revokePendingInvitationsForTargetUser } from "./invitations";
 import {
   teacherHasClassAccess,
 } from "./teacherAccess";
@@ -274,6 +275,35 @@ export const beginPortalProvisionInternal = internalMutation({
     const authId = user.portalAccount?.authId ?? user.authId;
     const token = `${issuer}|${authId}`;
     const person = user.personId ? await ctx.db.get(user.personId) : null;
+    if (person) {
+      const personMemberships = await ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_school", (q) => q.eq("personId", person._id))
+        .take(101);
+      if (
+        person.selfManagedCredentials === true ||
+        personMemberships.length > 100 ||
+        personMemberships.some((row) => row.schoolId !== user.schoolId)
+      ) {
+        throw new ConvexError(
+          "This account is self-managed or shared across multiple schools. Send a portal invitation or ask the user to reset their password directly.",
+        );
+      }
+    }
+    const acceptedInvites = await ctx.db
+      .query("schoolInvitations")
+      .withIndex("by_school_target_status", (q) =>
+        q
+          .eq("schoolId", user.schoolId)
+          .eq("targetUserId", user._id)
+          .eq("status", "accepted"),
+      )
+      .take(1);
+    if (acceptedInvites.length > 0) {
+      throw new ConvexError(
+        "This account was claimed with a personal password. Ask the user to reset their password directly.",
+      );
+    }
     if ((user.personId && !person) || (person && (person.status !== "active" || (person.authTokenIdentifier && person.authTokenIdentifier !== token))) ||
         (user.authTokenIdentifier && user.authTokenIdentifier !== token))
       throw new ConvexError("Canonical portal identity requires reconciliation before provisioning");
@@ -346,6 +376,12 @@ export const finishPortalProvisionInternal = internalMutation({
     await ctx.db.patch(user._id, { authId: args.authId, authTokenIdentifier: token, personId, updatedAt: now,
       portalAccount: { ...evidence, state: "provisioned", authId: args.authId, updatedAt: now },
       lastCredentialOperation: { operationId: args.operationId, kind: evidence.state === "resetting" ? "reset" : "ready", committedAt: now } });
+    await revokePendingInvitationsForTargetUser(ctx, {
+      schoolId: user.schoolId,
+      targetUserId: user._id,
+      revokedByUserId: actor.userId,
+      reason: "Portal account was provisioned directly by a school administrator",
+    });
     return null;
   },
 });

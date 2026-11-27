@@ -1,5 +1,5 @@
 import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
-import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type ActionCtx, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
@@ -31,6 +31,16 @@ import { finishFormDraft, recordFormDraftProvisionedAuth, releaseFormDraftReserv
 import { resolveDomainSetting } from "./groupSettings";
 import { assertSessionScoringAvailable } from "./sessionScoring";
 import { assertBranchDoc } from "../foundation/tenantScope";
+import { recordAuditEventHelper } from "./audit";
+import {
+  createInvitationRecord,
+  isUnboundPlaceholderAuthId,
+  revokePendingInvitationsForTargetUser,
+} from "./invitations";
+import {
+  clearMembershipPermissionRows,
+  hasActiveFamilyLinksInSchool,
+} from "./staffTransfers";
 
 // ==================== TEACHER MANAGEMENT ====================
 
@@ -459,7 +469,7 @@ export const createTeacher = action({
 });
 
 export const listTeachers = query({
-  args: {},
+  args: { schoolId: v.optional(v.id("schools")) },
   returns: v.array(
     v.object({
       _id: v.id("users"),
@@ -471,9 +481,12 @@ export const listTeachers = query({
       createdAt: v.number(),
     })
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "staff.list.view" });
+      await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
+        capability: "staff.list.view",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const teachers = await ctx.db
@@ -526,6 +539,38 @@ export const getTeacherArchiveBlockers = query({
   },
 });
 
+async function isExternallyOwnedOrSharedTeacher(
+  ctx: QueryCtx | MutationCtx,
+  teacher: Doc<"users">,
+): Promise<boolean> {
+  if (teacher.personId) {
+    const [person, memberships] = await Promise.all([
+      ctx.db.get(teacher.personId),
+      ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_school", (q) => q.eq("personId", teacher.personId!))
+        .take(101),
+    ]);
+    if (
+      person?.selfManagedCredentials === true ||
+      memberships.length > 100 ||
+      memberships.some((row) => row.schoolId !== teacher.schoolId)
+    ) {
+      return true;
+    }
+  }
+  const acceptedInvites = await ctx.db
+    .query("schoolInvitations")
+    .withIndex("by_school_target_status", (q) =>
+      q
+        .eq("schoolId", teacher.schoolId)
+        .eq("targetUserId", teacher._id)
+        .eq("status", "accepted"),
+    )
+    .take(1);
+  return acceptedInvites.length > 0;
+}
+
 export const getTeacherRecordInternal = internalQuery({
   args: {
     teacherId: v.id("users"),
@@ -540,6 +585,7 @@ export const getTeacherRecordInternal = internalQuery({
     middleName: v.union(v.string(), v.null()),
     lastName: v.union(v.string(), v.null()),
     sharedIdentity: v.boolean(),
+    unboundLogin: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const teacher = await ctx.db.get(args.teacherId);
@@ -552,14 +598,19 @@ export const getTeacherRecordInternal = internalQuery({
       throw new ConvexError("Teacher not found");
     }
 
-    const personId = teacher.personId;
+    const sharedIdentity = await isExternallyOwnedOrSharedTeacher(ctx, teacher);
+    const unboundLogin =
+      !teacher.personId &&
+      !teacher.authTokenIdentifier &&
+      isUnboundPlaceholderAuthId(teacher.authId);
     return {
       _id: teacher._id,
       authId: teacher.authId,
       email: teacher.email,
       name: getReadableUserName(teacher).displayName,
       firstName: teacher.firstName ?? null, middleName: teacher.middleName ?? null, lastName: teacher.lastName ?? null,
-      sharedIdentity: personId ? (await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", personId)).take(101)).some(row => row.schoolId !== teacher.schoolId) : false,
+      sharedIdentity,
+      unboundLogin,
     };
   },
 });
@@ -600,6 +651,306 @@ export const findTeacherByEmailInternal = internalQuery({
   },
 });
 
+export const beginTeacherEmailUpdateInternal = internalMutation({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.id("schools"),
+    normalizedEmail: v.string(),
+    operationId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, {
+      schoolId: args.schoolId,
+      capability: "staff.profiles.edit",
+    });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const teacher = await ctx.db.get(args.teacherId);
+    if (
+      !teacher ||
+      teacher.schoolId !== actor.schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived
+    ) {
+      throw new ConvexError("Teacher not found");
+    }
+    const shared = await isExternallyOwnedOrSharedTeacher(ctx, teacher);
+    if (shared && args.normalizedEmail !== teacher.email) {
+      throw new ConvexError(
+        "Shared or self-managed login email cannot be changed by a school administrator",
+      );
+    }
+    const now = Date.now();
+    if (
+      teacher.credentialOperationLock &&
+      teacher.credentialOperationLock.expiresAt > now
+    ) {
+      throw new ConvexError("Another credential update is already in progress for this teacher");
+    }
+    const person = teacher.personId ? await ctx.db.get(teacher.personId) : null;
+    if (person?.credentialResetLock && person.credentialResetLock.expiresAt > now) {
+      throw new ConvexError("Another credential update is already in progress for this teacher");
+    }
+    const unboundLogin =
+      !teacher.personId &&
+      !teacher.authTokenIdentifier &&
+      isUnboundPlaceholderAuthId(teacher.authId);
+    const lockExpiresAt = now + 60_000;
+    await ctx.db.patch(teacher._id, {
+      credentialOperationLock: {
+        operationId: args.operationId,
+        kind: "email_update",
+        expiresAt: lockExpiresAt,
+      },
+      updatedAt: now,
+    });
+    if (person) {
+      await ctx.db.patch(person._id, {
+        credentialResetLock: { operationId: args.operationId, expiresAt: lockExpiresAt },
+        updatedAt: now,
+      });
+    }
+    return {
+      authId: teacher.authId,
+      personId: teacher.personId ?? null,
+      sharedIdentity: shared,
+      unboundLogin,
+      lockExpiresAt,
+    };
+  },
+});
+
+export const releaseTeacherCredentialLockInternal = internalMutation({
+  args: {
+    teacherId: v.id("users"),
+    personId: v.optional(v.id("persons")),
+    operationId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const teacher = await ctx.db.get(args.teacherId);
+    if (teacher?.credentialOperationLock?.operationId === args.operationId) {
+      await ctx.db.patch(teacher._id, {
+        credentialOperationLock: undefined,
+        updatedAt: now,
+      });
+    }
+    if (args.personId) {
+      const person = await ctx.db.get(args.personId);
+      if (person?.credentialResetLock?.operationId === args.operationId) {
+        await ctx.db.patch(person._id, {
+          credentialResetLock: undefined,
+          updatedAt: now,
+        });
+      }
+    }
+    return null;
+  },
+});
+
+const teacherAuthReconcileResultValidator = v.union(
+  v.object({
+    status: v.literal("acquired"),
+    operationId: v.string(),
+    authId: v.string(),
+    personId: v.union(v.id("persons"), v.null()),
+    name: v.string(),
+    email: v.string(),
+    lockExpiresAt: v.number(),
+  }),
+  v.object({ status: v.literal("busy") }),
+  v.object({ status: v.literal("skip") }),
+);
+
+type TeacherAuthReconcileResult =
+  | {
+      status: "acquired";
+      operationId: string;
+      authId: string;
+      personId: Id<"persons"> | null;
+      name: string;
+      email: string;
+      lockExpiresAt: number;
+    }
+  | { status: "busy" }
+  | { status: "skip" };
+
+const TEACHER_AUTH_RECONCILE_RETRY_DELAY_MS = 5_000;
+const TEACHER_AUTH_RECONCILE_MAX_ATTEMPTS = 13;
+
+export const beginTeacherAuthReconcileInternal = internalMutation({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.id("schools"),
+    expectedAuthId: v.string(),
+    reconcileOperationId: v.string(),
+    previousOperationId: v.optional(v.string()),
+    attemptsRemaining: v.number(),
+  },
+  returns: teacherAuthReconcileResultValidator,
+  handler: async (ctx, args): Promise<TeacherAuthReconcileResult> => {
+    const now = Date.now();
+    const teacher = await ctx.db.get(args.teacherId);
+    const person = teacher?.personId ? await ctx.db.get(teacher.personId) : null;
+
+    const releasePreviousIfOwned = async () => {
+      if (!args.previousOperationId) return;
+      if (teacher?.credentialOperationLock?.operationId === args.previousOperationId) {
+        await ctx.db.patch(teacher._id, {
+          credentialOperationLock: undefined,
+          updatedAt: now,
+        });
+      }
+      if (person?.credentialResetLock?.operationId === args.previousOperationId) {
+        await ctx.db.patch(person._id, {
+          credentialResetLock: undefined,
+          updatedAt: now,
+        });
+      }
+    };
+
+    if (
+      !teacher ||
+      teacher.schoolId !== args.schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived ||
+      teacher.authId !== args.expectedAuthId
+    ) {
+      await releasePreviousIfOwned();
+      return { status: "skip" };
+    }
+
+    const unboundLogin =
+      !teacher.personId &&
+      !teacher.authTokenIdentifier &&
+      isUnboundPlaceholderAuthId(teacher.authId);
+    const sharedIdentity = await isExternallyOwnedOrSharedTeacher(ctx, teacher);
+    if (unboundLogin || sharedIdentity) {
+      await releasePreviousIfOwned();
+      return { status: "skip" };
+    }
+
+    const otherUserLockActive = Boolean(
+      teacher.credentialOperationLock &&
+        teacher.credentialOperationLock.expiresAt > now &&
+        teacher.credentialOperationLock.operationId !== args.previousOperationId,
+    );
+    const otherPersonLockActive = Boolean(
+      person?.credentialResetLock &&
+        person.credentialResetLock.expiresAt > now &&
+        person.credentialResetLock.operationId !== args.previousOperationId,
+    );
+
+    if (otherUserLockActive || otherPersonLockActive) {
+      if (args.attemptsRemaining > 0) {
+        await ctx.scheduler.runAfter(
+          TEACHER_AUTH_RECONCILE_RETRY_DELAY_MS,
+          internal.functions.academic.academicSetup.reconcileTeacherAuthIdentityInternal,
+          {
+            teacherId: args.teacherId,
+            schoolId: args.schoolId,
+            expectedAuthId: args.expectedAuthId,
+            attemptsRemaining: args.attemptsRemaining - 1,
+          },
+        );
+      }
+      return { status: "busy" };
+    }
+
+    const lockExpiresAt = now + 60_000;
+    await ctx.db.patch(teacher._id, {
+      credentialOperationLock: {
+        operationId: args.reconcileOperationId,
+        kind: "email_update",
+        expiresAt: lockExpiresAt,
+      },
+      updatedAt: now,
+    });
+    if (person) {
+      await ctx.db.patch(person._id, {
+        credentialResetLock: {
+          operationId: args.reconcileOperationId,
+          expiresAt: lockExpiresAt,
+        },
+        updatedAt: now,
+      });
+    }
+
+    return {
+      status: "acquired",
+      operationId: args.reconcileOperationId,
+      authId: teacher.authId,
+      personId: teacher.personId ?? null,
+      name: getReadableUserName(teacher).displayName,
+      email: teacher.email,
+      lockExpiresAt,
+    };
+  },
+});
+
+async function runLockedTeacherAuthReconcile(
+  ctx: ActionCtx,
+  args: {
+    teacherId: Id<"users">;
+    schoolId: Id<"schools">;
+    expectedAuthId: string;
+    previousOperationId?: string;
+    attemptsRemaining: number;
+  },
+): Promise<void> {
+  const reconcileOperationId = crypto.randomUUID();
+  const lease = await ctx.runMutation(
+    internal.functions.academic.academicSetup.beginTeacherAuthReconcileInternal,
+    {
+      teacherId: args.teacherId,
+      schoolId: args.schoolId,
+      expectedAuthId: args.expectedAuthId,
+      reconcileOperationId,
+      ...(args.previousOperationId ? { previousOperationId: args.previousOperationId } : {}),
+      attemptsRemaining: args.attemptsRemaining,
+    },
+  );
+  if (lease.status !== "acquired") {
+    return;
+  }
+
+  try {
+    if (Date.now() < lease.lockExpiresAt) {
+      const auth = createAuth(ctx);
+      const authContext = await auth.$context;
+      await authContext.internalAdapter.updateUser(lease.authId, {
+        name: lease.name,
+        email: lease.email,
+      });
+    }
+  } finally {
+    await ctx
+      .runMutation(
+        internal.functions.academic.academicSetup.releaseTeacherCredentialLockInternal,
+        {
+          teacherId: args.teacherId,
+          ...(lease.personId ? { personId: lease.personId } : {}),
+          operationId: lease.operationId,
+        },
+      )
+      .catch(() => null);
+  }
+}
+
+export const reconcileTeacherAuthIdentityInternal = internalAction({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.id("schools"),
+    expectedAuthId: v.string(),
+    attemptsRemaining: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    await runLockedTeacherAuthReconcile(ctx, args);
+    return null;
+  },
+});
+
 export const updateTeacherRecordInternal = internalMutation({
   args: {
     teacherId: v.id("users"),
@@ -609,6 +960,7 @@ export const updateTeacherRecordInternal = internalMutation({
     middleName: v.optional(v.union(v.string(), v.null())),
     lastName: v.optional(v.string()),
     email: v.string(),
+    operationId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -625,12 +977,63 @@ export const updateTeacherRecordInternal = internalMutation({
     const nameFields = resolveStoredUserNameFields({ ...args, fallbackName: teacher.name, fallbackFirstName: teacher.firstName, fallbackMiddleName: teacher.middleName, fallbackLastName: teacher.lastName });
     const email = normalizeTeacherEmail(args.email);
     const canonical = await getCanonicalTeacherLink(ctx, teacher);
-    const memberships = canonical ? await ctx.db.query("branchMemberships").withIndex("by_person_and_school", q => q.eq("personId", canonical.person._id)).take(101) : [];
-    const shared = memberships.length > 100 || memberships.some(row => row.schoolId !== teacher.schoolId);
-    if (shared && email !== teacher.email) throw new ConvexError("Shared login email requires reviewed identity management");
+    const shared = await isExternallyOwnedOrSharedTeacher(ctx, teacher);
+    if (shared && email !== teacher.email) throw new ConvexError("Shared or self-managed login email cannot be changed by a school administrator");
     const updatedAt = Date.now();
-    await ctx.db.patch(args.teacherId, { ...nameFields, email, updatedAt });
-    if (canonical && !shared) await ctx.db.patch(canonical.person._id, { ...nameFields, email, updatedAt });
+    if (args.operationId) {
+      const userLock = teacher.credentialOperationLock;
+      if (
+        !userLock ||
+        userLock.operationId !== args.operationId ||
+        userLock.expiresAt <= updatedAt
+      ) {
+        throw new ConvexError(
+          "Teacher profile update lock expired or was superseded. Please retry.",
+        );
+      }
+      if (canonical) {
+        const personLock = canonical.person.credentialResetLock;
+        if (
+          !personLock ||
+          personLock.operationId !== args.operationId ||
+          personLock.expiresAt <= updatedAt
+        ) {
+          throw new ConvexError(
+            "Teacher identity update lock expired or was superseded. Please retry.",
+          );
+        }
+      }
+    }
+    const clearUserLock = Boolean(args.operationId);
+    await ctx.db.patch(args.teacherId, {
+      ...nameFields,
+      email,
+      ...(clearUserLock ? { credentialOperationLock: undefined } : {}),
+      updatedAt,
+    });
+    if (canonical) {
+      const clearPersonLock = Boolean(args.operationId);
+      if (!shared) {
+        await ctx.db.patch(canonical.person._id, {
+          ...nameFields,
+          email,
+          ...(clearPersonLock ? { credentialResetLock: undefined } : {}),
+          updatedAt,
+        });
+      } else if (clearPersonLock) {
+        await ctx.db.patch(canonical.person._id, {
+          credentialResetLock: undefined,
+          updatedAt,
+        });
+      }
+    }
+    if (email !== teacher.email) {
+      await revokePendingInvitationsForTargetUser(ctx, {
+        schoolId: args.schoolId,
+        targetUserId: args.teacherId,
+        reason: "Teacher email address was changed before invitation acceptance",
+      });
+    }
 
     return null;
   },
@@ -687,28 +1090,156 @@ export const updateTeacherProfile = action({
     const auth = createAuth(ctx);
     const authContext = await auth.$context;
 
-    if (teacher.sharedIdentity && normalizedEmail !== teacher.email) throw new ConvexError("Shared login email requires reviewed identity management");
-    if (!teacher.sharedIdentity) await authContext.internalAdapter.updateUser(teacher.authId, {
-      name: normalizedName,
-      email: normalizedEmail,
-    });
-
-    await ctx.runMutation(
-      (internal as any).functions.academic.academicSetup.updateTeacherRecordInternal,
+    const operationId = crypto.randomUUID();
+    const lock = await ctx.runMutation(
+      internal.functions.academic.academicSetup.beginTeacherEmailUpdateInternal,
       {
         teacherId: args.teacherId,
         schoolId: viewer.schoolId,
-        ...nameFields,
-        middleName: args.middleName === null ? null : nameFields.middleName,
-        email: normalizedEmail,
-      }
+        normalizedEmail,
+        operationId,
+      },
     );
+
+    try {
+      if (Date.now() >= lock.lockExpiresAt) {
+        throw new ConvexError("Teacher profile update lock expired before writing. Please retry.");
+      }
+      let authUpdated = false;
+      if (!lock.sharedIdentity && !lock.unboundLogin) {
+        await authContext.internalAdapter.updateUser(lock.authId, {
+          name: normalizedName,
+          email: normalizedEmail,
+        });
+        authUpdated = true;
+      }
+
+      try {
+        await ctx.runMutation(
+          (internal as any).functions.academic.academicSetup.updateTeacherRecordInternal,
+          {
+            teacherId: args.teacherId,
+            schoolId: viewer.schoolId,
+            ...nameFields,
+            middleName: args.middleName === null ? null : nameFields.middleName,
+            email: normalizedEmail,
+            operationId,
+          }
+        );
+      } catch (commitError) {
+        if (authUpdated) {
+          // Reconcile Better Auth back to the authoritative Convex profile under a fresh exclusive lock.
+          // If another writer currently holds the lock, reconciliation defers via scheduler instead of
+          // clobbering the active writer and heals any stale auth write once the lock clears.
+          await runLockedTeacherAuthReconcile(ctx, {
+            teacherId: args.teacherId,
+            schoolId: viewer.schoolId,
+            expectedAuthId: lock.authId,
+            previousOperationId: operationId,
+            attemptsRemaining: TEACHER_AUTH_RECONCILE_MAX_ATTEMPTS,
+          }).catch(() => null);
+        }
+        throw commitError;
+      }
+    } catch (error) {
+      await ctx
+        .runMutation(
+          internal.functions.academic.academicSetup.releaseTeacherCredentialLockInternal,
+          {
+            teacherId: args.teacherId,
+            ...(lock.personId ? { personId: lock.personId } : {}),
+            operationId,
+          },
+        )
+        .catch(() => null);
+      throw error;
+    }
 
     return {
       teacherId: args.teacherId,
       name: normalizedName,
       email: normalizedEmail,
     };
+  },
+});
+
+export const beginTeacherPasswordResetInternal = internalMutation({
+  args: { teacherId: v.id("users"), operationId: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await getAuthenticatedSchoolMembership(ctx, { capability: "staff.password.reset" });
+    await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
+    const teacher = await ctx.db.get(args.teacherId);
+    if (!teacher || teacher.schoolId !== actor.schoolId || teacher.role !== "teacher" || teacher.isArchived) {
+      throw new ConvexError("Teacher not found");
+    }
+    if (
+      !teacher.personId &&
+      !teacher.authTokenIdentifier &&
+      isUnboundPlaceholderAuthId(teacher.authId)
+    ) {
+      throw new ConvexError(
+        "This teacher has not accepted their invitation yet. Resend or copy their invite link instead.",
+      );
+    }
+    if (await isExternallyOwnedOrSharedTeacher(ctx, teacher)) {
+      throw new ConvexError(
+        "This login is self-managed or shared across schools. The teacher must reset their password directly.",
+      );
+    }
+    const now = Date.now();
+    if (
+      teacher.credentialOperationLock &&
+      teacher.credentialOperationLock.expiresAt > now
+    ) {
+      throw new ConvexError("Another credential update is already in progress for this teacher");
+    }
+    const person = teacher.personId ? await ctx.db.get(teacher.personId) : null;
+    if (person?.credentialResetLock && person.credentialResetLock.expiresAt > now) {
+      throw new ConvexError("Another password reset is already in progress for this teacher");
+    }
+    const lockExpiresAt = now + 60_000;
+    await ctx.db.patch(teacher._id, {
+      credentialOperationLock: {
+        operationId: args.operationId,
+        kind: "password_reset",
+        expiresAt: lockExpiresAt,
+      },
+      updatedAt: now,
+    });
+    if (person) {
+      await ctx.db.patch(person._id, {
+        credentialResetLock: { operationId: args.operationId, expiresAt: lockExpiresAt },
+        updatedAt: now,
+      });
+    }
+    return { authId: teacher.authId, personId: teacher.personId ?? null, lockExpiresAt };
+  },
+});
+
+export const releaseTeacherPasswordResetLockInternal = internalMutation({
+  args: {
+    teacherId: v.optional(v.id("users")),
+    personId: v.optional(v.id("persons")),
+    operationId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    if (args.teacherId) {
+      const teacher = await ctx.db.get(args.teacherId);
+      if (teacher?.credentialOperationLock?.operationId === args.operationId) {
+        await ctx.db.patch(teacher._id, {
+          credentialOperationLock: undefined,
+          updatedAt: now,
+        });
+      }
+    }
+    if (args.personId) {
+      const person = await ctx.db.get(args.personId);
+      if (person?.credentialResetLock?.operationId === args.operationId) {
+        await ctx.db.patch(person._id, { credentialResetLock: undefined, updatedAt: now });
+      }
+    }
+    return null;
   },
 });
 
@@ -719,7 +1250,19 @@ export const recordTeacherPasswordResetInternal = internalMutation({
     await assertAdminForSchool(ctx, actor.userId, actor.schoolId, actor.role);
     const teacher = await ctx.db.get(args.teacherId);
     if (!teacher || teacher.schoolId !== actor.schoolId || teacher.role !== "teacher" || teacher.isArchived || teacher.authId !== args.expectedAuthId) throw new ConvexError("Teacher changed during reset");
-    await ctx.db.patch(teacher._id, { lastCredentialOperation: { operationId: args.operationId, kind: "reset", committedAt: Date.now() } });
+    const now = Date.now();
+    await ctx.db.patch(teacher._id, {
+      lastCredentialOperation: { operationId: args.operationId, kind: "reset", committedAt: now },
+      ...(teacher.credentialOperationLock?.operationId === args.operationId
+        ? { credentialOperationLock: undefined }
+        : {}),
+    });
+    if (teacher.personId) {
+      const person = await ctx.db.get(teacher.personId);
+      if (person?.credentialResetLock?.operationId === args.operationId) {
+        await ctx.db.patch(person._id, { credentialResetLock: undefined, updatedAt: now });
+      }
+    }
     return null;
   },
 });
@@ -742,14 +1285,6 @@ export const resetTeacherPassword = action({
       throw new ConvexError("Admin access required");
     }
 
-    const teacher = await ctx.runQuery(
-      (internal as any).functions.academic.academicSetup.getTeacherRecordInternal,
-      {
-        teacherId: args.teacherId,
-        schoolId: viewer.schoolId,
-      }
-    );
-
     const auth = createAuth(ctx);
     const authContext = await auth.$context;
     const minPasswordLength = authContext.password.config.minPasswordLength;
@@ -762,13 +1297,49 @@ export const resetTeacherPassword = action({
       throw new ConvexError("Password is too long");
     }
 
+    // Hash before acquiring the short credential lock so membership claims cannot race password hashing.
     const hashedPassword = await authContext.password.hash(args.temporaryPassword);
-    await authContext.internalAdapter.updatePassword(teacher.authId, hashedPassword);
-    await authContext.internalAdapter.deleteSessions(teacher.authId);
     const operationId = crypto.randomUUID();
+    const lock = await ctx.runMutation(
+      internal.functions.academic.academicSetup.beginTeacherPasswordResetInternal,
+      { teacherId: args.teacherId, operationId },
+    );
+
+    try {
+      if (Date.now() >= lock.lockExpiresAt) {
+        throw new ConvexError("Password reset lock expired before writing. Please retry.");
+      }
+      await authContext.internalAdapter.updatePassword(lock.authId, hashedPassword);
+      await authContext.internalAdapter.deleteSessions(lock.authId);
+    } catch (error) {
+      await ctx
+        .runMutation(
+          internal.functions.academic.academicSetup.releaseTeacherPasswordResetLockInternal,
+          {
+            teacherId: args.teacherId,
+            ...(lock.personId ? { personId: lock.personId } : {}),
+            operationId,
+          },
+        )
+        .catch(() => null);
+      throw error;
+    }
+
     // The password has committed; separate notice bookkeeping must not hide the handoff.
-    await ctx.runMutation(internal.functions.academic.academicSetup.recordTeacherPasswordResetInternal, { teacherId: args.teacherId, operationId, expectedAuthId: teacher.authId })
-      .then(() => ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: args.teacherId, operationId })).catch(() => null);
+    await ctx.runMutation(internal.functions.academic.academicSetup.recordTeacherPasswordResetInternal, { teacherId: args.teacherId, operationId, expectedAuthId: lock.authId })
+      .then(() => ctx.runMutation(internal.functions.academic.accountNotices.enqueueAccountNoticeInternal, { userId: args.teacherId, operationId }))
+      .catch(async () => {
+        await ctx
+          .runMutation(
+            internal.functions.academic.academicSetup.releaseTeacherPasswordResetLockInternal,
+            {
+              teacherId: args.teacherId,
+              ...(lock.personId ? { personId: lock.personId } : {}),
+              operationId,
+            },
+          )
+          .catch(() => null);
+      });
 
     return {
       teacherId: args.teacherId,
@@ -778,11 +1349,17 @@ export const resetTeacherPassword = action({
 });
 
 export const archiveTeacher = mutation({
-  args: { teacherId: v.id("users") },
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.optional(v.id("schools")),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const { userId, schoolId, role } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: "staff.account.suspend" });
+      await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
+        capability: "staff.account.suspend",
+      });
     await assertAdminForSchool(ctx, userId, schoolId, role);
 
     const teacher = await ctx.db.get(args.teacherId);
@@ -805,6 +1382,69 @@ export const archiveTeacher = mutation({
 
     const canonical = await getCanonicalTeacherLink(ctx, teacher);
     const updatedAt = Date.now();
+    await revokePendingInvitationsForTargetUser(ctx, {
+      schoolId,
+      targetUserId: teacher._id,
+      revokedByUserId: userId,
+      reason: "Teacher access was removed before invitation acceptance",
+    });
+    // S7: Cancel all pending outgoing branch transfers directly indexed by source user.
+    const pendingTransfers = await ctx.db
+      .query("staffBranchTransfers")
+      .withIndex("by_source_user_and_status", (q) =>
+        q.eq("sourceUserId", teacher._id).eq("status", "pending_acceptance"),
+      )
+      .take(100);
+    for (const transfer of pendingTransfers) {
+      await ctx.db.patch(transfer._id, {
+        status: "cancelled",
+        cancelledByUserId: userId,
+        reason: "Source teacher was archived or offboarded from teaching role",
+        updatedAt,
+      });
+    }
+    const hasFamilyLinks = await hasActiveFamilyLinksInSchool(
+      ctx,
+      schoolId,
+      teacher._id,
+    );
+
+    if (hasFamilyLinks) {
+      // Teacher is also a parent in this school: revoke staff access while preserving Family Portal access.
+      if (canonical) {
+        await clearMembershipPermissionRows(ctx, canonical.membership._id);
+        await ctx.db.patch(canonical.membership._id, {
+          displayTitle: undefined,
+          updatedAt,
+        });
+      }
+      await ctx.db.patch(args.teacherId, {
+        role: "parent",
+        isSchoolAdmin: false,
+        updatedAt,
+      });
+      const [actorContext, actorUser] = await Promise.all([
+        resolveActiveMembership(ctx, schoolId),
+        ctx.db.get(userId),
+      ]);
+      await recordAuditEventHelper(ctx, {
+        schoolId,
+        actorKind: "user",
+        actorPersonId: actorContext.personId,
+        actorMembershipId: actorContext.membershipId,
+        actorEmailSnapshot: actorUser?.email ?? "school-admin",
+        module: "staff",
+        action: "staff.offboarded_to_parent",
+        targetType: "users",
+        targetId: teacher._id,
+        outcome: "success",
+        safeSummary: `Removed teacher role for ${teacher._id} while preserving linked family portal access in school ${schoolId}`,
+        retentionClass: "permanent_statutory",
+        alertTier: "tier2_warn",
+      });
+      return null;
+    }
+
     await ctx.db.patch(args.teacherId, {
       isArchived: true,
       archivedAt: updatedAt,
@@ -812,25 +1452,251 @@ export const archiveTeacher = mutation({
       updatedAt,
     });
     if (canonical) {
+      // S15: Clear isDefaultBranch on the archived membership and promote another active membership if needed.
+      const wasDefault = canonical.membership.isDefaultBranch;
       await ctx.db.patch(canonical.membership._id, {
         status: "archived",
+        isDefaultBranch: false,
         updatedAt,
       });
-      const otherActiveMembership = await ctx.db
+      const remainingActive = await ctx.db
         .query("branchMemberships")
         .withIndex("by_person_and_status", (q) =>
           q.eq("personId", canonical.person._id).eq("status", "active"),
         )
-        .first();
-      if (!otherActiveMembership) {
+        .take(101);
+      if (remainingActive.length === 0) {
         await ctx.db.patch(canonical.person._id, {
           status: "archived",
+          updatedAt,
+        });
+      } else if (wasDefault && !remainingActive.some((m) => m.isDefaultBranch)) {
+        // S18: Prefer promoting a membership whose school is active (including schools with omitted default-active status).
+        let nextDefault = remainingActive[0];
+        for (const candidate of remainingActive) {
+          const candidateSchool = await ctx.db.get(candidate.schoolId);
+          if (candidateSchool && (candidateSchool.status ?? "active") === "active") {
+            nextDefault = candidate;
+            break;
+          }
+        }
+        await ctx.db.patch(nextDefault._id, {
+          isDefaultBranch: true,
+          updatedAt,
+        });
+        await ctx.db.patch(canonical.person._id, {
+          primarySchoolId: nextDefault.schoolId,
           updatedAt,
         });
       }
     }
 
     return null;
+  },
+});
+
+export const getTeacherLifecycleDetails = query({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.optional(v.id("schools")),
+  },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
+      ctx,
+      {
+        schoolId: args.schoolId,
+        capability: ["staff.list.view", "staff.profiles.edit", "staff.account.suspend"],
+      },
+    );
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const teacher = await ctx.db.get(args.teacherId);
+    if (
+      !teacher ||
+      teacher.schoolId !== schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived
+    ) {
+      throw new ConvexError("Teacher not found");
+    }
+
+    const [hasFamilyLinks, sharedIdentity, invites] = await Promise.all([
+      hasActiveFamilyLinksInSchool(ctx, schoolId, teacher._id),
+      isExternallyOwnedOrSharedTeacher(ctx, teacher),
+      ctx.db
+        .query("schoolInvitations")
+        .withIndex("by_school_and_target_user", (q) =>
+          q.eq("schoolId", schoolId).eq("targetUserId", teacher._id),
+        )
+        .order("desc")
+        .take(1),
+    ]);
+
+    const latestInvite = invites[0] ?? null;
+    // S17: Match reissueTeacherInvitation exactly so legacy authId teachers are not treated as unbound.
+    const isUnboundLogin =
+      !teacher.personId &&
+      !teacher.authTokenIdentifier &&
+      isUnboundPlaceholderAuthId(teacher.authId);
+
+    return {
+      teacherId: teacher._id,
+      hasActiveFamilyLinks: hasFamilyLinks,
+      sharedIdentity,
+      isUnboundLogin,
+      isPendingInvitation: Boolean(
+        isUnboundLogin && latestInvite?.status === "pending",
+      ),
+      latestInvitation: latestInvite
+        ? {
+            invitationId: latestInvite._id,
+            status: latestInvite.status,
+            expiresAt: latestInvite.expiresAt,
+            deliveryState: latestInvite.deliveryState,
+          }
+        : null,
+    };
+  },
+});
+
+export const listPromotableParents = query({
+  args: { schoolId: v.optional(v.id("schools")) },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
+      ctx,
+      {
+        schoolId: args.schoolId,
+        capability: "staff.onboard",
+      },
+    );
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const users = await ctx.db
+      .query("users")
+      .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
+      .take(500);
+
+    return users
+      .filter((u) => !u.isArchived && u.role === "parent")
+      .map((u) => ({
+        userId: u._id,
+        name: getReadableUserName(u).displayName,
+        email: u.email,
+        hasActiveLogin: Boolean(u.personId && u.authTokenIdentifier),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+export const promoteParentToTeacher = mutation({
+  args: {
+    parentUserId: v.id("users"),
+    schoolId: v.optional(v.id("schools")),
+  },
+  handler: async (ctx, args) => {
+    const { userId, schoolId, role } = await getAuthenticatedSchoolMembership(
+      ctx,
+      {
+        schoolId: args.schoolId,
+        capability: "staff.onboard",
+      },
+    );
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+
+    const parent = await ctx.db.get(args.parentUserId);
+    if (
+      !parent ||
+      parent.schoolId !== schoolId ||
+      parent.isArchived ||
+      parent.role !== "parent"
+    ) {
+      throw new ConvexError("Active parent record not found in this school");
+    }
+
+    const now = Date.now();
+    // S5: Revoke any pending parent-only invitations before switching the record to teacher.
+    await revokePendingInvitationsForTargetUser(ctx, {
+      schoolId,
+      targetUserId: parent._id,
+      revokedByUserId: userId,
+      reason: "Parent record was promoted to teacher before invitation acceptance",
+    });
+    await ctx.db.patch(parent._id, {
+      role: "teacher",
+      updatedAt: now,
+    });
+
+    let alreadyHasLogin = false;
+    let inviteUrl: string | null = null;
+    let invitePath: string | null = null;
+    let invitationId: Id<"schoolInvitations"> | null = null;
+    let deliveryState: string | null = null;
+    let expiresAt: number | null = null;
+
+    if (parent.personId && parent.authTokenIdentifier) {
+      const memberships = await ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_school", (q) =>
+          q.eq("personId", parent.personId!).eq("schoolId", schoolId),
+        )
+        .take(2);
+      if (memberships.length === 1 && memberships[0].status === "active") {
+        alreadyHasLogin = true;
+        await ctx.db.patch(memberships[0]._id, {
+          displayTitle: memberships[0].displayTitle ?? "Teacher",
+          updatedAt: now,
+        });
+      }
+    }
+
+    if (!alreadyHasLogin) {
+      const normalizedEmail = normalizeTeacherEmail(parent.email);
+      if (normalizedEmail && !normalizedEmail.endsWith(".local")) {
+        const created = await createInvitationRecord(ctx, {
+          schoolId,
+          targetUserId: parent._id,
+          intendedRole: "teacher",
+          normalizedEmail,
+          createdByUserId: userId,
+        });
+        invitationId = created.invitationId;
+        inviteUrl = created.inviteUrl;
+        invitePath = created.invitePath;
+        deliveryState = created.deliveryState;
+        expiresAt = created.expiresAt;
+      }
+    }
+
+    const [actorContext, actorUser] = await Promise.all([
+      resolveActiveMembership(ctx, schoolId),
+      ctx.db.get(userId),
+    ]);
+    await recordAuditEventHelper(ctx, {
+      schoolId,
+      actorKind: "user",
+      actorPersonId: actorContext.personId,
+      actorMembershipId: actorContext.membershipId,
+      actorEmailSnapshot: actorUser?.email ?? "school-admin",
+      module: "staff",
+      action: "staff.promoted_from_parent",
+      targetType: "users",
+      targetId: parent._id,
+      outcome: "success",
+      safeSummary: `Granted teacher role to existing parent ${parent._id} in school ${schoolId} (family portal access preserved)`,
+      retentionClass: "permanent_statutory",
+      alertTier: "tier1_critical",
+    });
+
+    return {
+      teacherId: parent._id,
+      email: parent.email,
+      alreadyHasLogin,
+      invitationId,
+      invitePath,
+      inviteUrl,
+      expiresAt,
+      deliveryState,
+    };
   },
 });
 
@@ -879,13 +1745,26 @@ export const restoreTeacher = mutation({
       updatedAt,
     });
     if (canonical) {
+      // S15: Never create two active default branches when restoring an archived membership.
+      const activeMemberships = await ctx.db
+        .query("branchMemberships")
+        .withIndex("by_person_and_status", (q) =>
+          q.eq("personId", canonical.person._id).eq("status", "active"),
+        )
+        .take(101);
+      const hasOtherDefault = activeMemberships.some(
+        (m) => m._id !== canonical.membership._id && m.isDefaultBranch,
+      );
+      const shouldBeDefault = !hasOtherDefault;
       await ctx.db.patch(canonical.membership._id, {
         status: "active",
+        isDefaultBranch: shouldBeDefault,
         updatedAt,
       });
-      if (canonical.person.status === "archived") {
+      if (canonical.person.status === "archived" || shouldBeDefault) {
         await ctx.db.patch(canonical.person._id, {
           status: "active",
+          ...(shouldBeDefault ? { primarySchoolId: schoolId } : {}),
           updatedAt,
         });
       }

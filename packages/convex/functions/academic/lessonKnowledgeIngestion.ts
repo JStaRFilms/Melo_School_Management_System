@@ -452,9 +452,13 @@ export const finalizeSecureKnowledgeMaterialUpload = mutation({
     }
     const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
         capability: TEACHER_PLANNING_CAPABILITIES,
       });
-    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
+    await getAuthenticatedSchoolMembership(ctx, {
+      schoolId: args.schoolId,
+      capability: "assets.upload",
+    });
     if (userId !== args.ownerUserId || schoolId !== args.schoolId) {
       throw new ConvexError("Knowledge material access changed during upload");
     }
@@ -692,6 +696,7 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
       v.union(v.literal("actor_default"), v.literal("private_first")),
     ),
     selectedPageRanges: v.optional(v.union(v.string(), v.null())),
+    schoolId: v.optional(v.id("schools")),
   },
   returns: v.object({
     uploadIntentId: v.id("knowledgeMaterialUploadIntents"),
@@ -700,9 +705,13 @@ export const requestSecureKnowledgeMaterialUpload = mutation({
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
       await getAuthenticatedSchoolMembership(ctx, {
+        schoolId: args.schoolId,
         capability: TEACHER_PLANNING_CAPABILITIES,
       });
-    await getAuthenticatedSchoolMembership(ctx, { capability: "assets.upload" });
+    await getAuthenticatedSchoolMembership(ctx, {
+      schoolId: args.schoolId,
+      capability: "assets.upload",
+    });
     assertKnowledgeMaterialIngestionAccess({
       userId,
       schoolId,
@@ -1442,14 +1451,17 @@ export const registerKnowledgeMaterialLink = mutation({
 });
 
 export const requestKnowledgeMaterialProviderOcr = mutation({
-  args: { materialId: v.id("knowledgeMaterials") },
+  args: {
+    schoolId: v.optional(v.id("schools")),
+    materialId: v.id("knowledgeMaterials"),
+  },
   returns: v.object({
     materialId: v.id("knowledgeMaterials"),
     jobId: v.id("knowledgeOcrJobs"),
     processingStatus: v.union(v.literal("queued"), v.literal("extracting")),
   }),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: TEACHER_PLANNING_CAPABILITIES });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
     if (actorRole !== "teacher" && actorRole !== "admin") {
       throw new ConvexError("Knowledge material OCR is restricted to staff");
@@ -1734,6 +1746,7 @@ export const queueKnowledgeMaterialOcrInternal = internalMutation({
 
 export const retryKnowledgeMaterialIngestion = mutation({
   args: {
+    schoolId: v.optional(v.id("schools")),
     materialId: v.id("knowledgeMaterials"),
   },
   returns: v.object({
@@ -1749,7 +1762,7 @@ export const retryKnowledgeMaterialIngestion = mutation({
   }),
   handler: async (ctx, args) => {
     const { userId, schoolId, role, isSchoolAdmin } =
-      await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+      await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: TEACHER_PLANNING_CAPABILITIES });
     const actorRole = role === "admin" || isSchoolAdmin ? "admin" : "teacher";
 
     if (actorRole !== "teacher" && actorRole !== "admin") {

@@ -271,6 +271,7 @@ const saveResultValidator = v.object({
 });
 
 const aiRunLogValidator = v.object({
+  schoolId: v.optional(v.id("schools")),
   outputType: outputTypeValidator,
   promptClass: v.string(),
   status: v.union(v.literal("queued"), v.literal("running"), v.literal("succeeded"), v.literal("failed"), v.literal("cancelled")),
@@ -1455,6 +1456,7 @@ function orderChunksForExcerpt(
 
 export const getTeacherInstructionSourceExcerpts = query({
   args: {
+    schoolId: v.optional(v.id("schools")),
     outputType: outputTypeValidator,
     sourceIds: v.array(v.id("knowledgeMaterials")),
     planningContext: v.optional(topicPlanningContextValidator),
@@ -1462,7 +1464,7 @@ export const getTeacherInstructionSourceExcerpts = query({
   },
   returns: sourceExcerptBundleValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1580,13 +1582,14 @@ export const getTeacherInstructionSourceExcerpts = query({
 
 export const getTeacherInstructionWorkspace = query({
   args: {
+    schoolId: v.optional(v.id("schools")),
     outputType: outputTypeValidator,
     sourceIds: v.array(v.id("knowledgeMaterials")),
     planningContext: v.optional(topicPlanningContextValidator),
   },
   returns: workspaceValidator,
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1783,10 +1786,11 @@ export const getTeacherInstructionWorkspace = query({
 
 export const getTeacherInstructionArtifactRevisionContent = query({
   args: {
+    schoolId: v.optional(v.id("schools")),
     revisionId: v.id("instructionArtifactRevisions"),
   },
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 
@@ -1816,6 +1820,7 @@ export const getTeacherInstructionArtifactRevisionContent = query({
 });
 
 const aiDraftSaveArgs = v.object({
+    schoolId: v.optional(v.id("schools")),
     artifactId: v.optional(v.union(v.id("instructionArtifacts"), v.null())),
     expectedRevisionNumber: v.number(),
     outputType: outputTypeValidator,
@@ -1844,7 +1849,7 @@ export const saveGeneratedInstructionArtifactDraft = internalMutation({
 });
 
 async function saveDraftHelper(ctx: MutationCtx, args: typeof aiDraftSaveArgs.type & { attemptId?: Id<"usageOperationAttempts"> }) {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
     if (args.attemptId) await assertSaveAttempt(ctx, args.attemptId, schoolId, args.outputType, args.sourceIds);
@@ -2051,7 +2056,7 @@ export const recordTeacherLessonPlanAiRun = internalMutation({
   args: aiRunLogValidator,
   returns: v.id("aiRunLogs"),
   handler: async (ctx, args) => {
-    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { capability: TEACHER_PLANNING_CAPABILITIES });
+    const { userId, schoolId, role, isSchoolAdmin } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId, capability: TEACHER_PLANNING_CAPABILITIES });
     const actor = buildActorContext({ userId, schoolId, role, isSchoolAdmin });
     assertTeacherWorkspaceAccess(actor);
 

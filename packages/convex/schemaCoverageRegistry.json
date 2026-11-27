@@ -3,9 +3,21 @@
     "ownership": "direct-indexed",
     "reason": "school-scoped credential notices; indexed tenant purge and demo reset; no storage or credential secrets",
     "references": [
-      { "path": "recipientUserId", "target": "users", "optional": true },
-      { "path": "schoolId", "target": "schools", "optional": false },
-      { "path": "targetUserId", "target": "users", "optional": false }
+      {
+        "path": "recipientUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetUserId",
+        "target": "users",
+        "optional": false
+      }
     ],
     "bySchool": true,
     "storage": {},
@@ -1190,8 +1202,16 @@
     "ownership": "indirect",
     "reason": "Private staged content belongs to an attempt; tenant purge removes it by indexed attempt before deleting the attempt",
     "references": [
-      { "path": "aiRunLogId", "target": "aiRunLogs", "optional": true },
-      { "path": "attemptId", "target": "usageOperationAttempts", "optional": false }
+      {
+        "path": "aiRunLogId",
+        "target": "aiRunLogs",
+        "optional": true
+      },
+      {
+        "path": "attemptId",
+        "target": "usageOperationAttempts",
+        "optional": false
+      }
     ],
     "bySchool": false,
     "storage": {},
@@ -3465,7 +3485,7 @@
     ],
     "bySchool": false,
     "storage": {},
-    "shape": "954:da1e650:42c9951a"
+    "shape": "1232:db5e5253:91775553"
   },
   "platformAdmins": {
     "ownership": "shared-or-global",
@@ -5467,7 +5487,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "2386:66028afa:fc9f86d8"
+    "shape": "2745:3aa76ebe:e82546e4"
   },
   "classResultExclusions": {
     "ownership": "direct-indexed",
@@ -5693,5 +5713,123 @@
     "bySchool": true,
     "storage": {},
     "shape": "6302:9cf641df:2e62e463"
+  },
+  "schoolInvitations": {
+    "ownership": "direct-indexed",
+    "reason": "school-scoped consent invitations; indexed tenant purge; hashed tokens only and no storage",
+    "references": [
+      {
+        "path": "acceptedByPersonId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "createdByUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "revokedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "schoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "targetUserId",
+        "target": "users",
+        "optional": false
+      }
+    ],
+    "bySchool": true,
+    "storage": {},
+    "shape": "1950:a1cb5dde:b40bc42c"
+  },
+  "staffBranchTransfers": {
+    "ownership": "indirect",
+    "reason": "sourceSchoolId and destinationSchoolId may span group branches; inspect both before touching transfer",
+    "references": [
+      {
+        "path": "acceptedByPersonId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "acceptedByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "cancelledByUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "destinationMembershipId",
+        "target": "branchMemberships",
+        "optional": true
+      },
+      {
+        "path": "destinationSchoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "destinationUserId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "groupId",
+        "target": "schoolGroups",
+        "optional": false
+      },
+      {
+        "path": "initiatedByPersonId",
+        "target": "persons",
+        "optional": true
+      },
+      {
+        "path": "initiatedByUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "personId",
+        "target": "persons",
+        "optional": false
+      },
+      {
+        "path": "reassignedToTeacherId",
+        "target": "users",
+        "optional": true
+      },
+      {
+        "path": "sourceMembershipId",
+        "target": "branchMemberships",
+        "optional": false
+      },
+      {
+        "path": "sourceSchoolId",
+        "target": "schools",
+        "optional": false
+      },
+      {
+        "path": "sourceUserId",
+        "target": "users",
+        "optional": false
+      },
+      {
+        "path": "targetRoleTemplateId",
+        "target": "roleTemplates",
+        "optional": true
+      }
+    ],
+    "bySchool": false,
+    "storage": {},
+    "shape": "2504:964b8f50:4f055e82"
   }
 }

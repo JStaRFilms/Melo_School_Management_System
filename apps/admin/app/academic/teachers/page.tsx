@@ -10,7 +10,7 @@ import { StatGroup } from "@/components/ui/StatGroup";
 import { AdminSheet } from "@/components/ui/AdminSheet";
 import { ConfirmationModal } from "@/components/ui/ConfirmationModal";
 import { TeacherCard } from "./components/TeacherCard";
-import { TeacherCreationForm } from "./components/TeacherCreationForm";
+import { TeacherCreationForm, type InviteResult } from "./components/TeacherCreationForm";
 import { TeacherEditForm } from "./components/TeacherEditForm";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { TeacherRecord } from "@/types";
@@ -59,6 +59,8 @@ export default function TeachersPage() {
   const canEditProfile = hasEffectiveCapability(workspaceAccess, "staff.profiles.edit");
   const canResetPassword = hasEffectiveCapability(workspaceAccess, "staff.password.reset");
   const canArchive = hasEffectiveCapability(workspaceAccess, "staff.account.suspend");
+  const canManageTransfers =
+    canOnboard || hasEffectiveCapability(workspaceAccess, "staff.assignments.manage");
 
   const schoolId = workspaceAccess?.state === "ready"
     ? (workspaceAccess.branch.schoolId as Id<"schools">)
@@ -67,9 +69,22 @@ export default function TeachersPage() {
     ? { schoolId, accountId: session.user.id, connection: draftConnection }
     : undefined;
   const teachers = useQuery(
-    "functions/academic/academicSetup:listTeachers" as never
+    api.functions.academic.academicSetup.listTeachers,
+    schoolId ? { schoolId } : {},
   ) as TeacherRecord[] | undefined;
-  
+  const promotableParents = useQuery(
+    api.functions.academic.academicSetup.listPromotableParents,
+    canOnboard && schoolId ? { schoolId } : "skip",
+  );
+  const pendingTransfers = useQuery(
+    api.functions.academic.staffTransfers.listTeacherBranchTransfers,
+    schoolId ? { schoolId } : "skip",
+  );
+
+  const createTeacherInvitation = useMutation(api.functions.academic.invitations.createTeacherInvitation);
+  const promoteParentToTeacher = useMutation(api.functions.academic.academicSetup.promoteParentToTeacher);
+  const acceptBranchTransfer = useMutation(api.functions.academic.staffTransfers.acceptTeacherBranchTransfer);
+  const cancelBranchTransfer = useMutation(api.functions.academic.staffTransfers.cancelTeacherBranchTransfer);
   const createTeacher = useAction(api.functions.academic.academicSetup.createTeacher);
   const updateTeacherProfile = useAction(api.functions.academic.academicSetup.updateTeacherProfile);
   const resetTeacherPassword = useAction("functions/academic/academicSetup:resetTeacherPassword" as never);
@@ -82,6 +97,7 @@ export default function TeachersPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [transferTitles, setTransferTitles] = useState<Record<string, string>>({});
   const isMobile = useIsMobile();
 
   const showNotice = (notice: { tone: "success" | "error"; title?: string; message: string }) => {
@@ -136,6 +152,74 @@ export default function TeachersPage() {
         t.email.toLowerCase().includes(deferredSearch.toLowerCase())
     );
   }, [deferredSearch, teachers]);
+
+  const handleInvite = async (
+    name: string,
+    email: string,
+    parts?: { firstName: string; middleName?: string; lastName: string },
+  ): Promise<InviteResult> => {
+    setIsSubmitting(true);
+    try {
+      const response = await createTeacherInvitation({
+        schoolId,
+        name: name.trim(),
+        ...parts,
+        email: email.trim().toLowerCase(),
+      });
+      showNotice({
+        tone: "success",
+        title: "Invitation Created",
+        message: `Invite link ready for ${response.email}.`,
+      });
+      return response;
+    } catch (err) {
+      const message = getUserFacingErrorMessage(err, "Failed to create invitation.");
+      showNotice({ tone: "error", title: "Invite Failed", message });
+      throw err;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePromoteParent = async (
+    parentUserId: Id<"users">,
+  ): Promise<InviteResult | null> => {
+    setIsSubmitting(true);
+    try {
+      const res = await promoteParentToTeacher({
+        parentUserId,
+        schoolId,
+      });
+      showNotice({
+        tone: "success",
+        title: "Teacher Access Granted",
+        message: res.alreadyHasLogin
+          ? "They can now sign into the Teacher workspace with their existing login."
+          : "Teacher role added and an invite link is ready to copy.",
+      });
+      if (!res.alreadyHasLogin && res.invitationId && res.inviteUrl && res.invitePath) {
+        return {
+          invitationId: res.invitationId,
+          targetUserId: res.teacherId,
+          email: res.email,
+          invitePath: res.invitePath,
+          inviteUrl: res.inviteUrl,
+          expiresAt: res.expiresAt ?? Date.now() + 7 * 24 * 60 * 60_000,
+          deliveryState: res.deliveryState ?? "pending",
+        };
+      }
+      return null;
+    } catch (err) {
+      showNotice({
+        tone: "error",
+        title: "Update Failed",
+        message: getUserFacingErrorMessage(err, "Could not grant teacher access."),
+      });
+      throw err;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleProvision = async (name: string, email: string, password: string, draft?: DraftClosure, parts?: { firstName: string; middleName?: string; lastName: string }): Promise<ProvisionResult> => {
     setIsSubmitting(true);
@@ -216,7 +300,7 @@ export default function TeachersPage() {
     if (!teacherToArchive) return;
     setIsArchiving(true);
     try {
-      await archiveTeacher({ teacherId: teacherToArchive._id } as never);
+      await archiveTeacher({ teacherId: teacherToArchive._id, schoolId } as never);
       if (selectedTeacherId === teacherToArchive._id) {
         setSelectedTeacherId(null);
       }
@@ -288,6 +372,7 @@ export default function TeachersPage() {
         {selectedTeacherWithArchiveState && (
            <TeacherEditForm
              teacher={selectedTeacherWithArchiveState}
+             schoolId={schoolId}
              onUpdate={handleUpdate}
              onResetPassword={handleResetPassword}
              onArchive={() => handleArchivePrompt(selectedTeacherWithArchiveState)}
@@ -299,6 +384,7 @@ export default function TeachersPage() {
              canEditProfile={canEditProfile}
              canResetPassword={canResetPassword}
              canArchive={canArchive}
+             canManageTransfers={canManageTransfers}
            />
         )}
       </AdminSheet>
@@ -311,6 +397,7 @@ export default function TeachersPage() {
               <div className="hidden lg:block">
                 <TeacherEditForm
                   teacher={selectedTeacherWithArchiveState}
+                  schoolId={schoolId}
                   onUpdate={handleUpdate}
                   onResetPassword={handleResetPassword}
                   onArchive={() => handleArchivePrompt(selectedTeacherWithArchiveState)}
@@ -321,24 +408,21 @@ export default function TeachersPage() {
                   canEditProfile={canEditProfile}
                   canResetPassword={canResetPassword}
                   canArchive={canArchive}
+                  canManageTransfers={canManageTransfers}
                 />
               </div>
             ) : canOnboard ? (
               <TeacherCreationForm
+                onInvite={handleInvite}
                 onProvision={handleProvision}
+                onPromoteParent={handlePromoteParent}
+                promotableParents={promotableParents ?? []}
                 isSubmitting={isSubmitting}
                 draftContext={draftContext}
               />
             ) : (
-              <p className="text-sm text-slate-500">Select a teacher to view authorized controls.</p>
+              <p className="text-sm text-slate-500">Select a teacher to view controls.</p>
             )}
-          </div>
-
-          <div className="pt-3 border-t border-slate-200/60 shrink-0">
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">System Notification</h4>
-            <p className="mt-1 text-[11px] leading-relaxed font-medium text-slate-400">
-              Staff accounts are linked to school email addresses. Deactivation is permanent and irreversible.
-            </p>
           </div>
         </aside>
 
@@ -364,6 +448,106 @@ export default function TeachersPage() {
                 />
               }
             />
+
+            {pendingTransfers && (pendingTransfers.incoming.length > 0 || pendingTransfers.outgoing.length > 0) && (
+              <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-900">
+                  Pending Branch Transfers
+                </p>
+                <div className="space-y-2">
+                  {pendingTransfers.incoming.map((item) => {
+                    const titleValue =
+                      transferTitles[item.transferId] ?? item.targetDisplayTitle ?? "Teacher";
+                    return (
+                      <div key={item.transferId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+                        <div className="text-xs space-y-1">
+                          <p className="font-bold text-slate-950">
+                            {item.personName} <span className="font-normal text-slate-500">({item.personEmail})</span>
+                          </p>
+                          <p className="text-slate-600">
+                            Incoming {item.mode === "permanent_move" ? "permanent move" : "shared assignment"} from {item.sourceSchoolName} · Role: <span className="font-semibold text-slate-900">Teacher</span>
+                            {item.reason ? ` · Reason: ${item.reason}` : ""}
+                          </p>
+                          {canOnboard && (
+                            <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-600">
+                              <span>Branch title:</span>
+                              <input
+                                type="text"
+                                value={titleValue}
+                                onChange={(e) =>
+                                  setTransferTitles((prev) => ({
+                                    ...prev,
+                                    [item.transferId]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Teacher"
+                                className="h-7 w-44 rounded-md border border-slate-200 bg-slate-50 px-2 text-xs font-medium text-slate-900 outline-none focus:border-slate-950 focus:bg-white"
+                              />
+                            </label>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {canOnboard && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void acceptBranchTransfer({
+                                  transferId: item.transferId,
+                                  schoolId,
+                                  targetRole: "teacher",
+                                  targetDisplayTitle: titleValue.trim() || "Teacher",
+                                })
+                                  .then(() => showNotice({ tone: "success", title: "Transfer Accepted", message: `${item.personName} now has access to this branch.` }))
+                                  .catch((err) => showNotice({ tone: "error", title: "Accept Failed", message: getUserFacingErrorMessage(err, "Could not accept transfer.") }));
+                              }}
+                              className="h-8 rounded-lg bg-slate-950 px-3 text-[11px] font-bold text-white hover:bg-slate-800"
+                            >
+                              Accept
+                            </button>
+                          )}
+                          {canManageTransfers && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void cancelBranchTransfer({ transferId: item.transferId, schoolId })
+                                  .then(() => showNotice({ tone: "success", title: "Transfer Rejected", message: "Transfer request rejected." }))
+                                  .catch((err) => showNotice({ tone: "error", title: "Action Failed", message: getUserFacingErrorMessage(err, "Could not reject transfer.") }));
+                              }}
+                              className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
+                            >
+                              Reject
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {pendingTransfers.outgoing.map((item) => (
+                    <div key={item.transferId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="text-xs">
+                        <p className="font-bold text-slate-950">{item.personName}</p>
+                        <p className="text-slate-600">
+                          Waiting for {item.destinationSchoolName} to accept {item.mode === "permanent_move" ? "permanent move" : "shared assignment"}
+                        </p>
+                      </div>
+                      {canManageTransfers && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void cancelBranchTransfer({ transferId: item.transferId, schoolId })
+                              .then(() => showNotice({ tone: "success", title: "Transfer Cancelled", message: "Pending branch transfer cancelled." }))
+                              .catch((err) => showNotice({ tone: "error", title: "Cancel Failed", message: getUserFacingErrorMessage(err, "Could not cancel transfer.") }));
+                          }}
+                          className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-950/5 pb-4">
               <div className="space-y-0.5">
