@@ -711,9 +711,14 @@ export function ReportCardSheet({
                 ))}
               </tbody>
           </table>
-          <p style={{fontSize: 10, color: "#475569", marginTop: 6}}>
-            {reportCard.gradingPolicy?.source === "snapshot" ? `Certified grading policy v${reportCard.gradingPolicy.version}.` : reportCard.gradingPolicy?.source === "current" ? `Current grading policy v${reportCard.gradingPolicy.version} · Uncertified preview.` : "Historical grading policy unavailable; recorded scores and labels retained without policy colors."}
-          </p>
+          {reportCard.gradingPolicy?.source === "snapshot" ||
+          reportCard.gradingPolicy?.source === "current" ? (
+            <p style={{ fontSize: 10, color: "#475569", marginTop: 6 }}>
+              {reportCard.gradingPolicy.source === "snapshot"
+                ? `Certified grading policy v${reportCard.gradingPolicy.version}.`
+                : `Current grading policy v${reportCard.gradingPolicy.version} · Uncertified preview.`}
+            </p>
+          ) : null}
           {reportCard.resultCalculationMode === "cumulative_annual" &&
           reportCard.results.some(
             (result) =>
