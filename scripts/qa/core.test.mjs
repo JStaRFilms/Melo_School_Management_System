@@ -5,8 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { EventEmitter } from 'node:events';
+import { execFileSync } from 'node:child_process';
 import {
-  TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable,
+  TARGET, ROOT, parseEnv, assertTarget, parseApps, assertAppTargets, portAvailable, isEntryModule, resolvePnpmCommand, supervisorStopFile, requestSupervisorStop,
   acquireLease, releaseLease, withLease, ownsSupervisor, appEnvironment, escapeHtml, evidenceStatus, isBackendContractBlocker, preservationExpectation, validateQaInspection, validateRecoveryState, isCleanStoppedState, backendRecoveryFile,
 } from './core.mjs';
 import { options, validateOptions, waitForChild } from './cli.mjs';
@@ -300,4 +301,130 @@ test('HTML report escapes content and refuses unsafe evidence names', () => {
   assert.throws(() => reportHtml({ ...run, status: 'unknown' }), /Invalid/);
   assert.throws(() => reportHtml({ ...run, status: 'passed' }), /disagrees/);
   assert.equal(escapeHtml('"&<>'), '&quot;&amp;&lt;&gt;');
+});
+test('entry detection normalizes Windows and POSIX module paths', () => {
+  assert.equal(
+    isEntryModule('C:\\Worktree\\scripts\\qa\\cli.mjs', 'file:///C:/Worktree/scripts/qa/cli.mjs', { platform: 'win32', realpathSync: value => value }),
+    true,
+  );
+  assert.equal(
+    isEntryModule('c:\\worktree\\scripts\\qa\\cli.mjs', 'file:///C:/Worktree/scripts/qa/cli.mjs', { platform: 'win32', realpathSync: value => value }),
+    true,
+  );
+  assert.equal(
+    isEntryModule('C:\\Worktree\\scripts\\qa\\other.mjs', 'file:///C:/Worktree/scripts/qa/cli.mjs', { platform: 'win32', realpathSync: value => value }),
+    false,
+  );
+  assert.equal(
+    isEntryModule('/repo/scripts/qa/cli.mjs', 'file:///repo/scripts/qa/cli.mjs', { platform: 'darwin', realpathSync: value => value }),
+    true,
+  );
+  assert.equal(isEntryModule(undefined, 'file:///repo/scripts/qa/cli.mjs', { platform: 'darwin' }), false);
+});
+test('pnpm resolution avoids shell interpolation across Unix and Windows installs', () => {
+  assert.deepEqual(resolvePnpmCommand(['--version'], { platform: 'linux' }), { command: 'pnpm', args: ['--version'] });
+
+  const files = new Map([
+    ['C:\\pnpm\\pnpm.CMD', '@SETLOCAL\r\nnode "%~dp0\\.tools\\pnpm\\10.33.2\\node_modules\\pnpm\\bin\\pnpm.cjs" %*\r\n'],
+    ['C:\\pnpm\\.tools\\pnpm\\10.33.2\\node_modules\\pnpm\\bin\\pnpm.cjs', '// pnpm'],
+    ['C:\\corepack\\pnpm.cmd', '@node "%~dp0\\node_modules\\corepack\\dist\\corepack.js" pnpm %*\r\n'],
+    ['C:\\corepack\\node_modules\\corepack\\dist\\corepack.js', '// corepack'],
+    ['C:\\bin\\pnpm.exe', 'MZ'],
+    ['C:\\raw\\pnpm.cmd', '@echo custom\r\n'],
+  ]);
+  const existsSync = candidate => files.has(candidate);
+  const readFileSync = candidate => files.get(candidate);
+
+  assert.deepEqual(
+    resolvePnpmCommand(['--version'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      env: { npm_execpath: 'C:\\pnpm\\.tools\\pnpm\\10.33.2\\node_modules\\pnpm\\bin\\pnpm.cjs' },
+      existsSync,
+      readFileSync,
+    }),
+    { command: 'C:\\node\\node.exe', args: ['C:\\pnpm\\.tools\\pnpm\\10.33.2\\node_modules\\pnpm\\bin\\pnpm.cjs', '--version'] },
+  );
+  assert.deepEqual(
+    resolvePnpmCommand(['--version'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      env: { PATH: 'C:\\pnpm' },
+      existsSync,
+      readFileSync,
+    }),
+    { command: 'C:\\node\\node.exe', args: ['C:\\pnpm\\.tools\\pnpm\\10.33.2\\node_modules\\pnpm\\bin\\pnpm.cjs', '--version'] },
+  );
+  assert.deepEqual(
+    resolvePnpmCommand(['--version'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      env: { PATH: 'C:\\corepack' },
+      existsSync,
+      readFileSync,
+    }),
+    { command: 'C:\\node\\node.exe', args: ['C:\\corepack\\node_modules\\corepack\\dist\\corepack.js', 'pnpm', '--version'] },
+  );
+  assert.deepEqual(
+    resolvePnpmCommand(['--version'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      env: { PATH: 'C:\\bin' },
+      existsSync,
+      readFileSync,
+    }),
+    { command: 'C:\\bin\\pnpm.exe', args: ['--version'] },
+  );
+  assert.equal(
+    resolvePnpmCommand(['--version'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      env: { PATH: 'C:\\raw', ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+      existsSync,
+      readFileSync,
+    }),
+    null,
+  );
+  assert.equal(
+    resolvePnpmCommand(['--version'], {
+      platform: 'win32',
+      execPath: 'C:\\node\\node.exe',
+      env: { PATH: 'C:\\missing' },
+      existsSync,
+      readFileSync,
+    }),
+    null,
+  );
+});
+test('occupied IPv4 loopback ports are detected without killing a process', async t => {
+  const server = net.createServer();
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  assert.equal(await portAvailable(server.address().port), false);
+});
+test('Windows supervisor ownership and stop signaling stay scoped to the exact run token', t => {
+  const state = { id: 'qa-win-1', pid: 4321 };
+  const root = 'C:\\Worktree\\Melo';
+  assert.equal(
+    ownsSupervisor(state, '"c:\\program files\\nodejs\\node.exe" "c:\\worktree\\melo\\scripts\\qa\\supervisor.mjs" --id "qa-win-1"', { platform: 'win32', root }),
+    true,
+  );
+  assert.equal(
+    ownsSupervisor(state, '"c:\\program files\\nodejs\\node.exe" "c:\\worktree\\melo\\scripts\\qa\\supervisor.mjs" --id qa-win-2', { platform: 'win32', root }),
+    false,
+  );
+  const qaDir = temporary(t);
+  requestSupervisorStop(state, { platform: 'win32', qaDir });
+  assert.equal(fs.existsSync(supervisorStopFile(state.id, qaDir)), true);
+});
+test('invoking cli.mjs directly runs doctor and surfaces startup errors instead of exiting silently', t => {
+  const missing = path.join(temporary(t), 'missing.env');
+  assert.throws(
+    () => execFileSync(process.execPath, ['--', path.join(ROOT, 'scripts/qa/cli.mjs'), 'doctor', '--env-file', missing, '--apps', 'admin'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    }),
+    error => error.status === 1 && /ENOENT|no such file/i.test(String(error.stderr)),
+  );
 });
