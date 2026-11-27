@@ -86,6 +86,14 @@ export const reportCardResultValidator = v.object({
       gradeLetter: v.string(),
       remark: v.string(),
       isRecorded: v.boolean(),
+      pendingComponentSubjects: v.optional(
+        v.array(
+          v.object({
+            subjectId: v.id("subjects"),
+            subjectName: v.string(),
+          }),
+        ),
+      ),
       calculationMode: v.union(
         v.literal("standalone"),
         v.literal("cumulative_annual"),
