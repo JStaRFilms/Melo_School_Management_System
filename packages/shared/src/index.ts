@@ -62,6 +62,8 @@ export { AuthoritativeForbiddenView } from "./components/AuthoritativeForbiddenV
 export type { AuthoritativeForbiddenViewProps } from "./components/AuthoritativeForbiddenView";
 export { BranchSwitcher } from "./components/BranchSwitcher";
 export type { BranchSwitcherProps, BranchSummary } from "./components/BranchSwitcher";
+export { InviteClaimView } from "./components/InviteClaimView";
+export type { InviteClaimViewProps, InspectedInvitationState } from "./components/InviteClaimView";
 export { UnsavedBranchSwitchModal } from "./components/UnsavedBranchSwitchModal";
 export type { UnsavedBranchSwitchModalProps } from "./components/UnsavedBranchSwitchModal";
 export { MobileProgressIndicator } from "./components/MobileProgressIndicator";

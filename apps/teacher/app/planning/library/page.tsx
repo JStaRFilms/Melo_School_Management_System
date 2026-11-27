@@ -94,11 +94,12 @@ export default function TeacherLibraryPage() {
 
   // Queries
   const queryArgs = useMemo(() => ({
+    ...(schoolId ? { schoolId } : {}),
     searchQuery: deferredSearch.trim() || undefined,
     visibility,
     processingStatus,
     limit: 100,
-  }), [deferredSearch, visibility, processingStatus]);
+  }), [schoolId, deferredSearch, visibility, processingStatus]);
 
   const materialsData = useQuery(
     "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeLibraryMaterials" as never,
@@ -115,14 +116,19 @@ export default function TeacherLibraryPage() {
   const activeMaterialsData = materialsData ?? cachedMaterialsData;
 
   const subjects = useQuery(
-    "functions/academic/lessonKnowledgeTeacher:listTeacherLibrarySubjects" as never
+    "functions/academic/lessonKnowledgeTeacher:listTeacherLibrarySubjects" as never,
+    (schoolId ? { schoolId } : {}) as never,
   ) as TeacherLibrarySubject[] | undefined;
 
   const assignableClasses = useQuery(
-    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never
+    "functions/academic/teacherSelectors:getTeacherAssignableClasses" as never,
+    (schoolId ? { schoolId } : {}) as never,
   ) as TeacherLibraryClassSummary[] | undefined;
 
-  const topicQueryArgs = useMemo(() => ({ limit: 50 }), []);
+  const topicQueryArgs = useMemo(
+    () => ({ ...(schoolId ? { schoolId } : {}), limit: 50 }),
+    [schoolId],
+  );
   const topicCandidates = useQuery(
     "functions/academic/lessonKnowledgeTeacher:listTeacherKnowledgeTopics" as never,
     topicQueryArgs as never
@@ -172,8 +178,11 @@ export default function TeacherLibraryPage() {
   }, [previewMaterial]);
 
   const sourceProofArgs = useMemo(
-    () => (previewMaterial ? { materialId: previewMaterial._id } : "skip"),
-    [previewMaterial]
+    () =>
+      previewMaterial
+        ? { ...(schoolId ? { schoolId } : {}), materialId: previewMaterial._id }
+        : "skip",
+    [previewMaterial, schoolId]
   );
   const sourceProof = useQuery(
     "functions/academic/lessonKnowledgeTeacher:getTeacherKnowledgeMaterialSourceProof" as never,
@@ -291,6 +300,7 @@ export default function TeacherLibraryPage() {
       );
       const uploadToken = crypto.randomUUID();
       const upload = (await requestKnowledgeMaterialUpload({
+        ...(schoolId ? { schoolId } : {}),
         uploadToken,
         fileName: data.file.name,
         contentType: data.contentType,
@@ -350,6 +360,7 @@ export default function TeacherLibraryPage() {
     setIsSaving(true);
     try {
       await updateMaterial({
+        ...(schoolId ? { schoolId } : {}),
         materialId: draft.materialId as never,
         title: draft.title,
         description: draft.description || null,
@@ -370,7 +381,7 @@ export default function TeacherLibraryPage() {
   const handleRetryMaterial = async (material: TeacherLibraryMaterial) => {
     try {
       if (material.processingStatus === "ocr_needed" || material.processingStatus === "failed") {
-        await requestProviderOcr({ materialId: material._id as never } as never);
+        await requestProviderOcr({ ...(schoolId ? { schoolId } : {}), materialId: material._id as never } as never);
         appToast.success(
           material.selectedPageNumbers?.length
             ? "Provider OCR queued for the stored selected-page PDF."
@@ -379,7 +390,7 @@ export default function TeacherLibraryPage() {
         return;
       }
 
-      await retryMaterialIngestion({ materialId: material._id as never } as never);
+      await retryMaterialIngestion({ ...(schoolId ? { schoolId } : {}), materialId: material._id as never } as never);
       appToast.success("Extraction retry queued.");
     } catch (err) {
       appToast.error("OCR retry failed", { description: getUserFacingErrorMessage(err, "OCR retry failed.") });
@@ -430,7 +441,7 @@ export default function TeacherLibraryPage() {
         }}
         material={materials.find(m => m._id === editingMaterialId) ?? null}
         onSave={handleSaveDraft}
-        onPublish={async (id) => { await publishMaterial({ materialId: id as never } as never); }}
+        onPublish={async (id) => { await publishMaterial({ ...(schoolId ? { schoolId } : {}), materialId: id as never } as never); }}
         onArchive={handleArchive}
         isSaving={isSaving}
         topicCandidates={topicCandidates}

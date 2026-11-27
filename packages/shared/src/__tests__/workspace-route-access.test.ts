@@ -171,20 +171,39 @@ describe("selected branch route adapters", () => {
     expect(getBranchScopedWorkspaceAccess("admin", "/admin/assets", selected).state).toBe("forbidden");
   });
 
-  it("allows only the fully scoped teacher assessment and enrollment chains", () => {
+  it("allows only the fully scoped teacher assessment, enrollment, and planning chains", () => {
     const teacher = {
       ...selected,
-      effectiveCapabilities: ["academic.assessments.enter", "enrollment.intakes.manage"],
+      effectiveCapabilities: ["academic.assessments.enter", "enrollment.intakes.manage", "academic.planning.use"],
       compatibility: { ...selected.compatibility, legacyRole: "teacher" },
       teacherAssignments: { source: "domain_checks_required" as const, legacyTeacherId: "teacher-two" },
     };
+    expect(isWorkspaceBranchScopedRoute("teacher", "/")).toBe(true);
     expect(isWorkspaceBranchScopedRoute("teacher", "/assessments/exams/entry")).toBe(true);
     expect(isWorkspaceBranchScopedRoute("teacher", "/enrollment/subjects")).toBe(true);
-    expect(isWorkspaceBranchScopedRoute("teacher", "/planning")).toBe(false);
+    expect(isWorkspaceBranchScopedRoute("teacher", "/planning/lesson-plans")).toBe(true);
+    expect(isWorkspaceBranchScopedRoute("teacher", "/planning/library")).toBe(true);
+    expect(isWorkspaceBranchScopedRoute("teacher", "/planning/videos")).toBe(false);
     expect(getAccessibleWorkspaceSections("teacher", { access: teacher, branchScopedOnly: true }).map(section => section.href))
-      .toEqual(["/assessments/exams/entry", "/enrollment/subjects"]);
-    expect(getAccessibleWorkspaceSections("teacher", { access: teacher, branchScopedOnly: true, teacherHasAssignments: false })).toEqual([]);
-    expect(getBranchScopedWorkspaceAccess("teacher", "/planning/lesson-plans", teacher).state).toBe("reconciliation_required");
+      .toEqual(["/", "/assessments/exams/entry", "/enrollment/subjects", "/planning/library"]);
+    expect(getAccessibleWorkspaceSections("teacher", { access: teacher, branchScopedOnly: true, teacherHasAssignments: false }).map(section => section.href))
+      .toEqual(["/", "/planning/library"]);
+    expect(getBranchScopedWorkspaceAccess("teacher", "/planning/videos", teacher).state).toBe("reconciliation_required");
+
+    // S1: Unmanaged (invite-claimed / transferred) teachers on a second school can open scoped planning/library routes
+    const unmanagedTeacher = {
+      ...teacher,
+      effectiveCapabilities: [],
+      compatibility: { ...teacher.compatibility, permissionManaged: false },
+    };
+    expect(getBranchScopedWorkspaceAccess("teacher", "/planning/lesson-plans", unmanagedTeacher).state).toBe("allowed");
+    expect(getBranchScopedWorkspaceAccess("teacher", "/planning/library", unmanagedTeacher).state).toBe("allowed");
+    expect(
+      getBranchScopedWorkspaceAccess("teacher", "/planning/lesson-plans", {
+        ...unmanagedTeacher,
+        compatibility: { ...unmanagedTeacher.compatibility, legacyRole: "parent" },
+      }).state,
+    ).toBe("forbidden");
   });
 
   it("keeps the dashboard and non-class tools visible for an unassigned legacy teacher", () => {
