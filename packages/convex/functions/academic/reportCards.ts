@@ -899,6 +899,33 @@ export async function buildStudentReportCard(
         });
 
       const derived = deriveForTerm(args.termId);
+      const pendingComponentSubjects = !derived.isRecorded
+        ? aggregation.components
+            .filter((component) => {
+              const componentRecord = sessionRecordsByTermAndSubject.get(
+                `${String(args.termId)}:${String(component.componentSubjectId)}`
+              );
+              return !(
+                typeof componentRecord?.total === "number" &&
+                typeof componentRecord?.ca1 === "number" &&
+                typeof componentRecord?.ca2 === "number" &&
+                typeof componentRecord?.ca3 === "number" &&
+                typeof componentRecord?.examScaledScore === "number"
+              );
+            })
+            .map((component) => {
+              const componentSubject = subjectsById.get(
+                component.componentSubjectId
+              );
+              return {
+                subjectId: component.componentSubjectId,
+                subjectName: componentSubject
+                  ? normalizeHumanName(componentSubject.name)
+                  : "Component subject",
+              };
+            })
+            .sort((a, b) => a.subjectName.localeCompare(b.subjectName))
+        : [];
       if (!useCumulativeAnnualMode || !firstTermId || !secondTermId) {
         return {
           subjectId: umbrellaSubject._id,
@@ -912,6 +939,9 @@ export async function buildStudentReportCard(
           gradeLetter: derived.gradeLetter,
           remark: derived.remark,
           isRecorded: derived.isRecorded,
+          ...(pendingComponentSubjects.length > 0
+            ? { pendingComponentSubjects }
+            : {}),
           calculationMode: "standalone" as const,
           currentTermTotal: derived.total,
           firstTermTotal: null,
@@ -950,7 +980,7 @@ export async function buildStudentReportCard(
           reportCardClassId
         );
 
-      return buildCumulativeResult({
+      const cumulativeResult = buildCumulativeResult({
         subject: umbrellaSubject,
         currentRecord: derived.isRecorded
           ? {
@@ -969,6 +999,12 @@ export async function buildStudentReportCard(
         manualAdjustment:
           manualAdjustmentBySubjectId.get(String(umbrellaSubject._id)) ?? null,
       });
+      return {
+        ...cumulativeResult,
+        ...(!cumulativeResult.isRecorded && pendingComponentSubjects.length > 0
+          ? { pendingComponentSubjects }
+          : {}),
+      };
     })
     .filter(
       (result): result is NonNullable<typeof result> => result !== null

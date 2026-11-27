@@ -7,6 +7,7 @@ import { api } from "../../../../../../packages/convex/_generated/api";
 import type { Id } from "../../../../../../packages/convex/_generated/dataModel";
 
 const confirmation = "I reviewed this roster and understand that releasing it makes these reports visible to families.";
+const restoreConfirmation = "I reviewed this student and want to restore them to the class release roster.";
 type Selection = { sessionId: string; termId: string; classId: string };
 type Context = { school: string; session: string; term: string; klass: string; canRelease: boolean; canExclude: boolean; releasesPaused?: boolean };
 type Release = { releasedAt: number; releasedByName?: string; eligibleCount: number; certifiedCount: number; excludedCount: number };
@@ -40,8 +41,10 @@ export function ClassReleasePanel({ schoolId, selection, context }: { schoolId: 
   const readiness = useQuery(api.functions.academic.resultPublication.getClassReadiness, args);
   const release = useMutation(api.functions.academic.resultPublication.releaseClassResults);
   const exclude = useMutation(api.functions.academic.resultPublication.excludeStudent);
-  const [dialog, setDialog] = useState<"release" | "exclude" | null>(null);
+  const restore = useMutation(api.functions.academic.resultPublication.restoreExcludedStudent);
+  const [dialog, setDialog] = useState<"release" | "exclude" | "restore" | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
+  const [openedExclusionId, setOpenedExclusionId] = useState<Id<"classResultExclusions"> | null>(null);
   const [reason, setReason] = useState("");
   const [checked, setChecked] = useState(false);
   const [pending, setPending] = useState(false);
@@ -51,7 +54,7 @@ export function ClassReleasePanel({ schoolId, selection, context }: { schoolId: 
   const [savedRelease, setSavedRelease] = useState<Release | null>(null);
   const [openedKey, setOpenedKey] = useState<string | null>(null);
   const releasedHeading = useRef<HTMLHeadingElement>(null);
-  const close = () => { if (!pending) { setDialog(null); setChecked(false); setError(""); setReason(""); } };
+  const close = () => { if (!pending) { setDialog(null); setOpenedExclusionId(null); setChecked(false); setError(""); setReason(""); } };
   const rosterChanged = dialog === "release" && !!readiness && openedKey !== readiness.reviewKey;
   const staleReview = rosterChanged || (!!readiness && !!staleKey && readiness.reviewKey === staleKey);
   const current = readiness && !staleReview;
@@ -77,17 +80,25 @@ export function ClassReleasePanel({ schoolId, selection, context }: { schoolId: 
         <div><span className="sm:hidden">Status: </span>{row.status === "certified" ? "Certified" : row.exclusionSource === "archived_before_term" ? "Archived before term" : row.status === "excluded" ? "Excluded" : "Needs attention"}</div>
         <div><span className="sm:hidden">Reason: </span>{row.reason ?? "None"}{row.exclusionSource === "archived_before_term" ? <span className="block text-sm">{row.archivedAt === null ? "Archive date unavailable." : `Archived ${new Date(row.archivedAt).toLocaleString()}.`} {row.termStartDate === null ? "Term start date unavailable." : `This term began ${new Date(row.termStartDate).toLocaleString()}.`}</span> : row.status === "excluded" && <span className="block text-sm">Approved by {row.approvedByName || "Staff member"}</span>}</div>
         <div className="space-y-2">{row.status === "blocked" && (needsAdmin(row.reasonCode) ? <span>{context.canExclude && row.canExclude ? "Review this student before excluding them from this release." : "Contact your school administrator for review"}</span> : <Link className="inline-flex min-h-11 items-center underline focus-visible:outline-2" href={reviewHref(row.studentId)}>Review report card</Link>)}
-          {context.canExclude && !released && row.canExclude && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setReason(""); setError(""); setDialog("exclude"); }}>Exclude student</button>}</div>
+          {context.canExclude && !released && row.canExclude && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setReason(""); setChecked(false); setError(""); setDialog("exclude"); }}>Exclude student</button>}
+          {context.canExclude && !released && row.canRestore && row.activeExclusionId && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setOpenedExclusionId(row.activeExclusionId); setReason(""); setChecked(false); setError(""); setDialog("restore"); }}>Undo exclusion</button>}</div>
       </li>)}</ul></>}
-      {released && <p className="mt-4">Not included in this release. A reviewed amendment is required for later additions or corrections.</p>}
+      {released && <p className="mt-4">This release keeps the original roster and reports. Later additions or corrections require a reviewed amendment.</p>}
     </div>}
     <footer className="space-y-2">{(context.canRelease || context.releasesPaused) && !released && <><button type="button" className={button} disabled={!!context.releasesPaused || !context.canRelease || !readiness?.ready || !readiness.reviewKey || !current || pending} onClick={() => { setOpenedKey(readiness?.reviewKey ?? null); setChecked(false); setError(""); setDialog("release"); }}>Review release</button>
       {(context.releasesPaused || !readiness?.ready || !current) && <p role="status">{context.releasesPaused ? "New class releases are paused for this school." : !readiness ? "Loading readiness..." : !current ? "The roster changed. Review the updated list before releasing." : blocked ? `${blocked} students need attention.` : "Roster needs review."}</p>}</>}</footer>
     <p role="status" aria-live="polite">{notice}</p>
-    {dialog === "exclude" && selected && <ReviewDialog title="Exclude student?" onClose={close}><p>{selected.name} ({selected.admissionNumber}) from {contextLabel}</p><p>This student will not receive this class release, even if a report is certified. The decision is recorded for review.</p>
+    {dialog === "exclude" && selected && <ReviewDialog title="Exclude student?" onClose={close}><p>{selected.name} ({selected.admissionNumber}) from {contextLabel}</p><p>This student will not receive this class release, even if a report is certified. You can undo this exclusion before the class is released. The decision is recorded for review.</p>
       <label className="block font-semibold">Reason<textarea className="mt-2 block w-full rounded border p-2" value={reason} onChange={e => setReason(e.target.value)} aria-invalid={!!error} aria-describedby={error ? "exclusion-error" : undefined} rows={4} /></label>
       {error && <p id="exclusion-error" role="alert" className="text-rose-700">{error}</p>}
       <div className="flex flex-wrap gap-3"><button type="button" className={button} onClick={close} disabled={pending}>Cancel</button><button type="button" className={button} disabled={pending || reason.trim().length < 10 || reason.trim().length > 500} onClick={async () => { setPending(true); setError(""); try { await exclude({ ...args, studentId: selected.studentId as Id<"students">, reason: reason.trim() }); setDialog(null); setReason(""); setNotice("Exclusion recorded. Review the updated roster."); } catch (e) { setError(e instanceof Error ? e.message : "Exclusion failed."); } finally { setPending(false); } }}>Confirm exclusion</button></div></ReviewDialog>}
+    {dialog === "restore" && selected && openedExclusionId && <ReviewDialog title="Undo student exclusion?" onClose={close}><p>{selected.name} ({selected.admissionNumber}) in {contextLabel}</p><p>Restoring this student returns them to the class release roster. They must still meet all certification and enrollment checks before this class can be released. Both the original exclusion and this reversal remain in the audit history.</p>
+      {selected.status === "excluded" && selected.reason && <p className="rounded-lg bg-slate-50 p-3 text-sm"><span className="font-semibold">Original exclusion reason: </span>{selected.reason}</p>}
+      {selected.activeExclusionId !== openedExclusionId && <p role="alert" className="text-rose-700">This exclusion changed. Close this window and review the updated roster before restoring.</p>}
+      <label className="flex gap-3"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />{restoreConfirmation}</label>
+      <label className="block font-semibold">Reason<textarea className="mt-2 block w-full rounded border p-2" value={reason} onChange={e => setReason(e.target.value)} aria-invalid={!!error} aria-describedby={error ? "restore-error" : undefined} rows={4} /></label>
+      {error && <p id="restore-error" role="alert" className="text-rose-700">{error}</p>}
+      <div className="flex flex-wrap gap-3"><button type="button" className={button} onClick={close} disabled={pending}>Cancel</button><button type="button" className={button} disabled={pending || !checked || selected.activeExclusionId !== openedExclusionId || reason.trim().length < 10 || reason.trim().length > 500} onClick={async () => { setPending(true); setError(""); try { await restore({ ...args, studentId: selected.studentId as Id<"students">, exclusionId: openedExclusionId, reason: reason.trim(), confirmation: restoreConfirmation }); setDialog(null); setOpenedExclusionId(null); setChecked(false); setReason(""); setNotice("Exclusion undone. Review the updated roster."); } catch (e) { setError(e instanceof Error ? e.message : "Restoration failed."); } finally { setPending(false); } }}>{pending ? "Restoring student..." : "Confirm restoration"}</button></div></ReviewDialog>}
     {dialog === "release" && readiness && <ReviewDialog title="Release class results?" onClose={close}><p>{contextLabel}</p><p>{readiness.eligibleCount} eligible, {readiness.certifiedCount} certified, {readiness.excludedCount} excluded.</p><p>Families of the eligible students will be able to see their certified reports. Excluded students will not receive this release. The released roster is frozen. Later admissions or corrections need a separate reviewed process.</p>
       <label className="flex gap-3"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />{confirmation}</label>
       {staleReview && <p role="alert" className="text-rose-700">The roster changed. Close this window and review the updated list before releasing.</p>}

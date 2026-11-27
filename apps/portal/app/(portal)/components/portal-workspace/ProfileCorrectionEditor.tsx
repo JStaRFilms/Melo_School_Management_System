@@ -33,7 +33,10 @@ export function CorrectionEditor({ schoolId, request, workspace }: { schoolId: I
   async function operation(action: () => Promise<void>) {
     if (busy.current) return;
     busy.current = true; setPending(true); setError("");
-    try { await action(); } catch (e) { setError(getUserFacingErrorMessage(e, "Correction could not be saved. No successful apply has been confirmed.")); }
+    try { await action(); } catch (e) {
+      const message = getUserFacingErrorMessage(e, "Correction could not be saved. No changes have been confirmed.");
+      setError(message.includes("STALE_PROFILE") ? "The profile changed. Your draft has not been applied. Reload the latest details, then review your changes again." : message);
+    }
     finally { busy.current = false; setPending(false); }
   }
   const version = { schoolId, requestId: request._id, expectedRevision: request.revision, expectedDraftRevision: knownRevision };
@@ -41,11 +44,11 @@ export function CorrectionEditor({ schoolId, request, workspace }: { schoolId: I
   const member = workspace.addresses.find(a => a.memberId === scope.parentMemberId);
   return <div className="space-y-4">
     <DraftHeaderStatus><DraftStatusIndicator status={recoveryRequired ? "recovery_pending" : pending && dirty ? "saving" : error ? "save_failed" : dirty ? "recovery_pending" : request.lastSavedAt ? "saved" : "idle"} lastSavedAt={request.lastSavedAt} /></DraftHeaderStatus>
-    <p className="text-sm">Editing only the granted fields{scope.childFields.length ? ` for ${workspace.child?.name ?? "the granted child"}` : " in your own details"}. These drafts are saved on the server, not in browser storage.</p>
-    {recoveryRequired && <div className="space-y-2"><p role="status">A server draft is available or changed in another tab. Recover it explicitly before editing. Unsaved browser changes will be replaced.</p><button className={buttonClass} disabled={pending} onClick={() => { edit(request.draft ?? {}); setSavedFingerprint(JSON.stringify(request.draft ?? {})); setKnownRevision(request.draftRevision); }}>Recover server draft</button></div>}
-    {request.stale && <div className="space-y-2"><p role="alert">The profile changed since permission was granted. Your draft has not been applied. Save or recover it, then refresh the baseline and review the new before/after values.</p><button className={buttonClass} disabled={pending || dirty || !matchingRevision} onClick={() => void operation(async () => { setAcknowledged(false); setReviewed(undefined); await refresh(version); })}>Refresh baseline for review</button></div>}
+    <p className="text-sm">You can edit only the approved fields{scope.childFields.length ? ` for ${workspace.child?.name ?? "this child"}` : " in your own details"}. Drafts are saved to your account.</p>
+    {recoveryRequired && <div className="space-y-2"><p role="status">{request.draft ? "A saved draft is available. Load it before editing. This replaces any unsaved changes here." : "The saved draft was cleared in another tab. Reload the form before editing. This replaces any unsaved changes here."}</p><button className={buttonClass} disabled={pending} onClick={() => { edit(request.draft ?? {}); setSavedFingerprint(JSON.stringify(request.draft ?? {})); setKnownRevision(request.draftRevision); }}>{request.draft ? "Load saved draft" : "Reload form"}</button></div>}
+    {request.stale && <div className="space-y-2"><p role="alert">This profile changed after your request was approved. Your draft has not been applied. Save or load your draft, then reload the latest details to review your changes.</p><button className={buttonClass} disabled={pending || dirty || !matchingRevision} onClick={() => void operation(async () => { setAcknowledged(false); setReviewed(undefined); await refresh(version); })}>Reload latest details</button></div>}
     <fieldset disabled={pending || recoveryRequired} className="space-y-4">
-      <legend className="mb-2 font-semibold">Your granted fields</legend>
+      <legend className="mb-2 font-semibold">Approved fields</legend>
       {scope.parentFields.filter(f => f !== "address").map(field => <label key={field} className="block text-sm">Your {CORRECTION_FIELD_LABELS[field].toLowerCase()}<input className={inputClass} maxLength={field === "phone" ? 40 : 100} value={payload.parent?.[field] ?? (payload.parent?.[field] === null ? "" : workspace.parent[field] ?? "")} onChange={e => {
         const value = e.target.value; edit({ ...payload, parent: { ...payload.parent, [field]: (field === "middleName" || field === "phone") && !value ? null : value } });
       }} /></label>)}
@@ -54,7 +57,7 @@ export function CorrectionEditor({ schoolId, request, workspace }: { schoolId: I
       {scope.childFields.filter(f => f !== "address").map(field => {
         const current = workspace.child?.[field];
         const value = payload.child?.[field] === undefined ? current : payload.child[field];
-        if (field === "gender") return <label key={field} className="block text-sm">Child gender<select className={inputClass} value={value ?? ""} onChange={e => edit({ ...payload, child: { ...payload.child, gender: e.target.value === "Male" ? "Male" : e.target.value === "Female" ? "Female" : null } })}><option value="">Not recorded</option>{typeof current === "string" && !["Male", "Female"].includes(current) && <option value={current}>{current} · recorded legacy value</option>}<option>Male</option><option>Female</option></select></label>;
+        if (field === "gender") return <label key={field} className="block text-sm">Child gender<select className={inputClass} value={value ?? ""} onChange={e => edit({ ...payload, child: { ...payload.child, gender: e.target.value === "Male" ? "Male" : e.target.value === "Female" ? "Female" : null } })}><option value="">Not recorded</option>{typeof current === "string" && !["Male", "Female"].includes(current) && <option value={current}>{current} (current record)</option>}<option>Male</option><option>Female</option></select></label>;
         return <label key={field} className="block text-sm">Child {CORRECTION_FIELD_LABELS[field].toLowerCase()}<input className={inputClass} type={field === "dateOfBirth" ? "date" : "text"} maxLength={100} value={field === "dateOfBirth" ? typeof value === "number" ? new Date(value).toISOString().slice(0, 10) : "" : value ?? ""} onChange={e => {
           if (field === "dateOfBirth") edit({ ...payload, child: { ...payload.child, dateOfBirth: e.target.value ? Date.parse(`${e.target.value}T00:00:00Z`) : null } });
           else edit({ ...payload, child: { ...payload.child, [field]: field === "middleName" && !e.target.value ? null : e.target.value } });
@@ -79,8 +82,8 @@ export function CorrectionEditor({ schoolId, request, workspace }: { schoolId: I
   </div>;
 }
 function AddressInput({ label, address, current, residential, onChange }: { label: string; address: CorrectionPayload["parentAddress"]; current?: string | null; residential?: string | null; onChange: (address: CorrectionPayload["parentAddress"]) => void }) {
-  return <div className="space-y-2"><p className="text-sm">{label} · Current: {current ?? "Not recorded"}</p><label className="block text-sm">{label} choice<select className={inputClass} value={address?.mode ?? ""} onChange={e => onChange(e.target.value === "residential" ? { mode: "residential" } : e.target.value === "different" ? { mode: "different", value: "" } : undefined)}><option value="">Keep recorded address</option><option value="residential">Use household address</option><option value="different">Use a personal override</option></select></label>
-    {address?.mode === "residential" && <p className="text-sm">Inherited household address: {residential ?? "Not recorded"}. The household address will not change.</p>}
-    {address?.mode === "different" && <label className="block text-sm">{label} override<textarea className={inputClass} maxLength={500} value={address.value ?? ""} onChange={e => onChange({ mode: "different", value: e.target.value })} /></label>}
+  return <div className="space-y-2"><p className="text-sm">{label} · Current: {current ?? "Not recorded"}</p><label className="block text-sm">{label} choice<select className={inputClass} value={address?.mode ?? ""} onChange={e => onChange(e.target.value === "residential" ? { mode: "residential" } : e.target.value === "different" ? { mode: "different", value: "" } : undefined)}><option value="">Keep recorded address</option><option value="residential">Use household address</option><option value="different">Use a different address</option></select></label>
+    {address?.mode === "residential" && <p className="text-sm">Household address: {residential ?? "Not recorded"}. Changing this will not update the household address.</p>}
+    {address?.mode === "different" && <label className="block text-sm">Custom {label.toLowerCase()}<textarea className={inputClass} maxLength={500} value={address.value ?? ""} onChange={e => onChange({ mode: "different", value: e.target.value })} /></label>}
   </div>;
 }

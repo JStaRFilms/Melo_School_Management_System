@@ -338,7 +338,9 @@ describe("archive and result release policy", () => {
     await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults,
       { ...f.tuple, reviewedKey: manual.reviewKey!, confirmation });
     await f.admin.mutation(api.functions.academic.studentEnrollment.restoreStudent, { studentId: pupil.studentId });
-    expect((await f.readiness()).rows).toEqual(manual.rows.map(row => ({ ...row, canExclude: false })));
+    expect((await f.readiness()).rows).toEqual(manual.rows.map(row => ({
+      ...row, canExclude: false, canRestore: false, activeExclusionId: null,
+    })));
   });
 
   it("checks all 512 student evidence rows before policy, rejects row 513, and invalidates combined review", async () => {
@@ -1063,5 +1065,270 @@ describe("graded result release", () => {
     const events = await f.t.run(ctx => ctx.db.query("auditEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect());
     expect(events.filter(e => e.action === "result_release.pause")).toHaveLength(2);
     expect(events.filter(e => e.action === "result_release.resume")).toHaveLength(1);
+  });
+
+  it("lets a school admin undo an exclusion before release, preserves history, invalidates stale reviews, and enforces blockers", async () => {
+    const restoreConfirmation =
+      "I reviewed this student and want to restore them to the class release roster.";
+    const f = await fixture();
+    await f.certify();
+    const uncertifiedStudentId = await f.t.run(async ctx => {
+      const userId = await ctx.db.insert("users", {
+        schoolId: f.ids.schoolId, authId: "student-restore", name: "Restore Student",
+        email: "student-restore@test.invalid", role: "student", createdAt: 1, updatedAt: 1,
+      });
+      const studentId = await ctx.db.insert("students", {
+        schoolId: f.ids.schoolId, classId: f.ids.classId, userId,
+        admissionNumber: "STU-RESTORE", createdAt: 1, updatedAt: 1,
+      });
+      await ctx.db.insert("studentSubjectSelections", {
+        schoolId: f.ids.schoolId, studentId, classId: f.ids.classId,
+        sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1,
+      });
+      await ctx.db.insert("assessmentRecords", {
+        schoolId: f.ids.schoolId, studentId, classId: f.ids.classId,
+        sessionId: f.ids.sessionId, termId: f.ids.termId, subjectId: f.ids.subjectId,
+        ca1: 12, ca2: 12, ca3: 12, examRawScore: 40, examScaledScore: 40, total: 76,
+        gradeLetter: "A", remark: "Pass", examInputModeSnapshot: "raw_70", examRawMaxSnapshot: 70,
+        status: "draft", enteredBy: f.ids.adminId, updatedBy: f.ids.adminId, createdAt: 1, updatedAt: 1,
+      });
+      return studentId;
+    });
+
+    // Exclude the uncertified student so the roster becomes ready for release.
+    await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, {
+      ...f.tuple, studentId: uncertifiedStudentId, reason: "Excluded accidentally before review",
+    });
+    const beforeRestore = await f.readiness();
+    expect(beforeRestore).toMatchObject({ ready: true, eligibleCount: 1, certifiedCount: 1, excludedCount: 1 });
+    const excludedRow = beforeRestore.rows.find(r => r.studentId === uncertifiedStudentId);
+    expect(excludedRow).toMatchObject({
+      status: "excluded", canExclude: false, canRestore: true,
+    });
+    const exclusionId = excludedRow!.activeExclusionId!;
+    expect(exclusionId).toBeTruthy();
+
+    // Non-admin officer, missing confirmation, short reason, and cross-school attempts are rejected.
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+      ...f.tuple, studentId: uncertifiedStudentId, exclusionId, reason: "Officer cannot restore exclusion",
+      confirmation: restoreConfirmation,
+    })).rejects.toThrow();
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+      ...f.tuple, studentId: uncertifiedStudentId, exclusionId, reason: "Admin restoring accidental exclusion",
+      confirmation: "wrong",
+    })).rejects.toThrow("Confirm restoring");
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+      ...f.tuple, studentId: uncertifiedStudentId, exclusionId, reason: "too short",
+      confirmation: restoreConfirmation,
+    })).rejects.toThrow("10-500 characters");
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+      ...f.tuple, classId: f.ids.otherClassId, studentId: uncertifiedStudentId, exclusionId,
+      reason: "Cross-school class rejection test", confirmation: restoreConfirmation,
+    })).rejects.toThrow();
+
+    // Admin restores the excluded student.
+    const restoredAt = await f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+      ...f.tuple, studentId: uncertifiedStudentId, exclusionId,
+      reason: "Accidental exclusion corrected before class release",
+      confirmation: restoreConfirmation,
+    });
+    expect(typeof restoredAt).toBe("number");
+
+    // Re-restoring without an active exclusion is rejected.
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+      ...f.tuple, studentId: uncertifiedStudentId, exclusionId,
+      reason: "Duplicate restore should be refused",
+      confirmation: restoreConfirmation,
+    })).rejects.toThrow("does not have an active exclusion");
+
+    // Restoring recomputes readiness, invalidates stale reviewKey, and never bypasses certification.
+    const afterRestore = await f.readiness();
+    expect(afterRestore.reviewKey).not.toBe(beforeRestore.reviewKey);
+    expect(afterRestore).toMatchObject({ ready: false, eligibleCount: 2, certifiedCount: 1, excludedCount: 0 });
+    expect(afterRestore.rows.find(r => r.studentId === uncertifiedStudentId)).toMatchObject({
+      status: "blocked", reason: "Report not certified", canExclude: true, canRestore: false, activeExclusionId: null,
+    });
+    await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults, {
+      ...f.tuple, reviewedKey: beforeRestore.reviewKey!, confirmation,
+    })).rejects.toThrow("Roster changed or is not ready");
+
+    // Original exclusion record and audit trail preserve both exclusion and reversal history.
+    const exclusionDocs = await f.t.run(ctx =>
+      ctx.db.query("classResultExclusions")
+        .withIndex("by_school_and_student_and_session_and_term", q =>
+          q.eq("schoolId", f.ids.schoolId).eq("studentId", uncertifiedStudentId)
+            .eq("sessionId", f.ids.sessionId).eq("termId", f.ids.termId))
+        .collect(),
+    );
+    expect(exclusionDocs).toHaveLength(1);
+    expect(exclusionDocs[0]).toMatchObject({
+      reason: "Excluded accidentally before review",
+      approvedBy: f.ids.adminId,
+      restoredAt,
+      restoredBy: f.ids.adminId,
+      restorationReason: "Accidental exclusion corrected before class release",
+    });
+    const auditEvents = await f.t.run(ctx =>
+      ctx.db.query("auditEvents").withIndex("by_school", q => q.eq("schoolId", f.ids.schoolId)).collect(),
+    );
+    expect(auditEvents.filter(e => e.action === "result_release.exclude")).toHaveLength(1);
+    expect(auditEvents.filter(e => e.action === "result_release.restore_exclusion")).toHaveLength(1);
+
+    // Certify the restored student and verify clean release + frozen inspection.
+    const report = await f.admin.query(api.functions.academic.reportCards.getStudentReportCard, {
+      ...f.tuple, studentId: uncertifiedStudentId,
+    });
+    await f.admin.mutation(api.functions.academic.reportCards.certifyStudentReportCard, {
+      ...f.tuple, studentId: uncertifiedStudentId, confirmation: "STU-RESTORE",
+      reviewedKey: reportCardReviewKey(report),
+    });
+    const readyForRelease = await f.readiness();
+    expect(readyForRelease).toMatchObject({ ready: true, eligibleCount: 2, certifiedCount: 2, excludedCount: 0 });
+    await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults, {
+      ...f.tuple, reviewedKey: readyForRelease.reviewKey!, confirmation,
+    });
+    const frozenView = await f.readiness();
+    expect(frozenView.released).not.toBeNull();
+    expect(frozenView).toMatchObject({ eligibleCount: 2, certifiedCount: 2, excludedCount: 0 });
+    expect(frozenView.rows.every(r => r.canRestore === false && r.activeExclusionId === null)).toBe(true);
+    expect(await f.t.run(ctx => getReleasedGradedReport(ctx, {
+      ...f.tuple, schoolId: f.ids.schoolId, studentId: uncertifiedStudentId,
+    }))).not.toBeNull();
+  });
+
+  it("rejects stale exclusion IDs on replacement exclusions and enforces both restore/release orderings", async () => {
+    const restoreConfirmation =
+      "I reviewed this student and want to restore them to the class release roster.";
+    const setupTwoCertified = async () => {
+      const f = await fixture();
+      await f.certify();
+      const secondStudentId = await f.t.run(async ctx => {
+        const userId = await ctx.db.insert("users", {
+          schoolId: f.ids.schoolId, authId: "student-race", name: "Race Student",
+          email: "student-race@test.invalid", role: "student", createdAt: 1, updatedAt: 1,
+        });
+        const studentId = await ctx.db.insert("students", {
+          schoolId: f.ids.schoolId, classId: f.ids.classId, userId,
+          admissionNumber: "STU-RACE", createdAt: 1, updatedAt: 1,
+        });
+        await ctx.db.insert("studentSubjectSelections", {
+          schoolId: f.ids.schoolId, studentId, classId: f.ids.classId,
+          sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1,
+        });
+        await ctx.db.insert("assessmentRecords", {
+          schoolId: f.ids.schoolId, studentId, classId: f.ids.classId,
+          sessionId: f.ids.sessionId, termId: f.ids.termId, subjectId: f.ids.subjectId,
+          ca1: 15, ca2: 15, ca3: 15, examRawScore: 40, examScaledScore: 40, total: 85,
+          gradeLetter: "A", remark: "Pass", examInputModeSnapshot: "raw_70", examRawMaxSnapshot: 70,
+          status: "draft", enteredBy: f.ids.adminId, updatedBy: f.ids.adminId, createdAt: 1, updatedAt: 1,
+        });
+        return studentId;
+      });
+      const secondReport = await f.admin.query(api.functions.academic.reportCards.getStudentReportCard, {
+        ...f.tuple, studentId: secondStudentId,
+      });
+      await f.admin.mutation(api.functions.academic.reportCards.certifyStudentReportCard, {
+        ...f.tuple, studentId: secondStudentId, confirmation: "STU-RACE",
+        reviewedKey: reportCardReviewKey(secondReport),
+      });
+      return { f, secondStudentId };
+    };
+
+    // Ordering 1: Restore commits before a competing release with the pre-restore reviewKey,
+    // and a stale exclusionId cannot undo a replacement exclusion.
+    {
+      const { f, secondStudentId } = await setupTwoCertified();
+      await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, {
+        ...f.tuple, studentId: secondStudentId, reason: "First exclusion before review",
+      });
+      const before = await f.readiness();
+      const firstExclusionId = before.rows.find(r => r.studentId === secondStudentId)!.activeExclusionId!;
+      await f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+        ...f.tuple, studentId: secondStudentId, exclusionId: firstExclusionId,
+        reason: "Restored before competing release commits",
+        confirmation: restoreConfirmation,
+      });
+      await expect(f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults, {
+        ...f.tuple, reviewedKey: before.reviewKey!, confirmation,
+      })).rejects.toThrow("Roster changed or is not ready");
+
+      // Re-exclude the student: the stale firstExclusionId must NOT undo the replacement exclusion.
+      await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, {
+        ...f.tuple, studentId: secondStudentId, reason: "Second reviewed exclusion for replacement check",
+      });
+      await expect(f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+        ...f.tuple, studentId: secondStudentId, exclusionId: firstExclusionId,
+        reason: "Stale exclusion dialog must not undo replacement",
+        confirmation: restoreConfirmation,
+      })).rejects.toThrow("Exclusion changed since review");
+    }
+
+    // Ordering 2: Release commits first -> restore is refused and frozen roster stays intact.
+    {
+      const { f, secondStudentId } = await setupTwoCertified();
+      await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, {
+        ...f.tuple, studentId: secondStudentId, reason: "Reviewed exclusion frozen at release",
+      });
+      const ready = await f.readiness();
+      const activeExclusionId = ready.rows.find(r => r.studentId === secondStudentId)!.activeExclusionId!;
+      await f.officer.mutation(api.functions.academic.resultPublication.releaseClassResults, {
+        ...f.tuple, reviewedKey: ready.reviewKey!, confirmation,
+      });
+      await expect(f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+        ...f.tuple, studentId: secondStudentId, exclusionId: activeExclusionId,
+        reason: "Late undo after class release must fail",
+        confirmation: restoreConfirmation,
+      })).rejects.toThrow("Released roster cannot be changed");
+      expect(await f.readiness()).toMatchObject({ eligibleCount: 1, excludedCount: 1 });
+    }
+  });
+
+  it("refuses a 513th exclusion record before exceeding the retained history limit so undo and release stay available", async () => {
+    const restoreConfirmation =
+      "I reviewed this student and want to restore them to the class release roster.";
+    const f = await fixture();
+    await f.certify();
+    const secondStudentId = await f.t.run(async ctx => {
+      const userId = await ctx.db.insert("users", {
+        schoolId: f.ids.schoolId, authId: "student-limit", name: "Limit Student",
+        email: "student-limit@test.invalid", role: "student", createdAt: 1, updatedAt: 1,
+      });
+      const studentId = await ctx.db.insert("students", {
+        schoolId: f.ids.schoolId, classId: f.ids.classId, userId,
+        admissionNumber: "STU-LIMIT", createdAt: 1, updatedAt: 1,
+      });
+      await ctx.db.insert("studentSubjectSelections", {
+        schoolId: f.ids.schoolId, studentId, classId: f.ids.classId,
+        sessionId: f.ids.sessionId, subjectId: f.ids.subjectId, createdAt: 1, updatedAt: 1,
+      });
+      for (let i = 0; i < 511; i++) {
+        await ctx.db.insert("classResultExclusions", {
+          schoolId: f.ids.schoolId, ...f.tuple, studentId,
+          reason: `Historical exclusion ${i}`, approvedBy: f.ids.adminId, approvedAt: i + 1,
+          restoredAt: i + 2, restoredBy: f.ids.adminId, restorationReason: `Historical restore ${i}`,
+        });
+      }
+      return studentId;
+    });
+
+    // 512th exclusion succeeds.
+    await f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, {
+      ...f.tuple, studentId: secondStudentId, reason: "512th active exclusion at history limit",
+    });
+    const atLimit = await f.readiness();
+    expect(atLimit).toMatchObject({ ready: true, eligibleCount: 1, excludedCount: 1 });
+
+    // Attempting a 513th exclusion is rejected before inserting so readiness/undo/release stay available.
+    await expect(f.admin.mutation(api.functions.academic.resultPublication.excludeStudent, {
+      ...f.tuple, studentId: f.ids.studentId, reason: "513th exclusion must be rejected before insert",
+    })).rejects.toThrow("Exclusion history limit reached");
+
+    const activeExclusionId = atLimit.rows.find(r => r.studentId === secondStudentId)!.activeExclusionId!;
+    await f.admin.mutation(api.functions.academic.resultPublication.restoreExcludedStudent, {
+      ...f.tuple, studentId: secondStudentId, exclusionId: activeExclusionId,
+      reason: "Undo still works cleanly at the 512-row history cap",
+      confirmation: restoreConfirmation,
+    });
+    expect(await f.readiness()).toMatchObject({ ready: false, eligibleCount: 2, excludedCount: 0 });
   });
 });

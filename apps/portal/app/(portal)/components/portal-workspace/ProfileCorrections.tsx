@@ -21,7 +21,7 @@ class CorrectionQueryBoundary extends Component<{ children: ReactNode }, { faile
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   render() {
-    return this.state.failed ? <p role="alert">Profile correction access could not be verified. No successful apply has been confirmed. Reload to check your current school and family links.</p> : this.props.children;
+    return this.state.failed ? <p role="alert">We could not verify your profile update access. No changes have been confirmed. Reload the page to check your details.</p> : this.props.children;
   }
 }
 function CorrectionWorkspacePanel({ schoolId, studentId }: { schoolId: Id<"schools">; studentId?: Id<"students"> }) {
@@ -40,7 +40,7 @@ function CorrectionWorkspacePanel({ schoolId, studentId }: { schoolId: Id<"schoo
     {requestId ? detail ? <>
       <p role="status">Correction request: {detail.state}</p>
       {detail.state === "requested" && <p>The school is reviewing your permission request. No profile changes have been submitted.</p>}
-      {detail.state === "granted" && (targetWorkspace ? <CorrectionEditor key={`${schoolId}:${requestId}:${detail.revision}`} schoolId={schoolId} request={detail} workspace={targetWorkspace} /> : <p role="status">Loading granted targets...</p>)}
+      {detail.state === "granted" && (targetWorkspace ? <CorrectionEditor key={`${schoolId}:${requestId}:${detail.revision}`} schoolId={schoolId} request={detail} workspace={targetWorkspace} /> : <p role="status">Loading approved fields...</p>)}
       {detail.applied && <div className="space-y-3"><h3 className="font-semibold">Applied receipt</h3><p className="text-sm">Applied {new Date(detail.applied.appliedAt).toLocaleString()}. This request is read-only.</p><ProfileCorrectionChanges changes={detail.applied.changes} /></div>}
       {detail.decisionReason && <p>School decision: {detail.decisionReason}</p>}
       {!["requested", "granted"].includes(detail.state) && <button className={buttonClass} onClick={() => setSelected(undefined)}>Start a new permission request</button>}
@@ -66,7 +66,7 @@ function RequestCorrection({ schoolId, workspace, onRequested }: { schoolId: Id<
   return <div className="space-y-4">
     <fieldset disabled={pending} className="space-y-3"><legend className="font-semibold">Request changes to your details</legend>
       <div className="flex flex-wrap gap-4">{PARENT_CORRECTION_FIELDS.map(field => <label key={field} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={parentFields.includes(field)} disabled={field === "address" && !workspace.addresses.length} onChange={e => { changed(); setParentFields(toggleCorrectionField(parentFields, field, e.target.checked, requiresCorrectionNamePair(workspace.parent), PARENT_CORRECTION_FIELDS)); }} />{CORRECTION_FIELD_LABELS[field]}</label>)}</div>
-      {requiresCorrectionNamePair(workspace.parent) && <p className="text-sm">Name corrections need both first and last names. Selecting a name field includes both; enter the parts yourself without splitting the recorded full name.</p>}
+      {requiresCorrectionNamePair(workspace.parent) && <p className="text-sm">Name updates require both first and last names. Selecting either includes both; enter each part separately.</p>}
       {parentFields.includes("address") && <label className="block text-sm">Your household link<select className="ml-2 rounded border p-2" value={memberId ?? ""} onChange={e => { changed(); setMemberId(workspace.addresses.find(a => a.memberId === e.target.value)?.memberId); }}>{workspace.addresses.map(a => <option key={a.memberId} value={a.memberId}>{a.familyName}</option>)}</select></label>}
     </fieldset>
     {workspace.child && <fieldset disabled={pending}><legend className="mb-3 font-semibold">Request changes to {workspace.child.name}</legend>{requiresCorrectionNamePair(workspace.child) && <p className="mb-3 text-sm">Child name corrections need both first and last names. Selecting a name field includes both.</p>}<div className="flex flex-wrap gap-4">{CHILD_CORRECTION_FIELDS.map(field => <label key={field} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={childFields.includes(field)} onChange={e => { changed(); setChildFields(toggleCorrectionField(childFields, field, e.target.checked, requiresCorrectionNamePair(workspace.child ?? {}), CHILD_CORRECTION_FIELDS)); }} />{CORRECTION_FIELD_LABELS[field]}</label>)}</div></fieldset>}

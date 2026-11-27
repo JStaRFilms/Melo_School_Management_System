@@ -49,13 +49,14 @@ test('QA inspection attests original cohort without returning reset authority or
   expect(before.baselineDigest).toBe(after.baselineDigest);
   for (const field of ['ready', 'tables', 'actors', 'authIds', 'baselineJson']) expect(before).not.toHaveProperty(field);
 });
-test('legitimate marked student/admission claim is accepted for QA but still blocked for reset', async () => {
+test.each(['legacy admission', 'stable user ID'])('legitimate marked student with %s placeholder is accepted for QA but still blocked for reset', async convention => {
   const { t, schoolId } = await fixture();
   const before = await t.action(inspect, args);
   await t.run(async ctx => {
     const classId = await ctx.db.insert('classes', { schoolId, name: 'QA-RC-UNIT', level: 'Junior Secondary', createdAt: 1, updatedAt: 1 });
     const number = 'QA-RC-UNIT';
     const userId = await ctx.db.insert('users', { schoolId, authId: `student:${schoolId}:${number.toLowerCase()}`, name: 'QA Report Unit', email: 'qa@students.local', role: 'student', createdAt: 1, updatedAt: 1 });
+    if (convention === 'stable user ID') await ctx.db.patch(userId, { authId: `student:${schoolId}:${userId}` });
     await ctx.db.insert('students', { schoolId, classId, userId, admissionNumber: number, createdAt: 1, updatedAt: 1 });
     await ctx.db.insert('admissionNumberClaims', { schoolId, number, createdAt: 1 });
   });
@@ -66,6 +67,15 @@ test('legitimate marked student/admission claim is accepted for QA but still blo
   expect(after.retainedQaClaims).toBe(1);
   const reset = await t.query(makeFunctionReference<'query'>('functions/academic/demoPreflight:inspectDemoLinksInternal'), {});
   expect(reset.blockers.some((message: string) => message.includes('admissionNumberClaims'))).toBe(true);
+});
+test('a marked student cannot borrow another placeholder user identity', async () => {
+  const { t, schoolId } = await fixture();
+  await t.run(async ctx => {
+    const classId = await ctx.db.insert('classes', { schoolId, name: 'QA-RC-UNIT', level: 'Junior Secondary', createdAt: 1, updatedAt: 1 });
+    const userId = await ctx.db.insert('users', { schoolId, authId: `student:${schoolId}:unrelated-user`, name: 'QA Report Unit', email: 'qa@students.local', role: 'student', createdAt: 1, updatedAt: 1 });
+    await ctx.db.insert('students', { schoolId, classId, userId, admissionNumber: 'QA-RC-UNIT', createdAt: 1, updatedAt: 1 });
+  });
+  await expect(t.action(inspect, args)).rejects.toThrow('Additional pupil is not a school-owned placeholder QA fixture');
 });
 test('legacy label normalization preserves semantic class identity and baseline digest', async () => {
   const { t, schoolId } = await fixture();

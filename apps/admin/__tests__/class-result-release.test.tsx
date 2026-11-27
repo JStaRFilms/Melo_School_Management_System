@@ -4,10 +4,16 @@ import { getFunctionName, type FunctionReference } from "convex/server";
 import { ClassReleasePanel } from "../app/assessments/report-cards/release/ClassReleasePanel";
 import type { Id } from "../../../packages/convex/_generated/dataModel";
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), exclude: vi.fn(), pause: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), exclude: vi.fn(), restore: vi.fn(), pause: vi.fn() }));
 vi.mock("convex/react", () => ({
   useQuery: mocks.query,
-  useMutation: (ref: FunctionReference<"mutation">) => getFunctionName(ref).endsWith(":excludeStudent") ? mocks.exclude : getFunctionName(ref).endsWith(":setReleasesPaused") ? mocks.pause : mocks.release,
+  useMutation: (ref: FunctionReference<"mutation">) => {
+    const name = getFunctionName(ref);
+    if (name.endsWith(":excludeStudent")) return mocks.exclude;
+    if (name.endsWith(":restoreExcludedStudent")) return mocks.restore;
+    if (name.endsWith(":setReleasesPaused")) return mocks.pause;
+    return mocks.release;
+  },
 }));
 const schoolId = "school" as Id<"schools">;
 const selection = { sessionId: "session", termId: "term", classId: "class" };
@@ -157,5 +163,89 @@ describe("class result release", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Reason" }), { target: { value: "Reviewed withdrawal record" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm exclusion" }));
     await waitFor(() => expect(mocks.exclude).toHaveBeenCalledWith(expect.objectContaining({ schoolId, studentId: "a", reason: "Reviewed withdrawal record" })));
+  });
+
+  it("lets only school admins undo an exclusion before release with explicit confirmation and reason", async () => {
+    mocks.restore.mockResolvedValue(2000);
+    const excludedRoster = {
+      excludedCount: 1,
+      eligibleCount: 1,
+      certifiedCount: 1,
+      ready: true,
+      rows: [
+        roster.rows[0],
+        {
+          ...roster.rows[1],
+          status: "excluded",
+          reason: "Excluded by mistake",
+          reasonCode: "excluded",
+          canExclude: false,
+          canRestore: true,
+          activeExclusionId: "excl-1" as Id<"classResultExclusions">,
+          approvedByName: "Ms Cole",
+        },
+      ],
+    };
+
+    const { rerender } = view(excludedRoster, { ...context, canExclude: false });
+    expect(screen.queryByRole("button", { name: "Undo exclusion" })).not.toBeInTheDocument();
+
+    mocks.query.mockReturnValue({ ...roster, ...excludedRoster });
+    rerender(<ClassReleasePanel schoolId={schoolId} selection={selection} context={{ ...context, canExclude: true }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Undo exclusion" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Undo student exclusion?");
+    expect(dialog).toHaveTextContent("Original exclusion reason: Excluded by mistake");
+    const confirmBtn = screen.getByRole("button", { name: "Confirm restoration" });
+    expect(confirmBtn).toBeDisabled();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Reason" }), {
+      target: { value: "Student should remain included in this release" },
+    });
+    expect(confirmBtn).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(confirmBtn).toBeEnabled();
+
+    // If a replacement exclusion arrives while the dialog is open, Confirm restoration disables.
+    mocks.query.mockReturnValue({
+      ...roster,
+      ...excludedRoster,
+      rows: [
+        roster.rows[0],
+        { ...excludedRoster.rows[1], activeExclusionId: "excl-2" as Id<"classResultExclusions"> },
+      ],
+    });
+    rerender(<ClassReleasePanel schoolId={schoolId} selection={selection} context={{ ...context, canExclude: true }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("This exclusion changed.");
+    expect(screen.getByRole("button", { name: "Confirm restoration" })).toBeDisabled();
+
+    // Restore original activeExclusionId and submit cleanly.
+    mocks.query.mockReturnValue({ ...roster, ...excludedRoster });
+    rerender(<ClassReleasePanel schoolId={schoolId} selection={selection} context={{ ...context, canExclude: true }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm restoration" }));
+
+    await waitFor(() =>
+      expect(mocks.restore).toHaveBeenCalledWith({
+        schoolId,
+        ...selection,
+        studentId: "b",
+        exclusionId: "excl-1",
+        reason: "Student should remain included in this release",
+        confirmation: "I reviewed this student and want to restore them to the class release roster.",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByText("Exclusion undone. Review the updated roster.")).toBeInTheDocument();
+
+    // Released rosters never expose Undo exclusion even for school admins.
+    mocks.query.mockReturnValue({
+      ...roster,
+      ...excludedRoster,
+      released: { releasedAt: 3000, releasedByName: "Mr Hale", eligibleCount: 1, certifiedCount: 1, excludedCount: 1 },
+    });
+    rerender(<ClassReleasePanel schoolId={schoolId} selection={selection} context={{ ...context, canExclude: true }} />);
+    expect(screen.queryByRole("button", { name: "Undo exclusion" })).not.toBeInTheDocument();
   });
 });

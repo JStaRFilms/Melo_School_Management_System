@@ -90,7 +90,7 @@ describe("release page selectors", () => {
   it("labels unpublished inactive periods as historical rather than offering release", async () => {
     mocks.selected.mockReturnValue({ ...active, term: { ...active.term, isActive: false } });
     render(<ClassReleasePage />);
-    expect(await screen.findByText(/needs historical roster reconciliation/)).toBeInTheDocument();
+    expect(await screen.findByText("New releases require an active session and term and a class that has not been archived. You can still review past releases.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Review release" })).not.toBeInTheDocument();
   });
   it("follows same-route push, back and forward without retaining a stale release tuple", () => {

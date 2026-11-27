@@ -49,7 +49,7 @@ export function GradeGovernance({
         {governance.groupName}:{" "}
         <strong>
           {governance.mode === "inherit"
-            ? `Inherited policy v${governance.defaultVersion}`
+            ? "Using group default"
             : "Branch policy"}
         </strong>
         . Group linkage alone does not change grading.
@@ -87,8 +87,8 @@ export function GradeGovernance({
             Publish this saved branch policy as group default
           </summary>
           <p className="mt-2">
-            Only explicitly inheriting branches adopt this version. Existing
-            issued snapshots remain unchanged.
+            Only branches set to use the group default will adopt these grading
+            bands. Already-issued report cards remain unchanged.
           </p>
           <label className="block">
             <input
@@ -99,7 +99,7 @@ export function GradeGovernance({
             Permit branch overrides
           </label>
           <label className="block">
-            Confirm group slug: {governance.groupSlug}
+            Type {governance.groupSlug} to confirm:
             <input
               value={confirmation}
               onChange={(e) => setConfirmation(e.target.value)}

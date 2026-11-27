@@ -263,7 +263,7 @@ function MockAdminScoreEntryPage({
       subjects={subjects}
       sheetData={sheetData}
       isLoadingSheet={false}
-      modeNotice="Preview mode is active because NEXT_PUBLIC_CONVEX_URL is not configured yet. You can still test the selector flow, /40 vs /60 rendering, validation, and save interactions locally."
+      modeNotice="Preview mode is active. Changes made here are for testing and will not be saved."
       onSaveRecords={handleSaveRecords}
     />
   );
@@ -474,7 +474,7 @@ function AdminScoreEntryContent({
     if (draftHasMissingBaseline || [...draftScores.keys()].some(studentId => !rosterById.has(studentId))) {
       appToast.warning("Review required before saving", {
         id: ADMIN_RESULTS_ENTRY_SAVE_BLOCKED_TOAST_ID,
-        description: "This draft has no safe score baseline. Discard it, check the latest scores, and enter your changes again.",
+        description: "This saved draft cannot be matched to the latest scores. Discard it, check the current scores, and re-enter your changes.",
       });
       throw createHandledSaveError("Draft has no safe score baseline.");
     }
@@ -708,7 +708,7 @@ function AdminScoreEntryContent({
         <aside className="w-full lg:w-[320px] lg:h-full lg:overflow-y-auto border-l border-slate-200 bg-slate-50/50 shrink-0 z-20">
           <div className="p-6 space-y-6">
             <div className="pb-4">
-               <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 mb-1 leading-none">Assessment Engine</h4>
+               <h4 className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 mb-1 leading-none">Score Entry</h4>
                <h2 className="text-lg font-black tracking-tight text-slate-950">Entry Selector</h2>
             </div>
 
@@ -732,19 +732,19 @@ function AdminScoreEntryContent({
           <div className="max-w-[1280px] mx-auto px-6 py-8 md:px-12 md:py-10 space-y-6 pb-32">
             <AdminHeader
               title={selectedSubjectName}
-              label="Bulk Protocol Recording"
+              label="Class Score Sheet"
               description={`${selectedClassName} \u2022 ${selectedTermName} \u2022 ${selectedSessionName}`}
               className="!gap-2"
             />
 
             {modeNotice && (
               <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-5 py-3">
-                 <p className="text-[9px] font-black uppercase tracking-widest text-amber-900/50 mb-0.5">DEV_ENVIRONMENT_NOTICE</p>
+                 <p className="text-[9px] font-black uppercase tracking-widest text-amber-900/50 mb-0.5">Preview Mode</p>
                  <p className="text-sm font-bold text-amber-900/80">{modeNotice}</p>
               </div>
             )}
 
-            {draftHasMissingBaseline && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">This recovered draft has no safe score baseline. Discard it, check the latest scores, and enter your changes again.</div>}
+            {draftHasMissingBaseline && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">This saved draft cannot be matched to the latest scores. Discard it, check the current scores, and re-enter your changes.</div>}
 
             {showErrorBanner && extraErrorSummaries.length > 0 && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{extraErrorSummaries.map((error, index) => <p key={index}>{error.studentName}: {error.message}</p>)}</div>}
 
@@ -777,9 +777,9 @@ function AdminScoreEntryContent({
                 <div className="w-16 h-16 rounded-2xl bg-white shadow-sm ring-1 ring-slate-900/5 flex items-center justify-center mb-6">
                    <ChevronLeft className="w-6 h-6 text-slate-300" />
                 </div>
-                <h3 className="text-lg font-black tracking-tight text-slate-950">Configuration Requested</h3>
+                <h3 className="text-lg font-black tracking-tight text-slate-950">Select a class and subject</h3>
                 <p className="mt-2 text-sm font-bold text-slate-400 max-w-[280px]">
-                  Please use the selector on the right to load a specific academic roster.
+                  Choose a session, term, class, and subject from the panel on the right to load the score sheet.
                 </p>
               </div>
             ) : roster.length === 0 ? (

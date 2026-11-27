@@ -84,7 +84,7 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
     <section aria-label="Session scoring policy" className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
       <div>
         <h2 className="text-lg font-bold text-slate-900">Session scoring policy</h2>
-        <p className="text-sm text-slate-600">This policy applies only to the selected session. Existing sessions are not updated automatically. {current.source === "legacy" ? "Using legacy weights until a session policy is applied." : `Session policy version ${current.version}.`}</p>
+        <p className="text-sm text-slate-600">This policy applies only to the selected session. Existing sessions are not updated automatically. {current.source === "legacy" ? "This session uses its existing weights until a session policy is applied." : "Custom session policy active."}</p>
       </div>
       <div className="flex flex-wrap gap-2" aria-label="Preset starters">
         {SESSION_SCORING_PRESETS.map((preset, index) => (
@@ -94,7 +94,7 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
           </button>
         ))}
       </div>
-      {baseline.source === "legacy" && <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={pinLegacy} disabled={locked || busy || stale} onChange={event => setPinLegacy(event.target.checked)} /> Save these legacy weights as an explicit session policy</label>}
+      {baseline.source === "legacy" && <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={pinLegacy} disabled={locked || busy || stale} onChange={event => setPinLegacy(event.target.checked)} /> Save these weights for this session</label>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {fields.map(([field, label]) => <label key={field} className="text-sm font-semibold text-slate-700">{label}
           <input type="text" inputMode="decimal" value={editingField === field ? rawValue : Number.isNaN(draft[field]) ? "" : draft[field]}
@@ -104,9 +104,9 @@ export function SessionScoringEditor({ sessionId }: { sessionId: Id<"academicSes
             className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 disabled:opacity-50" />
         </label>)}
       </div>
-      <p className="text-sm text-slate-700">CA and exam contributions total {Number.isFinite(total) ? total : "—"}/100. Exam contribution = round(raw ÷ {draft.examRawMax} × {draft.examContributionMax}, 2).</p>
+      <p className="text-sm text-slate-700">CA and exam contributions total {Number.isFinite(total) ? total : "—"}/100. Exam score scales from /{draft.examRawMax} to /{draft.examContributionMax} (rounded to 2 decimal places).</p>
       {validation.length > 0 && <ul role="alert" className="text-sm text-rose-800">{validation.map(message => <li key={message}>{message}</li>)}</ul>}
-      {stale && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p>Session policy or source changed (current version {current.version}) while you were editing. Your draft is intact. Review it against the new policy before starting a new scan.</p><button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Rebase draft on version {current.version}</button> <button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setDraft({ ...current.policy }); setEditingField(null); setPinLegacy(false); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Discard draft and load current policy</button></div>}
+      {stale && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p>This session&apos;s scoring policy changed while you were editing. Your draft is intact. Review it against the latest settings before starting a new scan.</p><button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Keep draft with latest policy</button> <button type="button" disabled={busy || locked} onClick={() => { setBaseline(current); setDraft({ ...current.policy }); setEditingField(null); setPinLegacy(false); setConfirmed(false); setError(null); }} className="rounded-lg border border-amber-400 px-3 py-2 font-semibold disabled:opacity-50">Discard draft and load current policy</button></div>}
       {error && <p role="alert" className="text-sm text-rose-800">{error}</p>}
       {job && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
         <p>Job: {job.phase.replaceAll("_", " ")}. {job.phase === "scanning" || job.phase === "failed_scanning" ? "Partial counts: " : ""}{job.scanned} records scanned, {job.invalidCount} invalid records, {job.updated} regraded.</p>

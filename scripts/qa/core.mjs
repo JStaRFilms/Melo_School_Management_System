@@ -99,13 +99,87 @@ export function assertAppTargets(apps, root = ROOT) {
   }
 }
 
-export async function portAvailable(port) {
+export function isEntryModule(argv1, moduleUrl, {
+  platform = process.platform,
+  realpathSync = fs.realpathSync,
+} = {}) {
+  if (!argv1) return false;
+  const pathApi = platform === 'win32' ? path.win32 : path.posix;
+  const modulePath = fileURLToPath(moduleUrl, { windows: platform === 'win32' });
+  const normalize = value => {
+    const resolved = pathApi.resolve(value);
+    let canonical = resolved;
+    try { canonical = realpathSync(resolved); } catch { /* Non-existent or synthetic test path. */ }
+    return platform === 'win32' ? canonical.toLowerCase() : canonical;
+  };
+  return normalize(argv1) === normalize(modulePath);
+}
+
+function unwrapWindowsCmdJsTarget(shimPath, directory, { existsSync = fs.existsSync, readFileSync = fs.readFileSync } = {}) {
+  let text;
+  try { text = readFileSync(shimPath, 'utf8'); }
+  catch { return null; }
+  const matches = [...text.matchAll(/["']?%(?:~dp0|dp0%)\\?([^"'\r\n]+?\.(?:c?js|mjs))["']?/gi)];
+  for (const match of matches) {
+    const resolved = path.win32.resolve(directory, match[1]);
+    if (!existsSync(resolved)) continue;
+    const base = path.win32.basename(resolved).toLowerCase();
+    if (base === 'corepack.js' || base === 'corepack.cjs') {
+      return { script: resolved, prefixArgs: ['pnpm'] };
+    }
+    if (base === 'pnpm.cjs' || base === 'pnpm.mjs' || base === 'pnpm.js') {
+      return { script: resolved, prefixArgs: [] };
+    }
+  }
+  return null;
+}
+
+export function resolvePnpmCommand(args = [], {
+  platform = process.platform,
+  env = process.env,
+  execPath = process.execPath,
+  existsSync = fs.existsSync,
+  readFileSync = fs.readFileSync,
+} = {}) {
+  if (platform !== 'win32') return { command: 'pnpm', args: [...args] };
+  const npmExecPath = env.npm_execpath;
+  if (npmExecPath && existsSync(npmExecPath)) {
+    const lower = path.win32.basename(npmExecPath).toLowerCase();
+    if (lower === 'pnpm.cjs' || lower === 'pnpm.mjs' || lower === 'pnpm.js') {
+      return { command: execPath, args: [npmExecPath, ...args] };
+    }
+    if (lower === 'pnpm.exe') return { command: npmExecPath, args: [...args] };
+  }
+  const rawPath = env.PATH ?? env.Path ?? '';
+  const directories = rawPath.split(';').map(entry => entry.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean);
+  for (const directory of directories) {
+    const exe = path.win32.join(directory, 'pnpm.exe');
+    if (existsSync(exe)) return { command: exe, args: [...args] };
+    for (const name of ['pnpm.cmd', 'pnpm.CMD']) {
+      const shim = path.win32.join(directory, name);
+      if (!existsSync(shim)) continue;
+      const unwrapped = unwrapWindowsCmdJsTarget(shim, directory, { existsSync, readFileSync });
+      if (unwrapped) return { command: execPath, args: [unwrapped.script, ...unwrapped.prefixArgs, ...args] };
+    }
+  }
+  return null;
+}
+
+function canBindHost(port, host) {
   return new Promise(resolve => {
     const server = net.createServer();
-    server.once('error', () => resolve(false));
-    // An IPv6 wildcard detects both families on the supported Mac/Linux hosts.
-    server.listen({ port, host: '::', exclusive: true }, () => server.close(() => resolve(true)));
+    server.once('error', error => {
+      if (host === '::' && ['EAFNOSUPPORT', 'EADDRNOTAVAIL'].includes(error.code)) resolve(true);
+      else resolve(false);
+    });
+    server.listen({ port, host, exclusive: true }, () => server.close(() => resolve(true)));
   });
+}
+
+export async function portAvailable(port) {
+  // Check both IPv6 and IPv4 loopback: Windows enables IPV6_V6ONLY by default,
+  // so an IPv6 wildcard bind alone misses a Next.js server bound to 127.0.0.1.
+  return await canBindHost(port, '::') && await canBindHost(port, '127.0.0.1');
 }
 
 export function acquireLease(name, owner, directory = LOCK_DIR) {
@@ -132,19 +206,52 @@ export function releaseLease(filename, id) {
   fs.unlinkSync(filename);
 }
 
-export function ownsSupervisor(state, command) {
-  const normalizedCommand = command.replaceAll('\\', '/');
-  const normalizedScript = path.join(ROOT, 'scripts/qa/supervisor.mjs').replaceAll('\\', '/');
+export function ownsSupervisor(state, command, { platform = process.platform, root = ROOT } = {}) {
+  const normalizedCommand = command.replaceAll('\\', '/').trim();
+  const normalizedScript = path.join(root, 'scripts/qa/supervisor.mjs').replaceAll('\\', '/');
+  const haystack = platform === 'win32' ? normalizedCommand.toLowerCase() : normalizedCommand;
+  const needle = platform === 'win32' ? normalizedScript.toLowerCase() : normalizedScript;
   return Number.isInteger(state.pid) && state.pid > 1 && /^[a-z0-9-]+$/.test(state.id) &&
-    normalizedCommand.includes(normalizedScript) && normalizedCommand.endsWith(` --id ${state.id}`);
+    haystack.includes(needle) &&
+    (normalizedCommand.endsWith(` --id ${state.id}`) || normalizedCommand.endsWith(` --id "${state.id}"`));
 }
-export function processCommand(pid) {
-  try { return execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim(); }
-  catch { return ''; }
+export function processCommand(pid, { platform = process.platform } = {}) {
+  if (!Number.isInteger(pid) || pid <= 0) return '';
+  try {
+    if (platform === 'win32') {
+      return execFileSync(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; (Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`],
+        { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] },
+      ).trim();
+    }
+    return execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim();
+  } catch { return ''; }
+}
+
+export function supervisorStopFile(id, qaDir = QA_DIR) {
+  if (!/^[a-z0-9-]+$/.test(id)) throw new Error('Invalid supervisor run ID.');
+  return path.join(qaDir, `stop-${id}.signal`);
+}
+
+export function requestSupervisorStop(state, { platform = process.platform, qaDir = QA_DIR } = {}) {
+  if (platform === 'win32') {
+    const filename = supervisorStopFile(state.id, qaDir);
+    fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(filename, `${state.id}\n`, { mode: 0o600 });
+    return;
+  }
+  process.kill(state.pid, 'SIGTERM');
 }
 
 export function appEnvironment(profile) {
-  const runtimeKeys = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'CI', 'NO_COLOR', 'PNPM_HOME'];
+  const runtimeKeys = [
+    'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TMP', 'TEMP',
+    'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'CI', 'NO_COLOR', 'PNPM_HOME',
+    'SYSTEMROOT', 'COMSPEC', 'PATHEXT', 'WINDIR', 'USERPROFILE',
+    'APPDATA', 'LOCALAPPDATA', 'HOMEDRIVE', 'HOMEPATH',
+    'NUMBER_OF_PROCESSORS', 'OS', 'PROCESSOR_ARCHITECTURE',
+  ];
   const env = Object.fromEntries(runtimeKeys.filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
   const frontendTargets = Object.fromEntries(Object.entries(targetKeys).filter(([key]) => !key.startsWith('DEMO_SEED_')));
   Object.assign(env, frontendTargets, {
@@ -191,7 +298,11 @@ export async function doctor(profile, apps, { requireFreePorts = true, allowReco
   if (typeof net.setDefaultAutoSelectFamily === 'function') net.setDefaultAutoSelectFamily(false);
   if (typeof dns.setDefaultResultOrder === 'function') dns.setDefaultResultOrder('ipv4first');
   assertAppTargets(apps);
-  try { execFileSync('pnpm', ['--version'], { stdio: 'ignore' }); }
+  try {
+    const pnpm = resolvePnpmCommand(['--version']);
+    if (!pnpm) throw new Error('pnpm not found');
+    execFileSync(pnpm.command, pnpm.args, { stdio: 'ignore', windowsHide: true });
+  }
   catch { throw new Error('Install pnpm before running QA.'); }
   let chromium;
   try { ({ chromium } = await import('@playwright/test')); }

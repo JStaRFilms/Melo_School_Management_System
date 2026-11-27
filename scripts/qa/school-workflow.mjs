@@ -62,6 +62,21 @@ export async function makeActive(page, name, term, expect) {
         await expect(active).toHaveCount(0);
     }
 }
+export async function fillTaggedAdmission(page, fixture) {
+    await page.getByRole('combobox', { name: 'Target class', exact: true }).selectOption(fixture.classId);
+    await page.getByRole('textbox', { name: 'First name', exact: true }).fill('Qa');
+    await page.getByRole('textbox', { name: 'Last name', exact: true }).fill(fixture.studentName.replace(/^Qa /i, ''));
+    const manual = page.getByRole('radio', { name: 'Supply a historical or manual number', exact: true });
+    if (await manual.count()) {
+        await manual.check();
+        await page.getByPlaceholder('Explain why this manual or historical number is required').fill('Retain an identifiable synthetic QA fixture');
+        await page.getByRole('radio', { name: 'No, keep the automatic counter unchanged', exact: true }).check();
+        await page.getByRole('checkbox', { name: 'I confirm this override, its reason, and the counter decision.', exact: true }).check();
+    }
+    await page.getByRole('textbox', { name: /^(Admission ID|Manual admission number)$/ }).fill(fixture.admission);
+    await page.getByRole('combobox', { name: 'Gender', exact: true }).selectOption('Male');
+    await page.getByRole('button', { name: 'Admit student', exact: true }).click();
+}
 export const phases = [{ id: 'setup', role: 'admin', steps: [
             { name: 'create an inactive tagged session and standalone term through UI', run: async ({ page, expect, capture, shared }) => {
                     const f = init(shared);
@@ -134,42 +149,39 @@ export const phases = [{ id: 'setup', role: 'admin', steps: [
                     if (!f.studentId) {
                         observeId(page, 'functions/academic/studentEnrollment:createStudent', shared, 'studentId');
                         await page.goto('/academic/students/onboarding');
-                        await page.getByRole('button', { name: 'Select Target Class...', exact: true }).click();
-                        await page.getByRole('button', { name: f.className, exact: true }).click();
-                        await page.getByRole('textbox', { name: 'First Name *', exact: true }).fill('QA');
-                        await page.getByRole('textbox', { name: 'Last Name *', exact: true }).fill(f.studentName.replace(/^Qa /, ''));
-                        await page.getByRole('textbox', { name: /^Admission Number/ }).fill(f.admission);
-                        await page.getByRole('combobox', { name: 'Gender *', exact: true }).selectOption('Male');
-                        await page.getByRole('button', { name: 'Enroll Student', exact: true }).click();
-                        await expect(page.getByText(new RegExp(f.studentName + ' enrolled to')).first()).toBeVisible();
+                        await fillTaggedAdmission(page, f);
+                        await expect(page.getByText('Student admitted. Open the completed record below for portal access.', { exact: true })).toBeVisible();
                         await expect.poll(() => shared.fixture.studentId).toBeTruthy();
                     }
                     await capture('enrolled-pupil');
                     save(shared);
                 } },
-            { name: 'review and link the existing synthetic parent through Family UI', run: async ({ page, expect, capture, shared }) => {
+            { name: 'review and link the existing synthetic parent through Family UI', run: async ({ page, expect, capture, shared, diagnostics }) => {
                     const f = init(shared);
                     await page.goto('/academic/students?' + new URLSearchParams({ studentId: f.studentId, classId: f.classId, sessionId: f.sessionId, tab: 'family' }));
                     await page.getByRole('button', { name: 'Family & Contacts', exact: true }).click();
-                    await expect(page.getByText('Family Links', { exact: true })).toBeVisible();
-                    const confirm = page.getByRole('button', { name: 'Confirm Link', exact: true });
+                    await expect(page.getByRole('heading', { name: 'Parents and guardians', exact: true }).first()).toBeVisible();
                     if (!f.parentLinked) {
-                        await page.getByPlaceholder('e.g. John').fill('Grace');
-                        await page.getByPlaceholder('e.g. Doe').fill('Adeyemi');
-                        await page.getByPlaceholder('parent@example.com').fill('parent@demo-academy.school');
-                        const relationshipInput = page.getByPlaceholder('Relationship to student...');
-                        if (await relationshipInput.count())
-                            await relationshipInput.fill('Mother');
-                        await page.getByRole('button', { name: 'Link to Household', exact: true }).click();
-                        const linked = page.getByText('parent@demo-academy.school', { exact: true }).first();
-                        await expect(confirm.or(linked).first()).toBeVisible();
-                        if (await confirm.count())
+                        await page.getByRole('combobox', { name: 'Contact choice', exact: true }).selectOption('existing');
+                        await page.getByRole('combobox', { name: 'Search field', exact: true }).selectOption('email');
+                        await page.getByRole('textbox', { name: 'Search contacts by email', exact: true }).fill('parent@demo-academy.school');
+                        await page.getByRole('button').filter({ hasText: 'parent@demo-academy.school' }).click();
+                        await page.getByRole('combobox', { name: 'Relationship', exact: true }).selectOption({ label: 'Mother' });
+                        await page.getByRole('button', { name: 'Link contact', exact: true }).click();
+                        const confirm = page.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true });
+                        await expect(confirm.or(page.getByRole('button', { name: 'Unlink contact', exact: true }))).toBeVisible();
+                        if (await confirm.count()) {
+                            const expectedReview = message => message.includes('[CONVEX M(functions/academic/studentEnrollment:upsertStudentFamilyLink)]') && message.includes('This email already belongs to an existing parent. Review the duplicate-link details and confirm to continue.');
+                            const expected = diagnostics.consoleErrors.filter(expectedReview);
+                            expect(expected).toHaveLength(1);
+                            fs.writeFileSync(path.join(shared.directory, 'private-expected-contact-review.json'), JSON.stringify(expected), { mode: 0o600 });
+                            diagnostics.consoleErrors = diagnostics.consoleErrors.filter(message => !expectedReview(message));
                             await confirm.click();
+                        }
                     }
-                    await expect(confirm).toHaveCount(0);
-                    await expect(page.getByText('Linked Contacts', { exact: true })).toBeVisible();
+                    await expect(page.getByRole('button', { name: 'Unlink contact', exact: true })).toBeVisible();
                     await expect(page.getByText('parent@demo-academy.school', { exact: true }).filter({ visible: true }).first()).toBeVisible();
-                    await expect(page.getByText('Mother', { exact: true }).filter({ visible: true }).first()).toBeVisible();
+                    await expect(page.getByText(/Grace Adeyemi.*Mother/).first()).toBeVisible();
                     f.parentLinked = true;
                     save(shared);
                     await capture('parent-linked');
@@ -423,14 +435,13 @@ export const phases = [{ id: 'setup', role: 'admin', steps: [
     { id: 'history', role: 'parent', dependsOn: ['frozen', 'cleanup'], steps: [{ name: 'released83 remains available through explicit historical period after restoration', run: async ({ page, expect, capture, shared }) => {
                     const f = init(shared);
                     await page.goto('/results?' + new URLSearchParams({ studentId: f.studentId }));
-                    const history = page.getByRole('row').filter({ has: page.getByRole('button', { name: f.sessionName, exact: true }) });
+                    const section = page.getByRole('region', { name: 'Published academic history', exact: true });
+                    await section.getByRole('combobox', { name: 'Session / year', exact: true }).selectOption(f.sessionId);
+                    const history = section.getByRole('listitem').filter({ hasText: `${f.termName} · ${f.sessionName}` });
                     await expect(history).toHaveCount(1);
-                    await expect(history).toContainText(f.termName);
-                    await expect(history.getByRole('cell', { name: /^83(?:\.0+)?$/ })).toHaveCount(1);
-                    await history.getByRole('button', { name: f.sessionName, exact: true }).click();
-                    await page.waitForURL(url => url.searchParams.get('termId') === f.termId && url.searchParams.get('sessionId') === f.sessionId);
-                    await page.getByRole('link', { name: 'Open report card', exact: true }).click();
-                    await page.waitForURL(url => url.pathname === '/report-cards');
+                    await expect(history).toContainText('Average 83');
+                    await history.getByRole('link').click();
+                    await page.waitForURL(url => url.pathname === '/report-cards' && url.searchParams.get('termId') === f.termId && url.searchParams.get('sessionId') === f.sessionId);
                     await expect(page.locator('.rc-sheet:visible')).toContainText('83.00');
                     await expect(page.locator('.rc-sheet:visible')).not.toContainText('63.00');
                     await capture('historical-issued83');

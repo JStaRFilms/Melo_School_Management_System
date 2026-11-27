@@ -204,7 +204,7 @@ export function DraftRecoveryModal({
               try {
                 onResume();
               } catch {
-                setError("This draft cannot be resumed with current form schema.");
+                setError("This draft could not be restored.");
               }
             }}
             className="w-full h-9 rounded-xl bg-slate-950 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 transition active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"

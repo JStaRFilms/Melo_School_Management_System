@@ -76,7 +76,7 @@ it("reject and revoke require a reason and only change initial permission", asyn
 });
 it("applied evidence is read-only and never presents a second approval action", () => {
   render(<CorrectionDecision schoolId={schoolId} request={{ ...fixture(), state: "applied", revision: 2, applied: { key: "submit-key", reviewToken: "token", appliedAt: 100, grantRevision: 1, draftRevision: 1, changes: [{ target: "parent", targetId: "parent", field: "phone", before: "Old phone", after: "New phone" }] } }} />);
-  expect(screen.getByText("Immutable applied evidence")).toBeInTheDocument(); expect(screen.getByText("New phone")).toBeInTheDocument();
+  expect(screen.getByText("Applied changes")).toBeInTheDocument(); expect(screen.getByText("New phone")).toBeInTheDocument();
   expect(screen.queryByRole("button")).not.toBeInTheDocument(); expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(mocks.decide).not.toHaveBeenCalled();
 });

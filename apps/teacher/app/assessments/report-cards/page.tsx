@@ -268,7 +268,7 @@ function TeacherReportCardPageContent() {
         {classReportCards === undefined ? null : isClassPrintBlocked ? (
           <div className="rc-no-print mx-auto px-4 pb-6 md:px-6" style={{ maxWidth: "210mm" }}>
             <div className="rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-900">
-              Full-class print is blocked until an admin backfills the missing prior-term totals for every cumulative report card in this class.
+              Full-class print is blocked until an admin enters the missing prior-term totals for every cumulative report card in this class.
             </div>
           </div>
         ) : (

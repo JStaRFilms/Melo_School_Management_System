@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack --port 3105",
+    "dev": "node ../../scripts/infisical-dev.mjs sites --webpack --port 3105",
+    "dev:local": "next dev --webpack --port 3105",
     "build": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build --webpack",
-    "start": "next start --port 3105",
+    "build:dev": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && node ../../scripts/infisical-dev.mjs sites build --webpack",
+    "start": "node ../../scripts/infisical-dev.mjs sites start --port 3105",
+    "start:local": "next start --port 3105",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit"
   },

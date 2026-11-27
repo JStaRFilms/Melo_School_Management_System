@@ -11,7 +11,7 @@ A Teacher saves a draft; Admin certification creates an immutable copy; explicit
 - `release`: exact reviewed roster, confirmation, release counts and timestamp survive reload.
 - `freeze`: Teacher draft changes from 83/A to 63/B; Parent/Admin issued copy stays 83/A.
 - `history-print`: open the actual history row/link after calendar restoration; mobile fits its container and A4 output is one readable white page.
-- `archive-release`: profile Archive only or atomic archive/current-term exclusion, later-term automatic omission, and stored policy dates after release. These added paths have local backend/component evidence only, not browser acceptance.
+- `archive-release`: profile Archive only or atomic archive/current-term exclusion (with and without subjects), cancellation/Escape/mobile dialog, later-term automatic `Archived before term` omission, and frozen policy dates after release. Verified on isolated QA via `scripts/qa/archive-result-workflow.mjs`; stale-context race, multi-school/non-admin denial, and rollback atomicity remain covered by local backend/component tests.
 
 ## How to get to it (user POV)
 
@@ -25,13 +25,11 @@ Run `pnpm qa:workflow --script scripts/qa/school-workflow.mjs --run-trusted-modu
 
 Review all browser checks and the two independent preservation checks, the 83/63/frozen83 screenshots, actual release counts/stamp, clicked history item, and A4 output. See [verification](../../../../docs/testing/SchoolWorkflowVerification.md).
 
-## Archive and result-release entry points
+### Archive and result-release entry points
 
-The existing `scripts/qa/school-workflow.mjs` command above does not exercise these archive paths. No archive module was added in B2. Use the supported exploration contract only after a reviewer has authored and inspected a worktree-contained module, or retain a scoped manual browser report. Do not pass a nonexistent script to the runner or treat the baseline workflow as archive proof.
+Run `pnpm qa:workflow --script scripts/qa/archive-result-workflow.mjs --run-trusted-module --allow-synthetic-writes` to drive the combined scoring/release and archive-exclusion lifecycle on isolated QA.
 
-Browser acceptance for session `orch-20261029-041735` remains pending behind Windows QA blocker148. No doctor, startup, backend maintenance or browser actions ran in B2. The next owner must re-establish the exact isolated target and owned origins before any of the following synthetic writes. Do not repair the runner or switch backends to bypass that blocker.
-
-Use fresh run-marked pupils for Archive only, combined action with subjects, combined action without subjects, and future-term/restore cases. Keep at least one certified included classmate for a release. Record the original active session and term before changing the calendar, restore both afterward, and keep tagged fixtures. Restore cases must use the existing supported archive/restore path in the fixture's default school. Selected-branch archive testing does not authorize fixing the archive browser's pre-existing default-school limitation.
+It uses fresh run-marked pupils for Archive only, combined action with subjects, combined action without subjects, and future-term/restore cases, keeping at least one certified included classmate for release. It records the original active session and term before changing the calendar, restores both afterward, and keeps tagged fixtures. Restore cases use the existing supported archive/restore path in the fixture's default school. Selected-branch archive testing does not authorize fixing the archive browser's pre-existing default-school limitation.
 
 | Entry point | Observable acceptance |
 | --- | --- |

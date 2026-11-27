@@ -63,6 +63,10 @@ export type ReportCardSheetData = {
     gradeLetter: string;
     remark: string;
     isRecorded: boolean;
+    pendingComponentSubjects?: Array<{
+      subjectId: string;
+      subjectName: string;
+    }>;
     calculationMode?: "standalone" | "cumulative_annual";
     currentTermTotal?: number | null;
     firstTermTotal?: number | null;
@@ -711,9 +715,11 @@ export function ReportCardSheet({
                 ))}
               </tbody>
           </table>
-          <p style={{fontSize: 10, color: "#475569", marginTop: 6}}>
-            {reportCard.gradingPolicy?.source === "snapshot" ? `Certified grading policy v${reportCard.gradingPolicy.version}.` : reportCard.gradingPolicy?.source === "current" ? `Current grading policy v${reportCard.gradingPolicy.version} · Uncertified preview.` : "Historical grading policy unavailable; recorded scores and labels retained without policy colors."}
-          </p>
+          {reportCard.gradingPolicy?.source === "current" ? (
+            <p style={{ fontSize: 10, color: "#475569", marginTop: 6 }}>
+              Uncertified preview
+            </p>
+          ) : null}
           {reportCard.resultCalculationMode === "cumulative_annual" &&
           reportCard.results.some(
             (result) =>
@@ -721,6 +727,7 @@ export function ReportCardSheet({
               result.missingHistoricalTerms.length > 0
           ) ? (
             <div
+              data-testid="incomplete-cumulative-warning"
               style={{
                 marginTop: 8,
                 padding: "8px 10px",
@@ -732,9 +739,8 @@ export function ReportCardSheet({
                 fontWeight: 700,
               }}
             >
-              Rows marked * are incomplete. Printing stays blocked until the
-              missing prior-term scores are backfilled and the cumulative grade
-              can be finalized.
+              Rows marked * are missing prior-term scores. The annual grade is
+              incomplete until those scores are entered.
             </div>
           ) : null}
         </div>
@@ -774,7 +780,11 @@ export function ReportCardSheet({
                   color: primaryContrast,
                 }}
               >
-                Report Card Extras
+                {extras.length === 1 &&
+                extras[0].bundleName.trim() &&
+                extras[0].bundleName.trim().toLowerCase() !== "report card extras"
+                  ? extras[0].bundleName.trim()
+                  : "Additional Assessment"}
               </span>
             </div>
             <div>

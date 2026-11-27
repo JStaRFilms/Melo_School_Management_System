@@ -2911,6 +2911,11 @@
         "optional": false
       },
       {
+        "path": "report.results[].pendingComponentSubjects[].subjectId",
+        "target": "subjects",
+        "optional": true
+      },
+      {
         "path": "report.results[].subjectId",
         "target": "subjects",
         "optional": false
@@ -2956,7 +2961,7 @@
       "schoolLogoStorageId": "legacy-extractor",
       "studentPhotoStorageId": "legacy-extractor"
     },
-    "shape": "8939:a804c004:87b47a0"
+    "shape": "9192:f17d4633:e62a7f95"
   },
   "knowledgeMaterialChunks": {
     "ownership": "direct-indexed",
@@ -5494,6 +5499,11 @@
         "optional": false
       },
       {
+        "path": "restoredBy",
+        "target": "users",
+        "optional": true
+      },
+      {
         "path": "schoolId",
         "target": "schools",
         "optional": false
@@ -5516,7 +5526,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "1835:47cec60d:8c25a92d"
+    "shape": "2041:1d6bcdb5:c07b953b"
   },
   "classResultPublicationStudents": {
     "ownership": "direct-indexed",

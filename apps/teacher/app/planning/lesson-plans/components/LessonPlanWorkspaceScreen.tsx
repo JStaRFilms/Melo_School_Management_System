@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type AnimationEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type AnimationEvent } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
@@ -223,7 +223,11 @@ export function LessonPlanWorkspaceScreen({
   const saveInFlightRef = useRef<Promise<void> | null>(null);
   const retrySaveRef = useRef(false);
   const editorRef = useRef({ title, documentState, plainText });
-  editorRef.current = { title, documentState, plainText };
+  // Sync committed editor values synchronously on commit so async save/generate callbacks
+  // cannot observe stale ref state between commit and passive effects.
+  useLayoutEffect(() => {
+    editorRef.current = { title, documentState, plainText };
+  }, [title, documentState, plainText]);
   const editorSignature = useCallback(() => JSON.stringify({ title: editorRef.current.title,
     documentState: editorRef.current.documentState }), []);
 

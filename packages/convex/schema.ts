@@ -2104,6 +2104,9 @@ export default defineSchema({
       source: v.optional(v.literal("manual")),
       approvedBy: v.id("users"),
       approvedAt: v.number(),
+      restoredAt: v.optional(v.number()),
+      restoredBy: v.optional(v.id("users")),
+      restorationReason: v.optional(v.string()),
     }),
     classResultExclusionFields.extend({
       source: v.literal("archived_before_term"),

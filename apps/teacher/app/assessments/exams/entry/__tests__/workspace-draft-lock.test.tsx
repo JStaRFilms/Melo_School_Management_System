@@ -41,7 +41,7 @@ describe("teacher score draft during session lock", () => {
     window.sessionStorage.setItem(key, JSON.stringify([["student1", { ca1: 10, ca2: 10, ca3: 10, examRawScore: 20 }]]));
     render(<ExamEntryWorkspace {...props} sheetData={sheet(0)} isLoadingSheet={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Save scores" }));
-    await waitFor(() => expect(appToast.warning).toHaveBeenCalledWith("Review required before saving", expect.objectContaining({ description: expect.stringContaining("no safe score baseline") })));
+    await waitFor(() => expect(appToast.warning).toHaveBeenCalledWith("Review required before saving", expect.objectContaining({ description: expect.stringContaining("cannot be matched to the latest scores") })));
     expect(props.onSaveRecords).not.toHaveBeenCalled();
   });
   it("restores unsaved scores after a guarded query unmount and requires review under a new policy", async () => {

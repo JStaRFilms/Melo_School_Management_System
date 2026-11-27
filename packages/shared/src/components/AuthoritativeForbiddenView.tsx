@@ -18,7 +18,7 @@ export interface AuthoritativeForbiddenViewProps {
 }
 
 const titles = {
-  forbidden: "403 Forbidden · Access Denied",
+  forbidden: "Access Denied",
   unauthenticated: "Sign in required",
   suspended: "Workspace suspended",
   reconciliation_required: "Workspace access needs review",
@@ -46,7 +46,7 @@ export function AuthoritativeForbiddenView({
             {branchName && <div><dt className="font-semibold">Branch</dt><dd>{branchName}{branchId ? ` [${branchId}]` : ""}</dd></div>}
           </dl>
         )}
-        <p className="mt-5 text-xs leading-relaxed text-slate-500">Contact your school administrator to review access. Display titles do not grant permissions.</p>
+        <p className="mt-5 text-xs leading-relaxed text-slate-500">Contact your school administrator to review your access.</p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <button type="button" onClick={onReturnToDashboard} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 focus-visible:outline focus-visible:outline-2">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />{returnLabel}

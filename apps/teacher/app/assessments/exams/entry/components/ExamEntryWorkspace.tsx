@@ -262,7 +262,7 @@ export function ExamEntryWorkspace({
     if (draftHasMissingBaseline || [...draftScores.keys()].some(studentId => !rosterById.has(studentId))) {
       appToast.warning("Review required before saving", {
         id: TEACHER_EXAM_ENTRY_SAVE_BLOCKED_TOAST_ID,
-        description: "This draft has no safe score baseline. Discard it, check the latest scores, and enter your changes again.",
+        description: "This saved draft cannot be matched to the latest scores. Discard it, check the current scores, and re-enter your changes.",
       });
       throw createHandledSaveError("Draft has no safe score baseline.");
     }
@@ -479,7 +479,7 @@ export function ExamEntryWorkspace({
         onBeforeSelectionChange={handleBeforeSelectionChange}
       />
 
-      {draftHasMissingBaseline && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">This recovered draft has no safe score baseline. Discard it, check the latest scores, and enter your changes again.</div>}
+      {draftHasMissingBaseline && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">This saved draft cannot be matched to the latest scores. Discard it, check the current scores, and re-enter your changes.</div>}
 
       {showErrorBanner && extraErrorSummaries.length > 0 && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{extraErrorSummaries.map((error, index) => <p key={index}>{error.studentName}: {error.message}</p>)}</div>}
 

@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Timer, Clock, Lock, Unlock } from "lucide-react";
 
 function formatDate(dateStr: string | null) {
-  if (!dateStr) return "UNDEFINED";
+  if (!dateStr) return "Not set";
   const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return "INVALID";
+  if (isNaN(date.getTime())) return "Invalid date";
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
@@ -62,7 +62,7 @@ export function ProtocolTimeline({ startsAt, endsAt, isEnabled }: ProtocolTimeli
     
     if (active) return { label: "Window Active", color: "text-emerald-500", bg: "bg-emerald-50/50", icon: <Clock size={14} /> };
     if (now < validStart) return { label: "Opening Soon", color: "text-blue-500", bg: "bg-blue-50/50", icon: <Timer size={14} /> };
-    return { label: "Terminal Locked", color: "text-rose-500", bg: "bg-rose-50/50", icon: <Lock size={14} /> };
+    return { label: "Window Closed", color: "text-rose-500", bg: "bg-rose-50/50", icon: <Lock size={14} /> };
   }, [startsAt, endsAt, isEnabled, nowTick]);
 
   return (
@@ -71,9 +71,9 @@ export function ProtocolTimeline({ startsAt, endsAt, isEnabled }: ProtocolTimeli
          <div className="space-y-1">
           <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
             <Timer size={10} />
-            Temporal Scope
+            Editing Schedule
           </div>
-          <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Window Metadata</h3>
+          <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Editing Window</h3>
         </div>
         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors ${status.bg} border-current/10 ${status.color}`}>
           {status.icon}
@@ -95,8 +95,8 @@ export function ProtocolTimeline({ startsAt, endsAt, isEnabled }: ProtocolTimeli
             />
           </div>
           <div className="flex justify-between font-mono text-[11px] font-black text-slate-900">
-            <span>{startsAt ? formatDate(startsAt) : "IMMEDIATE"}</span>
-            <span>{endsAt ? formatDate(endsAt) : "UNDEFINED"}</span>
+            <span>{startsAt ? formatDate(startsAt) : "Immediate"}</span>
+            <span>{endsAt ? formatDate(endsAt) : "Not set"}</span>
           </div>
         </div>
         

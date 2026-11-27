@@ -80,7 +80,7 @@ export function resolveKnowledgeMaterialUploadEndpoint(
   const siteUrl = configuredSiteUrl?.trim() ||
     configuredCloudUrl?.trim().replace(/\.convex\.cloud\/?$/, ".convex.site");
   if (!siteUrl) {
-    throw new Error("The secure Convex upload endpoint is not configured");
+    throw new Error("File uploads are not configured for this workspace.");
   }
   return new URL("/academic/knowledge-material-upload", siteUrl).toString();
 }
@@ -445,7 +445,7 @@ export function KnowledgeMaterialUploadForm({
           {readiness.isLoading
             ? "… Checking storage entitlement"
             : readiness.storageStatus === "missing_entitlement"
-              ? "! No active contract-bound storage entitlement"
+              ? "! No active storage allowance"
               : readiness.storageStatus === "exhausted"
                 ? "! Storage quota exhausted"
                 : `✓ ${formatBytes(readiness.availableBytes)} storage available of ${formatBytes(readiness.allocatedBytes)}`}
