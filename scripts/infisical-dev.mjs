@@ -45,17 +45,29 @@ export function prepareAppEnvironment(app, secrets, parentEnv, rootEnv) {
   if (required.some((key) => !values[key]?.trim())) {
     throw new Error(`Incomplete Infisical dev /vercel-${app} configuration.`);
   }
+  const env = { ...parentEnv };
+  // Windows resolves environment names case-insensitively, including in the child.
+  if (process.platform === 'win32') {
+    for (const key of Object.keys(env)) {
+      const canonical = key.toUpperCase();
+      if (key !== canonical && ['CONVEX_URL', 'NEXT_PUBLIC_CONVEX_URL', 'CONVEX_SITE_URL', 'NEXT_PUBLIC_CONVEX_SITE_URL'].includes(canonical)) {
+        env[canonical] = env[key];
+        delete env[key];
+      }
+    }
+  }
+  Object.assign(env, values);
+  // Validate the environment Next receives, including endpoints inherited from the shell.
   for (const key of ['CONVEX_URL', 'NEXT_PUBLIC_CONVEX_URL']) {
-    if (values[key] && values[key] !== rootEnv.CONVEX_URL) {
+    if (env[key] && env[key] !== rootEnv.CONVEX_URL) {
       throw new Error(`Infisical dev /vercel-${app} ${key} does not match the root development target.`);
     }
   }
   for (const key of ['CONVEX_SITE_URL', 'NEXT_PUBLIC_CONVEX_SITE_URL']) {
-    if (values[key] && values[key] !== rootEnv.CONVEX_SITE_URL) {
+    if (env[key] && env[key] !== rootEnv.CONVEX_SITE_URL) {
       throw new Error(`Infisical dev /vercel-${app} ${key} does not match the root development target.`);
     }
   }
-  const env = { ...parentEnv, ...values };
   // Bootstrap credentials belong to this launcher, not the Next.js process.
   for (const key of Object.keys(env)) {
     if (key.startsWith('INFISICAL_')) delete env[key];

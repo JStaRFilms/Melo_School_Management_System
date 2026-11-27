@@ -124,7 +124,11 @@ export class BrowserHarness {
     try {
       let session = phase ? this.roleSessions.get(role) : null;
       if (!session) {
-        await page.goto('/sign-in');
+        // The server-rendered form is visible before React attaches its submit handler.
+        await Promise.all([
+          page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/get-session' && response.ok()),
+          page.goto('/sign-in', { waitUntil: 'networkidle' }),
+        ]);
         await expect(page.locator('#email')).toBeVisible();
         await page.locator('#email').fill(account.email);
         await page.locator('#password').fill(process.env[`QA_${role.toUpperCase()}_PASSWORD`] ?? account.password);

@@ -82,7 +82,9 @@ export const inspectQaFixtureInternal = internalQuery({
     for (const student of students.filter(row => !originalIds.has(row._id))) {
       const klass = classes.find(row => row._id === student.classId);
       const user = await ctx.db.get(student.userId);
-      if (!student.admissionNumber.startsWith('QA-RC-') || !klass || !tagged(klass.name) || klass.schoolId !== schoolId || !user || user.schoolId !== schoolId || user.role !== 'student' || user.personId || user.authId !== `student:${schoolId}:${student.admissionNumber.trim().toLowerCase()}`) throw new ConvexError('Additional pupil is not a school-owned placeholder QA fixture');
+      if (!student.admissionNumber.startsWith('QA-RC-') || !klass || !tagged(klass.name) || klass.schoolId !== schoolId || !user || user.schoolId !== schoolId || user.role !== 'student' || user.personId ||
+        (user.authId !== `student:${schoolId}:${student.admissionNumber.trim().toLowerCase()}` &&
+          user.authId !== `student:${schoolId}:${user._id}`)) throw new ConvexError('Additional pupil is not a school-owned placeholder QA fixture');
     }
     for (const claim of claims) if (claim.schoolId !== schoolId || !claim.number.startsWith('QA-RC-') || !students.some(student => student.admissionNumber === claim.number)) throw new ConvexError('Admission claim is not retained run-tagged QA data');
     const originalClassSubjects = [];

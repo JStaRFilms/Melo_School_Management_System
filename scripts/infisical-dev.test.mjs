@@ -51,6 +51,65 @@ test('reject production selectors, missing required secrets and mismatched targe
   ], {}, rootEnv), /does not match/);
 });
 
+test('Admin validates inherited server endpoints as well as fetched public endpoints', () => {
+  for (const key of ['CONVEX_URL', 'CONVEX_SITE_URL']) {
+    assert.throws(() => prepareAppEnvironment('admin', secrets, {
+      [key]: 'https://wrong.convex.site',
+    }, rootEnv), /does not match the root development target/);
+  }
+  const env = prepareAppEnvironment('admin', secrets, {
+    CONVEX_URL: rootEnv.CONVEX_URL,
+    CONVEX_SITE_URL: rootEnv.CONVEX_SITE_URL,
+    NEXT_PUBLIC_CONVEX_URL: 'https://stale.convex.cloud',
+  }, rootEnv);
+  assert.equal(env.CONVEX_SITE_URL, rootEnv.CONVEX_SITE_URL);
+  assert.equal(env.NEXT_PUBLIC_CONVEX_URL, rootEnv.CONVEX_URL);
+});
+
+test('Sites validates all inherited endpoints even when its fetched configuration is empty', () => {
+  for (const key of ['CONVEX_URL', 'NEXT_PUBLIC_CONVEX_URL', 'CONVEX_SITE_URL', 'NEXT_PUBLIC_CONVEX_SITE_URL']) {
+    assert.throws(() => prepareAppEnvironment('sites', [], {
+      [key]: 'https://wrong.convex.site',
+    }, rootEnv), /does not match the root development target/);
+  }
+  assert.deepEqual(prepareAppEnvironment('sites', [], {}, rootEnv), {});
+  const env = prepareAppEnvironment('sites', [], {
+    CONVEX_URL: rootEnv.CONVEX_URL,
+    CONVEX_SITE_URL: rootEnv.CONVEX_SITE_URL,
+  }, rootEnv);
+  assert.equal(env.CONVEX_URL, rootEnv.CONVEX_URL);
+  assert.equal(env.CONVEX_SITE_URL, rootEnv.CONVEX_SITE_URL);
+});
+
+test('Windows case-variant inherited endpoints cannot bypass target validation', { skip: process.platform !== 'win32' }, () => {
+  for (const app of ['admin', 'sites']) {
+    for (const key of ['CONVEX_URL', 'CONVEX_SITE_URL', ...(app === 'sites' ? ['NEXT_PUBLIC_CONVEX_URL', 'NEXT_PUBLIC_CONVEX_SITE_URL'] : [])]) {
+      assert.throws(() => prepareAppEnvironment(app, app === 'admin' ? secrets : [], {
+        [key.toLowerCase()]: 'https://wrong.convex.site',
+      }, rootEnv), /does not match the root development target/);
+    }
+  }
+});
+
+test('Windows fetched endpoints override inherited case variants without duplicate keys', { skip: process.platform !== 'win32' }, () => {
+  const endpoints = {
+    CONVEX_URL: rootEnv.CONVEX_URL,
+    NEXT_PUBLIC_CONVEX_URL: rootEnv.CONVEX_URL,
+    CONVEX_SITE_URL: rootEnv.CONVEX_SITE_URL,
+    NEXT_PUBLIC_CONVEX_SITE_URL: rootEnv.CONVEX_SITE_URL,
+  };
+  const fetched = Object.entries(endpoints).map(([secretKey, secretValue]) => ({ secretKey, secretValue }));
+  const inherited = Object.fromEntries(Object.keys(endpoints).flatMap(key => [
+    [key, 'https://stale-upper.convex.site'],
+    [key.toLowerCase(), 'https://stale-lower.convex.site'],
+  ]));
+  const env = prepareAppEnvironment('sites', fetched, inherited, rootEnv);
+  assert.deepEqual(env, endpoints);
+  assert.deepEqual(prepareAppEnvironment('sites', [], { convex_site_url: rootEnv.CONVEX_SITE_URL }, rootEnv), {
+    CONVEX_SITE_URL: rootEnv.CONVEX_SITE_URL,
+  });
+});
+
 test('reads only the selected app folder in dev and redacts provider failures', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'melo-infisical-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
