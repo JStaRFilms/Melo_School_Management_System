@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { appToast } from "@school/shared/toast";
 import {
   AlertTriangle,
@@ -299,7 +299,9 @@ export function QuestionBankWorkspaceScreen({
   const mountedRef = useRef(true);
   const lastKnownSavedAtRef = useRef(workspace.draft.lastSavedAt ?? 0);
   const draftRef = useRef({ title, description, items, effectiveGenerationSettings, draftMode: workspace.draftMode });
-  draftRef.current = { title, description, items, effectiveGenerationSettings, draftMode: workspace.draftMode };
+  useLayoutEffect(() => {
+    draftRef.current = { title, description, items, effectiveGenerationSettings, draftMode: workspace.draftMode };
+  }, [title, description, items, effectiveGenerationSettings, workspace.draftMode]);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };

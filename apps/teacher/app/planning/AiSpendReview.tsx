@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@school/convex/_generated/api";
 import type { Id } from "@school/convex/_generated/dataModel";
@@ -10,7 +10,9 @@ type Pending = { quote: Quote; formKey: string; sourceCount: number; output: str
 
 export function useAiSpendReview(formKey: string) {
   const formKeyRef = useRef(formKey);
-  formKeyRef.current = formKey;
+  useLayoutEffect(() => {
+    formKeyRef.current = formKey;
+  }, [formKey]);
   const [pending, setPending] = useState<Pending | null>(null);
   const [lastAttempt, setLastAttempt] = useState<Id<"usageOperationAttempts"> | null>(null);
   const [busy, setBusy] = useState(false);
