@@ -93,7 +93,7 @@ function ReleasePageContent({ schoolId, useDeepLink }: { schoolId: Id<"schools">
     </section>
     <ReleasePauseControl schoolId={schoolId} school={context.schoolName} paused={context.releasesPaused} reason={context.releasePauseReason} updatedAt={context.releasePauseUpdatedAt} canManage={context.canExclude} transition={transitioning} onTransition={setPauseTransition} />
     {!navigating && (canInspect || eligiblePeriod) ? <ClassReleasePanel key={`${context.schoolId}:${selection.sessionId}:${selection.termId}:${selection.classId}`} schoolId={schoolId} selection={selection} context={{ school: context.schoolName, session: currentSession!.name, term: currentTerm!.name, klass: currentClass!.name, canRelease: context.canRelease && !releasesPaused && !transitioning && eligiblePeriod, canExclude: context.canExclude && eligiblePeriod, releasesPaused }} />
-      : <p role="status">{navigating || hasTuple && selected === undefined ? "Loading release options..." : hasTuple && selected === null ? "This class, session or term is unavailable for this school." : hasTuple && !eligiblePeriod ? "This period needs historical roster reconciliation before a new release. Existing published classes can still be inspected." : "Select a session, term and class to review the roster."}</p>}
+      : <p role="status">{navigating || hasTuple && selected === undefined ? "Loading release options..." : hasTuple && selected === null ? "This class, session or term is unavailable for this school." : hasTuple && !eligiblePeriod ? "New releases require an active session and term and a class that has not been archived. You can still review past releases." : "Select a session, term and class to review the roster."}</p>}
   </main>;
 }
 

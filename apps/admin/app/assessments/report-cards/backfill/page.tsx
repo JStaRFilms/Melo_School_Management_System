@@ -235,12 +235,12 @@ function HistoricalBackfillPageContent() {
           <section className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-6 text-sm text-slate-600 shadow-sm">
             <p className="font-semibold text-slate-900">Pick a session, historical term, and class to load the roster.</p>
             <p className="mt-2 max-w-2xl leading-relaxed text-slate-500">
-              This workspace is intentionally separate from live CA/exam entry. Use it only for prior-term snapshots that need to flow into cumulative annual results.
+              Use this page to enter missing prior-term totals for cumulative annual report cards. Regular CA and exam sheets are not affected.
             </p>
           </section>
         ) : students === undefined || subjects === undefined || existingTotals === undefined ? (
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-semibold text-slate-500">Loading backfill workspace...</p>
+            <p className="text-sm font-semibold text-slate-500">Loading prior-term totals...</p>
           </section>
         ) : (
           <HistoricalBackfillWorkspace

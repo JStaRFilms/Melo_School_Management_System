@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 async function recoverAndReview() {
-  fireEvent.click(screen.getByRole("button", { name: "Recover server draft" }));
+  fireEvent.click(screen.getByRole("button", { name: "Load saved draft" }));
   fireEvent.click(screen.getByRole("button", { name: "Review saved changes" }));
   await screen.findByText(PROFILE_CORRECTION_WARNING);
 }
@@ -67,13 +67,13 @@ it.each(["draft", "grant", "baseline", "context"])("%s changes clear acknowledge
   const workspace = kind === "context" ? { ...f.workspace, parent: { ...f.workspace.parent, phone: "Admin's newer phone" } } : f.workspace;
   view.rerender(<CorrectionEditor schoolId={schoolId} request={request} workspace={workspace} />);
   expect(screen.queryByRole("button", { name: "Apply changes now" })).toBeNull(); expect(mocks.submit).not.toHaveBeenCalled();
-  if (kind === "draft") expect(screen.getByRole("button", { name: "Recover server draft" })).toBeEnabled();
+  if (kind === "draft") expect(screen.getByRole("button", { name: "Load saved draft" })).toBeEnabled();
 });
 it("a changed baseline preserves the draft and only refreshes after an explicit action", async () => {
   const f = fixture(); render(<CorrectionEditor schoolId={schoolId} request={{ ...f.request, stale: true }} workspace={f.workspace} />);
-  expect(mocks.refresh).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Recover server draft" }));
+  expect(mocks.refresh).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Load saved draft" }));
   expect(screen.getByRole("button", { name: "Review saved changes" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Refresh baseline for review" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reload latest details" }));
   await waitFor(() => expect(mocks.refresh).toHaveBeenCalledWith({ schoolId, requestId, expectedRevision: 1, expectedDraftRevision: 1 }));
   expect(mocks.submit).not.toHaveBeenCalled();
 });
@@ -86,4 +86,20 @@ it("a failed final submission keeps the same key for an identical retry and neve
   fireEvent.click(screen.getByRole("button", { name: "Apply changes now" }));
   await waitFor(() => expect(mocks.submit).toHaveBeenCalledTimes(2));
   expect(mocks.submit.mock.calls[1][0]).toEqual(mocks.submit.mock.calls[0][0]);
+});
+it("maps STALE_PROFILE errors into plain parent-facing guidance", async () => {
+  mocks.submit.mockRejectedValueOnce(new Error("STALE_PROFILE: Refresh the baseline and review again. Your draft has not been applied."));
+  const f = fixture(); render(<CorrectionEditor schoolId={schoolId} {...f} />);
+  await recoverAndReview(); fireEvent.click(screen.getByRole("checkbox")); fireEvent.click(screen.getByRole("button", { name: "Apply changes now" }));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("The profile changed. Your draft has not been applied. Reload the latest details, then review your changes again.");
+  expect(alert).not.toHaveTextContent("STALE_PROFILE");
+});
+it("shows cleared-draft recovery copy when a draft is discarded in another tab", async () => {
+  const f = fixture();
+  const view = render(<CorrectionEditor schoolId={schoolId} {...f} />);
+  await recoverAndReview();
+  view.rerender(<CorrectionEditor schoolId={schoolId} request={{ ...f.request, draft: undefined, draftRevision: 2 }} workspace={f.workspace} />);
+  expect(screen.getByText(/The saved draft was cleared in another tab/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reload form" })).toBeEnabled();
 });

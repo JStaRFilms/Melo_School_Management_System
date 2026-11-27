@@ -67,7 +67,7 @@ export function AdminSelectionBar({
         {/* Session Selector */}
         <div className="space-y-1">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none mb-1 block">
-            Protocol Session
+            Session
           </label>
           <div className="relative group">
             <select

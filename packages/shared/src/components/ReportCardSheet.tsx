@@ -715,12 +715,9 @@ export function ReportCardSheet({
                 ))}
               </tbody>
           </table>
-          {reportCard.gradingPolicy?.source === "snapshot" ||
-          reportCard.gradingPolicy?.source === "current" ? (
+          {reportCard.gradingPolicy?.source === "current" ? (
             <p style={{ fontSize: 10, color: "#475569", marginTop: 6 }}>
-              {reportCard.gradingPolicy.source === "snapshot"
-                ? `Certified grading policy v${reportCard.gradingPolicy.version}.`
-                : `Current grading policy v${reportCard.gradingPolicy.version} · Uncertified preview.`}
+              Uncertified preview
             </p>
           ) : null}
           {reportCard.resultCalculationMode === "cumulative_annual" &&
@@ -730,6 +727,7 @@ export function ReportCardSheet({
               result.missingHistoricalTerms.length > 0
           ) ? (
             <div
+              data-testid="incomplete-cumulative-warning"
               style={{
                 marginTop: 8,
                 padding: "8px 10px",
@@ -741,9 +739,8 @@ export function ReportCardSheet({
                 fontWeight: 700,
               }}
             >
-              Rows marked * are incomplete. Printing stays blocked until the
-              missing prior-term scores are backfilled and the cumulative grade
-              can be finalized.
+              Rows marked * are missing prior-term scores. The annual grade is
+              incomplete until those scores are entered.
             </div>
           ) : null}
         </div>
@@ -783,7 +780,11 @@ export function ReportCardSheet({
                   color: primaryContrast,
                 }}
               >
-                Report Card Extras
+                {extras.length === 1 &&
+                extras[0].bundleName.trim() &&
+                extras[0].bundleName.trim().toLowerCase() !== "report card extras"
+                  ? extras[0].bundleName.trim()
+                  : "Additional Assessment"}
               </span>
             </div>
             <div>

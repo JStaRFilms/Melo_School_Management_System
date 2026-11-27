@@ -616,7 +616,7 @@ export function PortalReportCardLayout({
               </> : <div className="mx-auto rounded-xl border border-slate-200 bg-white p-6 text-slate-700" style={{ maxWidth: "210mm" }}><h2 className="font-bold">Report not ready</h2><p className="mt-2">The school has not published this term&apos;s progress report yet.</p></div>
             ) : selectedReportCard ? (
               <>
-                {selectedReportCard.scoringPolicyWarning && <p className="rc-no-print mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="status">{selectedReportCard.scoringPolicyWarning} Ask the school to review this issued copy. Printing does not recertify it.</p>}
+                {selectedReportCard.scoringPolicyWarning && <p className="rc-no-print mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="status">The school updated scoring settings after this report was issued. This copy has not changed. The school cannot issue a replacement certified copy at this time. Contact the school if you need confirmation of updated results.</p>}
                 <ReportCardToolbar
                   studentName={selectedReportCard.student.name}
                   onPrint={() => selectedReportCard.scoringPolicyWarning ? setPrintWarning(true) : window.print()}
@@ -624,7 +624,7 @@ export function PortalReportCardLayout({
                     studentId: workspace.selectedStudentId,
                   })}
                 />
-                {printWarning && selectedReportCard.scoringPolicyWarning && <ReportScoringPrintWarning message={selectedReportCard.scoringPolicyWarning} onCancel={() => setPrintWarning(false)} onContinue={() => { setPrintWarning(false); window.print(); }} />}
+                {printWarning && selectedReportCard.scoringPolicyWarning && <ReportScoringPrintWarning message="The school updated scoring settings after this report was issued. This copy has not changed." onCancel={() => setPrintWarning(false)} onContinue={() => { setPrintWarning(false); window.print(); }} />}
                 <ReportCardPreview
                   reportCard={selectedReportCard}
                   backHref={buildPortalHref("/results", {
