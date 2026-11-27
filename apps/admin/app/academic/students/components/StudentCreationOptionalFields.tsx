@@ -67,7 +67,7 @@ export function StudentCreationOptionalFields({
           />
         </Field>
         <div className="col-span-2 space-y-2 text-xs text-slate-600">
-          <p>The household\'s primary contact is used by default. Add separate details only if the emergency contact is someone else.</p>
+          <p>The household&apos;s primary contact is used by default. Add separate details only if the emergency contact is someone else.</p>
           {emergencyContactMode === "legacy" && <p>Previously recorded guardian details. These are separate from the linked contact and will be retained unless you change the source.</p>}
           <label className="flex gap-2"><input type="checkbox" checked={emergencyContactMode !== "primary"} onChange={event => onEmergencyContactModeChange(event.target.checked ? "override" : "primary")} />Use a different emergency contact</label>
         </div>
