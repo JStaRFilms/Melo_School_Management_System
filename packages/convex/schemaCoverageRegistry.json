@@ -2911,6 +2911,11 @@
         "optional": false
       },
       {
+        "path": "report.results[].pendingComponentSubjects[].subjectId",
+        "target": "subjects",
+        "optional": true
+      },
+      {
         "path": "report.results[].subjectId",
         "target": "subjects",
         "optional": false
@@ -2956,7 +2961,7 @@
       "schoolLogoStorageId": "legacy-extractor",
       "studentPhotoStorageId": "legacy-extractor"
     },
-    "shape": "8939:a804c004:87b47a0"
+    "shape": "9192:f17d4633:e62a7f95"
   },
   "knowledgeMaterialChunks": {
     "ownership": "direct-indexed",
