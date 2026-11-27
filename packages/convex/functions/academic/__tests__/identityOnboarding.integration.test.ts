@@ -15,6 +15,7 @@ const authStore = vi.hoisted(() => ({
   resets: 0,
   failLink: false,
   failHash: false,
+  onUpdateUser: null as null | ((id: string, values: { name: string; email: string }) => Promise<void> | void),
 }));
 vi.mock("../../../betterAuth", () => ({
   authComponent: { clientApi: () => ({ getAuthUser: () => null }), safeGetAuthUser: async () => null },
@@ -42,6 +43,9 @@ vi.mock("../../../betterAuth", () => ({
         for (const [email, user] of authStore.users) if (user.id === id) {
           authStore.users.delete(email); authStore.users.set(values.email, { ...user, ...values }); break;
         }
+        if (authStore.onUpdateUser) {
+          await authStore.onUpdateUser(id, values);
+        }
       },
       deleteSessions: async () => undefined,
       deleteUser: async (id: string) => {
@@ -63,7 +67,7 @@ const modules = Object.fromEntries(Object.entries(import.meta.glob(["../../../**
 const enrollment = api.functions.academic.studentEnrollment;
 const identity = { subject: "b1-admin", tokenIdentifier: "https://auth.test|b1-admin" };
 
-beforeEach(() => { authStore.users.clear(); authStore.passwords.clear(); authStore.next = 0; authStore.resets = 0; authStore.failLink = false; authStore.failHash = false; vi.stubEnv("CONVEX_SITE_URL", "https://school.convex.site"); });
+beforeEach(() => { authStore.users.clear(); authStore.passwords.clear(); authStore.next = 0; authStore.resets = 0; authStore.failLink = false; authStore.failHash = false; authStore.onUpdateUser = null; vi.stubEnv("CONVEX_SITE_URL", "https://school.convex.site"); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 async function fixture() {
@@ -544,4 +548,108 @@ test("teacher full-name renames clear stale parts; structured middle edits prese
   expect((await f.t.run(ctx => ctx.db.get(shared.personId)))?.name).toBe("Global Staff Name");
   expect((await f.t.run(ctx => ctx.db.get(shared.foreignUserId)))?.name).toBe("Foreign Staff Name");
   expect(authStore.users.get("teacher@school.edu.ng")?.name).toBe("Global Staff Name");
+});
+
+test("updateTeacherProfile reconciles Better Auth under a fresh lock after uncontested lease expiry and defers without clobbering a concurrent writer", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-27T12:00:00Z"));
+  const f = await fixture();
+  const teacherId = await f.t.run((ctx) =>
+    ctx.db.insert("users", {
+      schoolId: f.ids.schoolId,
+      authId: "teacher-sync-1",
+      name: "Ada Teacher",
+      email: "original@school.edu.ng",
+      role: "teacher",
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  );
+  authStore.users.set("original@school.edu.ng", {
+    id: "teacher-sync-1",
+    email: "original@school.edu.ng",
+    name: "Ada Teacher",
+  });
+
+  // Case 1: Uncontested 60s lease expiry after Better Auth wrote -> locked reconcile restores Better Auth immediately.
+  let expiredOnce = false;
+  authStore.onUpdateUser = () => {
+    if (!expiredOnce) {
+      expiredOnce = true;
+      vi.advanceTimersByTime(61_000);
+    }
+  };
+  await expect(
+    f.actor.action(api.functions.academic.academicSetup.updateTeacherProfile, {
+      teacherId,
+      name: "Ada Teacher",
+      email: "expired-write@school.edu.ng",
+    }),
+  ).rejects.toThrow(/lock expired or was superseded/i);
+
+  expect((await f.t.run((ctx) => ctx.db.get(teacherId)))?.email).toBe("original@school.edu.ng");
+  expect((await f.t.run((ctx) => ctx.db.get(teacherId)))?.credentialOperationLock).toBeUndefined();
+  expect(authStore.users.has("expired-write@school.edu.ng")).toBe(false);
+  expect(authStore.users.get("original@school.edu.ng")).toMatchObject({
+    id: "teacher-sync-1",
+    email: "original@school.edu.ng",
+    name: "Ada Teacher",
+  });
+
+  // Case 2: Contended expiry where op2 holds a live lock -> op1 does NOT clobber op2 with the old email;
+  // once op2 commits and clears its lock, scheduled locked reconciliation heals Better Auth to op2's email.
+  let contendedTriggered = false;
+  const authWrites: string[] = [];
+  authStore.onUpdateUser = async (_id, values) => {
+    authWrites.push(values.email);
+    if (!contendedTriggered && values.email === "stale-op1@school.edu.ng") {
+      contendedTriggered = true;
+      vi.advanceTimersByTime(61_000);
+      // Concurrent writer op2 acquires a fresh live lock before op1 attempts Convex commit.
+      await f.actor.mutation(
+        internal.functions.academic.academicSetup.beginTeacherEmailUpdateInternal,
+        {
+          teacherId,
+          schoolId: f.ids.schoolId,
+          normalizedEmail: "newer-op2@school.edu.ng",
+          operationId: "op2-concurrent",
+        },
+      );
+    }
+  };
+
+  await expect(
+    f.actor.action(api.functions.academic.academicSetup.updateTeacherProfile, {
+      teacherId,
+      name: "Ada Teacher",
+      email: "stale-op1@school.edu.ng",
+    }),
+  ).rejects.toThrow(/lock expired or was superseded/i);
+
+  // op1 deferred instead of rolling back Better Auth while op2 holds its live lock.
+  expect(authWrites).toEqual(["stale-op1@school.edu.ng"]);
+  expect((await f.t.run((ctx) => ctx.db.get(teacherId)))?.credentialOperationLock?.operationId).toBe(
+    "op2-concurrent",
+  );
+
+  // op2 commits to Convex and clears its lock.
+  await f.actor.mutation(internal.functions.academic.academicSetup.updateTeacherRecordInternal, {
+    teacherId,
+    schoolId: f.ids.schoolId,
+    name: "Ada Teacher",
+    email: "newer-op2@school.edu.ng",
+    operationId: "op2-concurrent",
+  });
+
+  // Scheduled locked reconciliation runs after op2 releases its lock and heals Better Auth to op2's committed email.
+  await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  expect((await f.t.run((ctx) => ctx.db.get(teacherId)))?.email).toBe("newer-op2@school.edu.ng");
+  expect((await f.t.run((ctx) => ctx.db.get(teacherId)))?.credentialOperationLock).toBeUndefined();
+  expect(authStore.users.get("newer-op2@school.edu.ng")).toMatchObject({
+    id: "teacher-sync-1",
+    email: "newer-op2@school.edu.ng",
+    name: "Ada Teacher",
+  });
+  expect(authStore.users.has("stale-op1@school.edu.ng")).toBe(false);
 });

@@ -1,5 +1,5 @@
 import { ACADEMIC_CONTEXT_CAPABILITIES } from "../../../shared/src/workspace-capability-matrix";
-import { action, internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from "../../_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query, type ActionCtx, type MutationCtx, type QueryCtx } from "../../_generated/server";
 import { api, internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { v } from "convex/values";
@@ -725,6 +725,7 @@ export const releaseTeacherCredentialLockInternal = internalMutation({
     personId: v.optional(v.id("persons")),
     operationId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
     const teacher = await ctx.db.get(args.teacherId);
@@ -743,6 +744,209 @@ export const releaseTeacherCredentialLockInternal = internalMutation({
         });
       }
     }
+    return null;
+  },
+});
+
+const teacherAuthReconcileResultValidator = v.union(
+  v.object({
+    status: v.literal("acquired"),
+    operationId: v.string(),
+    authId: v.string(),
+    personId: v.union(v.id("persons"), v.null()),
+    name: v.string(),
+    email: v.string(),
+    lockExpiresAt: v.number(),
+  }),
+  v.object({ status: v.literal("busy") }),
+  v.object({ status: v.literal("skip") }),
+);
+
+type TeacherAuthReconcileResult =
+  | {
+      status: "acquired";
+      operationId: string;
+      authId: string;
+      personId: Id<"persons"> | null;
+      name: string;
+      email: string;
+      lockExpiresAt: number;
+    }
+  | { status: "busy" }
+  | { status: "skip" };
+
+const TEACHER_AUTH_RECONCILE_RETRY_DELAY_MS = 5_000;
+const TEACHER_AUTH_RECONCILE_MAX_ATTEMPTS = 13;
+
+export const beginTeacherAuthReconcileInternal = internalMutation({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.id("schools"),
+    expectedAuthId: v.string(),
+    reconcileOperationId: v.string(),
+    previousOperationId: v.optional(v.string()),
+    attemptsRemaining: v.number(),
+  },
+  returns: teacherAuthReconcileResultValidator,
+  handler: async (ctx, args): Promise<TeacherAuthReconcileResult> => {
+    const now = Date.now();
+    const teacher = await ctx.db.get(args.teacherId);
+    const person = teacher?.personId ? await ctx.db.get(teacher.personId) : null;
+
+    const releasePreviousIfOwned = async () => {
+      if (!args.previousOperationId) return;
+      if (teacher?.credentialOperationLock?.operationId === args.previousOperationId) {
+        await ctx.db.patch(teacher._id, {
+          credentialOperationLock: undefined,
+          updatedAt: now,
+        });
+      }
+      if (person?.credentialResetLock?.operationId === args.previousOperationId) {
+        await ctx.db.patch(person._id, {
+          credentialResetLock: undefined,
+          updatedAt: now,
+        });
+      }
+    };
+
+    if (
+      !teacher ||
+      teacher.schoolId !== args.schoolId ||
+      teacher.role !== "teacher" ||
+      teacher.isArchived ||
+      teacher.authId !== args.expectedAuthId
+    ) {
+      await releasePreviousIfOwned();
+      return { status: "skip" };
+    }
+
+    const unboundLogin =
+      !teacher.personId &&
+      !teacher.authTokenIdentifier &&
+      isUnboundPlaceholderAuthId(teacher.authId);
+    const sharedIdentity = await isExternallyOwnedOrSharedTeacher(ctx, teacher);
+    if (unboundLogin || sharedIdentity) {
+      await releasePreviousIfOwned();
+      return { status: "skip" };
+    }
+
+    const otherUserLockActive = Boolean(
+      teacher.credentialOperationLock &&
+        teacher.credentialOperationLock.expiresAt > now &&
+        teacher.credentialOperationLock.operationId !== args.previousOperationId,
+    );
+    const otherPersonLockActive = Boolean(
+      person?.credentialResetLock &&
+        person.credentialResetLock.expiresAt > now &&
+        person.credentialResetLock.operationId !== args.previousOperationId,
+    );
+
+    if (otherUserLockActive || otherPersonLockActive) {
+      if (args.attemptsRemaining > 0) {
+        await ctx.scheduler.runAfter(
+          TEACHER_AUTH_RECONCILE_RETRY_DELAY_MS,
+          internal.functions.academic.academicSetup.reconcileTeacherAuthIdentityInternal,
+          {
+            teacherId: args.teacherId,
+            schoolId: args.schoolId,
+            expectedAuthId: args.expectedAuthId,
+            attemptsRemaining: args.attemptsRemaining - 1,
+          },
+        );
+      }
+      return { status: "busy" };
+    }
+
+    const lockExpiresAt = now + 60_000;
+    await ctx.db.patch(teacher._id, {
+      credentialOperationLock: {
+        operationId: args.reconcileOperationId,
+        kind: "email_update",
+        expiresAt: lockExpiresAt,
+      },
+      updatedAt: now,
+    });
+    if (person) {
+      await ctx.db.patch(person._id, {
+        credentialResetLock: {
+          operationId: args.reconcileOperationId,
+          expiresAt: lockExpiresAt,
+        },
+        updatedAt: now,
+      });
+    }
+
+    return {
+      status: "acquired",
+      operationId: args.reconcileOperationId,
+      authId: teacher.authId,
+      personId: teacher.personId ?? null,
+      name: getReadableUserName(teacher).displayName,
+      email: teacher.email,
+      lockExpiresAt,
+    };
+  },
+});
+
+async function runLockedTeacherAuthReconcile(
+  ctx: ActionCtx,
+  args: {
+    teacherId: Id<"users">;
+    schoolId: Id<"schools">;
+    expectedAuthId: string;
+    previousOperationId?: string;
+    attemptsRemaining: number;
+  },
+): Promise<void> {
+  const reconcileOperationId = crypto.randomUUID();
+  const lease = await ctx.runMutation(
+    internal.functions.academic.academicSetup.beginTeacherAuthReconcileInternal,
+    {
+      teacherId: args.teacherId,
+      schoolId: args.schoolId,
+      expectedAuthId: args.expectedAuthId,
+      reconcileOperationId,
+      ...(args.previousOperationId ? { previousOperationId: args.previousOperationId } : {}),
+      attemptsRemaining: args.attemptsRemaining,
+    },
+  );
+  if (lease.status !== "acquired") {
+    return;
+  }
+
+  try {
+    if (Date.now() < lease.lockExpiresAt) {
+      const auth = createAuth(ctx);
+      const authContext = await auth.$context;
+      await authContext.internalAdapter.updateUser(lease.authId, {
+        name: lease.name,
+        email: lease.email,
+      });
+    }
+  } finally {
+    await ctx
+      .runMutation(
+        internal.functions.academic.academicSetup.releaseTeacherCredentialLockInternal,
+        {
+          teacherId: args.teacherId,
+          ...(lease.personId ? { personId: lease.personId } : {}),
+          operationId: lease.operationId,
+        },
+      )
+      .catch(() => null);
+  }
+}
+
+export const reconcileTeacherAuthIdentityInternal = internalAction({
+  args: {
+    teacherId: v.id("users"),
+    schoolId: v.id("schools"),
+    expectedAuthId: v.string(),
+    attemptsRemaining: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    await runLockedTeacherAuthReconcile(ctx, args);
     return null;
   },
 });
@@ -923,28 +1127,17 @@ export const updateTeacherProfile = action({
           }
         );
       } catch (commitError) {
-        if (authUpdated && Date.now() < lock.lockExpiresAt) {
-          // Only roll back Better Auth while this operation's exclusive lock is still live,
-          // so an expired writer can never clobber a newer concurrent writer.
-          const current = await ctx
-            .runQuery(
-              internal.functions.academic.academicSetup.getTeacherRecordInternal,
-              { teacherId: args.teacherId, schoolId: viewer.schoolId },
-            )
-            .catch(() => null);
-          if (
-            current &&
-            !current.unboundLogin &&
-            current.authId === lock.authId &&
-            Date.now() < lock.lockExpiresAt
-          ) {
-            await authContext.internalAdapter
-              .updateUser(lock.authId, {
-                name: current.name,
-                email: current.email,
-              })
-              .catch(() => null);
-          }
+        if (authUpdated) {
+          // Reconcile Better Auth back to the authoritative Convex profile under a fresh exclusive lock.
+          // If another writer currently holds the lock, reconciliation defers via scheduler instead of
+          // clobbering the active writer and heals any stale auth write once the lock clears.
+          await runLockedTeacherAuthReconcile(ctx, {
+            teacherId: args.teacherId,
+            schoolId: viewer.schoolId,
+            expectedAuthId: lock.authId,
+            previousOperationId: operationId,
+            attemptsRemaining: TEACHER_AUTH_RECONCILE_MAX_ATTEMPTS,
+          }).catch(() => null);
         }
         throw commitError;
       }
