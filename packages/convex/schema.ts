@@ -1173,6 +1173,13 @@ export default defineSchema({
       v.literal("archived")
     ),
     primarySchoolId: v.optional(v.id("schools")),
+    selfManagedCredentials: v.optional(v.boolean()),
+    credentialResetLock: v.optional(
+      v.object({
+        operationId: v.string(),
+        expiresAt: v.number(),
+      })
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1460,6 +1467,49 @@ export default defineSchema({
   }).index("by_target_user_and_operation", ["targetUserId", "operationId"])
     .index("by_school", ["schoolId"]),
 
+  // Consent-based single-use invitations for teacher, staff, and parent onboarding (#164 / #149)
+  schoolInvitations: defineTable({
+    schoolId: v.id("schools"),
+    targetUserId: v.id("users"),
+    intendedRole: v.union(v.literal("teacher"), v.literal("staff"), v.literal("parent")),
+    normalizedEmail: v.string(),
+    tokenHash: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("revoked"),
+      v.literal("expired")
+    ),
+    expiresAt: v.number(),
+    createdByUserId: v.id("users"),
+    acceptedByPersonId: v.optional(v.id("persons")),
+    acceptedAt: v.optional(v.number()),
+    revokedByUserId: v.optional(v.id("users")),
+    revokedAt: v.optional(v.number()),
+    revokeReason: v.optional(v.string()),
+    deliveryState: v.union(
+      v.literal("not_sent"),
+      v.literal("pending"),
+      v.literal("sending"),
+      v.literal("accepted"),
+      v.literal("failed"),
+      v.literal("not_configured"),
+      v.literal("suppressed")
+    ),
+    deliveryAttemptCount: v.number(),
+    deliveryProviderId: v.optional(v.string()),
+    deliveryErrorCode: v.optional(v.string()),
+    deliveryUpdatedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_school", ["schoolId"])
+    .index("by_school_and_status", ["schoolId", "status"])
+    .index("by_school_and_target_user", ["schoolId", "targetUserId"])
+    .index("by_school_target_status", ["schoolId", "targetUserId", "status"])
+    .index("by_school_and_email", ["schoolId", "normalizedEmail"])
+    .index("by_token_hash", ["tokenHash"]),
+
   profileCorrectionRequests: defineTable(correctionRequestFields)
     .index("by_school", ["schoolId"])
     .index("by_schoolId_and_state", ["schoolId", "state"])
@@ -1482,6 +1532,11 @@ export default defineSchema({
       operationId: v.string(),
       kind: v.union(v.literal("ready"), v.literal("reset")),
       committedAt: v.number(),
+    })),
+    credentialOperationLock: v.optional(v.object({
+      operationId: v.string(),
+      kind: v.union(v.literal("password_reset"), v.literal("email_update")),
+      expiresAt: v.number(),
     })),
     portalAccount: v.optional(v.object({
       state: v.union(v.literal("provisioning"), v.literal("resetting"), v.literal("provisioned"), v.literal("reconciliation_required")),
@@ -1715,6 +1770,49 @@ export default defineSchema({
     .index("by_student_and_status", ["studentId", "status"])
     .index("by_destination_student", ["destinationStudentId"])
     .index("by_source_request", ["sourceSchoolId", "requestKey"]),
+
+  // --- Within-Group Branch-to-Branch Teacher & Staff Transfers (#162) ---
+  staffBranchTransfers: defineTable({
+    groupId: v.id("schoolGroups"),
+    sourceSchoolId: v.id("schools"),
+    destinationSchoolId: v.id("schools"),
+    personId: v.id("persons"),
+    sourceUserId: v.id("users"),
+    sourceMembershipId: v.id("branchMemberships"),
+    mode: v.union(v.literal("permanent_move"), v.literal("shared_assignment")),
+    targetRole: v.union(v.literal("teacher"), v.literal("staff"), v.literal("admin")),
+    targetRoleTemplateId: v.optional(v.id("roleTemplates")),
+    targetDisplayTitle: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending_acceptance"),
+      v.literal("completed"),
+      v.literal("cancelled"),
+      v.literal("rejected")
+    ),
+    assignmentHandoffMode: v.optional(
+      v.union(v.literal("none_needed"), v.literal("reassigned"), v.literal("unassigned"))
+    ),
+    reassignedToTeacherId: v.optional(v.id("users")),
+    assignmentSummary: v.optional(v.array(v.string())),
+    initiatedByUserId: v.id("users"),
+    initiatedByPersonId: v.optional(v.id("persons")),
+    acceptedByUserId: v.optional(v.id("users")),
+    acceptedByPersonId: v.optional(v.id("persons")),
+    cancelledByUserId: v.optional(v.id("users")),
+    reason: v.optional(v.string()),
+    destinationUserId: v.optional(v.id("users")),
+    destinationMembershipId: v.optional(v.id("branchMemberships")),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_group_and_status", ["groupId", "status"])
+    .index("by_source_school", ["sourceSchoolId"])
+    .index("by_source_school_and_status", ["sourceSchoolId", "status"])
+    .index("by_source_user_and_status", ["sourceUserId", "status"])
+    .index("by_destination_school", ["destinationSchoolId"])
+    .index("by_destination_school_and_status", ["destinationSchoolId", "status"])
+    .index("by_person_and_status", ["personId", "status"]),
 
   classes: defineTable({
     schoolId: v.id("schools"),

@@ -1103,8 +1103,14 @@ function assessmentSubjectName(workspace: AssessmentWorkspace): string | null {
   return workspace.planningContext?.subjectName ?? workspace.sourceContext.subjectName;
 }
 
-async function requireStaffGenerationContext(ctx: ActionCtx) {
-  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, { capabilities: [...TEACHER_PLANNING_CAPABILITIES] });
+async function requireStaffGenerationContext(
+  ctx: ActionCtx,
+  schoolId?: Id<"schools">,
+) {
+  const viewer = await ctx.runQuery(api.functions.auth.getViewerContext, {
+    ...(schoolId ? { schoolId } : {}),
+    capabilities: [...TEACHER_PLANNING_CAPABILITIES],
+  });
   if (!viewer) {
     throw new ConvexError("Unauthorized");
   }
@@ -1129,6 +1135,7 @@ function enforceRateLimit(result: RateLimitResult): void {
 // One provider call per confirmed attempt. A failed schema/template check still settles its
 // measured tokens. Repair requires a new quote; no automatic provider replay is permitted.
 const lessonArgs = v.object({
+  schoolId: v.optional(v.id("schools")),
   outputType: lessonPlanOutputTypeValidator,
   sourceIds: v.array(v.id("knowledgeMaterials")),
   targetTopicLabel: v.optional(v.string()),
@@ -1186,19 +1193,19 @@ function checkedSources(sourceIds: Array<Id<"knowledgeMaterials">>) {
   return normalized;
 }
 async function prepareLesson(ctx: ActionCtx, args: LessonArgs): Promise<PreparedLesson> {
-  await requireStaffGenerationContext(ctx);
+  await requireStaffGenerationContext(ctx, args.schoolId);
   const sourceIds = checkedSources(args.sourceIds);
   args = { ...args, sourceIds };
   const planningContext = args.planningContext?.kind === "topic" ? args.planningContext : undefined;
   const workspace = await ctx.runQuery(api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionWorkspace,
-    { outputType: args.outputType, sourceIds, planningContext }) as LessonPlanWorkspace;
+    { ...(args.schoolId ? { schoolId: args.schoolId } : {}), outputType: args.outputType, sourceIds, planningContext }) as LessonPlanWorkspace;
   if (!workspace.canGenerate) throw new ConvexError(workspace.warnings[0] ?? "Generation blocked for the selected sources.");
   const topic = normalizeLessonPlanSnapshotTopicLabel({ workspace, targetTopicLabel: args.targetTopicLabel?.trim() || null });
   const subjectId = lessonPlanSubjectId(workspace);
   const level = lessonPlanLevel(workspace);
   if (!topic || !subjectId || !level || !workspace.template) throw new ConvexError("Select a subject, level, topic and active template before generation.");
   const excerpts = await ctx.runQuery(api.functions.academic.lessonKnowledgeLessonPlans.getTeacherInstructionSourceExcerpts,
-    { outputType: args.outputType, sourceIds, planningContext, targetTopicLabel: topic }) as SourceExcerptBundle;
+    { ...(args.schoolId ? { schoolId: args.schoolId } : {}), outputType: args.outputType, sourceIds, planningContext, targetTopicLabel: topic }) as SourceExcerptBundle;
   assertUsableExcerptMinimum(excerpts.excerpts, workspace.template.objectiveMinimums.minimumSourceMaterials);
   const sections = workspace.template.sectionDefinitions.slice().sort((a, b) => a.order - b.order);
   const context: DocumentPromptContext = {
@@ -1257,7 +1264,10 @@ async function prepareAssessment(ctx: ActionCtx, args: AssessmentArgs): Promise<
   return { kind: "assessment", args, workspace, settings, sourceIds, subjectId, level, topic, outputType, prompt, modelId, outputCap, ...bound };
 }
 async function quotePrepared(ctx: ActionCtx, prepared: PreparedLesson | PreparedAssessment, key: string): Promise<{ attemptId: Id<"usageOperationAttempts">; estimate: number; modelProfile: string; expiresAt: number; status: string; availableUnits: number; remainingAfterHold: number }> {
-  const viewer = await requireStaffGenerationContext(ctx);
+  const viewer = await requireStaffGenerationContext(
+    ctx,
+    prepared.kind === "lesson" ? prepared.args.schoolId : undefined,
+  );
   return await ctx.runMutation(internal.functions.academic.aiSpend.quote, {
     schoolId: viewer.schoolId, task: prepared.kind === "lesson" ? "teacher_lesson_plan" : "teacher_assessment",
     digest: prepared.digest, modelId: prepared.modelId, minimumUnits: prepared.minimumUnits,
@@ -1420,6 +1430,7 @@ async function finishStaged(ctx: ActionCtx, attemptId: Id<"usageOperationAttempt
     const object = normalizeGeneratedTemplateDraft(data.generation, data.sections.slice().sort((a, b) => a.order - b.order), data.topic, data.minimums);
     const documentState = renderTemplateBoundMarkdown(object);
     const saved = await ctx.runMutation(internal.functions.academic.lessonKnowledgeLessonPlans.saveGeneratedInstructionArtifactDraft, {
+      ...(data.args.schoolId ? { schoolId: data.args.schoolId } : {}),
       attemptId, artifactId: data.artifactId ?? null, expectedRevisionNumber: data.revisionNumber,
       outputType: data.args.outputType, title: object.title, documentState, plainText: markdownToPlainText(documentState),
       sourceIds: data.sourceIds, subjectId: data.subjectId, level: data.level, topicLabel: data.topic,

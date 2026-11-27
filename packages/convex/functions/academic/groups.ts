@@ -218,6 +218,7 @@ export interface UserBranchSummary {
   isHeadquarters: boolean;
   status: "active" | "suspended";
   membershipRoleTitle: string | null;
+  legacyRole: string | null;
   groupId: Id<"schoolGroups"> | null;
   groupName: string | null;
   groupSlug: string | null;
@@ -259,7 +260,8 @@ export const listUserBranches = query({
       const school = await ctx.db.get(candidate.schoolId);
       if (!school || school.status !== "active") continue;
       // Revalidate each candidate, including duplicate membership and legacy prelink checks.
-      await resolveActiveMembership(ctx, school._id);
+      const resolved = await resolveActiveMembership(ctx, school._id);
+      const resolvedUser = resolved.userId ? await ctx.db.get(resolved.userId) : null;
       const link = await ctx.db
         .query("schoolGroupBranches")
         .withIndex("by_school", (q) => q.eq("schoolId", school._id))
@@ -274,6 +276,7 @@ export const listUserBranches = query({
         membershipRoleTitle:
           candidate.displayTitle ??
           (group?.proprietorPersonId === person?._id ? "Proprietor" : "Member"),
+        legacyRole: resolvedUser?.role ?? null,
         groupId: group?.status === "active" ? group._id : null,
         groupName: group?.status === "active" ? group.name : null,
         groupSlug: group?.status === "active" ? group.slug : null,

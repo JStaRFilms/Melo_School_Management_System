@@ -26,14 +26,15 @@ async function resolveViewerAccess(ctx: QueryCtx, requestedSchoolId?: Id<"school
       (legacyMatches.length === 0 && !isTrustedLegacySubjectIssuer(identity.issuer)))
       ? null
       : await resolveLegacyViewer(ctx);
-    let schoolId = requestedSchoolId ?? legacy?.schoolId;
-    if (!schoolId && people[0]) {
+    let canonicalDefaultSchoolId: Id<"schools"> | null = null;
+    if (people[0]) {
       const memberships = await ctx.db.query("branchMemberships")
         .withIndex("by_person_and_status", (q) => q.eq("personId", people[0]._id).eq("status", "active")).take(101);
       const defaults = memberships.filter((membership) => membership.isDefaultBranch);
-      if (memberships.length <= 100 && defaults.length === 1) schoolId = defaults[0].schoolId;
-      else if (memberships.length === 1) schoolId = memberships[0].schoolId;
+      if (memberships.length <= 100 && defaults.length === 1) canonicalDefaultSchoolId = defaults[0].schoolId;
+      else if (memberships.length === 1) canonicalDefaultSchoolId = memberships[0].schoolId;
     }
+    const schoolId = requestedSchoolId ?? legacy?.schoolId ?? canonicalDefaultSchoolId ?? undefined;
     if (!schoolId) return { state: "reconciliation_required", message: "Select an explicitly reviewed branch membership" };
     const context = await resolveActiveMembership(ctx, schoolId);
     const school = await ctx.db.get(context.schoolId);
@@ -41,6 +42,7 @@ async function resolveViewerAccess(ctx: QueryCtx, requestedSchoolId?: Id<"school
     const membership = context.membershipId ? await ctx.db.get(context.membershipId) : null;
     const user = context.userId ? await ctx.db.get(context.userId) : null;
     const isAdmin = user?.role === "admin" || user?.isSchoolAdmin === true;
+    const effectiveDefaultSchoolId = legacy?.schoolId ?? canonicalDefaultSchoolId;
     return {
       state: "ready",
       branch: { schoolId: school._id, name: school.name, slug: school.slug, status: school.status ?? "active" },
@@ -59,7 +61,7 @@ async function resolveViewerAccess(ctx: QueryCtx, requestedSchoolId?: Id<"school
         legacyIsSchoolAdmin: isAdmin,
         adminParity: isAdmin ? "review_required" : "not_applicable",
         permissionManaged: await isPermissionManaged(ctx, context),
-        legacyDefaultSchoolId: legacy?.schoolId ?? null,
+        legacyDefaultSchoolId: effectiveDefaultSchoolId,
       },
       teacherAssignments: { source: "domain_checks_required", legacyTeacherId: user?.role === "teacher" ? user._id : null },
     };
