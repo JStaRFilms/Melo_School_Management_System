@@ -364,7 +364,9 @@ async function hasReleasedTupleWithoutEligibleRecord(
         .eq("studentId", student._id).eq("sessionId", session._id).eq("termId", term._id)).take(2),
     ctx.db.query("classResultExclusions")
       .withIndex("by_school_and_student_and_session_and_term", q => q.eq("schoolId", schoolId)
-        .eq("studentId", student._id).eq("sessionId", session._id).eq("termId", term._id)).take(2),
+        .eq("studentId", student._id).eq("sessionId", session._id).eq("termId", term._id))
+      .filter(q => q.eq(q.field("restoredAt"), undefined))
+      .take(2),
   ]);
   if (included.length || excluded.length > 1) return false;
   const exclusion = excluded[0];

@@ -5479,6 +5479,11 @@
         "optional": false
       },
       {
+        "path": "restoredBy",
+        "target": "users",
+        "optional": true
+      },
+      {
         "path": "schoolId",
         "target": "schools",
         "optional": false
@@ -5501,7 +5506,7 @@
     ],
     "bySchool": true,
     "storage": {},
-    "shape": "630:9f35895e:9b4e3e06"
+    "shape": "836:41d67352:af58aa90"
   },
   "classResultPublicationStudents": {
     "ownership": "direct-indexed",
