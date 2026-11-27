@@ -2099,6 +2099,9 @@ export default defineSchema({
     reason: v.string(),
     approvedBy: v.id("users"),
     approvedAt: v.number(),
+    restoredAt: v.optional(v.number()),
+    restoredBy: v.optional(v.id("users")),
+    restorationReason: v.optional(v.string()),
   }).index("by_school_and_session_and_term_and_class", ["schoolId", "sessionId", "termId", "classId"])
     .index("by_school_and_student_and_session_and_term", ["schoolId", "studentId", "sessionId", "termId"])
     .index("by_school", ["schoolId"]),

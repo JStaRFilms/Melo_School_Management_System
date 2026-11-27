@@ -14,6 +14,8 @@ const MAX_EVIDENCE = 512;
 // while checking the unique roster across the complete indexed evidence range.
 const MAX_CLASS_SUBJECT_EVIDENCE = 4096;
 const HISTORICAL_RECONCILIATION = "Historical roster needs authoritative reconciliation before release";
+const RESTORE_EXCLUSION_CONFIRMATION =
+  "I reviewed this student and want to restore them to the class release roster.";
 type Ctx = QueryCtx | MutationCtx;
 type Tuple = {
   schoolId: Id<"schools">;
@@ -29,6 +31,8 @@ type Row = {
   reason: string | null;
   reasonCode: string | null;
   canExclude: boolean;
+  canRestore: boolean;
+  activeExclusionId: Id<"classResultExclusions"> | null;
   approvedBy: Id<"users"> | null;
   issuedReportCardId: Id<"issuedReportCards"> | null;
   // Changes to any evidence, including an ambiguous second class, invalidate review.
@@ -106,17 +110,18 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     ctx.db.query("studentPromotions").withIndex("by_from_class_and_from_session", q => q.eq("fromClassId", tuple.classId).eq("fromSessionId", tuple.sessionId)).take(MAX_EVIDENCE + 1),
 
     ctx.db.query("issuedReportCards").withIndex("by_class_and_session_and_term", q => q.eq("classId", tuple.classId).eq("sessionId", tuple.sessionId).eq("termId", tuple.termId)).take(MAX_ROSTER + 1),
-    ctx.db.query("classResultExclusions").withIndex("by_school_and_session_and_term_and_class", q => q.eq("schoolId", tuple.schoolId).eq("sessionId", tuple.sessionId).eq("termId", tuple.termId).eq("classId", tuple.classId)).take(MAX_ROSTER + 1),
+    ctx.db.query("classResultExclusions").withIndex("by_school_and_session_and_term_and_class", q => q.eq("schoolId", tuple.schoolId).eq("sessionId", tuple.sessionId).eq("termId", tuple.termId).eq("classId", tuple.classId)).take(MAX_EVIDENCE + 1),
   ]);
   bounded(students, MAX_ROSTER);
   bounded(promotedTo, MAX_EVIDENCE);
   bounded(promotedFrom, MAX_EVIDENCE);
   bounded(issued, MAX_ROSTER);
-  bounded(exclusions, MAX_ROSTER);
+  bounded(exclusions, MAX_EVIDENCE);
+  const activeExclusions = exclusions.filter(e => e.restoredAt === undefined);
   const candidates = new Set<Id<"students">>(students.map(s => s._id));
   for (const promotion of [...promotedTo, ...promotedFrom]) candidates.add(promotion.studentId);
   for (const report of issued) candidates.add(report.studentId);
-  for (const exclusion of exclusions) candidates.add(exclusion.studentId);
+  for (const exclusion of activeExclusions) candidates.add(exclusion.studentId);
   if (candidates.size > MAX_ROSTER) throw new ConvexError("Roster exceeds atomic review limit; reconcile before release");
   const budget = { remaining: MAX_CLASS_SUBJECT_EVIDENCE };
   await readClassSubjectEvidence(
@@ -145,6 +150,7 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     const termReports = bounded(await ctx.db.query("issuedReportCards")
       .withIndex("by_student_session_term", q => q.eq("studentId", studentId).eq("sessionId", tuple.sessionId).eq("termId", tuple.termId)).take(MAX_ROSTER + 1), MAX_ROSTER);
     const ownExclusions = exclusions.filter(e => e.studentId === studentId);
+    const activeOwnExclusions = ownExclusions.filter(e => e.restoredAt === undefined);
     const user = student ? await ctx.db.get(student.userId) : null;
     const classEvidence = new Set<string>([
       ...ownPromotions.filter(p => p.toSessionId === tuple.sessionId).map(p => String(p.toClassId)),
@@ -177,14 +183,14 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     const matching = termReports.filter(r => r.classId === tuple.classId);
     if (!reason && matching.length !== 1) reason = matching.length ? "Conflicting report records" : "Report not certified";
     if (!reason && !validIssued(matching[0], tuple, studentId)) reason = "Certified report or historical grading policy needs review";
-    if (ownExclusions.length > 1) reason = "Conflicting exclusions require review";
+    if (activeOwnExclusions.length > 1) reason = "Conflicting exclusions require review";
     // Only the archived current-class case may resolve absent academic proof.
     // Class/tenant conflicts and duplicate reports or exclusions still block it.
     const unexcludable = !student || student.schoolId !== tuple.schoolId || classEvidence.size > 1 ||
       ownPromotions.some(p => p.schoolId !== tuple.schoolId) || ownSelections.some(s => s.schoolId !== tuple.schoolId) ||
       termReports.some(r => r.schoolId !== tuple.schoolId) || matching.length > 1 ||
-      ((!promotionProof && !currentProof || !enrollmentProof) && !archivedCurrentProof) || ownExclusions.length > 1;
-    const exclusion = ownExclusions.length === 1 ? ownExclusions[0] : null;
+      ((!promotionProof && !currentProof || !enrollmentProof) && !archivedCurrentProof) || activeOwnExclusions.length > 1;
+    const exclusion = activeOwnExclusions.length === 1 ? activeOwnExclusions[0] : null;
     if (exclusion && unexcludable) reason = "Enrollment or exclusion needs review";
     const status: Row["status"] = exclusion && !unexcludable ? "excluded" : reason ? "blocked" : "certified";
     const reasonCode = status === "excluded" ? "excluded" : reason ? ({
@@ -202,6 +208,8 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     rows.push({ studentId, name: user?.name ?? student?.admissionNumber ?? "Unknown student", admissionNumber: student?.admissionNumber ?? "Unknown",
       status, reason: status === "excluded" ? exclusion!.reason : reason, reasonCode,
       canExclude: status !== "excluded" && !unexcludable,
+      canRestore: activeOwnExclusions.length === 1,
+      activeExclusionId: activeOwnExclusions.length === 1 ? activeOwnExclusions[0]._id : null,
       approvedBy: status === "excluded" ? exclusion!.approvedBy : null,
       issuedReportCardId: status === "certified" ? matching[0]._id : null,
       evidence: JSON.stringify([student, ownPromotions, ownSelections, ownRecords, termReports, ownExclusions]),
@@ -216,7 +224,7 @@ async function buildReadiness(ctx: Ctx, tuple: Tuple) {
     school, session, term, klass, rows,
   ])));
   const reviewKey = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
-  return { rows, eligibleCount, certifiedCount, excludedCount, ready, reviewKey };
+  return { rows, eligibleCount, certifiedCount, excludedCount, ready, reviewKey, exclusionHistoryCount: exclusions.length };
 }
 
 // Omitted schoolId is retained for older default-branch callers. The Admin
@@ -383,16 +391,19 @@ export const getClassReadiness = query({
         ctx.db.query("classResultPublicationStudents").withIndex("by_publication_and_student", q =>
           q.eq("publicationId", released._id)).take(MAX_ROSTER + 1),
         ctx.db.query("classResultExclusions").withIndex("by_school_and_session_and_term_and_class", q =>
-          q.eq("schoolId", schoolId).eq("sessionId", args.sessionId).eq("termId", args.termId).eq("classId", args.classId)).take(MAX_ROSTER + 1),
+          q.eq("schoolId", schoolId).eq("sessionId", args.sessionId).eq("termId", args.termId).eq("classId", args.classId))
+          .filter(q => q.eq(q.field("restoredAt"), undefined)).take(MAX_ROSTER + 1),
       ]);
       bounded(included, MAX_ROSTER);
       bounded(excluded, MAX_ROSTER);
       const rows = await Promise.all([...included.map(i => ({ studentId: i.studentId,
         status: "certified" as const, reason: null as string | null, reasonCode: null as string | null,
-        canExclude: false, approvedBy: null as Id<"users"> | null })),
+        canExclude: false, canRestore: false, activeExclusionId: null as Id<"classResultExclusions"> | null,
+        approvedBy: null as Id<"users"> | null })),
         ...excluded.map(e => ({ studentId: e.studentId, status: "excluded" as const,
           reason: e.reason as string | null, reasonCode: "excluded" as string | null,
-          canExclude: false, approvedBy: e.approvedBy as Id<"users"> | null }))]
+          canExclude: false, canRestore: false, activeExclusionId: null as Id<"classResultExclusions"> | null,
+          approvedBy: e.approvedBy as Id<"users"> | null }))]
         .map(async row => {
           const student = await ctx.db.get(row.studentId);
           const [user, approvedByName] = await Promise.all([
@@ -410,7 +421,7 @@ export const getClassReadiness = query({
         certifiedCount: released.certifiedCount, excludedCount: released.excludedCount,
         ready: false, reviewKey: null };
     }
-    const { rows, ...readiness } = await buildReadiness(ctx, tuple);
+    const { rows, exclusionHistoryCount: _exclusionHistoryCount, ...readiness } = await buildReadiness(ctx, tuple);
     // Evidence includes assessment and issued documents for the digest. It is
     // never part of the staff readiness payload, which contains no marks.
     return { released, ...readiness, rows: await Promise.all(rows.map(async ({ evidence, issuedReportCardId, approvedBy, ...row }) => ({
@@ -434,6 +445,9 @@ export const excludeStudent = mutation({
     if (!row?.canExclude) {
       throw new ConvexError("Student enrollment needs review before exclusion");
     }
+    if (readiness.exclusionHistoryCount >= MAX_EVIDENCE) {
+      throw new ConvexError("Exclusion history limit reached; reconcile before adding another exclusion");
+    }
     const actor = await resolveActiveMembership(ctx, schoolId);
     const approvedAt = Date.now();
     await ctx.db.insert("classResultExclusions", { ...tuple, studentId: args.studentId, reason, approvedBy: userId, approvedAt });
@@ -442,6 +456,78 @@ export const excludeStudent = mutation({
       action: "result_release.exclude", targetType: "students", targetId: args.studentId,
       outcome: "success", safeSummary: "Reasoned class result exclusion approved (reason stored on exclusion record)", alertTier: "tier1_critical" });
     return approvedAt;
+  },
+});
+
+export const restoreExcludedStudent = mutation({
+  args: {
+    ...tupleArgs,
+    studentId: v.id("students"),
+    exclusionId: v.id("classResultExclusions"),
+    reason: v.string(),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { schoolId, userId, role } = await getAuthenticatedSchoolMembership(ctx, { schoolId: args.schoolId });
+    await assertAdminForSchool(ctx, userId, schoolId, role);
+    const tuple = { schoolId, sessionId: args.sessionId, termId: args.termId, classId: args.classId };
+    await assertTuple(ctx, tuple);
+    if (await publicationFor(ctx, tuple)) throw new ConvexError("Released roster cannot be changed");
+    if (args.confirmation !== RESTORE_EXCLUSION_CONFIRMATION) {
+      throw new ConvexError("Confirm restoring this student to the class release roster");
+    }
+    const reason = args.reason.trim();
+    if (reason.length < 10 || reason.length > 500) {
+      throw new ConvexError("Provide a specific reason (10-500 characters)");
+    }
+    const student = await ctx.db.get(args.studentId);
+    if (!student || student.schoolId !== schoolId) {
+      throw new ConvexError("Student enrollment needs review");
+    }
+    // Reading the same tuple exclusion index range as releaseClassResults serializes
+    // pre-release restoration against concurrent class publication under Convex OCC.
+    const exclusions = bounded(await ctx.db.query("classResultExclusions")
+      .withIndex("by_school_and_session_and_term_and_class", q =>
+        q.eq("schoolId", tuple.schoolId).eq("sessionId", tuple.sessionId)
+          .eq("termId", tuple.termId).eq("classId", tuple.classId))
+      .take(MAX_EVIDENCE + 1), MAX_EVIDENCE);
+    const activeForStudent = exclusions.filter(
+      e => e.studentId === args.studentId && e.restoredAt === undefined,
+    );
+    if (activeForStudent.length === 0) {
+      throw new ConvexError("Student does not have an active exclusion for this class release");
+    }
+    if (activeForStudent.length > 1) {
+      throw new ConvexError("Conflicting exclusions require review");
+    }
+    const activeExclusion = activeForStudent[0];
+    if (activeExclusion._id !== args.exclusionId) {
+      throw new ConvexError("Exclusion changed since review; reload and review the latest exclusion");
+    }
+    const actor = await resolveActiveMembership(ctx, schoolId);
+    const restoredAt = Date.now();
+    await ctx.db.patch(activeExclusion._id, {
+      restoredAt,
+      restoredBy: userId,
+      restorationReason: reason,
+    });
+    await recordAuditEventHelper(ctx, {
+      schoolId,
+      actorKind: "user",
+      actorPersonId: actor.personId,
+      actorMembershipId: actor.membershipId,
+      actorEmailSnapshot: role,
+      module: "academic",
+      action: "result_release.restore_exclusion",
+      targetType: "students",
+      targetId: args.studentId,
+      outcome: "success",
+      safeSummary: "Pre-release class result exclusion reversed (original exclusion and reversal reasons stored on exclusion record)",
+      beforeSummary: `exclusionId=${activeExclusion._id} approvedAt=${activeExclusion.approvedAt}`,
+      afterSummary: `exclusionId=${activeExclusion._id} restoredAt=${restoredAt}`,
+      alertTier: "tier1_critical",
+    });
+    return restoredAt;
   },
 });
 
