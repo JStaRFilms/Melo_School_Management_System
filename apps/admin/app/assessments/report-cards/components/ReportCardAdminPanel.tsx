@@ -355,7 +355,7 @@ function ReportCardAdminPanelContent({ studentId, sessionId, termId, reportCard,
                 Cumulative annual computation cannot complete because {missingDataSubjects.length} subject{missingDataSubjects.length === 1 ? " is" : "s are"} missing scores from previous terms.
               </p>
               <p className="mt-2 text-xs font-semibold text-rose-800">
-                Printing stays blocked until the totals are backfilled or an audited manual calculation is approved.
+                Printing stays blocked until missing prior-term totals are entered or a manual calculation is approved.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link

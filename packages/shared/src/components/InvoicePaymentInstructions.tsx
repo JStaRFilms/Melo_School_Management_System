@@ -55,8 +55,8 @@ export function InvoicePaymentInstructions({
         </dl>
       ) : (
         <p>
-          Payment instructions unavailable for this issued invoice. Contact the
-          school; current bank settings have not been substituted.
+          Bank transfer details are unavailable for this invoice. Contact the
+          school for payment instructions.
         </p>
       )}
     </section>

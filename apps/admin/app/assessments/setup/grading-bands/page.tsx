@@ -363,7 +363,7 @@ function GradingBandsContent({
           {/* Bottom Line: Action Buttons */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
             <p className="hidden md:block text-xs font-medium text-slate-500 truncate">
-              Colors supplement scores and labels. Light hues use readable display ink; issued snapshots do not change.
+              Changes apply to new and uncertified reports only. Already-issued report cards do not change.
             </p>
 
             <div className="grid grid-cols-1 min-[360px]:grid-cols-3 sm:flex sm:items-center gap-2.5 w-full sm:w-auto shrink-0">

@@ -294,14 +294,14 @@ export function ClassAggregationManager({
 
         <div className="grid gap-5">
            <div className="space-y-1.5">
-             <p className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 ml-1">Target Umbrella</p>
+             <p className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 ml-1">Combined Subject</p>
              <div className="relative">
                <select
                  value={umbrellaSubjectId}
                  onChange={(e) => setUmbrellaSubjectId(e.target.value)}
                  className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-950 outline-none transition-all focus:border-slate-950"
                >
-                 <option value="">Select subject index</option>
+                 <option value="">Select subject</option>
                  {availableSubjects.map((subject) => (
                    <option key={subject.subjectId} value={subject.subjectId}>
                      {subject.subjectName}
@@ -331,17 +331,17 @@ export function ClassAggregationManager({
                     strategy === "raw_combined_normalized" ? "bg-white text-slate-950 shadow-sm" : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  Raw Sync
+                  Raw Combined
                 </button>
              </div>
            </div>
 
            <div className="space-y-3">
              <div className="flex items-center justify-between">
-                <p className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 ml-1">Component Buffer</p>
+                <p className="text-[9px] font-bold uppercase tracking-tighter text-slate-400 ml-1">Component Subjects</p>
                 {strategy === "fixed_contribution" && (
                   <p className={`text-[9px] font-bold uppercase tracking-widest ${componentContributionTotal === 100 ? "text-emerald-500" : "text-slate-400"}`}>
-                    Sync: {componentContributionTotal}/100
+                    Total: {componentContributionTotal}%
                   </p>
                 )}
              </div>
@@ -384,7 +384,7 @@ export function ClassAggregationManager({
           className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-white text-[11px] font-bold uppercase tracking-[0.2em] shadow-xl shadow-slate-950/20 transition-all hover:bg-slate-900 active:scale-[0.98] disabled:opacity-50"
         >
           <Save className="h-4 w-4 text-white/50" />
-          {isSaving ? "Synchronizing..." : editingAggregationId ? "Sync Modification" : "Publish Aggregation"}
+          {isSaving ? "Saving..." : editingAggregationId ? "Save Changes" : "Save Combined Subject"}
         </button>
       </AdminSurface>
 

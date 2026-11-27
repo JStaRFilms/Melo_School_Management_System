@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Save, RotateCcw, ShieldCheck, FilePenLine } from "lucide-react";
+import { Save, RotateCcw, ShieldCheck } from "lucide-react";
 import { StatGroup } from "@/components/ui/StatGroup";
 
 export type HistoricalBackfillStudent = {
@@ -348,15 +348,12 @@ export function HistoricalBackfillWorkspace({
       <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-              Audit-safe backfill
-            </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">
-              Live assessment rows stay untouched
+              Current CA and exam sheets are not changed
             </div>
           </div>
           <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600">
-            Enter prior-term totals for {className} in {sessionName} / {termName}. Each saved cell overwrites only the historical snapshot for that student and subject; it never changes the regular CA/exam sheet.
+            Enter prior-term totals for {className} ({sessionName}, {termName}). Saving updates prior-term totals only and does not change regular CA or exam sheets.
           </p>
         </div>
 
@@ -477,7 +474,7 @@ export function HistoricalBackfillWorkspace({
                       {snapshot ? (
                         <div className="text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                           <p>Original {snapshot.total}</p>
-                          <p>{snapshot.source.replace("_", " ")}</p>
+                          <p>{snapshot.source === "manual_backfill" ? "Manual entry" : "Imported"}</p>
                         </div>
                       ) : null}
                     </div>
@@ -492,9 +489,9 @@ export function HistoricalBackfillWorkspace({
       <div className="sticky bottom-4 z-10 rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-[0_20px_60px_rgba(15,23,42,0.14)] backdrop-blur">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-1">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Commit protocol</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Save changes</p>
             <p className="text-sm font-medium text-slate-600">
-              Saving only writes historical totals. It never edits the live term assessment sheet.
+              Saving updates prior-term totals only. Regular CA and exam sheets are not changed.
             </p>
             <p className="text-xs font-semibold text-slate-500">
               {overwriteCount} cell{overwriteCount === 1 ? "" : "s"} will be overwritten on save.
@@ -518,7 +515,7 @@ export function HistoricalBackfillWorkspace({
               className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-xs font-black uppercase tracking-[0.16em] text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Save className="h-3.5 w-3.5" />
-              {isSaving ? "Saving..." : "Save backfill"}
+              {isSaving ? "Saving..." : "Save totals"}
             </button>
           </div>
         </div>
@@ -529,10 +526,6 @@ export function HistoricalBackfillWorkspace({
           <Link href="/assessments/report-cards" className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 transition hover:bg-emerald-100">
             Review report cards
           </Link>
-          <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
-            <FilePenLine className="mr-1 inline-block h-3.5 w-3.5" />
-            Audit trail stays in the historical snapshot table
-          </span>
         </div>
       </div>
     </div>

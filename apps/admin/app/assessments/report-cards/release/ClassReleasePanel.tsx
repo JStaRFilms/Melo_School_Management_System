@@ -83,7 +83,7 @@ export function ClassReleasePanel({ schoolId, selection, context }: { schoolId: 
           {context.canExclude && !released && row.canExclude && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setReason(""); setChecked(false); setError(""); setDialog("exclude"); }}>Exclude student</button>}
           {context.canExclude && !released && row.canRestore && row.activeExclusionId && <button type="button" className={button} onClick={() => { setStudentId(row.studentId); setOpenedExclusionId(row.activeExclusionId); setReason(""); setChecked(false); setError(""); setDialog("restore"); }}>Undo exclusion</button>}</div>
       </li>)}</ul></>}
-      {released && <p className="mt-4">Not included in this release. A reviewed amendment is required for later additions or corrections.</p>}
+      {released && <p className="mt-4">This release keeps the original roster and reports. Later additions or corrections require a reviewed amendment.</p>}
     </div>}
     <footer className="space-y-2">{(context.canRelease || context.releasesPaused) && !released && <><button type="button" className={button} disabled={!!context.releasesPaused || !context.canRelease || !readiness?.ready || !readiness.reviewKey || !current || pending} onClick={() => { setOpenedKey(readiness?.reviewKey ?? null); setChecked(false); setError(""); setDialog("release"); }}>Review release</button>
       {(context.releasesPaused || !readiness?.ready || !current) && <p role="status">{context.releasesPaused ? "New class releases are paused for this school." : !readiness ? "Loading readiness..." : !current ? "The roster changed. Review the updated list before releasing." : blocked ? `${blocked} students need attention.` : "Roster needs review."}</p>}</>}</footer>

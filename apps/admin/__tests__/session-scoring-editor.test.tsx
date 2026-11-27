@@ -80,7 +80,7 @@ describe("session scoring editor", () => {
   it("pins unchanged legacy weights through the full scan flow", async () => {
     const view = render(<SessionScoringEditor sessionId={"session1" as never} />);
     expect(screen.getByRole("button", { name: "Scan all session scores" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save these legacy weights/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Save these weights for this session/ }));
     fireEvent.click(screen.getByRole("button", { name: "Scan all session scores" }));
     await waitFor(() => expect(state.calls).toHaveLength(1));
     expect(state.calls[0].args).toMatchObject({ policy: original, expectedVersion: 0 });
@@ -97,7 +97,7 @@ describe("session scoring editor", () => {
     expect(screen.getByRole("alert").textContent).toContain("Your draft is intact");
     expect((screen.getByLabelText("Exam raw maximum") as HTMLInputElement).value).toBe("50");
     expect(screen.getByRole("button", { name: "Scan all session scores" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: /Rebase draft on version 1/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep draft with latest policy/ }));
     expect((screen.getByLabelText("Exam raw maximum") as HTMLInputElement).value).toBe("50");
     fireEvent.click(screen.getByRole("button", { name: "Scan all session scores" }));
     await waitFor(() => expect(state.calls).toHaveLength(1));
@@ -117,7 +117,7 @@ describe("session scoring editor", () => {
     expect(screen.queryByRole("button", { name: "Start regrade" })).toBeNull();
     state.job = null;
     view.rerender(<SessionScoringEditor sessionId={"session1" as never} />);
-    fireEvent.click(screen.getByRole("checkbox", { name: /Save these legacy weights/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Save these weights for this session/ }));
     fireEvent.click(screen.getByRole("button", { name: "Scan all session scores" }));
     await waitFor(() => expect(state.calls[0].args).toMatchObject({ expectedVersion: 0, expectedPolicy: state.current.policy, policy: state.current.policy }));
   });
@@ -130,7 +130,7 @@ describe("session scoring editor", () => {
     expect(screen.getByRole("alert").textContent).toContain("Your draft is intact");
     expect((screen.getByLabelText("Exam raw maximum") as HTMLInputElement).value).toBe("50");
     expect(screen.getByRole("button", { name: "Scan all session scores" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: /Rebase draft on version 0/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Keep draft with latest policy/ }));
     fireEvent.click(screen.getByRole("button", { name: "Scan all session scores" }));
     await waitFor(() => expect(state.calls[0].args).toMatchObject({ expectedVersion: 0, expectedPolicy: state.current.policy, policy: { examRawMax: 50 } }));
   });
@@ -150,7 +150,7 @@ describe("session scoring editor", () => {
     const view = render(<SessionScoringEditor sessionId={"session1" as never} />);
     state.current = { policy: original, version: 0, source: "session" };
     view.rerender(<SessionScoringEditor sessionId={"session1" as never} />);
-    await waitFor(() => expect(screen.queryByRole("checkbox", { name: /Save these legacy weights/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: /Save these weights for this session/ })).toBeNull());
   });
 
   it("blocks invalid counts, lists sample references and allows cancelling", async () => {

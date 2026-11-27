@@ -377,7 +377,7 @@ function AdminReportCardPageContent({ schoolId, resetTuple }: { schoolId: Id<"sc
           <div className="rc-no-print mx-auto px-4 py-8 md:px-6" style={{ maxWidth: "210mm" }}>
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-sm font-semibold text-rose-900">
               <p>
-                Full-class print is blocked for {blockedClassPrintCount} report card{blockedClassPrintCount === 1 ? "" : "s"} until missing prior-term totals are backfilled.
+                Full-class print is blocked for {blockedClassPrintCount} report card{blockedClassPrintCount === 1 ? "" : "s"} until missing prior-term totals are entered.
               </p>
               <Link
                 href={`/assessments/report-cards/backfill?sessionId=${sessionId}&classId=${resolvedClassId}`}

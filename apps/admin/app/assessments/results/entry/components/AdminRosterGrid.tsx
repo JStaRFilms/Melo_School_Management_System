@@ -96,10 +96,10 @@ export function AdminRosterGrid({
         <div className="flex items-center justify-between px-2">
           <div className="flex flex-col">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] leading-none mb-1">
-              Active Protocol
+              Score entry
             </span>
-            <span className="text-[11px] font-bold text-slate-900 uppercase">
-              {roster.filter((s) => s.assessmentRecord).length} / {roster.length} Synced
+            <span className="text-[11px] font-bold text-slate-900">
+              {roster.filter((s) => s.assessmentRecord).length} of {roster.length} students have score records
             </span>
           </div>
           <div className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest">

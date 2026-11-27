@@ -102,8 +102,8 @@ export function ExtrasWorkspace({
   if (!hasSelection) {
     return <StateCard
       icon={<Info className="text-slate-400" size={32} />}
-      title="Entry Protocol Required"
-      message="Choose a session, term, class, and student from the sidebar to begin administrative override."
+      title="Select a Student"
+      message="Choose a session, term, class, and student from the sidebar to edit report fields."
     />;
   }
 
@@ -111,7 +111,7 @@ export function ExtrasWorkspace({
     return <StateCard
       icon={<Loader2 className="text-indigo-500 animate-spin" size={32} />}
       title="Loading Records"
-      message="Retrieving report extras and bundle configurations from the database..."
+      message="Loading report fields..."
     />;
   }
 
@@ -149,7 +149,7 @@ export function ExtrasWorkspace({
             <h2 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">{entry?.studentName}</h2>
             <div className="mt-1 flex items-center gap-2">
               <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Override Active</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Admin Editing</p>
             </div>
           </div>
         </div>
@@ -220,7 +220,7 @@ export function ExtrasWorkspace({
              success ? <Banner tone="success" message={success} /> :
              !hasEditableFields ? <Banner tone="info" message="Read-only workspace." /> :
              <p className="px-1 text-[10px] font-black uppercase tracking-wider text-slate-400 leading-tight">
-               Review and commit override data to persist changes
+               Save your changes before switching students
              </p>
             }
           </div>
@@ -241,7 +241,7 @@ export function ExtrasWorkspace({
               className="flex h-9 md:h-10 flex-[2] md:flex-none items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 md:px-6 text-[10px] font-black uppercase tracking-widest text-white hover:bg-slate-800 transition-all disabled:opacity-30 shadow-lg shadow-slate-900/20"
             >
               {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              {isSaving ? "Saving..." : "Commit Override"}
+              {isSaving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </div>

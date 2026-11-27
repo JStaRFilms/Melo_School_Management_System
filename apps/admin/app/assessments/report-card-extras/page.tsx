@@ -132,10 +132,10 @@ function AdminReportCardExtrasContent({ schoolId, resetTuple, canEdit }: {
 
             <div className="pt-4 border-t border-slate-200/60 p-1">
               <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                Override Protocol
+                Admin Access
               </h4>
               <p className="mt-1 text-[10px] leading-relaxed font-medium text-slate-400">
-                Admin overrides bypass standard lock periods and entry windows. Use with caution.
+                Admin edits bypass standard lock periods and entry windows. Use with caution.
               </p>
             </div>
           </div>
@@ -145,9 +145,9 @@ function AdminReportCardExtrasContent({ schoolId, resetTuple, canEdit }: {
         <main className="flex-1 lg:min-h-0 lg:h-full lg:overflow-y-auto custom-scrollbar">
           <div className="max-w-[1200px] mx-auto px-4 py-6 md:px-8 md:py-8 space-y-6 md:space-y-8 pb-8">
             <AdminHeader
-              label="Academic Engine"
-              title="Report Extras"
-              description="Administrative cockpit for overriding report card extras like behavior, remarks, and custom metrics."
+              label="Assessments"
+              title="Report Fields"
+              description="Edit conduct, skills, remarks, and other report card fields."
             />
 
             {/* High-Density Context Ribbon */}
