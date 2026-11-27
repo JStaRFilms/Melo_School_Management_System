@@ -63,6 +63,10 @@ export type ReportCardSheetData = {
     gradeLetter: string;
     remark: string;
     isRecorded: boolean;
+    pendingComponentSubjects?: Array<{
+      subjectId: string;
+      subjectName: string;
+    }>;
     calculationMode?: "standalone" | "cumulative_annual";
     currentTermTotal?: number | null;
     firstTermTotal?: number | null;
