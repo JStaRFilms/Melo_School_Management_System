@@ -64,7 +64,7 @@ function TopicMaterialCard({ material }: { material: PortalTopicMaterial }) {
       ? "Open YouTube resource"
       : material.sourceType === "file_upload"
         ? "Open original file"
-        : "Open source proof";
+        : "Open resource";
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -101,24 +101,15 @@ function TopicMaterialCard({ material }: { material: PortalTopicMaterial }) {
           </a>
         ) : null}
 
-        {hasProofPreview || material.sourceProof.originalFileNotice ? (
+        {hasProofPreview ? (
           <details className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <summary className="cursor-pointer list-none text-sm font-semibold text-slate-800 [&::-webkit-details-marker]:hidden">
-              Read extracted proof
+              Read text preview
             </summary>
             <div className="mt-3 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                {material.sourceProof.extractedTextChunkCount} extracted chunk(s)
+              <p className="text-sm leading-6 text-slate-600">
+                {material.sourceProof.extractedTextPreview}
               </p>
-              {material.sourceProof.extractedTextPreview ? (
-                <p className="text-sm leading-6 text-slate-600">
-                  {material.sourceProof.extractedTextPreview}
-                </p>
-              ) : (
-                <p className="text-sm leading-6 text-slate-500">
-                  {material.sourceProof.originalFileNotice ?? "No extracted text proof is available yet."}
-                </p>
-              )}
               <p className="text-xs leading-5 text-slate-400">
                 {material.sourceProof.originalFileContentType ? `${material.sourceProof.originalFileContentType} • ` : ""}
                 {material.sourceProof.originalFileSize ? `${Math.max(1, Math.round(material.sourceProof.originalFileSize / 1024))} KB` : "No file size recorded"}
@@ -130,7 +121,7 @@ function TopicMaterialCard({ material }: { material: PortalTopicMaterial }) {
 
       {!hasOriginalFile && material.sourceType === "file_upload" ? (
         <p className="mt-3 text-sm leading-6 text-amber-700">
-          This file-backed resource is approved, but the original file is not available right now.
+          This resource is approved, but the file is currently unavailable.
         </p>
       ) : null}
     </article>
@@ -241,7 +232,7 @@ export function TopicPage({ topicId }: { topicId: string }) {
 
       <section className="mt-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Upload a supplemental resource</h2>
-        <p className="mt-1 text-sm text-slate-600">Uploads stay scoped to your class and return to review before anyone can approve them for the topic.</p>
+        <p className="mt-1 text-sm text-slate-600">Uploaded files must be approved before they appear for your class.</p>
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <input disabled={!canUpload} className="w-full rounded-xl border border-slate-300 px-3 py-2 disabled:opacity-50" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Resource title" />
           <textarea disabled={!canUpload} className="w-full rounded-xl border border-slate-300 px-3 py-2 disabled:opacity-50" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description (optional)" rows={3} />
@@ -254,8 +245,7 @@ export function TopicPage({ topicId }: { topicId: string }) {
           <button disabled={!canUpload || busy} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
             {busy ? "Submitting…" : "Submit for review"}
           </button>
-          {!canUpload ? <p className="text-sm text-amber-700">Uploads are unavailable because the current storage transport cannot guarantee tenant ownership, quota reservation, or abandoned-upload cleanup. Existing approved resources remain available.</p> : null}
-          <p className="text-sm text-slate-500">File intake will remain disabled until secure transport is approved.</p>
+          {!canUpload ? <p className="text-sm text-amber-700">File uploads are currently unavailable. Existing approved resources remain available above.</p> : null}
           {status ? <p className="text-sm text-slate-600">{status}</p> : null}
         </form>
       </section>

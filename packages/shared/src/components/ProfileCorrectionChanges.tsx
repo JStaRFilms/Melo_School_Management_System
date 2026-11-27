@@ -13,7 +13,7 @@ function displayValue(field: Change["field"], value: Change["before"]) {
     try {
       const address: unknown = JSON.parse(value);
       if (address && typeof address === "object" && "mode" in address && "effective" in address) {
-        const mode = address.mode === "residential" ? "Household inheritance" : address.mode === "different" ? "Personal override" : "Recorded address";
+        const mode = address.mode === "residential" ? "Household address" : address.mode === "different" ? "Different address" : "Recorded address";
         return `${mode}: ${typeof address.effective === "string" ? address.effective : "Not recorded"}`;
       }
     } catch { /* Older evidence may contain a plain address. */ }

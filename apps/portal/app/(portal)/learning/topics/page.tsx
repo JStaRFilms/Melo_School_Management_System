@@ -76,7 +76,7 @@ export default function PortalLearningTopicsPage() {
         <p className="text-sm font-medium text-slate-500">{data.className}</p>
         <h1 className="text-3xl font-bold tracking-tight text-slate-950">Learning topics</h1>
         <p className="max-w-2xl text-sm leading-6 text-slate-600">
-          Open the approved learning topics prepared for your class. Each topic page shows approved resources and accepts class-scoped supplemental uploads when enabled.
+          Browse approved study topics and resources for your class.
         </p>
       </div>
 
@@ -84,9 +84,6 @@ export default function PortalLearningTopicsPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Available topics</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Grouped for {data.className} by subject, then sorted by topic title.
-            </p>
           </div>
           <div className="w-full max-w-xl space-y-2">
             <label htmlFor="portal-topic-search" className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
@@ -147,7 +144,7 @@ export default function PortalLearningTopicsPage() {
                         <div>
                           <h3 className="text-lg font-semibold text-slate-950">{topic.title}</h3>
                           <p className="mt-1 text-sm text-slate-600">
-                            {topic.summary ?? "Open this topic to review approved materials and upload class-scoped supplemental resources."}
+                            {topic.summary ?? "Open this topic to view approved study materials."}
                           </p>
                         </div>
                         <span className="inline-flex text-sm font-semibold text-slate-900">Open topic →</span>

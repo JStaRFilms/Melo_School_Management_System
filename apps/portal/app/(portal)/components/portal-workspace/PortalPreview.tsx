@@ -22,8 +22,8 @@ export function PortalPreview({ mode }: { mode: PortalWorkspaceMode }) {
           </h1>
         </div>
         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-          Connect Convex to load live portal data. This fallback keeps the
-          portal build stable until the environment is configured.
+          Portal data is temporarily unavailable. Please check back later or
+          contact your school.
         </div>
       </div>
     </div>

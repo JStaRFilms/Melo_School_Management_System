@@ -218,7 +218,7 @@ function MockExamEntryPage({ selection }: { selection: SelectionState }) {
       subjects={subjects}
       sheetData={sheetData}
       isLoadingSheet={false}
-      modeNotice="Preview mode is active because NEXT_PUBLIC_CONVEX_URL is not configured yet. You can still test the selector flow, /40 vs /60 rendering, validation, and save interactions locally."
+      modeNotice="Preview mode is active. Changes made here are for testing and will not be saved."
       onSaveRecords={handleSaveRecords}
     />
   );

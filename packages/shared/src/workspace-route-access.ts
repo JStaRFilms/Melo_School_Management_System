@@ -25,7 +25,7 @@ export function getLegacyWorkspaceAccess(
   const compatibility = access.compatibility;
   if (compatibility.mode === "platform") return { state: "forbidden", message: "Platform governance does not authorize school operations." };
   if (!compatibility.legacyUserId || compatibility.legacyDefaultSchoolId !== access.branch.schoolId) {
-    return { state: "reconciliation_required", message: "This route still requires a reviewed legacy default-school account. Branch-scoped access is not available here yet. Contact your school administrator." };
+    return { state: "reconciliation_required", message: "We could not verify your access to this page for the selected branch. Contact your school administrator." };
   }
   // Preserve existing shell admission; individual admin-flag actions remain domain checks.
   const isAdmin = compatibility.legacyRole === "admin";
@@ -145,7 +145,7 @@ export function getWorkspaceCapabilityDenial(workspace: WorkspaceKey, path: stri
   // Historical shell compatibility applies only with positive server evidence of no RBAC cutover.
   if (untouched) return null;
   const rule = getCapabilityRule(workspace, path);
-  if (!rule) return untouched ? null : { state: "forbidden", message: "This legacy route has no reviewed capability contract for managed accounts." };
+  if (!rule) return untouched ? null : { state: "forbidden", message: "This page is not available for your account type. Contact your school administrator for access." };
   return lacksRuleCapability(workspace, path, access)
     ? { state: "forbidden", message: "Your current permissions do not allow this operation. Contact your school administrator." }
     : null;

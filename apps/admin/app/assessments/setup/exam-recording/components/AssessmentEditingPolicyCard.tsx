@@ -64,19 +64,19 @@ export function AssessmentEditingPolicy({
         <div className="space-y-1 px-1">
           <div className="flex items-center gap-2 text-[10px] font-extrabold text-amber-600 uppercase tracking-[0.2em]">
             <Lock size={10} />
-            Privilege Gate
+            Score Editing
           </div>
-          <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Security Protocol</h3>
+          <h3 className="text-xs lg:text-sm font-bold text-slate-900 tracking-tight">Editing Window</h3>
         </div>
 
         <div className="group relative flex items-center justify-between bg-white border border-slate-200 rounded-xl p-4 transition-all duration-300 hover:border-slate-300 shadow-sm overflow-hidden">
           {/* Subtle Accent Glow */}
           <div className={`absolute left-0 top-0 bottom-0 w-1 transition-colors ${draft.restrictionsEnabled ? "bg-amber-500" : "bg-slate-200"}`} />
           <div className="space-y-0.5">
-            <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-tight">Access Gate</h4>
+            <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-tight">Restrict editing dates</h4>
             <div className="flex items-center gap-2">
               <span className={`h-1 w-1 rounded-full ${draft.restrictionsEnabled ? "bg-amber-400 animate-pulse" : "bg-slate-300"}`} />
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{draft.restrictionsEnabled ? "Hard Lock Enabled" : "Pass-through mode"}</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{draft.restrictionsEnabled ? "Restricted to window" : "Always open"}</span>
             </div>
           </div>
           <label className="relative inline-flex cursor-pointer items-center">

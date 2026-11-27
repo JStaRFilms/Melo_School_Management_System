@@ -25,7 +25,7 @@ export function ReportScoringPrintWarning({ message, onContinue, onCancel }: {
     <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl space-y-4">
       <h2 id="scoring-print-title" className="text-lg font-bold text-slate-900">Issued report may be out of date</h2>
       <p className="text-sm text-slate-700">{message}</p>
-      <p className="text-sm text-slate-700">Printing uses the unchanged issued copy. Ask an administrator to review it. Replacement certification is currently unavailable. Printing does not recertify it.</p>
+      <p className="text-sm text-slate-700">Printing uses the original issued copy without updating it. Ask an administrator to review whether updated results apply. Re-issuing a certified report is not currently available.</p>
       <div className="flex flex-wrap gap-3">
         <button ref={cancelRef} type="button" onClick={onCancel} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900">Cancel print</button>
         <button type="button" onClick={onContinue} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Print issued copy anyway</button>

@@ -101,7 +101,7 @@ interface ReportCardPrintBlockedNoticeProps {
 }
 
 export function ReportCardPrintBlockedNotice({
-  message = "Printing is blocked until the missing prior-term scores are backfilled and the annual average is complete for every cumulative subject.",
+  message = "Printing is blocked until missing prior-term scores are entered and annual averages are complete for all cumulative subjects.",
 }: ReportCardPrintBlockedNoticeProps) {
   return (
     <div
