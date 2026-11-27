@@ -109,18 +109,67 @@ describe("ReportCardSheet cumulative layout", () => {
   });
 });
 
-it("renders custom snapshot colors and old no-policy text fallback without changing scores", () => {
-  const report=buildCumulativeReportCard();
-  report.results[0].gradeLetter="OUT";
-  report.gradingPolicy={source:"snapshot",version:7,bands:[{gradeLetter:"OUT",minScore:0,maxScore:100,remark:"Recorded",colorHex:"#7c2d12"}]};
-  const markup=renderToStaticMarkup(createElement(ReportCardSheet,{reportCard:report,backHref:"/"}));
+it("renders custom snapshot colors and omits internal grading-policy diagnostics for historical reports", () => {
+  const report = buildCumulativeReportCard();
+  report.results[0].gradeLetter = "OUT";
+  report.gradingPolicy = {
+    source: "snapshot",
+    version: 7,
+    bands: [
+      {
+        gradeLetter: "OUT",
+        minScore: 0,
+        maxScore: 100,
+        remark: "Recorded",
+        colorHex: "#7c2d12",
+      },
+    ],
+  };
+  const markup = renderToStaticMarkup(
+    createElement(ReportCardSheet, { reportCard: report, backHref: "/" })
+  );
   expect(markup).toContain("#7c2d12");
   expect(markup).toContain("Certified grading policy v7");
   expect(markup).toContain("rc-grade");
   expect(markup).toContain("OUT");
-  delete report.gradingPolicy;
-  const oldMarkup=renderToStaticMarkup(createElement(ReportCardSheet,{reportCard:report,backHref:"/"}));
+
+  const historicalMissing: ReportCardSheetData = {
+    ...report,
+    gradingPolicy: { source: "historical_missing", version: 0, bands: [] },
+  };
+  const historicalMarkup = renderToStaticMarkup(
+    createElement(ReportCardSheet, {
+      reportCard: historicalMissing,
+      backHref: "/",
+    })
+  );
+  expect(historicalMarkup).not.toContain("#7c2d12");
+  expect(historicalMarkup).not.toContain("Historical grading policy unavailable");
+  expect(historicalMarkup).not.toContain("without policy colors");
+  expect(historicalMarkup).toContain("90");
+  expect(historicalMarkup).toContain("OUT");
+  expect(historicalMarkup).toContain("Excellent");
+
+  const withoutPolicy: ReportCardSheetData = { ...report };
+  delete withoutPolicy.gradingPolicy;
+  const oldMarkup = renderToStaticMarkup(
+    createElement(ReportCardSheet, { reportCard: withoutPolicy, backHref: "/" })
+  );
   expect(oldMarkup).not.toContain("#7c2d12");
-  expect(oldMarkup).toContain("Historical grading policy unavailable");
+  expect(oldMarkup).not.toContain("Historical grading policy unavailable");
+  expect(oldMarkup).not.toContain("without policy colors");
+  expect(oldMarkup).toContain("90");
   expect(oldMarkup).toContain("OUT");
+  expect(oldMarkup).toContain("Excellent");
+
+  const printMarkup = renderToStaticMarkup(
+    createElement(ReportCardSheet, {
+      reportCard: historicalMissing,
+      backHref: "/",
+      hideToolbar: true,
+    })
+  );
+  expect(printMarkup).not.toContain("Historical grading policy unavailable");
+  expect(printMarkup).not.toContain("without policy colors");
+  expect(printMarkup).toContain("OUT");
 });
