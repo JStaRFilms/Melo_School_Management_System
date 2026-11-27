@@ -8,7 +8,7 @@ import { ROLES, parseRoles } from './browser-harness.mjs';
 export function explorationScript(filename, root = ROOT) {
   if (!filename) throw new Error('qa:explore requires --script <worktree-contained .mjs module>.');
   const absolute = fs.realpathSync(path.resolve(root, filename));
-  if (!absolute.startsWith(`${fs.realpathSync(root).replace(/\/$/, '')}${path.sep}`) || path.extname(absolute) !== '.mjs' || !fs.lstatSync(absolute).isFile()) {
+  if (!absolute.startsWith(`${fs.realpathSync(root).replace(/[\\/]+$/, '')}${path.sep}`) || path.extname(absolute) !== '.mjs' || !fs.lstatSync(absolute).isFile()) {
     throw new Error('Exploration module must be a regular .mjs file inside this worktree; outside symlinks are refused.');
   }
   if (fs.statSync(absolute).size > 256_000) throw new Error('Keep exploratory modules under 256KB.');

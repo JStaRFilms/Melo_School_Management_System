@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { BrowserHarness, ownedRequest, validateExploration, validateWorkflow } from './browser-harness.mjs';
 import { roleJourneys } from './role-journeys.mjs';
 import { explorationScript, readDeclaredEffects, validateDeclaredModulePermission } from './exploration.mjs';
-import { writeJson, ROOT, backendRecoveryFile } from './core.mjs';
+import { writeJson, ROOT, backendRecoveryFile, isEntryModule } from './core.mjs';
 
 export function createRunnerLifecycle({ request, harness, signals = process, writeRecovery = writeJson, exit = process.exit }) {
   let interrupted = false;
@@ -99,7 +99,7 @@ export async function runBrowser(runDirectory = process.argv[2]) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntryModule(process.argv[1], import.meta.url)) {
   runBrowser().catch(error => {
     console.error(error.message);
     process.exit(1);

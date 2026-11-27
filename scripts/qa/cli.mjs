@@ -3,8 +3,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
-  ROOT, QA_DIR, TARGET, APPS, LOCK_DIR, readJson, writeJson, parseApps, loadProfile,
-  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, workspaceRevision, appEnvironment, withLease, evidenceStatus, preservationExpectation, isCleanStoppedState, backendRecoveryFile,
+  ROOT, QA_DIR, TARGET, APPS, LOCK_DIR, readJson, writeJson, parseApps, loadProfile, isEntryModule,
+  doctor, acquireLease, releaseLease, ownsSupervisor, processCommand, requestSupervisorStop, workspaceRevision, appEnvironment, withLease, evidenceStatus, preservationExpectation, isCleanStoppedState, backendRecoveryFile,
 } from './core.mjs';
 import { workflowRequirements } from './exploration.mjs';
 import { generateReport, publishReviewed } from './report.mjs';
@@ -89,7 +89,7 @@ async function start(opts) {
     writeJson(stateFile, { id, root: ROOT, profile: profile.filename, apps, leases, status: 'starting', inspection });
     const log = fs.openSync(path.join(QA_DIR, 'supervisor.log'), 'a', 0o600);
     const child = spawn(process.execPath, [path.join(ROOT, 'scripts/qa/supervisor.mjs'), '--id', id], {
-      cwd: ROOT, stdio: ['ignore', log, log], detached: true,
+      cwd: ROOT, stdio: ['ignore', log, log], detached: true, windowsHide: true,
     });
     fs.closeSync(log);
     child.unref();
@@ -110,7 +110,7 @@ async function start(opts) {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     const state = readJson(stateFile);
-    if (ownsSupervisor(state, processCommand(state.pid))) process.kill(state.pid, 'SIGTERM');
+    if (ownsSupervisor(state, processCommand(state.pid))) requestSupervisorStop(state);
     throw new Error('QA startup timed out; owned supervisor was asked to stop.');
   } catch (error) {
     const state = fs.existsSync(stateFile) ? readJson(stateFile) : {};
@@ -130,10 +130,12 @@ async function stop() {
   }
   const state = ownedState();
   if (fs.existsSync(path.join(LOCK_DIR, 'backend-content-poodle-172.json'))) throw new Error('A browser run holds the backend lease. Let it finish before stopping servers.');
-  process.kill(state.pid, 'SIGTERM');
+  requestSupervisorStop(state);
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (readJson(stateFile).status === 'stopped' || readJson(stateFile).status === 'failed') { console.log('Owned QA servers stopped; port leases released.'); return; }
+    const current = readJson(stateFile);
+    if (current.status === 'stopped') { console.log('Owned QA servers stopped; port leases released.'); return; }
+    if (current.status === 'failed') throw new Error('Owned QA shutdown failed; inspect .qa/state.json and port leases privately.');
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   throw new Error('Supervisor did not acknowledge shutdown. No other process was killed.');
@@ -242,7 +244,7 @@ export async function main(command, opts) {
   } else throw new Error('Use doctor, start, stop, smoke, layout, feature, roles, explore, workflow, or report.');
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (isEntryModule(process.argv[1], import.meta.url)) {
   Promise.resolve().then(() => main(process.argv[2], options(process.argv.slice(3)))).catch(error => {
     // Only local safety errors are emitted; remote service errors are sanitized in core.
     console.error(error.message);
